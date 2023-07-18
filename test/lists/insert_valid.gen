@@ -1,0 +1,5 @@
+var my_list = [1, 2, 3];
+my_list.insert(1, 4);
+print(my_list); # expect: [1, 4, 2, 3]
+my_list.insert(4, 5);
+print(my_list); # expect: [1, 4, 2, 3, 5]

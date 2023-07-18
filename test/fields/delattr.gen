@@ -1,0 +1,16 @@
+class Foo {}
+var foo = Foo();
+var field = "bar";
+
+foo.bar = "42";
+print(foo.bar); # expect: 42
+print(hasattr(foo, "bar")); # expect: true
+
+delattr(foo, "bar");
+print(hasattr(foo, "bar")); # expect: false
+
+foo.bar = "42";
+delattr(foo, field);
+print(hasattr(foo, "bar")); # expect: false
+
+delattr(foo, field); # expect runtime error: Undefined property 'bar'.

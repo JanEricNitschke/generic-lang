@@ -1,0 +1,3 @@
+print("Some" + str(5) + "string"); # expect: Some5string
+print("Some" + str(5) + "string", " SomeWeirdEnd"); # expect: Some5string SomeWeirdEnd
+print("Some" + str(5) + "string", 1.2); # expect runtime error: Optional second argument to 'print' has to be a string, got: 1.2

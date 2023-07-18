@@ -1,0 +1,5 @@
+var my_list = [1, 2, 3];
+print(len(my_list)); # expect: 3
+my_list = [];
+print(len(my_list)); # expect: 0
+len("Test"); # expect runtime error: 'len' expected list argument, got: `Test` instead.

@@ -1,0 +1,3 @@
+var obj = "whee";
+var field = "whoo";
+setattr(obj, field, 20); # expect runtime error: `setattr` only works on instances, got `whee`

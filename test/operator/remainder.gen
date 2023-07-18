@@ -1,0 +1,5 @@
+print(5 % 2); # expect: 1
+print(5.21 % 2); # expect: 1.21
+print(5 % 2.2); # expect: 0.5999999999999996
+print(5.11 % 2.2); # expect: 0.71
+print(2 % "Test"); # expect runtime error: Operands must be numbers. Got: [2, Test]

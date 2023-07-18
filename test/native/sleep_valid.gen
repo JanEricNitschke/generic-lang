@@ -1,0 +1,3 @@
+var start = clock();
+sleep(2);
+print(int(clock() - start)); # expect: 2

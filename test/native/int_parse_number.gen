@@ -1,0 +1,2 @@
+print(int(5)); # expect: 5
+print(int(7.1)); # expect: 7

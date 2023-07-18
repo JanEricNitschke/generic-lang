@@ -1,0 +1,1 @@
+123.foo; # expect runtime error: Tried to get property 'foo' of non-instance `123`.

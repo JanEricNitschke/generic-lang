@@ -1,0 +1,2 @@
+print(float(5)); # expect: 5.0
+print(float(7.1)); # expect: 7.1

@@ -1,0 +1,14 @@
+print(-3); # expect: -3
+print(3); # expect: 3
+print(-2000); # expect: -2000
+print(2000); # expect: 2000
+
+var i = 3;
+
+print(i+5); # expect: 8
+print(-i); # expect: -3
+print(i); # expect: 3
+
+var j = 2000;
+print(-j); # expect: -2000
+print(j); # expect: 2000

@@ -1,0 +1,12 @@
+
+var b = "A";
+b += "B";
+print(b); # expect: AB
+
+var a = 5;
+print(a); # expect: 5
+a = 6;
+print(a); # expect: 6
+a *= 2;
+print(a); # expect: 12
+a *= "Test"; # expect runtime error: Operands must be numbers. Got: [12, Test]

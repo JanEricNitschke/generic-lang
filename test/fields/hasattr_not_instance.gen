@@ -1,0 +1,3 @@
+var obj = "whee";
+var field = "whoo";
+print(hasattr(obj, field)); # expect runtime error: `hasattr` only works on instances, got `whee`

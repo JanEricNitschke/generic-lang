@@ -1,0 +1,2 @@
+print(int(true)); # expect: 1
+print(int(false)); # expect: 0

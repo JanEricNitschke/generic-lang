@@ -1,0 +1,5 @@
+print(123 + 456); # expect: 579
+print(123.1 + 456); # expect: 579.1
+print(123 + 456.2); # expect: 579.2
+print(123.1 + 456.2); # expect: 579.3
+print("str" + "ing"); # expect: string

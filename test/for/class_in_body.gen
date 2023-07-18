@@ -1,0 +1,5 @@
+for (;;) {
+    class Foo {}
+    break;
+}
+print(1); # expect: 1

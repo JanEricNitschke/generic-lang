@@ -1,0 +1,27 @@
+var my_list = [1, 2, 3];
+print(my_list); # expect: [1, 2, 3]
+
+my_list = [1, "Test", nil];
+print(my_list); # expect: [1, Test, nil]
+
+fun fib(n) {
+  if (n < 2) {
+    return n;
+  }
+  return fib(n - 2) + fib(n - 1);
+}
+
+class Tree {
+  stuff() {}
+}
+
+my_list = [fib, Tree, Tree(), true];
+print(my_list); # expect: [<fn fib>, <class Tree>, <Tree instance>, true]
+
+var list = List();
+var a = list.append;
+print(a); # expect: <bound method List.append of []>
+a("1");
+print(list); # expect: [1]
+list.append(2);
+print(list); # expect: [1, 2]

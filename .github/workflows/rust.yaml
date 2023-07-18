@@ -1,0 +1,60 @@
+# This workflow will build the rust interpreter of lox
+
+name: rust
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+    - name: Build
+      run: cargo build --verbose
+    - name: Lint
+      run: |
+        rustup component add clippy
+        # Run normal configuration and fail on default warnings
+        cargo clippy -- -D warnings
+        # Run pedantic but do not fail
+        cargo clippy -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
+    - name: Test
+      run: cargo test --verbose
+    - name: Setup dart
+      uses: dart-lang/setup-dart@v1
+      with:
+        sdk: "2.19.0"
+    - name: Checkout book repo
+      uses: actions/checkout@v3
+      with:
+        repository: munificent/craftinginterpreters
+        path: reference/craftinginterpreters
+    - name: Setup book repo
+      working-directory: reference/craftinginterpreters
+      run: |
+        make get
+        make
+    - name: Run custom dart tests
+      run: make test
+    - name: Install hyperfine
+      run: |
+        wget https://github.com/sharkdp/hyperfine/releases/download/v1.16.1/hyperfine_1.16.1_amd64.deb
+        sudo dpkg -i hyperfine_1.16.1_amd64.deb
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: "3.2.2"
+    - name: Run benchmarks
+      run: make benchmark-ci

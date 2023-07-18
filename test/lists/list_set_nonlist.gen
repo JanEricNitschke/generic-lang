@@ -1,0 +1,1 @@
+"Test"[2] = "test"; # expect runtime error: Can only index into lists, got `Test`.

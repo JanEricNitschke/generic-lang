@@ -1,0 +1,2 @@
+print(int("3")); # expect: 3
+print(int("13")); # expect: 13

@@ -1,0 +1,2 @@
+var my_list = [1, 2, 3];
+my_list.insert(-2, 5); # expect runtime error: Can not index into list with negative or too large numbers, got `-2`.

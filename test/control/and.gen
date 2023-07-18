@@ -1,0 +1,3 @@
+print(5 and false); # expect: false
+print(nil and 3); # expect: nil
+print(5 and 3); # expect: 3

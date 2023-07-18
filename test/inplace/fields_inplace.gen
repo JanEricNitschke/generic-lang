@@ -1,0 +1,18 @@
+class Tree {
+}
+
+var tree = Tree();
+
+tree.b = "A";
+tree.b += "B";
+print(tree.b); # expect: AB
+
+
+tree.x = 5;
+print(tree.x); # expect: 5
+tree.x = 6;
+print(tree.x); # expect: 6
+tree.x *= 2;
+print(tree.x); # expect: 12
+tree.x *= "Test"; # expect runtime error: Operands must be numbers. Got: [12, Test]
+print(tree.x);

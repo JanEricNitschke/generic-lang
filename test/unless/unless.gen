@@ -1,0 +1,15 @@
+# Evaluate the 'then' expression if the condition is false.
+unless (true) {
+    print("bad");
+}
+unless (false) {
+    print("good"); # expect: good
+}
+# Allow block body.
+unless (false) { print("block"); } # expect: block
+
+# Assignment in if condition.
+var a = true;
+unless (a = false) {
+    print(a); # expect: false
+}

@@ -1,0 +1,21 @@
+var globalOne;
+var globalTwo;
+
+fun main() {
+  var a = 1;
+  while (a <= 3) {
+    fun closure() {
+      print(a);
+    }
+    if (globalOne == nil) {
+      globalOne = closure;
+    } else {
+      globalTwo = closure;
+    }
+    a = a + 1;
+  }
+}
+
+main();
+globalOne();  # expect: 4
+globalTwo();  # expect: 4

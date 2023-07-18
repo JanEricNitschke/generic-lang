@@ -1,0 +1,61 @@
+DEBUG_BIN := ./target/debug/generic
+REL_BIN := ./target/release/generic
+
+test_level := chap30_optimization
+sources := src/*.rs src/compiler/*.rs Cargo.toml
+
+$(DEBUG_BIN): $(sources)
+	cargo build
+
+$(REL_BIN): $(sources)
+	cargo build --release
+
+.PHONY: cargo-test
+cargo-test:
+	cargo test
+
+setup-dart:
+	dart pub get --directory=tool
+
+.PHONY: custom-dart-test
+custom-dart-test: $(DEBUG_BIN)
+	dart tool/bin/test.dart clox --interpreter ./$(DEBUG_BIN)
+
+.PHONY: stress-gc-test
+stress-gc-test: $(DEBUG_BIN)
+	dart tool/bin/test.dart clox --interpreter ./$(DEBUG_BIN) --arguments --stress-gc
+
+.PHONY: test
+test: cargo-test setup-dart custom-dart-test stress-gc-test
+
+.PHONY: benchmark
+benchmark: fib-benchmark more-benchmark
+
+.PHONY: more-benchmark
+more-benchmark: $(REL_BIN)
+	for filename in benchmark/*.gen; do \
+		echo $$filename; \
+		filebase=$${filename%.*}; \
+		hyperfine --show-output --warmup 1 ".\\target\\release\\generic $${filebase}.gen" ".\\reference\\craftinginterpreters\\clox $${filebase}.lox.nom" ".\\reference\\craftinginterpreters\\jlox.bat $${filebase}.lox.nom"; \
+	done
+
+.PHONY: fib-benchmark
+fib-benchmark: $(REL_BIN)
+	hyperfine --warmup 1 ".\\target\release\\generic benchmark\\fib\\fib.gen" ".\\reference\\craftinginterpreters\\clox benchmark\\fib\\fib.lox.nom"   \
+	"python benchmark\\fib\\fib.py" "ruby benchmark\\fib\\fib.rb" ".\\reference\\craftinginterpreters\\jlox.bat benchmark\\fib\\fib.lox.nom" \
+
+.PHONY: benchmark-ci
+benchmark-ci: fib-benchmark-ci more-benchmark-ci
+
+.PHONY: more-benchmark-ci
+more-benchmark-ci: $(REL_BIN)
+	for filename in benchmark/*.gen; do \
+		echo $$filename; \
+		filebase=$${filename%.*}; \
+		hyperfine --show-output --warmup 1 "./target/release/generic $${filebase}.gen" "./reference/craftinginterpreters/clox $${filebase}.lox.nom" "./reference/craftinginterpreters/jlox $${filebase}.lox.nom"; \
+	done
+
+.PHONY: fib-benchmark-ci
+fib-benchmark-ci: $(REL_BIN)
+	hyperfine --warmup 1 "./target/release/generic benchmark/fib/fib.gen" "./reference/craftinginterpreters/clox benchmark/fib/fib.lox.nom"   \
+	"python benchmark/fib/fib.py" "ruby benchmark/fib/fib.rb" "./reference/craftinginterpreters/jlox benchmark/fib/fib.lox.nom" \

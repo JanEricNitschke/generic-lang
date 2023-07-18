@@ -1,0 +1,15 @@
+# Evaluate the 'else' expression if the condition is true.
+unless (true) {
+    print("good");
+ } else {
+    print("bad"); # expect: bad
+ }
+unless (false) {
+    print("bad");
+ } else {
+    print("good"); # expect: bad
+ }
+# Allow block body.
+unless (true) {
+    nil;
+} else { print("block"); } # expect: block

@@ -1,0 +1,2 @@
+print(assert(true)); # expect: nil
+assert(false); # expect runtime error: Assertion on `false` failed!

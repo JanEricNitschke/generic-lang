@@ -1,0 +1,2 @@
+class Foo {}
+Foo.bar; # expect runtime error: Tried to get property 'bar' of non-instance `<class Foo>`.

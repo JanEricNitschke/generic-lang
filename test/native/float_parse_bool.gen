@@ -1,0 +1,2 @@
+print(float(true)); # expect: 1.0
+print(float(false)); # expect: 0.0

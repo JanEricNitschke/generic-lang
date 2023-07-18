@@ -1,0 +1,4 @@
+var my_list = [3];
+print(my_list.pop()); # expect: 3
+print(my_list); # expect: []
+my_list.pop(); # expect runtime error: Can't 'pop' from an empty list.

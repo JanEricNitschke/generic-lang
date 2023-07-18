@@ -1,0 +1,2 @@
+var my_list = [1, 2, 3];
+my_list.insert("Test", 5); # expect runtime error: Can only index into list with integer, got `Test`.

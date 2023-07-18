@@ -1,0 +1,2 @@
+var my_list = [1, 2, 3];
+print(my_list.pop(1.2)); # expect runtime error: Can only index into list with integer, got `1.2`.

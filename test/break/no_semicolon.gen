@@ -1,0 +1,4 @@
+while (true) {
+    break
+    var x;  # Error at 'var': Expect ';' after 'break'.
+}

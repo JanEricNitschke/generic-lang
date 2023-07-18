@@ -1,0 +1,9 @@
+fun f() {
+  until (false) {
+    var i = "i";
+    return i;
+  }
+}
+
+print(f());
+# expect: i

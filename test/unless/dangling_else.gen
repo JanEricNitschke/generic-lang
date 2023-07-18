@@ -1,0 +1,15 @@
+# A dangling else binds to the right-most if.
+unless (true) {
+    unless (false) {
+        print("bad");
+    } else {
+        print("bad");
+    }
+}
+unless (false) {
+    unless (true) {
+        print("bad");
+    } else {
+        print("good"); # expect: good
+    }
+}

@@ -1,0 +1,26 @@
+print(type(5)); # expect: <type int>
+print(type(3.2)); # expect: <type float>
+print(type("Test")); # expect: <type string>
+
+fun fib(n) {
+  if (n < 2) {
+    return n;
+  }
+  return fib(n - 2) + fib(n - 1);
+}
+
+print(type(fib)); # expect: <type closure>
+print(type(clock)); # expect: <type native function>
+print(type(true)); # expect: <type bool>
+print(type(false)); # expect: <type bool>
+print(type(nil)); # expect: <type nil>
+
+class Tree {
+  stuff() {}
+}
+
+print(type(Tree)); # expect: <type class>
+print(type(Tree())); # expect: <type Tree>
+print(type(Tree().stuff)); # expect: <type bound method>
+
+print(type([1, 2, 3])); # expect: <type list>

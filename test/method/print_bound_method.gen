@@ -1,0 +1,5 @@
+class Foo {
+  method() { }
+}
+var foo = Foo();
+print(foo.method); # expect: <bound method Foo.method of <Foo instance>>

@@ -1,0 +1,26 @@
+print(str(5)); # expect: 5
+print(str(3.2)); # expect: 3.2
+print(str("Test")); # expect: Test
+
+fun fib(n) {
+  if (n < 2) {
+    return n;
+  }
+  return fib(n - 2) + fib(n - 1);
+}
+
+print(str(fib)); # expect: <fn fib>
+print(str(clock)); # expect: <native fn clock>
+print(str(true)); # expect: true
+print(str(false)); # expect: false
+print(str(nil)); # expect: nil
+
+class Tree {
+  stuff() {}
+}
+
+print(str(Tree)); # expect: <class Tree>
+print(str(Tree())); # expect: <Tree instance>
+print(str(Tree().stuff)); # expect: <bound method Tree.stuff of <Tree instance>>
+
+print(str([1, 2, 3])); # expect: [1, 2, 3]

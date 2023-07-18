@@ -1,0 +1,3 @@
+print(sqrt(9)); # expect: 3.0
+
+sqrt(1, 2); # expect runtime error: Native function 'sqrt' expected 1 argument, got 2.

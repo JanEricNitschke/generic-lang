@@ -1,0 +1,5 @@
+print(5 // 2); # expect: 2
+print(5.21 // 2); # expect: 2.0
+print(5 // 2.2); # expect: 2.0
+print(5.11 // 2.2); # expect: 2.0
+print(2 // "Test"); # expect runtime error: Operands must be numbers. Got: [2, Test]

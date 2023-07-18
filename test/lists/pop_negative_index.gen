@@ -1,0 +1,2 @@
+var my_list = [1, 2, 3];
+print(my_list.pop(-3)); # expect runtime error: Can not index into list with negative or too large numbers, got `-3`.

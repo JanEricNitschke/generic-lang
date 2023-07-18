@@ -1,0 +1,13 @@
+fun fib(n) {
+  if (n < 2) {
+    return n;
+  }
+  return fib(n - 2) + fib(n - 1);
+}
+
+class Tree {
+  stuff() {}
+}
+
+var my_list = [fib, Tree, nil, true];
+print(my_list == [fib, Tree, nil, true]); # expect: true

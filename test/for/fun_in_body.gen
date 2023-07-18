@@ -1,0 +1,5 @@
+for (;;) {
+    fun foo() {}
+    break;
+}
+print(1); # expect: 1

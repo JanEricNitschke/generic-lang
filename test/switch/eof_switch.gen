@@ -1,0 +1,6 @@
+const x = 10;
+
+switch(x + 2) {
+    case 10: print("wrong");
+    case 11: print("still wrong");
+ # Error at end: Expect '}' after 'switch' body.

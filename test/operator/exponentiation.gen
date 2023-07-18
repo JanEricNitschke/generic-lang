@@ -1,0 +1,5 @@
+print(2 ** 4); # expect: 16
+print(2 ** 4.1); # expect: 17.148375400580687
+print(2.5 ** 4); # expect: 39.0625
+print(2.1 ** 4.1); # expect: 20.945903984583286
+print(2 ** "Test"); # expect runtime error: Operands must be numbers. Got: [2, Test]

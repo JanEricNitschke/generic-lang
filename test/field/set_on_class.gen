@@ -1,0 +1,2 @@
+class Foo {}
+Foo.bar = "value"; # expect runtime error: Tried to set propery 'bar' of non-instance `<class Foo>`

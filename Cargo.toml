@@ -1,0 +1,32 @@
+[package]
+name         = "generic-lang"
+version      = "0.1.0"
+edition      = "2021"
+authors      = ["Jan-Eric <janericnitschke@gmail.com"]
+description  = " A Lox based programming language"
+readme       = "README.md"
+repository   = "https://github.com/JanEricNitschke/generic-lang"
+license      = "MIT"
+keywords     = ["programming-language", "generic"]
+categories   = ["parser-implementations", "compilers"]
+exclude      = ["/reference", "tool", ".*"]
+publish = false
+
+
+[[bin]]
+name = "generic"
+path = "src/main.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap         = { version = "4.3.11", features = ["derive"] }
+derivative   = "2.2.0"
+rustc-hash   = "1.1.0"
+humansize    = "2.1.3"
+num_enum     = "0.6.1"
+paste        = "1.0.13"
+shrinkwraprs = "0.3.0"
+slotmap      = "1.0.6"
+derive_more  = "0.99.17"
+rand         = "0.8.5"

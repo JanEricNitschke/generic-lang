@@ -1,0 +1,14 @@
+var list = ["A"];
+list[0] += "B";
+print(list); # expect: [AB]
+
+
+list = [5];
+var index = 0;
+print(list); # expect: [5]
+list[0] = 6;
+print(list); # expect: [6]
+list[index] *= 2;
+print(list); # expect: [12]
+list[0] *= "Test"; # expect runtime error: Operands must be numbers. Got: [12, Test]
+print(list);

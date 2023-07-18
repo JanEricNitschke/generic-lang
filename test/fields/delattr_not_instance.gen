@@ -1,0 +1,3 @@
+var obj = "whee";
+var field = "whoo";
+print(delattr(obj, field)); # expect runtime error: `delattr` only works on instances, got `whee`

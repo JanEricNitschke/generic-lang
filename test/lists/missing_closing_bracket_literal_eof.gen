@@ -1,0 +1,2 @@
+# [line 2] Error at end: Expect ']' after list literal.
+my_list = [1, 2, 3
