@@ -116,6 +116,25 @@ fn to_int_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> 
     }
 }
 
+#[allow(clippy::option_if_let_else)]
+fn is_int_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
+    match &heap.values[args[0]] {
+        Value::String(string_id) => {
+            let string = &heap.strings[string_id];
+            let converted: Result<i64, _> = string.parse();
+            match converted {
+                Ok(_) => Ok(heap.builtin_constants().true_),
+                Err(_) => Ok(heap.builtin_constants().false_),
+            }
+        }
+        Value::Number(n) => Ok(heap.add_value(Value::Number(i64::from(*n).into()))),
+        Value::Bool(value) => Ok(heap.add_value(Value::Number(i64::from(*value).into()))),
+        x => Err(format!(
+            "'int' expected string, number or bool argument, got: {x}"
+        )),
+    }
+}
+
 fn to_string_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
     let value = &heap.values[args[0]];
     let string = Value::String(heap.string_id(&value.to_string()));
@@ -406,7 +425,7 @@ impl Natives {
         for name in [
             "clock", "sleep", "assert", "sqrt", "input", "float", "int", "str", "type", "getattr",
             "setattr", "hasattr", "delattr", "rng", "print", "append", "pop", "insert", "len",
-            "List", "contains",
+            "List", "contains", "is_int",
         ] {
             let string_id = heap.string_id(&name);
             self.string_ids.insert(name.to_string(), string_id);
@@ -425,6 +444,7 @@ impl Natives {
         vm.define_native_function(self.string_ids["input"], &[1], input_native);
         vm.define_native_function(self.string_ids["float"], &[1], to_float_native);
         vm.define_native_function(self.string_ids["int"], &[1], to_int_native);
+        vm.define_native_function(self.string_ids["is_int"], &[1], is_int_native);
         vm.define_native_function(self.string_ids["str"], &[1], to_string_native);
         vm.define_native_function(self.string_ids["type"], &[1], type_native);
         vm.define_native_function(self.string_ids["print"], &[1, 2], print_native);

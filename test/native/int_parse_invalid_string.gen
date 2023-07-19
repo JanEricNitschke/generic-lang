@@ -1,1 +1,2 @@
+print(is_int("1.2")); # expect: false
 print(int("1.2")); # expect runtime error: 'int' could not convert string '1.2' to an integer.

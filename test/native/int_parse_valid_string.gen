@@ -1,2 +1,4 @@
 print(int("3")); # expect: 3
+print(is_int("3")); # expect: true
 print(int("13")); # expect: 13
+print(is_int("13")); # expect: true
