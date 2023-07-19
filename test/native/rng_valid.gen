@@ -1,7 +1,7 @@
 var random_value;
 for (var i = 0; i < 100; i = i + 1) {
     random_value = rng(0, 100);
-    if (random_value < 0 or random_value > 100) {
+    if (random_value < 0 or random_value >= 100) {
         print("Bad");
     }
 }

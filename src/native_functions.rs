@@ -187,7 +187,7 @@ fn rng_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
     match (&heap.values[args[0]], &heap.values[args[1]]) {
         (Value::Number(Number::Integer(min)), Value::Number(Number::Integer(max))) => Ok(heap
             .add_value(Value::Number(
-                rand::thread_rng().gen_range(*min..=*max).into(),
+                rand::thread_rng().gen_range(*min..*max).into(),
             ))),
         (other_1, other_2) => Err(format!(
             "'rng' expected two integers as arguments, got: `{other_1}` and `{other_2}` instead."
