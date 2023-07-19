@@ -32,6 +32,7 @@ reference/
 *.sh
 *.svg
 /bin
+/programs
 
 /tool/.dart_tool/
 /tool/.packages

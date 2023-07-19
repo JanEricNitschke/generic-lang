@@ -182,6 +182,7 @@ impl VM {
     fn run(&mut self) -> InterpretResult {
         let trace_execution = config::TRACE_EXECUTION.load();
         let stress_gc = config::STRESS_GC.load();
+        let log_gc = config::LOG_GC.load();
         loop {
             if trace_execution {
                 let function = &self.callstack.function();
@@ -197,7 +198,7 @@ impl VM {
                 );
                 print!("{disassembler:?}");
             }
-            self.collect_garbage(stress_gc);
+            self.collect_garbage(stress_gc, log_gc);
             match OpCode::try_from(self.read_byte()).expect("Internal error: unrecognized opcode") {
                 OpCode::Pop => {
                     self.stack.pop().expect("Stack underflow in OP_POP.");
@@ -1385,7 +1386,7 @@ impl VM {
         target_class.methods.insert(name, value_id);
     }
 
-    fn collect_garbage(&mut self, stress_gc: bool) {
+    fn collect_garbage(&mut self, stress_gc: bool, log_gc: bool) {
         if !stress_gc && !self.heap.needs_gc() {
             return;
         }
@@ -1419,11 +1420,18 @@ impl VM {
             .copied()
             .collect::<Vec<_>>();
         for id in globals_to_remove {
+            if log_gc {
+                eprintln!("String/{:?} free {}", id, *id);
+            }
             self.globals.remove(&id);
         }
-        self.heap
-            .strings_by_name
-            .retain(|_, string_id| !string_id.marked(black_value));
+        self.heap.strings_by_name.retain(|_, string_id| {
+            let retain = string_id.marked(black_value);
+            if !retain && log_gc {
+                eprintln!("String/{:?} free {}", string_id, **string_id);
+            }
+            retain
+        });
 
         // Finally, sweep
         self.heap.sweep();

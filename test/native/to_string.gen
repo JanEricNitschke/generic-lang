@@ -24,3 +24,7 @@ print(str(Tree())); # expect: <Tree instance>
 print(str(Tree().stuff)); # expect: <bound method Tree.stuff of <Tree instance>>
 
 print(str([1, 2, 3])); # expect: [1, 2, 3]
+
+var a = str(5);
+var b = "5";
+print(a == b); # expect: true
