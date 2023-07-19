@@ -1,0 +1,6 @@
+var my_list = [1, 2, -5, 3000, "Test"];
+print(my_list.contains(1)); # expect: true
+print(my_list.contains(-5)); # expect: true
+print(my_list.contains(3000)); # expect: true
+print(my_list.contains("Test")); # expect: true
+print(my_list.contains(3)); # expect: false

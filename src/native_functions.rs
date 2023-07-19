@@ -287,6 +287,28 @@ fn insert_native(
     }
 }
 
+fn contains_native(
+    heap: &mut Heap,
+    receiver: &ValueId,
+    args: &[&ValueId],
+) -> Result<ValueId, String> {
+    let my_list = match &heap.values[receiver] {
+        Value::List(list) => list,
+        x => {
+            return Err(format!(
+                "'contains' expects to be called on a list, got `{x}` instead."
+            ))
+        }
+    };
+
+    for value_id in &my_list.items {
+        if **value_id == heap.values[args[0]] {
+            return Ok(heap.builtin_constants().true_);
+        }
+    }
+    Ok(heap.builtin_constants().false_)
+}
+
 fn len_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
     match &heap.values[args[0]] {
         Value::List(list) => Ok(heap.add_value((list.items.len() as i64).into())),
@@ -384,7 +406,7 @@ impl Natives {
         for name in [
             "clock", "sleep", "assert", "sqrt", "input", "float", "int", "str", "type", "getattr",
             "setattr", "hasattr", "delattr", "rng", "print", "append", "pop", "insert", "len",
-            "List",
+            "List", "contains",
         ] {
             let string_id = heap.string_id(&name);
             self.string_ids.insert(name.to_string(), string_id);
@@ -437,6 +459,12 @@ impl Natives {
             self.string_ids["insert"],
             &[2],
             insert_native,
+        );
+        vm.define_native_method(
+            self.string_ids["List"],
+            self.string_ids["contains"],
+            &[1],
+            contains_native,
         );
     }
 }
