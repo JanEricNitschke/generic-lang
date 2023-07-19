@@ -33,6 +33,7 @@ reference/
 *.svg
 /bin
 /programs
+/.vscode
 
 /tool/.dart_tool/
 /tool/.packages
