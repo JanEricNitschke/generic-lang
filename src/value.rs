@@ -228,6 +228,7 @@ pub struct Closure {
     pub function: FunctionId,
     pub upvalues: Vec<ValueId>,
     pub upvalue_count: usize,
+    pub is_module: bool,
 }
 
 impl PartialEq for Closure {
@@ -238,23 +239,25 @@ impl PartialEq for Closure {
 }
 
 impl Closure {
-    pub fn new(function: FunctionId) -> Self {
+    pub fn new(function: FunctionId, is_module: bool) -> Self {
         let upvalue_count = function.upvalue_count;
         Self {
             function,
             upvalues: Vec::with_capacity(upvalue_count),
             upvalue_count,
+            is_module,
         }
     }
 }
 
 impl Value {
-    pub fn closure(function: FunctionId) -> Self {
+    pub fn closure(function: FunctionId, is_module: bool) -> Self {
         let upvalue_count = function.upvalue_count;
         Self::Closure(Closure {
             function,
             upvalues: Vec::with_capacity(upvalue_count),
             upvalue_count,
+            is_module,
         })
     }
 

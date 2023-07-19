@@ -65,7 +65,7 @@ macro_rules! make_rules {
     }};
 }
 
-pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 66];
+pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 68];
 
 // Can't be static because the associated function types include lifetimes
 #[rustfmt::skip]
@@ -82,23 +82,23 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Default      = [None,     None,      None      ],
         Dot          = [None,     dot,       Call      ],
         Minus        = [unary,    binary,    Term      ],
-        MinusEqual   = [None,     None,      None      ], // TODO
+        MinusEqual   = [None,     None,      None      ],
         Plus         = [None,     binary,    Term      ],
-        PlusEqual    = [None,     None,      None      ], // TODO
+        PlusEqual    = [None,     None,      None      ],
         Pipe         = [None,     binary,    BitOr     ],
-        PipeEqual    = [None,     None,      None      ], // TODO
+        PipeEqual    = [None,     None,      None      ],
         Percent      = [None,     binary,    Factor    ],
-        PercentEqual = [None,     None,      None      ], // TODO
+        PercentEqual = [None,     None,      None      ],
         Amper        = [None,     binary,    BitAnd    ],
-        AmperEqual   = [None,     None,      None      ], // TODO
+        AmperEqual   = [None,     None,      None      ],
         Hat          = [None,     binary,    BitXor    ],
-        HatEqual     = [None,     None,      None      ], // TODO
+        HatEqual     = [None,     None,      None      ],
         Semicolon    = [None,     None,      None      ],
         Slash        = [None,     binary,    Factor    ],
-        SlashEqual   = [None,     None,      None      ], // TODO
+        SlashEqual   = [None,     None,      None      ],
         SlashSlash   = [None,     binary,    Factor    ],
         Star         = [None,     binary,    Factor    ],
-        StarEqual    = [None,     None,      None      ], // TODO
+        StarEqual    = [None,     None,      None      ],
         StarStar     = [None,     binary,    Exponent  ],
         Bang         = [unary,    None,      None      ],
         BangEqual    = [None,     binary,    Equality  ],
@@ -109,7 +109,7 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Less         = [None,     binary,    Comparison],
         LessEqual    = [None,     binary,    Comparison],
         Identifier   = [variable, None,      None      ],
-        In           = [None,     None,      None      ], // TODO
+        In           = [None,     None,      None      ],
         String       = [string,   None,      None      ],
         Number       = [number,   None,      None      ],
         Integer      = [integer,  None,      None      ],
@@ -135,6 +135,8 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Var          = [None,     None,      None      ],
         While        = [None,     None,      None      ],
         Until        = [None,     None,      None      ],
+        From         = [None,     None,      None      ],
+        Import       = [None,     None,      None      ],
         Error        = [None,     None,      None      ],
         Eof          = [None,     None,      None      ],
     )

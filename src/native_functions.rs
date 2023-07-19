@@ -432,7 +432,7 @@ impl Natives {
         }
     }
 
-    pub fn register_names(&mut self, compiler: &mut Compiler) {
+    pub fn register_names(&self, compiler: &mut Compiler) {
         compiler.inject_strings(&self.string_ids);
     }
 

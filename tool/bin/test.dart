@@ -448,6 +448,12 @@ void _defineTestSuites() {
     "test/expressions": "skip",
   };
 
+  // These are just to be imported.
+  var onlyImport = {
+    "test/import/fib.gen": "skip",
+    "test/import/foo.gen": "skip",
+  };
+
   // JVM doesn't correctly implement IEEE equality on boxed doubles.
   var javaNaNEquality = {
     "test/number/nan_equality.gen": "skip",
@@ -687,6 +693,7 @@ void _defineTestSuites() {
   c("clox", {
     "test": "pass",
     ...earlyChapters,
+    ...onlyImport,
   });
 
   c("chap17_compiling", {

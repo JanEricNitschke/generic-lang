@@ -1,0 +1,9 @@
+class Foo{
+    hello() {
+        print("Hello");
+    }
+}
+
+if __name__ == "<script>" {
+    print("bad");
+}

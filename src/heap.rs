@@ -189,6 +189,7 @@ pub struct BuiltinConstants {
     pub true_: ValueId,
     pub false_: ValueId,
     pub init_string: StringId,
+    pub script_name: StringId,
     pub integers: Vec<ValueId>,
     pub floats: Vec<ValueId>,
 }
@@ -201,6 +202,7 @@ impl BuiltinConstants {
             true_: heap.add_value(Value::Bool(true)),
             false_: heap.add_value(Value::Bool(false)),
             init_string: heap.string_id(&"init".to_string()),
+            script_name: heap.string_id(&"__name__".to_string()),
             integers: (0..1024)
                 .map(|n| heap.add_value(Value::Number(Number::Integer(n))))
                 .collect(),
@@ -316,6 +318,10 @@ impl Heap {
             .mark(&self.builtin_constants().false_.clone(), self.black_value);
         self.strings.mark(
             &self.builtin_constants().init_string.clone(),
+            self.black_value,
+        );
+        self.strings.mark(
+            &self.builtin_constants().script_name.clone(),
             self.black_value,
         );
         for number in self.builtin_constants().integers.clone() {

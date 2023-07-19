@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::path::Path;
 use std::pin::Pin;
 
 use rustc_hash::FxHashMap as HashMap;
@@ -6,7 +7,7 @@ use rustc_hash::FxHashMap as HashMap;
 use crate::chunk::InstructionDisassembler;
 use crate::heap::{FunctionId, ValueId};
 use crate::native_functions::Natives;
-use crate::value::{Class, Closure, Instance, List, Number, Upvalue};
+use crate::value::{Class, Closure, Function, Instance, List, Number, Upvalue};
 use crate::{
     chunk::{CodeOffset, OpCode},
     compiler::Compiler,
@@ -53,6 +54,7 @@ pub struct CallFrame {
     closure: ValueId,
     ip: usize,
     stack_base: usize,
+    is_module: bool,
 }
 
 impl CallFrame {
@@ -97,6 +99,7 @@ impl CallStack {
             closure,
             ip: 0,
             stack_base,
+            is_module: closure.as_closure().is_module,
         });
         self.current_closure = Some(closure);
         self.current_function = Some(closure.as_closure().function);
@@ -135,6 +138,8 @@ pub struct VM {
     stack: Vec<ValueId>,
     globals: HashMap<StringId, Global>,
     open_upvalues: VecDeque<ValueId>,
+    natives: Option<Natives>,
+    modules: Vec<ValueId>,
 }
 
 impl VM {
@@ -146,6 +151,8 @@ impl VM {
             stack: Vec::with_capacity(crate::config::STACK_MAX),
             globals: HashMap::default(),
             open_upvalues: VecDeque::new(),
+            natives: Some(Natives::new()),
+            modules: Vec::new(),
         }
     }
 
@@ -153,17 +160,32 @@ impl VM {
         self.heap.builtin_constants().init_string
     }
 
-    pub fn interpret(&mut self, source: &[u8]) -> InterpretResult {
+    fn compile(&mut self, source: &[u8], name: &String) -> Option<Function> {
         let scanner = Scanner::new(source);
-        let mut natives = Natives::new();
-        natives.create_names(&mut self.heap);
-        let mut compiler = Compiler::new(scanner, &mut self.heap);
-        natives.register_names(&mut compiler);
+        let mut compiler = Compiler::new(scanner, &mut self.heap, name);
+        self.natives
+            .as_mut()
+            .expect("Natives should be defined.")
+            .register_names(&mut compiler);
+        compiler.compile()
+    }
 
-        let result = if let Some(function) = compiler.compile() {
-            natives.define_natives(self);
+    fn define_natives(&mut self) {
+        let natives = self.natives.take().expect("Natives should be defined.");
+        natives.define_natives(self);
+        self.natives = Some(natives);
+    }
+
+    pub fn interpret(&mut self, source: &[u8]) -> InterpretResult {
+        self.natives
+            .as_mut()
+            .expect("Natives should be defined.")
+            .create_names(&mut self.heap);
+
+        let result = if let Some(function) = self.compile(source, &String::from("<script>")) {
+            self.define_natives();
             let function_id = self.heap.add_function(function);
-            let closure = Value::closure(function_id);
+            let closure = Value::closure(function_id, true);
             let value_id = self.heap.add_value(closure);
             self.stack_push(value_id);
             self.execute_call(value_id, 0);
@@ -188,6 +210,15 @@ impl VM {
                 let function = &self.callstack.function();
                 let mut disassembler = InstructionDisassembler::new(&function.chunk);
                 *disassembler.offset = self.callstack.current().ip;
+                println!(
+                    "Current module: {} at module depth {} and total call depth {}.",
+                    **self
+                        .modules
+                        .last()
+                        .expect("Module underflow in disassembler"),
+                    self.modules.len(),
+                    self.callstack.len()
+                );
                 println!(
                     "          [ { } ]",
                     self.stack
@@ -305,7 +336,7 @@ impl VM {
                 OpCode::Closure => {
                     let value = self.read_constant(false);
                     let function = value.as_function();
-                    let mut closure = Closure::new(*function);
+                    let mut closure = Closure::new(*function, false);
 
                     for _ in 0..closure.upvalue_count {
                         let is_local = self.read_byte();
@@ -495,6 +526,17 @@ impl VM {
                         return value;
                     }
                 }
+                OpCode::Import => {
+                    let file_path = self.stack.pop().expect("Stack underflow in OP_IMPORT");
+                    if let Value::String(string_id) = *file_path {
+                        if let Some(value) = self.import_file(string_id) {
+                            return value;
+                        }
+                    } else {
+                        runtime_error!(self, "Imported file path must be a string.");
+                        return InterpretResult::RuntimeError;
+                    }
+                }
             };
         }
     }
@@ -525,6 +567,36 @@ impl VM {
                 panic!("Non-string method name to {opcode_name}: `{x}`");
             }
         }
+    }
+
+    fn import_file(&mut self, string_id: StringId) -> Option<InterpretResult> {
+        let file_path = Path::new(&*string_id);
+        match std::fs::read(file_path) {
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(74);
+            }
+            Ok(contents) => {
+                if let Some(function) = self.compile(
+                    &contents,
+                    &file_path
+                        .file_stem()
+                        .expect("Import path should be a proper file name.")
+                        .to_str()
+                        .unwrap()
+                        .to_string(),
+                ) {
+                    let function_id = self.heap.add_function(function);
+                    let closure = Value::closure(function_id, true);
+                    let value_id = self.heap.add_value(closure);
+                    self.stack_push(value_id);
+                    self.execute_call(value_id, 0);
+                } else {
+                    return Some(InterpretResult::RuntimeError);
+                }
+            }
+        }
+        None
     }
 
     fn binary_op<T: Into<Value>>(&mut self, op: BinaryOp<T>, int_only: bool) -> bool {
@@ -919,6 +991,18 @@ impl VM {
             self.stack.pop();
             return Some(InterpretResult::Ok);
         }
+        if frame.is_module {
+            self.stack.pop();
+            self.modules.pop().expect("Module underflow in OP_RETURN");
+            self.globals.insert(
+                self.heap.builtin_constants().script_name,
+                Global {
+                    value: *self.modules.last().expect("Module underflow in OP_RETURN"),
+                    mutable: true,
+                },
+            );
+            return None;
+        }
 
         self.close_upvalue(frame.stack_base);
         self.stack.truncate(frame.stack_base);
@@ -1295,8 +1379,9 @@ impl VM {
         }
     }
 
-    fn execute_call(&mut self, closure: ValueId, arg_count: u8) -> bool {
-        let arity = closure.as_closure().function.arity;
+    fn execute_call(&mut self, closure_id: ValueId, arg_count: u8) -> bool {
+        let closure = closure_id.as_closure();
+        let arity = closure.function.arity;
         let arg_count = usize::from(arg_count);
         if arg_count != arity {
             runtime_error!(
@@ -1321,13 +1406,24 @@ impl VM {
         }
 
         debug_assert!(
-            matches!(*closure, Value::Closure(_)),
+            matches!(*closure_id, Value::Closure(_)),
             "`execute_call` must be called with a `Closure`, got: {}",
-            *closure
+            *closure_id
         );
 
         self.callstack
-            .push(closure, self.stack.len() - arg_count - 1);
+            .push(closure_id, self.stack.len() - arg_count - 1);
+        if closure.is_module {
+            let value_id = self.heap.add_value(closure.function.name.into());
+            self.globals.insert(
+                self.heap.builtin_constants().script_name,
+                Global {
+                    value: value_id,
+                    mutable: true,
+                },
+            );
+            self.modules.push(value_id);
+        }
         true
     }
 
@@ -1407,6 +1503,9 @@ impl VM {
         }
         for upvalue in &self.open_upvalues {
             self.heap.mark_value(upvalue);
+        }
+        for value in &self.modules {
+            self.heap.mark_value(value);
         }
 
         // Trace references

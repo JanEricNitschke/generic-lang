@@ -1,0 +1,12 @@
+import "test/import/foo.gen";
+
+fun fib(n) {
+  if (n < 2) {
+    return n;
+  }
+  return fib(n - 2) + fib(n - 1);
+}
+
+if __name__ == "<script>" {
+    print("bad");
+}

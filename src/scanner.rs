@@ -85,6 +85,9 @@ pub enum TokenKind {
 
     Error,
     Eof,
+
+    Import,
+    From,
 }
 
 impl std::fmt::Display for TokenKind {
@@ -348,11 +351,13 @@ impl<'a> Scanner<'a> {
                 Some(b'a') => self.check_keyword(2, "lse", TokenKind::False),
                 Some(b'o') => self.check_keyword(2, "r", TokenKind::For),
                 Some(b'u') => self.check_keyword(2, "n", TokenKind::Fun),
+                Some(b'r') => self.check_keyword(2, "om", TokenKind::From),
                 _ => TokenKind::Identifier,
             },
             b'i' => match self.source.get(self.start + 1) {
                 Some(b'f') => self.check_keyword(2, "", TokenKind::If),
                 Some(b'n') => self.check_keyword(2, "", TokenKind::In),
+                Some(b'm') => self.check_keyword(2, "port", TokenKind::Import),
                 _ => TokenKind::Identifier,
             },
             b'n' => self.check_keyword(1, "il", TokenKind::Nil),

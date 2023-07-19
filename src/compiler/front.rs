@@ -293,9 +293,21 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             self.break_statement();
         } else if self.match_(TK::LeftBrace) {
             self.scoped_block();
+        } else if self.match_(TK::Import) {
+            self.import_statement();
         } else {
             self.expression_statement();
         }
+    }
+
+    fn import_statement(&mut self) {
+        if self.function_type() != FunctionType::Script {
+            self.error("Can only import source files from top-level code.");
+        };
+
+        self.expression();
+        self.consume(TK::Semicolon, "Expect ';' after imported file path.");
+        self.emit_byte(OpCode::Import, self.line());
     }
 
     fn conditional_statement(&mut self, if_statement: bool) {

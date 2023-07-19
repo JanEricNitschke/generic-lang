@@ -105,6 +105,8 @@ pub enum OpCode {
     BuildList,
     IndexSubscript,
     StoreSubscript,
+
+    Import,
 }
 
 impl OpCode {
@@ -240,7 +242,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
             + match opcode {
                 Negate | Add | Subtract | Multiply | Divide | Mod | Exp | FloorDiv | BitAnd
                 | BitOr | BitXor | Nil | True | False | Not | Equal | Greater | Less | Pop
-                | Dup | CloseUpvalue | Inherit | IndexSubscript | StoreSubscript => 0,
+                | Dup | CloseUpvalue | Inherit | IndexSubscript | StoreSubscript | Import => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | Return | GetUpvalue | SetUpvalue | Class
                 | GetProperty | SetProperty | Method | GetSuper | BuildList | DupN => 1,
@@ -500,6 +502,7 @@ impl<'chunk> std::fmt::Debug for InstructionDisassembler<'chunk> {
                 True,
                 IndexSubscript,
                 StoreSubscript,
+                Import,
             ),
         )?;
         Ok(())

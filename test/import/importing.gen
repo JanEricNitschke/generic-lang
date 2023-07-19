@@ -1,0 +1,8 @@
+import "test/import/fib.gen";
+
+print(fib(1)); # expect: 1
+Foo().hello(); # expect: Hello
+
+if __name__ == "<script>" {
+    print("good"); # expect: good
+}
