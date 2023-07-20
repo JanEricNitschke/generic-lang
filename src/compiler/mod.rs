@@ -123,8 +123,8 @@ pub struct Compiler<'scanner, 'heap> {
 
 impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
     #[must_use]
-    pub fn new(scanner: Scanner<'scanner>, heap: &'heap mut Heap, name: &String) -> Self {
-        let function_name = heap.string_id(name);
+    pub fn new(scanner: Scanner<'scanner>, heap: &'heap mut Heap, name: &str) -> Self {
+        let function_name = heap.string_id(&name);
 
         Compiler {
             heap,

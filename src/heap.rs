@@ -73,13 +73,6 @@ impl<T> Item<T> {
 }
 
 pub type ValueId = ArenaId<ValueKey, Value>;
-
-// impl PartialEq for ValueId {
-//     fn eq(&self, other: &Self) -> bool {
-//         *self == *other
-//     }
-// }
-
 pub type StringId = ArenaId<StringKey, String>;
 pub type FunctionId = ArenaId<FunctionKey, Function>;
 
@@ -199,7 +192,7 @@ impl<K: Key, V: ArenaValue> std::ops::IndexMut<K> for Arena<K, V> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BuiltinConstants {
     pub nil: ValueId,
     pub true_: ValueId,

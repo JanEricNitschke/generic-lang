@@ -208,7 +208,7 @@ impl ::core::ops::Rem for Number {
     }
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub enum Upvalue {
     Open(usize),
     Closed(ValueId),
@@ -251,16 +251,6 @@ impl Closure {
 }
 
 impl Value {
-    pub fn closure(function: FunctionId, is_module: bool) -> Self {
-        let upvalue_count = function.upvalue_count;
-        Self::Closure(Closure {
-            function,
-            upvalues: Vec::with_capacity(upvalue_count),
-            upvalue_count,
-            is_module,
-        })
-    }
-
     pub const fn bound_method(receiver: ValueId, method: ValueId) -> Self {
         Self::BoundMethod(BoundMethod { receiver, method })
     }
@@ -404,13 +394,6 @@ impl Value {
         }
     }
 
-    // pub fn as_instance(&self) -> &Instance {
-    //     match self {
-    //         Value::Instance(i) => i,
-    //         _ => unreachable!("Expected Instance, found `{}`", self),
-    //     }
-    // }
-
     pub fn as_instance_mut(&mut self) -> &mut Instance {
         match self {
             Self::Instance(i) => i,
@@ -451,7 +434,7 @@ impl Value {
     }
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub struct Function {
     pub arity: usize,
     pub chunk: Chunk,
@@ -515,7 +498,7 @@ const fn always_equals<T>(_: &T, _: &T) -> bool {
     true
 }
 
-#[derive(Debug, PartialEq, Clone, Derivative)]
+#[derive(Debug, PartialEq, Eq, Clone, Derivative)]
 #[derivative(PartialOrd)]
 pub struct Class {
     pub name: StringId,
@@ -591,7 +574,7 @@ impl PartialEq for BoundMethod {
     }
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub struct List {
     pub items: Vec<ValueId>,
     pub class: ValueId,

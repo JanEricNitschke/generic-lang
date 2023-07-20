@@ -450,7 +450,7 @@ void _defineTestSuites() {
 
   // These are just to be imported.
   var onlyImport = {
-    "test/import/fib.gen": "skip",
+    "test/import/nested/fib.gen": "skip",
     "test/import/foo.gen": "skip",
   };
 

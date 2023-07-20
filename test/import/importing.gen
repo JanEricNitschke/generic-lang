@@ -1,4 +1,4 @@
-import "test/import/fib.gen";
+import "nested/fib.gen";
 
 print(fib(1)); # expect: 1
 Foo().hello(); # expect: Hello

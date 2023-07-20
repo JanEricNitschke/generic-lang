@@ -123,7 +123,7 @@ impl OpCode {
     }
 }
 
-#[derive(PartialEq, Derivative, Clone)]
+#[derive(PartialEq, Eq, Derivative, Clone)]
 #[derivative(PartialOrd)]
 pub struct Chunk {
     name: StringId,

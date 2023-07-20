@@ -51,7 +51,7 @@ fn main() {
 }
 
 fn repl() {
-    let mut vm = VM::new();
+    let mut vm = VM::new(PathBuf::from(""));
     loop {
         print!("> ");
         std::io::stdout().flush().unwrap();
@@ -66,13 +66,13 @@ fn repl() {
 }
 
 fn run_file(file: PathBuf) {
-    match std::fs::read(file) {
+    match std::fs::read(&file) {
         Err(e) => {
             eprintln!("{e}");
             std::process::exit(74);
         }
         Ok(contents) => {
-            let mut vm = VM::new();
+            let mut vm = VM::new(file);
             match vm.interpret(&contents) {
                 InterpretResult::CompileError => std::process::exit(65),
                 InterpretResult::RuntimeError => std::process::exit(70),

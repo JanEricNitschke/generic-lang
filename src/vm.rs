@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::path::Path;
+use std::path::PathBuf;
 use std::pin::Pin;
 
 use rustc_hash::FxHashMap as HashMap;
@@ -44,6 +44,11 @@ macro_rules! binary_op {
 }
 
 type BinaryOp<T> = fn(Number, Number) -> T;
+
+struct Module {
+    name: ValueId,
+    path: PathBuf,
+}
 
 struct Global {
     value: ValueId,
@@ -139,12 +144,13 @@ pub struct VM {
     globals: HashMap<StringId, Global>,
     open_upvalues: VecDeque<ValueId>,
     natives: Option<Natives>,
-    modules: Vec<ValueId>,
+    modules: Vec<Module>,
+    path: PathBuf,
 }
 
 impl VM {
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new(path: PathBuf) -> Self {
         Self {
             heap: Heap::new(),
             callstack: CallStack::new(),
@@ -153,6 +159,7 @@ impl VM {
             open_upvalues: VecDeque::new(),
             natives: Some(Natives::new()),
             modules: Vec::new(),
+            path,
         }
     }
 
@@ -160,7 +167,7 @@ impl VM {
         self.heap.builtin_constants().init_string
     }
 
-    fn compile(&mut self, source: &[u8], name: &String) -> Option<Function> {
+    fn compile(&mut self, source: &[u8], name: &str) -> Option<Function> {
         let scanner = Scanner::new(source);
         let mut compiler = Compiler::new(scanner, &mut self.heap, name);
         self.natives
@@ -182,11 +189,15 @@ impl VM {
             .expect("Natives should be defined.")
             .create_names(&mut self.heap);
 
-        let result = if let Some(function) = self.compile(source, &String::from("<script>")) {
+        let result = if let Some(function) = self.compile(source, "<script>") {
             self.define_natives();
             let function_id = self.heap.add_function(function);
-            let closure = Value::closure(function_id, true);
-            let value_id = self.heap.add_value(closure);
+
+            let closure = Closure::new(function_id, true);
+
+            self.add_closure_to_modules(&closure, self.path.clone());
+
+            let value_id = self.heap.add_value(closure.into());
             self.stack_push(value_id);
             self.execute_call(value_id, 0);
             self.run()
@@ -212,10 +223,11 @@ impl VM {
                 *disassembler.offset = self.callstack.current().ip;
                 println!(
                     "Current module: {} at module depth {} and total call depth {}.",
-                    **self
+                    *self
                         .modules
                         .last()
-                        .expect("Module underflow in disassembler"),
+                        .expect("Module underflow in disassembler")
+                        .name,
                     self.modules.len(),
                     self.callstack.len()
                 );
@@ -576,9 +588,35 @@ impl VM {
         }
     }
 
+    fn add_closure_to_modules(&mut self, closure: &Closure, file_path: PathBuf) {
+        if closure.is_module {
+            let value_id = self.heap.add_value(closure.function.name.into());
+            self.globals.insert(
+                self.heap.builtin_constants().script_name,
+                Global {
+                    value: value_id,
+                    mutable: true,
+                },
+            );
+            self.modules.push(Module {
+                name: value_id,
+                path: file_path,
+            });
+        }
+    }
+
     fn import_file(&mut self, string_id: StringId) -> Option<InterpretResult> {
-        let file_path = Path::new(&*string_id);
-        match std::fs::read(file_path) {
+        let file_path = self.modules.last().map_or_else(
+            || PathBuf::from(&*string_id),
+            |module| {
+                let mut path = module.path.clone();
+                path.pop();
+                path.push(&*string_id);
+                path
+            },
+        );
+
+        match std::fs::read(&file_path) {
             Err(_) => {
                 runtime_error!(
                     self,
@@ -588,17 +626,22 @@ impl VM {
                 return Some(InterpretResult::RuntimeError);
             }
             Ok(contents) => {
-                let name = match file_path.file_stem() {
-                    Some(stem) => stem.to_str().unwrap().to_string(),
-                    None => {
-                        runtime_error!(self, "Import path should have a filestem.");
-                        return Some(InterpretResult::RuntimeError);
-                    }
+                let name = if let Some(stem) = file_path.file_stem() {
+                    stem.to_str().unwrap().to_string()
+                } else {
+                    runtime_error!(self, "Import path should have a filestem.");
+                    return Some(InterpretResult::RuntimeError);
                 };
+
                 if let Some(function) = self.compile(&contents, &name) {
                     let function_id = self.heap.add_function(function);
-                    let closure = Value::closure(function_id, true);
-                    let value_id = self.heap.add_value(closure);
+                    let closure = Closure::new(function_id, true);
+
+                    if closure.is_module {
+                        self.add_closure_to_modules(&closure, file_path);
+                    }
+
+                    let value_id = self.heap.add_value(closure.into());
                     self.stack_push(value_id);
                     self.execute_call(value_id, 0);
                 } else {
@@ -1007,7 +1050,11 @@ impl VM {
             self.globals.insert(
                 self.heap.builtin_constants().script_name,
                 Global {
-                    value: *self.modules.last().expect("Module underflow in OP_RETURN"),
+                    value: self
+                        .modules
+                        .last()
+                        .expect("Module underflow in OP_RETURN")
+                        .name,
                     mutable: true,
                 },
             );
@@ -1415,17 +1462,6 @@ impl VM {
 
         self.callstack
             .push(closure_id, self.stack.len() - arg_count - 1);
-        if closure.is_module {
-            let value_id = self.heap.add_value(closure.function.name.into());
-            self.globals.insert(
-                self.heap.builtin_constants().script_name,
-                Global {
-                    value: value_id,
-                    mutable: true,
-                },
-            );
-            self.modules.push(value_id);
-        }
         true
     }
 
@@ -1507,7 +1543,7 @@ impl VM {
             self.heap.mark_value(upvalue);
         }
         for value in &self.modules {
-            self.heap.mark_value(value);
+            self.heap.mark_value(&value.name);
         }
 
         // Trace references
