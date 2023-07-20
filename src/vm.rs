@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::pin::Pin;
 
+use path_slash::PathBufExt;
 use rustc_hash::FxHashMap as HashMap;
 
 use crate::chunk::InstructionDisassembler;
@@ -605,6 +606,7 @@ impl VM {
         }
     }
 
+    #[allow(clippy::option_if_let_else)]
     fn import_file(&mut self, string_id: StringId) -> Option<InterpretResult> {
         let file_path = self.modules.last().map_or_else(
             || PathBuf::from(&*string_id),
@@ -615,13 +617,17 @@ impl VM {
                 path
             },
         );
+        let file_path = match file_path.strip_prefix("./") {
+            Ok(file_path) => file_path.to_owned(),
+            Err(_) => file_path,
+        };
 
         match std::fs::read(&file_path) {
             Err(_) => {
                 runtime_error!(
                     self,
                     "Could not find the file to be imported. Attempted path {:?}",
-                    file_path
+                    file_path.to_slash_lossy()
                 );
                 return Some(InterpretResult::RuntimeError);
             }

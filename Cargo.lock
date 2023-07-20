@@ -195,6 +195,7 @@ dependencies = [
  "humansize",
  "num_enum",
  "paste",
+ "path-slash",
  "rand",
  "rustc-hash",
  "shrinkwraprs",
@@ -325,6 +326,12 @@ name = "paste"
 version = "1.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4b27ab7be369122c218afc2079489cdcb4b517c0a3fc386ff11e1fedfcc2b35"
+
+[[package]]
+name = "path-slash"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e91099d4268b0e11973f036e885d652fb0b21fedcf69738c627f94db6a44f42"
 
 [[package]]
 name = "ppv-lite86"

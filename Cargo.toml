@@ -1,16 +1,16 @@
 [package]
-name         = "generic-lang"
-version      = "0.1.0"
-edition      = "2021"
-authors      = ["Jan-Eric <janericnitschke@gmail.com"]
-description  = " A Lox based programming language"
-readme       = "README.md"
-repository   = "https://github.com/JanEricNitschke/generic-lang"
-license      = "MIT"
-keywords     = ["programming-language", "generic"]
-categories   = ["parser-implementations", "compilers"]
-exclude      = ["/reference", "tool", ".*"]
-publish = false
+name        = "generic-lang"
+version     = "0.1.0"
+edition     = "2021"
+authors     = ["Jan-Eric <janericnitschke@gmail.com"]
+description = " A Lox based programming language"
+readme      = "README.md"
+repository  = "https://github.com/JanEricNitschke/generic-lang"
+license     = "MIT"
+keywords    = ["programming-language", "generic"]
+categories  = ["parser-implementations", "compilers"]
+exclude     = ["/reference", "tool", ".*"]
+publish     = false
 
 
 [[bin]]
@@ -30,3 +30,4 @@ shrinkwraprs = "0.3.0"
 slotmap      = "1.0.6"
 derive_more  = "0.99.17"
 rand         = "0.8.5"
+path-slash   = "0.2.1"
