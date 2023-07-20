@@ -22,12 +22,21 @@ new_key_type! {
 }
 
 #[derive(Clone, Debug, PartialOrd, Derivative)]
-#[derivative(Hash, PartialEq, Eq)]
+#[derivative(Hash)]
 pub struct ArenaId<K: Key, T: ArenaValue> {
     id: K,
     #[derivative(Hash = "ignore")]
     pub arena: NonNull<Arena<K, T>>, // Yes this is terrible, yes I'm OK with it for this projec
 }
+
+impl<K: Key, T: ArenaValue> PartialEq for ArenaId<K, T> {
+    fn eq(&self, other: &Self) -> bool {
+        // Two different bound methods are always considered different
+        self.id == other.id || **self == **other
+    }
+}
+
+impl<K: Key, T: ArenaValue> Eq for ArenaId<K, T> {}
 
 impl<K: Key, T: ArenaValue + Clone> Copy for ArenaId<K, T> {}
 
@@ -64,6 +73,13 @@ impl<T> Item<T> {
 }
 
 pub type ValueId = ArenaId<ValueKey, Value>;
+
+// impl PartialEq for ValueId {
+//     fn eq(&self, other: &Self) -> bool {
+//         *self == *other
+//     }
+// }
+
 pub type StringId = ArenaId<StringKey, String>;
 pub type FunctionId = ArenaId<FunctionKey, Function>;
 
@@ -197,17 +213,24 @@ pub struct BuiltinConstants {
 impl BuiltinConstants {
     #[must_use]
     pub fn new(heap: &mut Heap) -> Self {
+        let black_value = heap.black_value;
         Self {
-            nil: heap.add_value(Value::Nil),
-            true_: heap.add_value(Value::Bool(true)),
-            false_: heap.add_value(Value::Bool(false)),
+            nil: heap.values.add(Value::Nil, black_value),
+            true_: heap.values.add(Value::Bool(true), black_value),
+            false_: heap.values.add(Value::Bool(false), black_value),
             init_string: heap.string_id(&"init".to_string()),
             script_name: heap.string_id(&"__name__".to_string()),
             integers: (0..1024)
-                .map(|n| heap.add_value(Value::Number(Number::Integer(n))))
+                .map(|n| {
+                    heap.values
+                        .add(Value::Number(Number::Integer(n)), black_value)
+                })
                 .collect(),
             floats: (0..1024)
-                .map(|n| heap.add_value(Value::Number(Number::Float(n.into()))))
+                .map(|n| {
+                    heap.values
+                        .add(Value::Number(Number::Float(n.into())), black_value)
+                })
                 .collect(),
         }
     }
@@ -570,7 +593,15 @@ impl Heap {
     }
 
     pub fn add_value(&mut self, value: Value) -> ValueId {
-        self.values.add(value, self.black_value)
+        match value {
+            Value::Bool(bool) => self.builtin_constants().bool(bool),
+            Value::Nil => self.builtin_constants().nil,
+            Value::Number(n) => self
+                .builtin_constants()
+                .number(n)
+                .unwrap_or_else(|| self.values.add(value, self.black_value)),
+            value => self.values.add(value, self.black_value),
+        }
     }
 
     pub fn add_string(&mut self, value: String) -> StringId {

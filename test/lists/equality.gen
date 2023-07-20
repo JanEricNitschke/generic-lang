@@ -11,3 +11,20 @@ class Tree {
 
 var my_list = [fib, Tree, nil, true];
 print(my_list == [fib, Tree, nil, true]); # expect: true
+
+var a = [2, 4, 6];
+var b = [];
+b.append(2);
+b.append(4);
+b.append(6);
+print(a == b); # expect: true
+print(a == [2, 4, 6]); # expect: true
+print(b == [2, 4, 6]); # expect: true
+
+var a = [-5, 2000];
+var b = [];
+b.append(-5);
+b.append(2000);
+print(a == b); # expect: true
+print(a == [-5, 2000]); # expect: true
+print(b == [-5, 2000]); # expect: true

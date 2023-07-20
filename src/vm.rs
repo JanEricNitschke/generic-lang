@@ -528,13 +528,20 @@ impl VM {
                 }
                 OpCode::Import => {
                     let file_path = self.stack.pop().expect("Stack underflow in OP_IMPORT");
-                    if let Value::String(string_id) = *file_path {
-                        if let Some(value) = self.import_file(string_id) {
-                            return value;
+                    match &*file_path {
+                        Value::String(string_id) => {
+                            if let Some(value) = self.import_file(*string_id) {
+                                return value;
+                            }
                         }
-                    } else {
-                        runtime_error!(self, "Imported file path must be a string.");
-                        return InterpretResult::RuntimeError;
+                        x => {
+                            runtime_error!(
+                                self,
+                                "Imported file path must be a string, got `{}` instead.",
+                                x
+                            );
+                            return InterpretResult::RuntimeError;
+                        }
                     }
                 }
             };
@@ -572,20 +579,23 @@ impl VM {
     fn import_file(&mut self, string_id: StringId) -> Option<InterpretResult> {
         let file_path = Path::new(&*string_id);
         match std::fs::read(file_path) {
-            Err(e) => {
-                eprintln!("{e}");
-                std::process::exit(74);
+            Err(_) => {
+                runtime_error!(
+                    self,
+                    "Could not find the file to be imported. Attempted path {:?}",
+                    file_path
+                );
+                return Some(InterpretResult::RuntimeError);
             }
             Ok(contents) => {
-                if let Some(function) = self.compile(
-                    &contents,
-                    &file_path
-                        .file_stem()
-                        .expect("Import path should be a proper file name.")
-                        .to_str()
-                        .unwrap()
-                        .to_string(),
-                ) {
+                let name = match file_path.file_stem() {
+                    Some(stem) => stem.to_str().unwrap().to_string(),
+                    None => {
+                        runtime_error!(self, "Import path should have a filestem.");
+                        return Some(InterpretResult::RuntimeError);
+                    }
+                };
+                if let Some(function) = self.compile(&contents, &name) {
                     let function_id = self.heap.add_function(function);
                     let closure = Value::closure(function_id, true);
                     let value_id = self.heap.add_value(closure);
@@ -1105,16 +1115,8 @@ impl VM {
 
     #[inline]
     fn stack_push_value(&mut self, value: Value) {
-        let value_id = match value {
-            Value::Bool(bool) => self.heap.builtin_constants().bool(bool),
-            Value::Nil => self.heap.builtin_constants().nil,
-            Value::Number(n) => self
-                .heap
-                .builtin_constants()
-                .number(n)
-                .unwrap_or_else(|| self.heap.add_value(value)),
-            value => self.heap.add_value(value),
-        };
+        let value_id = self.heap.add_value(value);
+
         self.stack.push(value_id);
     }
 
