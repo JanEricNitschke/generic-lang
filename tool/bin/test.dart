@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:glob/glob.dart';
+import 'package:glob/list_local_fs.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:tool/src/term.dart' as term;
@@ -22,10 +23,10 @@ var _failed = 0;
 var _skipped = 0;
 var _expectations = 0;
 
-Suite _suite;
-String _filterPath;
-String _customInterpreter;
-List<String> _customArguments;
+Suite? _suite;
+String? _filterPath;
+String? _customInterpreter;
+List<String>? _customArguments;
 
 final _allSuites = <String, Suite>{};
 final _cSuites = <String>[];
@@ -117,6 +118,7 @@ bool _runSuite(String name) {
   _skipped = 0;
   _expectations = 0;
 
+
   for (var file in Glob("test/**.gen").listSync()) {
     _runTest(file.path);
   }
@@ -142,9 +144,10 @@ void _runTest(String path) {
   path = p.posix.normalize(path);
   path = path.replaceAll("\\", "/");
   // Check if we are just running a subset of the tests.
-  if (_filterPath != null) {
+  final filterPath = _filterPath;
+  if (filterPath != null) {
     var thisTest = p.posix.relative(path, from: "test");
-    if (!thisTest.startsWith(_filterPath)) return;
+    if (!thisTest.startsWith(filterPath)) return;
   }
 
   // Update the status line.
@@ -191,7 +194,7 @@ class Test {
   final _expectedErrors = <String>{};
 
   /// The expected runtime error message or `null` if there should not be one.
-  String _expectedRuntimeError;
+  String? _expectedRuntimeError;
 
   /// If there is an expected runtime error, the line it should occur on.
   int _runtimeErrorLine = 0;
@@ -208,7 +211,7 @@ class Test {
     var parts = _path.split("/");
     // var parts = _path.split(Platform.pathSeparator);
     var subpath = "";
-    String state;
+    String? state;
     // Figure out the state of the test. We don't break out of this loop because
     // we want lines for more specific paths to override more general ones.
     for (var part in parts) {
@@ -216,8 +219,8 @@ class Test {
       if (subpath.isNotEmpty) subpath += "/";
       subpath += part;
 
-      if (_suite.tests.containsKey(subpath)) {
-        state = _suite.tests[subpath];
+      if (_suite!.tests.containsKey(subpath)) {
+        state = _suite!.tests[subpath];
       }
     }
     if (state == null) {
@@ -237,7 +240,7 @@ class Test {
 
       match = _expectedOutputPattern.firstMatch(line);
       if (match != null) {
-        _expectedOutput.add(ExpectedOutput(lineNum, match[1]));
+        _expectedOutput.add(ExpectedOutput(lineNum, match[1]!));
         _expectations++;
         continue;
       }
@@ -260,7 +263,7 @@ class Test {
         // the tests can indicate if an error line should only appear for a
         // certain interpreter.
         var language = match[2];
-        if (language == null || language == _suite.language) {
+        if (language == null || language == _suite!.language) {
           _expectedErrors.add("[${match[3]}] ${match[4]}");
 
           // If we expect a compile error, it should exit with EX_DATAERR.
@@ -294,10 +297,10 @@ class Test {
   /// Invoke the interpreter and run the test.
   List<String> run() {
     var args = [
-      if (_customInterpreter != null) ...?_customArguments else ..._suite.args,
+      if (_customInterpreter != null) ...?_customArguments else ..._suite!.args,
       _path
     ];
-    var result = Process.runSync(_customInterpreter ?? _suite.executable, args);
+    var result = Process.runSync(_customInterpreter ?? _suite!.executable, args);
 
     // Normalize Windows line endings.
     var outputLines = const LineSplitter().convert(result.stdout as String);
@@ -327,7 +330,7 @@ class Test {
     }
 
     // Make sure the stack trace has the right line.
-    RegExpMatch match;
+    RegExpMatch? match;
     var stackLines = errorLines.sublist(1);
     for (var line in stackLines) {
       match = _stackTracePattern.firstMatch(line);
@@ -337,7 +340,7 @@ class Test {
     if (match == null) {
       fail("Expected stack trace and got:", stackLines);
     } else {
-      var stackLine = int.parse(match[1]);
+      var stackLine = int.parse(match[1]!);
       if (stackLine != _runtimeErrorLine) {
         fail("Expected runtime error on line $_runtimeErrorLine "
             "but was on line $stackLine.");
@@ -422,7 +425,7 @@ class Test {
     }
   }
 
-  void fail(String message, [List<String> lines]) {
+  void fail(String message, [List<String>? lines]) {
     _failures.add(message);
     if (lines != null) _failures.addAll(lines);
   }
