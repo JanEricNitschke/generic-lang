@@ -40,8 +40,8 @@ jobs:
     - name: Setup book repo
       working-directory: reference/craftinginterpreters
       run: |
-        make get
-        make
+        make clox
+        make jlox
     - name: Run custom dart tests
       run: make test
     - name: Install hyperfine
