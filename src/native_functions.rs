@@ -328,6 +328,7 @@ fn contains_native(
     Ok(heap.builtin_constants().false_)
 }
 
+#[allow(clippy::cast_possible_wrap)]
 fn len_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
     match &heap.values[args[0]] {
         Value::List(list) => Ok(heap.add_value((list.items.len() as i64).into())),

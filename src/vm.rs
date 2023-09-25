@@ -1346,7 +1346,11 @@ impl VM {
 
     fn invoke_from_class(&mut self, class: ValueId, method_name: StringId, arg_count: u8) -> bool {
         let Some(method) = class.as_class().methods.get(&method_name) else {
-            runtime_error!(self, "Undefined property '{}'.", self.heap.strings[&method_name]);
+            runtime_error!(
+                self,
+                "Undefined property '{}'.",
+                self.heap.strings[&method_name]
+            );
             return false;
         };
         match &**method {
@@ -1384,7 +1388,9 @@ impl VM {
 
     fn bind_method(&mut self, class: ValueId, name: StringId) -> bool {
         let class = class.as_class();
-        let Some(method) = class.methods.get(&name) else {return false};
+        let Some(method) = class.methods.get(&name) else {
+            return false;
+        };
         let bound_method = Value::bound_method(
             *self.peek(0).expect("Buffer underflow in OP_METHOD"),
             *method,
