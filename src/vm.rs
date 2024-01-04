@@ -1429,7 +1429,7 @@ impl VM {
     fn close_upvalue(&mut self, last: usize) {
         while self
             .open_upvalues
-            .get(0)
+            .front()
             .map_or(false, |v| v.upvalue_location().as_open() >= last)
         {
             let mut upvalue = self.open_upvalues.pop_front().unwrap();
