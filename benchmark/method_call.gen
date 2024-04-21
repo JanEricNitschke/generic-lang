@@ -1,5 +1,5 @@
 class Toggle {
-  init(startState) {
+  __init__(startState) {
     this.state = startState;
   }
 
@@ -12,8 +12,8 @@ class Toggle {
 }
 
 class NthToggle < Toggle {
-  init(startState, maxCounter) {
-    super.init(startState);
+  __init__(startState, maxCounter) {
+    super.__init__(startState);
     this.countMax = maxCounter;
     this.count = 0;
   }

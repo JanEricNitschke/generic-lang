@@ -1,15 +1,15 @@
 class Foo {
-  init(arg) {
-    print("Foo.init(" + arg + ")");
+  __init__(arg) {
+    print("Foo.__init__(" + arg + ")");
     this.field = "init";
   }
 }
 
-var foo = Foo("one"); # expect: Foo.init(one)
+var foo = Foo("one"); # expect: Foo.__init__(one)
 foo.field = "field";
 
-var foo2 = foo.init("two"); # expect: Foo.init(two)
+var foo2 = foo.__init__("two"); # expect: Foo.__init__(two)
 print(foo2); # expect: <Foo instance>
 
-# Make sure init() doesn't create a fresh instance.
+# Make sure __init__() doesn't create a fresh instance.
 print(foo.field); # expect: init

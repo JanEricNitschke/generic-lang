@@ -1,12 +1,12 @@
 class Foo {
-  init(arg) {
-    print("Foo.init(" + arg + ")");
+  __init__(arg) {
+    print("Foo.__init__(" + arg + ")");
     this.field = "init";
   }
 }
 
-fun init() {
+fun __init__() {
   print("not initializer");
 }
 
-init(); # expect: not initializer
+__init__(); # expect: not initializer

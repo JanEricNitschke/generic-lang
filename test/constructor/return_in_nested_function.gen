@@ -1,9 +1,9 @@
 class Foo {
-  init() {
-    fun init() {
+  __init__() {
+    fun __init__() {
       return "bar";
     }
-    print(init()); # expect: bar
+    print(__init__()); # expect: bar
   }
 }
 

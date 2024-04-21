@@ -1,16 +1,16 @@
 class Base {
-  init(a, b) {
-    print("Base.init(" + a + ", " + b + ")");
+  __init__(a, b) {
+    print("Base.__init__(" + a + ", " + b + ")");
   }
 }
 
 class Derived < Base {
-  init() {
-    print("Derived.init()");
-    super.init("a", "b");
+  __init__() {
+    print("Derived.__init__()");
+    super.__init__("a", "b");
   }
 }
 
 Derived();
-# expect: Derived.init()
-# expect: Base.init(a, b)
+# expect: Derived.__init__()
+# expect: Base.__init__(a, b)

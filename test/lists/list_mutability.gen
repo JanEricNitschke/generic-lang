@@ -4,7 +4,7 @@ print(my_list); # expect: [1, Test, 2]
 a = 5;
 print(my_list); # expect: [1, Test, 2]
 class Foo {
-    init() {
+    __init__() {
         this.x = 1;
     }
 }

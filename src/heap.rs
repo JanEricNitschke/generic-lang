@@ -211,7 +211,7 @@ impl BuiltinConstants {
             nil: heap.values.add(Value::Nil, black_value),
             true_: heap.values.add(Value::Bool(true), black_value),
             false_: heap.values.add(Value::Bool(false), black_value),
-            init_string: heap.string_id(&"init".to_string()),
+            init_string: heap.string_id(&"__init__".to_string()),
             script_name: heap.string_id(&"__name__".to_string()),
             integers: (0..1024)
                 .map(|n| {

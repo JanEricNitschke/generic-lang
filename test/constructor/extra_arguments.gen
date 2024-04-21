@@ -1,5 +1,5 @@
 class Foo {
-  init(a, b) {
+  __init__(a, b) {
     this.a = a;
     this.b = b;
   }

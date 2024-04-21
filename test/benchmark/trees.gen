@@ -1,5 +1,5 @@
 class Tree {
-  init(depth) {
+  __init__(depth) {
     this.depth = depth;
     if (depth > 0) {
       this.a = Tree(depth - 1);

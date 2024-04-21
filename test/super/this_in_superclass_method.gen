@@ -1,12 +1,12 @@
 class Base {
-  init(a) {
+  __init__(a) {
     this.a = a;
   }
 }
 
 class Derived < Base {
-  init(a, b) {
-    super.init(a);
+  __init__(a, b) {
+    super.__init__(a);
     this.b = b;
   }
 }
