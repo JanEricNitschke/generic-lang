@@ -218,20 +218,22 @@ impl VM {
         let stress_gc = config::STRESS_GC.load();
         let log_gc = config::LOG_GC.load();
         loop {
-            if trace_execution {
+            if trace_execution > 0 {
                 let function = &self.callstack.function();
                 let mut disassembler = InstructionDisassembler::new(&function.chunk);
                 *disassembler.offset = self.callstack.current().ip;
-                println!(
-                    "Current module: {} at module depth {} and total call depth {}.",
-                    *self
-                        .modules
-                        .last()
-                        .expect("Module underflow in disassembler")
-                        .name,
-                    self.modules.len(),
-                    self.callstack.len()
-                );
+                if trace_execution > 1 {
+                    println!(
+                        "Current module: {} at module depth {} and total call depth {}.",
+                        *self
+                            .modules
+                            .last()
+                            .expect("Module underflow in disassembler")
+                            .name,
+                        self.modules.len(),
+                        self.callstack.len()
+                    );
+                }
                 println!(
                     "          [ { } ]",
                     self.stack

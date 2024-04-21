@@ -23,11 +23,8 @@ mod vm;
 struct Args {
     file: Option<PathBuf>,
 
-    // /// Standards mode: compatibility with standard `clox`. Passes the standard `clox` test suite.
-    // #[arg(long)]
-    // std: bool,
-    #[arg(long)]
-    trace_execution: bool,
+    #[arg(long, default_value_t = 0)]
+    trace_execution: usize,
 
     #[arg(long)]
     print_code: bool,

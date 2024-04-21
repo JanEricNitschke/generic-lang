@@ -1,12 +1,14 @@
-use derivative::Derivative;
-use num_enum::{IntoPrimitive, TryFromPrimitive};
-use paste::paste;
-use shrinkwraprs::Shrinkwrap;
-
 use crate::{
     heap::{StringId, ValueId},
     types::Line,
 };
+use convert_case::{Case, Casing};
+use derivative::Derivative;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+use paste::paste;
+use shrinkwraprs::Shrinkwrap;
+use strum::IntoEnumIterator;
+use strum_macros::{AsRefStr, EnumIter};
 
 #[derive(Shrinkwrap, Clone, Copy, Debug)]
 #[shrinkwrap(mutable)]
@@ -33,7 +35,9 @@ impl TryFrom<ConstantLongIndex> for ConstantIndex {
     }
 }
 
-#[derive(IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Debug, Clone, Copy)]
+#[derive(
+    IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Debug, Clone, Copy, EnumIter, AsRefStr,
+)]
 #[repr(u8)]
 pub enum OpCode {
     Constant,
@@ -120,6 +124,13 @@ impl OpCode {
             Self::DefineGlobalConst => Self::DefineGlobalConstLong,
             x => x,
         }
+    }
+
+    fn max_name_length() -> usize {
+        Self::iter()
+            .map(|v| v.as_ref().to_case(Case::ScreamingSnake).len())
+            .max()
+            .unwrap_or(0)
     }
 }
 
@@ -223,14 +234,19 @@ impl std::fmt::Debug for Chunk {
 pub struct InstructionDisassembler<'chunk> {
     chunk: &'chunk Chunk,
     pub offset: CodeOffset,
+    operand_aligment: usize,
+    opcode_name_alignment: usize,
 }
 
 impl<'chunk> InstructionDisassembler<'chunk> {
     #[must_use]
-    pub const fn new(chunk: &'chunk Chunk) -> Self {
+    pub fn new(chunk: &'chunk Chunk) -> Self {
         Self {
             chunk,
             offset: CodeOffset(0),
+            operand_aligment: 4,
+            // +3 because we add "OP_" to the start.
+            opcode_name_alignment: OpCode::max_name_length() + 3,
         }
     }
 
@@ -272,7 +288,14 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         offset: CodeOffset,
     ) -> std::fmt::Result {
         let constant_index = ConstantIndex(self.chunk.code()[offset.as_ref() + 1]);
-        write!(f, "{:-16} {:>4}", name, *constant_index,)?;
+        write!(
+            f,
+            "{:-OPCODE_NAME_ALIGNMENT$} {:>OPERAND_ALIGNMENT$}",
+            name,
+            *constant_index,
+            OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
+            OPERAND_ALIGNMENT = self.operand_aligment
+        )?;
         writeln!(
             f,
             " '{}'",
@@ -294,10 +317,12 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         );
         writeln!(
             f,
-            "{:-16} {:>4} '{}'",
+            "{:-OPCODE_NAME_ALIGNMENT$} {:>OPERAND_ALIGNMENT$} '{}'",
             name,
             *constant_index,
-            **self.chunk.get_constant(*constant_index.as_ref())
+            **self.chunk.get_constant(*constant_index.as_ref()),
+            OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
+            OPERAND_ALIGNMENT = self.operand_aligment
         )
     }
 
@@ -318,7 +343,12 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         offset: CodeOffset,
     ) -> std::fmt::Result {
         let slot = self.chunk.code[*offset + 1];
-        writeln!(f, "{name:-16} {slot:>4}")
+        writeln!(
+            f,
+            "{name:-OPCODE_NAME_ALIGNMENT$} {slot:>OPERAND_ALIGNMENT$}",
+            OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
+            OPERAND_ALIGNMENT = self.operand_aligment
+        )
     }
 
     fn debug_byte_long_opcode(
@@ -331,7 +361,12 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         let slot = (usize::from(code[offset.as_ref() + 1]) << 16)
             + (usize::from(code[offset.as_ref() + 2]) << 8)
             + (usize::from(code[offset.as_ref() + 3]));
-        writeln!(f, "{name:-16} {slot:>4}")
+        writeln!(
+            f,
+            "{name:-OPCODE_NAME_ALIGNMENT$} {slot:>OPERAND_ALIGNMENT$}",
+            OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
+            OPERAND_ALIGNMENT = self.operand_aligment
+        )
     }
 
     fn debug_jump_opcode(
@@ -349,7 +384,15 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         } else {
             target + jump
         };
-        writeln!(f, "{:-16} {:>4} -> {}", name, *offset, target)
+        writeln!(
+            f,
+            "{:-OPCODE_NAME_ALIGNMENT$} {:>OPERAND_ALIGNMENT$} -> {}",
+            name,
+            *offset,
+            target,
+            OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
+            OPERAND_ALIGNMENT = self.operand_aligment
+        )
     }
 
     fn debug_closure_opcode(
@@ -366,7 +409,12 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         offset += 1;
 
         let value = &**self.chunk.get_constant(constant);
-        writeln!(f, "{name:-16} {constant:>4} {value}")?;
+        writeln!(
+            f,
+            "{name:-OPCODE_NAME_ALIGNMENT$} {constant:>OPERAND_ALIGNMENT$} {value}",
+            OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
+            OPERAND_ALIGNMENT = self.operand_aligment
+        )?;
 
         let function = value.as_function();
         //eprintln!("{} {}", *function.name, function.upvalue_count);
@@ -404,9 +452,11 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         let constant = code[offset.as_ref() + 1];
         let arg_count = code[offset.as_ref() + 2];
         let constant_value = &**self.chunk.get_constant(constant);
+        let formatted_name = format!("{name} ({arg_count} args)");
         writeln!(
             f,
-            "{name:-16} ({arg_count} args) {constant:4} {constant_value}"
+            "{formatted_name:-OPCODE_NAME_ALIGNMENT$} {constant:>OPERAND_ALIGNMENT$} '{constant_value}'",
+            OPCODE_NAME_ALIGNMENT =self.opcode_name_alignment, OPERAND_ALIGNMENT = self.operand_aligment
         )
     }
 }
@@ -442,7 +492,12 @@ impl<'chunk> std::fmt::Debug for InstructionDisassembler<'chunk> {
         {
             write!(f, "   | ")?;
         } else {
-            write!(f, "{:>4} ", *self.chunk.get_line(offset))?;
+            write!(
+                f,
+                "{:>OPERAND_ALIGNMENT$} ",
+                *self.chunk.get_line(offset),
+                OPERAND_ALIGNMENT = self.operand_aligment
+            )?;
         }
 
         let opcode = OpCode::try_from_primitive(code[*offset.as_ref()])
