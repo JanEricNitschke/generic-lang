@@ -9,7 +9,7 @@ use derivative::Derivative;
 use derive_more::{From, Neg};
 use rustc_hash::FxHashMap as HashMap;
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub enum Value {
     Bool(bool),
     Nil,
