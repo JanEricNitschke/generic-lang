@@ -227,6 +227,74 @@ impl BuiltinConstants {
     }
 }
 
+macro_rules! gray_value {
+    ($self:expr, $value:expr) => {
+        match $value {
+            Value::Bool(_) | Value::Nil | Value::Number(_) => {}
+            Value::Upvalue(id) => {
+                if $self.log_gc {
+                    eprintln!("Upvalue/{:?} gray {}", id.id, **id);
+                }
+                $self.upvalues.gray.push(id.id);
+            }
+            Value::String(id) => {
+                if $self.log_gc {
+                    eprintln!("String/{:?} gray {}", id.id, **id);
+                }
+                $self.strings.gray.push(id.id);
+            }
+            Value::Function(id) => {
+                if $self.log_gc {
+                    eprintln!("Function/{:?} gray {}", id.id, **id);
+                }
+                $self.functions.gray.push(id.id);
+            }
+            Value::NativeFunction(id) => {
+                if $self.log_gc {
+                    eprintln!("NativeFunction/{:?} gray {}", id.id, **id);
+                }
+                $self.native_functions.gray.push(id.id);
+            }
+            Value::NativeMethod(id) => {
+                if $self.log_gc {
+                    eprintln!("NativeMethod/{:?} gray {}", id.id, **id);
+                }
+                $self.native_methods.gray.push(id.id);
+            }
+            Value::Closure(id) => {
+                if $self.log_gc {
+                    eprintln!("Closure/{:?} gray {}", id.id, **id);
+                }
+                $self.closures.gray.push(id.id);
+            }
+            Value::Class(id) => {
+                if $self.log_gc {
+                    eprintln!("Class/{:?} gray {}", id.id, **id);
+                }
+                $self.classes.gray.push(id.id);
+            }
+            Value::Instance(id) => {
+                if $self.log_gc {
+                    eprintln!("Instance/{:?} gray {}", id.id, **id);
+                }
+                $self.instances.gray.push(id.id);
+            }
+            Value::List(id) => {
+                if $self.log_gc {
+                    eprintln!("List/{:?} gray {}", id.id, **id);
+                }
+                $self.lists.gray.push(id.id);
+            }
+            Value::BoundMethod(id) => {
+                if $self.log_gc {
+                    eprintln!("BoundMethod/{:?} gray {}", id.id, **id);
+                }
+                $self.bound_methods.gray.push(id.id);
+            }
+        }
+    };
+}
+
 #[derive(Clone, Debug)]
 pub struct Heap {
     builtin_constants: Option<BuiltinConstants>,
@@ -468,6 +536,9 @@ impl Heap {
         }
     }
 
+
+
+
     fn blacken_upvalue(&mut self, index: UpvalueKey) {
         let item = &mut self.upvalues.data[index];
         if item.marked == self.black_value {
@@ -476,10 +547,14 @@ impl Heap {
         if self.log_gc {
             eprintln!("Upvalue/{:?} blacken {} start", index, item.item);
         }
+        if self.log_gc {
+            eprintln!("Upvalue{index:?} mark {}", item.item);
+        }
+        item.marked = self.black_value;
         match &item.item {
             Upvalue::Open(_) => {}
             Upvalue::Closed(value) => {
-                self.gray_value(value);
+                gray_value!(self, value);
             }
         }
         if self.log_gc {
@@ -548,7 +623,7 @@ impl Heap {
             self.upvalues.gray.push(upvalue.id);
         }
         if self.log_gc {
-            eprintln!("Closure/{:?} blacken {} end", index, self.closures[index]);
+            eprintln!("Closure/{:?} blacken {} end", index, item.item);
         }
     }
 
@@ -570,10 +645,10 @@ impl Heap {
         self.strings.gray.push(class.name.id);
         for (method_name, method) in &class.methods {
             self.strings.gray.push(method_name.id);
-            self.gray_value(method);
+            gray_value!(self, method);
         }
         if self.log_gc {
-            eprintln!("Class/{:?} blacken {} end", index, self.classes[index]);
+            eprintln!("Class/{:?} blacken {} end", index, item.item);
         }
     }
 
@@ -594,10 +669,10 @@ impl Heap {
         let instance = &item.item;
         self.strings.gray.push(instance.class.name.id);
         for field in instance.fields.values() {
-            self.gray_value(field);
+            gray_value!(self, field);
         }
         if self.log_gc {
-            eprintln!("Instance/{:?} blacken {} end", index, self.instances[index]);
+            eprintln!("Instance/{:?} blacken {} end", index, item.item);
         }
     }
 
@@ -616,13 +691,10 @@ impl Heap {
         item.marked = self.black_value;
 
         let bound_method = &item.item;
-        self.gray_value(&bound_method.receiver);
-        self.gray_value(&bound_method.method);
+        gray_value!(self, &bound_method.receiver);
+        gray_value!(self, &bound_method.method);
         if self.log_gc {
-            eprintln!(
-                "BoundMethod/{:?} blacken {} end",
-                index, self.bound_methods[index]
-            );
+            eprintln!("BoundMethod/{:?} blacken {} end", index, item.item);
         }
     }
 
@@ -643,27 +715,27 @@ impl Heap {
         let list = &item.item;
         self.strings.gray.push(list.class.name.id);
         for item in &list.items {
-            self.gray_value(item);
+            gray_value!(self, item);
         }
         if self.log_gc {
-            eprintln!("List/{:?} blacken {} end", index, self.lists[index]);
+            eprintln!("List/{:?} blacken {} end", index, item.item);
         }
     }
 
     fn blacken_string(&mut self, index: StringKey) {
-        if self.log_gc {
-            eprintln!("String/{:?} blacken {} start", index, self.strings[index]);
-        }
         let item = &mut self.strings.data[index];
         if item.marked == self.black_value {
             return;
+        }
+        if self.log_gc {
+            eprintln!("String/{:?} blacken {} start", index, item.item);
         }
         if self.log_gc {
             eprintln!("String/{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
         if self.log_gc {
-            eprintln!("String/{:?} blacken {} end", index, self.strings[index]);
+            eprintln!("String/{:?} blacken {} end", index, item.item);
         }
     }
 
@@ -684,10 +756,10 @@ impl Heap {
         let function = &item.item;
         self.strings.gray.push(function.name.id);
         for constant in function.chunk.constants() {
-            self.gray_value(constant)
+            gray_value!(self, constant)
         }
         if self.log_gc {
-            eprintln!("Function/{:?} blacken {} end", index, self.functions[index]);
+            eprintln!("Function/{:?} blacken {} end", index, item.item);
         }
     }
 
