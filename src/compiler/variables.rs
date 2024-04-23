@@ -133,8 +133,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         if let Some(index) = self.globals_by_name().get(&string_id) {
             *index
         } else {
-            let value_id = self.heap.add_value(string_id.into());
-            let index = self.current_chunk().make_constant(value_id);
+            let index = self.current_chunk().make_constant(string_id.into());
             self.globals_by_name_mut().insert(string_id, index);
             index
         }

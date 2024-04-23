@@ -44,8 +44,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         T: Into<Value>,
     {
         let line = self.line();
-        let value_id = self.heap.add_value(value.into());
-        if !self.current_chunk().write_constant(value_id, line) {
+        if !self.current_chunk().write_constant(value.into(), line) {
             self.error("Too many constants in one chunk.");
         }
     }

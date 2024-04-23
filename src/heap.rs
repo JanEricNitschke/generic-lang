@@ -10,7 +10,10 @@ use derivative::Derivative;
 use slotmap::{new_key_type, HopSlotMap as SlotMap, Key};
 use std::fmt::{Debug, Display};
 
-use crate::value::{Function, Number, Upvalue, Value};
+use crate::value::{
+    BoundMethod, Class, Closure, Function, Instance, List, NativeFunction, NativeMethod, Upvalue,
+    Value,
+};
 
 pub trait ArenaValue: Debug + Display + PartialEq {}
 impl<T> ArenaValue for T where T: Debug + Display + PartialEq {}
@@ -19,6 +22,14 @@ new_key_type! {
     pub struct ValueKey;
     pub struct FunctionKey;
     pub struct StringKey;
+    pub struct UpvalueKey;
+    pub struct ClosureKey;
+    pub struct NativeFunctionKey;
+    pub struct NativeMethodKey;
+    pub struct ClassKey;
+    pub struct InstanceKey;
+    pub struct ListKey;
+    pub struct BoundMethodKey;
 }
 
 #[derive(Clone, Debug, PartialOrd, Derivative)]
@@ -73,8 +84,17 @@ impl<T> Item<T> {
 }
 
 pub type ValueId = ArenaId<ValueKey, Value>;
+
 pub type StringId = ArenaId<StringKey, String>;
+pub type UpvalueId = ArenaId<UpvalueKey, Upvalue>;
 pub type FunctionId = ArenaId<FunctionKey, Function>;
+pub type ClosureId = ArenaId<ClosureKey, Closure>;
+pub type NativeFunctionId = ArenaId<NativeFunctionKey, NativeFunction>;
+pub type NativeMethodId = ArenaId<NativeMethodKey, NativeMethod>;
+pub type ClassId = ArenaId<ClassKey, Class>;
+pub type InstanceId = ArenaId<InstanceKey, Instance>;
+pub type ListId = ArenaId<ListKey, List>;
+pub type BoundMethodId = ArenaId<BoundMethodKey, BoundMethod>;
 
 #[derive(Clone, Debug)]
 pub struct Arena<K: Key, V: ArenaValue> {
@@ -142,7 +162,6 @@ impl<K: Key, V: ArenaValue> Arena<K, V> {
             eprintln!("{}/{:?} mark {}", self.name, index, value.item);
         }
         value.marked = black_value;
-        self.gray.push(index);
         true
     }
 
@@ -194,60 +213,16 @@ impl<K: Key, V: ArenaValue> std::ops::IndexMut<K> for Arena<K, V> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BuiltinConstants {
-    pub nil: ValueId,
-    pub true_: ValueId,
-    pub false_: ValueId,
     pub init_string: StringId,
     pub script_name: StringId,
-    pub integers: Vec<ValueId>,
-    pub floats: Vec<ValueId>,
 }
 
 impl BuiltinConstants {
     #[must_use]
     pub fn new(heap: &mut Heap) -> Self {
-        let black_value = heap.black_value;
         Self {
-            nil: heap.values.add(Value::Nil, black_value),
-            true_: heap.values.add(Value::Bool(true), black_value),
-            false_: heap.values.add(Value::Bool(false), black_value),
             init_string: heap.string_id(&"__init__".to_string()),
             script_name: heap.string_id(&"__name__".to_string()),
-            integers: (0..1024)
-                .map(|n| {
-                    heap.values
-                        .add(Value::Number(Number::Integer(n)), black_value)
-                })
-                .collect(),
-            floats: (0..1024)
-                .map(|n| {
-                    heap.values
-                        .add(Value::Number(Number::Float(n.into())), black_value)
-                })
-                .collect(),
-        }
-    }
-
-    pub const fn bool(&self, val: bool) -> ValueId {
-        if val {
-            self.true_
-        } else {
-            self.false_
-        }
-    }
-
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-    pub fn number(&self, n: Number) -> Option<ValueId> {
-        match n {
-            // Negative integers wrap too high and get gives None as expected
-            Number::Integer(i) => self.integers.get(i as usize).copied(),
-            Number::Float(f) => {
-                if f.fract() != 0.0 || f.is_nan() || f.is_infinite() || f.signum() < 0.0 {
-                    None
-                } else {
-                    self.floats.get(f as usize).copied()
-                }
-            }
         }
     }
 }
@@ -256,10 +231,19 @@ impl BuiltinConstants {
 pub struct Heap {
     builtin_constants: Option<BuiltinConstants>,
     pub strings_by_name: HashMap<String, StringId>,
-    pub native_classes: HashMap<String, ValueId>,
+    pub native_classes: HashMap<String, Value>,
     pub strings: Arena<StringKey, String>,
+
     pub values: Arena<ValueKey, Value>,
     pub functions: Arena<FunctionKey, Function>,
+    pub bound_methods: Arena<BoundMethodKey, BoundMethod>,
+    pub closures: Arena<ClosureKey, Closure>,
+    pub native_functions: Arena<NativeFunctionKey, NativeFunction>,
+    pub native_methods: Arena<NativeMethodKey, NativeMethod>,
+    pub classes: Arena<ClassKey, Class>,
+    pub instances: Arena<InstanceKey, Instance>,
+    pub lists: Arena<ListKey, List>,
+    pub upvalues: Arena<UpvalueKey, Upvalue>,
 
     log_gc: bool,
     next_gc: usize,
@@ -280,6 +264,14 @@ impl Heap {
             strings: Arena::new("String", log_gc),
             values: Arena::new("Value", log_gc),
             functions: Arena::new("Function", log_gc),
+            bound_methods: Arena::new("BoundMethod", log_gc),
+            closures: Arena::new("Closure", log_gc),
+            native_functions: Arena::new("NativeFunction", log_gc),
+            native_methods: Arena::new("NativeMethod", log_gc),
+            classes: Arena::new("Class", log_gc),
+            instances: Arena::new("Instance", log_gc),
+            lists: Arena::new("List", log_gc),
+            upvalues: Arena::new("Upvalue", log_gc),
 
             log_gc,
             next_gc: 1024 * 1024,
@@ -306,9 +298,10 @@ impl Heap {
         if let Entry::Occupied(entry) = self.strings_by_name.entry(s.to_string()) {
             return *entry.get();
         }
-        let string_id = self.add_string(s.to_string());
-        self.strings_by_name.insert(s.to_string(), string_id);
-        string_id
+        let string_val = self.add_string(s.to_string());
+        let string_id = string_val.as_string();
+        self.strings_by_name.insert(s.to_string(), *string_id);
+        *string_id
     }
 
     const fn bytes_allocated(&self) -> usize {
@@ -325,27 +318,6 @@ impl Heap {
         if self.log_gc {
             eprintln!("-- gc begin");
         }
-
-        self.values
-            .mark(&self.builtin_constants().nil.clone(), self.black_value);
-        self.values
-            .mark(&self.builtin_constants().true_.clone(), self.black_value);
-        self.values
-            .mark(&self.builtin_constants().false_.clone(), self.black_value);
-        self.strings.mark(
-            &self.builtin_constants().init_string.clone(),
-            self.black_value,
-        );
-        self.strings.mark(
-            &self.builtin_constants().script_name.clone(),
-            self.black_value,
-        );
-        for number in self.builtin_constants().integers.clone() {
-            self.values.mark(&number, self.black_value);
-        }
-        for number in self.builtin_constants().floats.clone() {
-            self.values.mark(&number, self.black_value);
-        }
     }
 
     pub fn trace(&mut self) {
@@ -355,21 +327,50 @@ impl Heap {
         while !self.functions.gray.is_empty()
             || !self.strings.gray.is_empty()
             || !self.values.gray.is_empty()
+            || !self.upvalues.gray.is_empty()
+            || !self.native_functions.gray.is_empty()
+            || !self.native_methods.gray.is_empty()
+            || !self.closures.gray.is_empty()
+            || !self.classes.gray.is_empty()
+            || !self.instances.gray.is_empty()
+            || !self.lists.gray.is_empty()
+            || !self.bound_methods.gray.is_empty()
         {
-            for index in self.values.flush_gray() {
-                self.blacken_value(index);
-            }
             for index in self.strings.flush_gray() {
                 self.blacken_string(index);
             }
             for index in self.functions.flush_gray() {
                 self.blacken_function(index);
             }
+            for index in self.upvalues.flush_gray() {
+                self.blacken_upvalue(index);
+            }
+            for index in self.native_functions.flush_gray() {
+                self.blacken_native_function(index);
+            }
+            for index in self.native_methods.flush_gray() {
+                self.blacken_native_method(index);
+            }
+            for index in self.closures.flush_gray() {
+                self.blacken_closure(index);
+            }
+            for index in self.classes.flush_gray() {
+                self.blacken_class(index);
+            }
+            for index in self.instances.flush_gray() {
+                self.blacken_instance(index);
+            }
+            for index in self.lists.flush_gray() {
+                self.blacken_list(index);
+            }
+            for index in self.bound_methods.flush_gray() {
+                self.blacken_bound_method(index);
+            }
         }
     }
 
-    pub fn mark_value(&mut self, id: &ValueId) {
-        self.blacken_value(id.id);
+    pub fn mark_value(&mut self, id: &Value) {
+        self.blacken_value(id);
     }
 
     pub fn mark_string(&mut self, id: &StringId) {
@@ -380,157 +381,287 @@ impl Heap {
         self.blacken_function(id.id);
     }
 
+    pub fn mark_upvalue(&mut self, id: &UpvalueId) {
+        self.blacken_upvalue(id.id);
+    }
+
     #[allow(clippy::too_many_lines)]
-    fn blacken_value(&mut self, index: ValueKey) {
-        let item = &mut self.values.data[index];
-        if item.marked == self.black_value {
-            return;
-        }
-
-        if self.log_gc {
-            eprintln!("Value/{:?} blacken {} start", index, item.item);
-        }
-        item.marked = self.black_value;
-        self.values.gray.push(index);
-        match &item.item {
-            Value::Bool(_) | Value::Nil | Value::Number(_) | Value::Upvalue(Upvalue::Open(_)) => {}
-            Value::String(string_id) => {
-                if self.log_gc {
-                    eprintln!("String/{:?} gray {}", string_id.id, **string_id);
-                }
-                self.strings.gray.push(string_id.id);
-            }
-            Value::Function(function_id) => {
-                if self.log_gc {
-                    eprintln!("Function/{:?} gray {}", function_id, **function_id);
-                }
-                self.functions.gray.push(function_id.id);
-            }
-
-            Value::NativeFunction(native_function_id) => {
-                if self.log_gc {
-                    eprintln!(
-                        "String/{:?} gray {}",
-                        native_function_id.name.id, *native_function_id.name
-                    );
-                }
-                self.strings.gray.push(native_function_id.name.id);
-            }
-            Value::NativeMethod(native_methods_id) => {
-                if self.log_gc {
-                    eprintln!(
-                        "String/{:?} gray {}",
-                        native_methods_id.name.id, *native_methods_id.name
-                    );
-                    eprintln!(
-                        "String/{:?} gray {}",
-                        native_methods_id.class.id, *native_methods_id.class
-                    );
-                }
-                self.strings.gray.push(native_methods_id.name.id);
-                let class_id = native_methods_id.class.id;
-                self.strings.gray.push(class_id);
-            }
-            Value::Closure(closure) => {
-                if self.log_gc {
-                    eprintln!(
-                        "Function/{:?} gray {}",
-                        closure.function.id, *closure.function
-                    );
-                }
-                self.functions.gray.push(closure.function.id);
-                self.values.gray.append(
-                    &mut closure
-                        .upvalues
-                        .iter()
-                        .map(|uv| {
-                            if self.log_gc {
-                                eprintln!("Value/{:?} gray {}", uv.id, **uv);
-                            }
-                            uv.id
-                        })
-                        .collect(),
-                );
-            }
-            Value::Upvalue(Upvalue::Closed(value_id)) => {
-                if self.log_gc {
-                    eprintln!("Value/{:?} gray {}", value_id.id, **value_id);
-                }
-                self.values.gray.push(value_id.id);
-            }
-            Value::Class(c) => {
-                if self.log_gc {
-                    eprintln!("String/{:?} gray {}", c.name.id, *c.name);
-                }
-                self.strings.gray.push(c.name.id);
-                let method_ids = c
-                    .methods
-                    .iter()
-                    .map(|(n, c)| {
-                        if self.log_gc {
-                            eprintln!("String/{:?} gray {}", n.id, **n);
-                            eprintln!("Value/{:?} gray {}", c.id, **c);
-                        }
-                        (n.id, c.id)
-                    })
-                    .collect::<Vec<_>>();
-                for (method_name, closure) in method_ids {
-                    self.strings.gray.push(method_name);
-                    self.values.gray.push(closure);
-                }
-            }
-            Value::Instance(instance) => {
-                let mut fields = instance
-                    .fields
-                    .values()
-                    .map(|value| {
-                        if self.log_gc {
-                            eprintln!("Value/{:?} gray {}", value.id, **value);
-                        }
-                        value.id
-                    })
-                    .collect();
-                let class_id = instance.class.id;
-                self.values.gray.append(&mut fields);
-                if self.log_gc {
-                    eprintln!("Value/{:?} gray {}", class_id, *instance.class);
-                }
-                self.values.gray.push(class_id);
-            }
-            Value::BoundMethod(bound_method) => {
-                let receiver_id = bound_method.receiver.id;
-                let method_id = bound_method.method.id;
-                if self.log_gc {
-                    eprintln!("Value/{:?} gray {}", receiver_id, *bound_method.receiver);
-                    eprintln!("Value/{:?} gray {}", method_id, *bound_method.method);
-                }
-                self.values.gray.push(receiver_id);
-                self.values.gray.push(method_id);
-            }
-            Value::List(list) => {
-                let class_id = list.class.id;
-                if self.log_gc {
-                    eprintln!("Value/{:?} gray {}", class_id, *list.class);
-                }
-                self.values.gray.push(class_id);
-                for item in &list.items {
-                    if self.log_gc {
-                        eprintln!("Value/{:?} gray {}", item.id, **item);
-                    }
-                    self.values.gray.push(item.id);
-                }
-            }
-        }
-        if self.log_gc {
-            eprintln!("Value/{:?} blacken {} end", index, item.item);
+    fn blacken_value(&mut self, index: &Value) {
+        match index {
+            Value::Bool(_) | Value::Nil | Value::Number(_) => {}
+            Value::Upvalue(id) => self.blacken_upvalue(id.id),
+            Value::String(id) => self.blacken_string(id.id),
+            Value::Function(id) => self.blacken_function(id.id),
+            Value::NativeFunction(id) => self.blacken_native_function(id.id),
+            Value::NativeMethod(id) => self.blacken_native_method(id.id),
+            Value::Closure(id) => self.blacken_closure(id.id),
+            Value::Class(id) => self.blacken_class(id.id),
+            Value::Instance(id) => self.blacken_instance(id.id),
+            Value::List(id) => self.blacken_list(id.id),
+            Value::BoundMethod(id) => self.blacken_bound_method(id.id),
         }
     }
 
-    pub fn blacken_string(&mut self, index: StringKey) {
+    pub fn gray_value(&mut self, id: &Value) {
+        match id {
+            Value::Bool(_) | Value::Nil | Value::Number(_) => {}
+            Value::Upvalue(id) => {
+                if self.log_gc {
+                    eprintln!("Upvalue/{:?} gray {}", id.id, **id);
+                }
+                self.upvalues.gray.push(id.id);
+            }
+            Value::String(id) => {
+                if self.log_gc {
+                    eprintln!("String/{:?} gray {}", id.id, **id);
+                }
+                self.strings.gray.push(id.id);
+            }
+            Value::Function(id) => {
+                if self.log_gc {
+                    eprintln!("Function/{:?} gray {}", id.id, **id);
+                }
+                self.functions.gray.push(id.id);
+            }
+            Value::NativeFunction(id) => {
+                if self.log_gc {
+                    eprintln!("NativeFunction/{:?} gray {}", id.id, **id);
+                }
+                self.native_functions.gray.push(id.id);
+            }
+            Value::NativeMethod(id) => {
+                if self.log_gc {
+                    eprintln!("NativeMethod/{:?} gray {}", id.id, **id);
+                }
+                self.native_methods.gray.push(id.id);
+            }
+            Value::Closure(id) => {
+                if self.log_gc {
+                    eprintln!("Closure/{:?} gray {}", id.id, **id);
+                }
+                self.closures.gray.push(id.id);
+            }
+            Value::Class(id) => {
+                if self.log_gc {
+                    eprintln!("Class/{:?} gray {}", id.id, **id);
+                }
+                self.classes.gray.push(id.id);
+            }
+            Value::Instance(id) => {
+                if self.log_gc {
+                    eprintln!("Instance/{:?} gray {}", id.id, **id);
+                }
+                self.instances.gray.push(id.id);
+            }
+            Value::List(id) => {
+                if self.log_gc {
+                    eprintln!("List/{:?} gray {}", id.id, **id);
+                }
+                self.lists.gray.push(id.id);
+            }
+            Value::BoundMethod(id) => {
+                if self.log_gc {
+                    eprintln!("BoundMethod/{:?} gray {}", id.id, **id);
+                }
+                self.bound_methods.gray.push(id.id);
+            }
+        }
+    }
+
+    fn blacken_upvalue(&mut self, index: UpvalueKey) {
+        let item = &mut self.upvalues.data[index];
+        if item.marked == self.black_value {
+            return;
+        }
+        if self.log_gc {
+            eprintln!("Upvalue/{:?} blacken {} start", index, item.item);
+        }
+        match &item.item {
+            Upvalue::Open(_) => {}
+            Upvalue::Closed(value) => {
+                self.gray_value(value);
+            }
+        }
+        if self.log_gc {
+            eprintln!("Upvalue/{:?} blacken {} end", index, item.item);
+        }
+    }
+
+    fn blacken_native_function(&mut self, index: NativeFunctionKey) {
+        let item = &mut self.native_functions.data[index];
+        if item.marked == self.black_value {
+            return;
+        }
+        if self.log_gc {
+            eprintln!("NativeFunction/{:?} blacken {} start", index, item.item);
+        }
+        if self.log_gc {
+            eprintln!("NativeFunction/{index:?} mark {}", item.item);
+        }
+        item.marked = self.black_value;
+
+        let function = &item.item;
+        self.strings.gray.push(function.name.id);
+        if self.log_gc {
+            eprintln!("NativeFunction/{:?} blacken {} end", index, item.item);
+        }
+    }
+
+    fn blacken_native_method(&mut self, index: NativeMethodKey) {
+        let item = &mut self.native_methods.data[index];
+        if item.marked == self.black_value {
+            return;
+        }
+        if self.log_gc {
+            eprintln!("NativeMethod/{:?} blacken {} start", index, item.item);
+        }
+        if self.log_gc {
+            eprintln!("NativeMethod/{index:?} mark {}", item.item);
+        }
+        item.marked = self.black_value;
+
+        let function = &item.item;
+        self.strings.gray.push(function.name.id);
+        self.strings.gray.push(function.class.id);
+        if self.log_gc {
+            eprintln!("NativeMethod/{:?} blacken {} end", index, item.item);
+        }
+    }
+
+    fn blacken_closure(&mut self, index: ClosureKey) {
+        let item = &mut self.closures.data[index];
+        if item.marked == self.black_value {
+            return;
+        }
+        if self.log_gc {
+            eprintln!("Closure/{:?} blacken {} start", index, item.item);
+        }
+
+        if self.log_gc {
+            eprintln!("Closure/{index:?} mark {}", item.item);
+        }
+        item.marked = self.black_value;
+
+        let closure = &item.item;
+        self.functions.gray.push(closure.function.id);
+        for upvalue in &closure.upvalues {
+            self.upvalues.gray.push(upvalue.id);
+        }
+        if self.log_gc {
+            eprintln!("Closure/{:?} blacken {} end", index, self.closures[index]);
+        }
+    }
+
+    fn blacken_class(&mut self, index: ClassKey) {
+        let item = &mut self.classes.data[index];
+        if item.marked == self.black_value {
+            return;
+        }
+        if self.log_gc {
+            eprintln!("Class/{:?} blacken {} start", index, item.item);
+        }
+
+        if self.log_gc {
+            eprintln!("Class/{index:?} mark {}", item.item);
+        }
+        item.marked = self.black_value;
+
+        let class = &item.item;
+        self.strings.gray.push(class.name.id);
+        for (method_name, method) in &class.methods {
+            self.strings.gray.push(method_name.id);
+            self.gray_value(method);
+        }
+        if self.log_gc {
+            eprintln!("Class/{:?} blacken {} end", index, self.classes[index]);
+        }
+    }
+
+    fn blacken_instance(&mut self, index: InstanceKey) {
+        let item = &mut self.instances.data[index];
+        if item.marked == self.black_value {
+            return;
+        }
+        if self.log_gc {
+            eprintln!("Instance/{:?} blacken {} start", index, item.item);
+        }
+
+        if self.log_gc {
+            eprintln!("Instance/{index:?} mark {}", item.item);
+        }
+        item.marked = self.black_value;
+
+        let instance = &item.item;
+        self.strings.gray.push(instance.class.name.id);
+        for field in instance.fields.values() {
+            self.gray_value(field);
+        }
+        if self.log_gc {
+            eprintln!("Instance/{:?} blacken {} end", index, self.instances[index]);
+        }
+    }
+
+    fn blacken_bound_method(&mut self, index: BoundMethodKey) {
+        let item = &mut self.bound_methods.data[index];
+        if item.marked == self.black_value {
+            return;
+        }
+        if self.log_gc {
+            eprintln!("BoundMethod/{:?} blacken {} start", index, item.item);
+        }
+
+        if self.log_gc {
+            eprintln!("BoundMethod/{index:?} mark {}", item.item);
+        }
+        item.marked = self.black_value;
+
+        let bound_method = &item.item;
+        self.gray_value(&bound_method.receiver);
+        self.gray_value(&bound_method.method);
+        if self.log_gc {
+            eprintln!(
+                "BoundMethod/{:?} blacken {} end",
+                index, self.bound_methods[index]
+            );
+        }
+    }
+
+    fn blacken_list(&mut self, index: ListKey) {
+        let item = &mut self.lists.data[index];
+        if item.marked == self.black_value {
+            return;
+        }
+        if self.log_gc {
+            eprintln!("List/{:?} blacken {} start", index, item.item);
+        }
+
+        if self.log_gc {
+            eprintln!("List/{index:?} mark {}", item.item);
+        }
+        item.marked = self.black_value;
+
+        let list = &item.item;
+        self.strings.gray.push(list.class.name.id);
+        for item in &list.items {
+            self.gray_value(item);
+        }
+        if self.log_gc {
+            eprintln!("List/{:?} blacken {} end", index, self.lists[index]);
+        }
+    }
+
+    fn blacken_string(&mut self, index: StringKey) {
         if self.log_gc {
             eprintln!("String/{:?} blacken {} start", index, self.strings[index]);
         }
-        self.strings.mark_raw(index, self.black_value);
+        let item = &mut self.strings.data[index];
+        if item.marked == self.black_value {
+            return;
+        }
+        if self.log_gc {
+            eprintln!("String/{index:?} mark {}", item.item);
+        }
+        item.marked = self.black_value;
         if self.log_gc {
             eprintln!("String/{:?} blacken {} end", index, self.strings[index]);
         }
@@ -553,9 +684,8 @@ impl Heap {
         let function = &item.item;
         self.strings.gray.push(function.name.id);
         for constant in function.chunk.constants() {
-            self.values.gray.push(constant.id);
+            self.gray_value(constant)
         }
-        self.functions.mark_raw(index, self.black_value);
         if self.log_gc {
             eprintln!("Function/{:?} blacken {} end", index, self.functions[index]);
         }
@@ -585,23 +715,43 @@ impl Heap {
         }
     }
 
-    pub fn add_value(&mut self, value: Value) -> ValueId {
-        match value {
-            Value::Bool(bool) => self.builtin_constants().bool(bool),
-            Value::Nil => self.builtin_constants().nil,
-            Value::Number(n) => self
-                .builtin_constants()
-                .number(n)
-                .unwrap_or_else(|| self.values.add(value, self.black_value)),
-            value => self.values.add(value, self.black_value),
-        }
+    pub fn add_string(&mut self, value: String) -> Value {
+        self.strings.add(value, self.black_value).into()
     }
 
-    pub fn add_string(&mut self, value: String) -> StringId {
-        self.strings.add(value, self.black_value)
+    pub fn add_function(&mut self, value: Function) -> Value {
+        self.functions.add(value, self.black_value).into()
     }
 
-    pub fn add_function(&mut self, value: Function) -> FunctionId {
-        self.functions.add(value, self.black_value)
+    pub fn add_bound_method(&mut self, value: BoundMethod) -> Value {
+        self.bound_methods.add(value, self.black_value).into()
+    }
+
+    pub fn add_closure(&mut self, value: Closure) -> Value {
+        self.closures.add(value, self.black_value).into()
+    }
+
+    pub fn add_native_function(&mut self, value: NativeFunction) -> Value {
+        self.native_functions.add(value, self.black_value).into()
+    }
+
+    pub fn add_native_method(&mut self, value: NativeMethod) -> Value {
+        self.native_methods.add(value, self.black_value).into()
+    }
+
+    pub fn add_class(&mut self, value: Class) -> Value {
+        self.classes.add(value, self.black_value).into()
+    }
+
+    pub fn add_instance(&mut self, value: Instance) -> Value {
+        self.instances.add(value, self.black_value).into()
+    }
+
+    pub fn add_list(&mut self, value: List) -> Value {
+        self.lists.add(value, self.black_value).into()
+    }
+
+    pub fn add_upvalue(&mut self, value: Upvalue) -> Value {
+        self.upvalues.add(value, self.black_value).into()
     }
 }

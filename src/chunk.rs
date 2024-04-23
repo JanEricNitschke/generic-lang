@@ -1,7 +1,4 @@
-use crate::{
-    heap::{StringId, ValueId},
-    types::Line,
-};
+use crate::{heap::StringId, types::Line, value::Value};
 use convert_case::{Case, Casing};
 use derivative::Derivative;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -76,7 +73,14 @@ pub enum OpCode {
     Equal,
     Greater,
     Less,
+    // NotEqual,
+    // GreaterEqual,
+    // LessEqual,
 
+    // One, Two, Zero, Minus1?
+    // CompZero
+    // AddOne
+    // SubOne
     Negate,
     Not,
 
@@ -134,14 +138,14 @@ impl OpCode {
     }
 }
 
-#[derive(PartialEq, Eq, Derivative, Clone)]
+#[derive(PartialEq, Derivative, Clone)]
 #[derivative(PartialOrd)]
 pub struct Chunk {
     name: StringId,
     pub code: Vec<u8>,
     #[derivative(PartialOrd = "ignore")]
     lines: Vec<(usize, Line)>,
-    constants: Vec<ValueId>,
+    constants: Vec<Value>,
 }
 
 impl Chunk {
@@ -154,7 +158,7 @@ impl Chunk {
         }
     }
 
-    pub fn constants(&self) -> &[ValueId] {
+    pub fn constants(&self) -> &[Value] {
         &self.constants
     }
 
@@ -162,7 +166,7 @@ impl Chunk {
         &self.code
     }
 
-    pub fn get_constant<T>(&self, index: T) -> &ValueId
+    pub fn get_constant<T>(&self, index: T) -> &Value
     where
         T: Into<usize>,
     {
@@ -189,12 +193,12 @@ impl Chunk {
         self.code[*offset] = what.into();
     }
 
-    pub fn make_constant(&mut self, what: ValueId) -> ConstantLongIndex {
+    pub fn make_constant(&mut self, what: Value) -> ConstantLongIndex {
         self.constants.push(what);
         ConstantLongIndex(self.constants.len() - 1)
     }
 
-    pub fn write_constant(&mut self, what: ValueId, line: Line) -> bool {
+    pub fn write_constant(&mut self, what: Value, line: Line) -> bool {
         let long_index = self.make_constant(what);
         if let Ok(short_index) = u8::try_from(*long_index) {
             self.write(OpCode::Constant, line);
@@ -277,7 +281,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
     fn upvalue_code_len(&self, closure_offset: usize) -> usize {
         let code = self.chunk.code();
         let constant = code[closure_offset + 1];
-        let value = &**self.chunk.get_constant(constant);
+        let value = self.chunk.get_constant(constant);
         value.as_function().upvalue_count * 2
     }
 
@@ -299,7 +303,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         writeln!(
             f,
             " '{}'",
-            **self.chunk.get_constant(*constant_index.as_ref())
+            *self.chunk.get_constant(*constant_index.as_ref())
         )
     }
 
@@ -320,7 +324,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
             "{:-OPCODE_NAME_ALIGNMENT$} {:>OPERAND_ALIGNMENT$} '{}'",
             name,
             *constant_index,
-            **self.chunk.get_constant(*constant_index.as_ref()),
+            *self.chunk.get_constant(*constant_index.as_ref()),
             OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
             OPERAND_ALIGNMENT = self.operand_aligment
         )
@@ -408,7 +412,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         let constant = code[offset];
         offset += 1;
 
-        let value = &**self.chunk.get_constant(constant);
+        let value = self.chunk.get_constant(constant);
         writeln!(
             f,
             "{name:-OPCODE_NAME_ALIGNMENT$} {constant:>OPERAND_ALIGNMENT$} {value}",
@@ -451,7 +455,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         let code = self.chunk.code();
         let constant = code[offset.as_ref() + 1];
         let arg_count = code[offset.as_ref() + 2];
-        let constant_value = &**self.chunk.get_constant(constant);
+        let constant_value = self.chunk.get_constant(constant);
         let formatted_name = format!("{name} ({arg_count} args)");
         writeln!(
             f,
