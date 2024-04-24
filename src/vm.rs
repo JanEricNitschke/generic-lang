@@ -5,7 +5,7 @@ use std::pin::Pin;
 use path_slash::PathBufExt;
 use rustc_hash::FxHashMap as HashMap;
 
-use crate::native_functions;
+use crate::natives;
 use crate::{
     chunk::{CodeOffset, InstructionDisassembler, OpCode},
     compiler::Compiler,
@@ -176,7 +176,7 @@ impl VM {
 
     pub fn interpret(&mut self, source: &[u8]) -> InterpretResult {
         let result = if let Some(function) = self.compile(source, "<script>") {
-            native_functions::define_natives(self);
+            natives::define_natives(self);
             let function_id = self.heap.add_function(function);
 
             let closure = Closure::new(*function_id.as_function(), true);
