@@ -32,21 +32,20 @@ new_key_type! {
     pub struct BoundMethodKey;
 }
 
-#[derive(Clone, Debug, PartialOrd, Derivative)]
+#[derive(Clone, PartialOrd, Debug, Derivative)]
 #[derivative(Hash)]
 pub struct ArenaId<K: Key, T: ArenaValue> {
     id: K,
-    #[derivative(Hash = "ignore")]
-    pub arena: NonNull<Arena<K, T>>, // Yes this is terrible, yes I'm OK with it for this projec
-                                     // These could be but then i would have to put `clones` everywhere.
-                                     // use std::cell::RefCell;
-                                     // use std::rc::Rc;
-                                     // pub arena: Rc<RefCell<Arena<K, T>>>,
+    // Yes this is terrible, yes I'm OK with it for this projec
+    // These could be but then i would have to put `clones` everywhere.
+    // use std::cell::RefCell;
+    // use std::rc::Rc;
+    // pub arena: Rc<RefCell<Arena<K, T>>>,
+    pub arena: NonNull<Arena<K, T>>,
 }
 
 impl<K: Key, T: ArenaValue> PartialEq for ArenaId<K, T> {
     fn eq(&self, other: &Self) -> bool {
-        // Two different bound methods are always considered different
         self.id == other.id || **self == **other
     }
 }

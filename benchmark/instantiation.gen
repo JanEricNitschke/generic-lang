@@ -4,7 +4,6 @@ class Foo {
   __init__() {}
 }
 
-var start = clock();
 var i = 0;
 while (i < 50000) {
   Foo();
@@ -39,5 +38,3 @@ while (i < 50000) {
   Foo();
   i = i + 1;
 }
-
-# print(clock() - start);
