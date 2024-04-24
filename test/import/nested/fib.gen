@@ -1,6 +1,8 @@
 import "../foo.gen";
 
-fun fib(n) {
+var X = 1;
+
+fun fibo(n) {
   if (n < 2) {
     return n;
   }

@@ -46,8 +46,9 @@ macro_rules! binary_op {
 
 type BinaryOp<T> = fn(Number, Number) -> T;
 
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub struct Global {
-    value: Value,
+    pub value: Value,
     mutable: bool,
 }
 
@@ -137,7 +138,6 @@ pub struct VM {
     heap: Pin<Box<Heap>>,
     callstack: CallStack,
     stack: Vec<Value>,
-    globals: HashMap<StringId, Global>,
     open_upvalues: VecDeque<UpvalueId>,
     modules: Vec<Module>,
     path: PathBuf,
@@ -150,11 +150,14 @@ impl VM {
             heap: Heap::new(),
             callstack: CallStack::new(),
             stack: Vec::with_capacity(crate::config::STACK_MAX),
-            globals: HashMap::default(),
             open_upvalues: VecDeque::new(),
             modules: Vec::new(),
             path,
         }
+    }
+
+    pub fn globals(&mut self) -> &mut HashMap<StringId, Global> {
+        &mut self.modules.last_mut().unwrap().globals
     }
 
     pub fn init_string(&self) -> StringId {
@@ -169,7 +172,6 @@ impl VM {
 
     pub fn interpret(&mut self, source: &[u8]) -> InterpretResult {
         let result = if let Some(function) = self.compile(source, "<script>") {
-            natives::define(self);
             let function_id = self.heap.add_function(function);
 
             let closure = Closure::new(*function_id.as_function(), true);
@@ -179,6 +181,10 @@ impl VM {
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
             self.execute_call(value_id, 0);
+
+            // Need to have the first module loaded before defining natives
+            natives::define(self);
+
             self.run()
         } else {
             InterpretResult::CompileError
@@ -392,7 +398,7 @@ impl VM {
                     // Probaby better to just grab the class and ask if it is native
                     match value {
                         Value::Instance(instance) => {
-                            if let Some(value) = instance.fields.get(&self.heap.strings[&field]) {
+                            if let Some(value) = instance.fields.get(&*field) {
                                 self.stack.pop(); // instance
                                 self.stack_push(*value);
                             } else if self.bind_method(instance.class.into(), field) {
@@ -407,6 +413,20 @@ impl VM {
                                 // Just using the side effects
                             } else {
                                 runtime_error!(self, "Undefined property '{}'.", *field);
+                                return InterpretResult::RuntimeError;
+                            }
+                        }
+                        Value::Module(module) => {
+                            if let Some(value) = module.globals.get(&field) {
+                                self.stack.pop(); // instance
+                                self.stack_push(value.value);
+                            } else {
+                                runtime_error!(
+                                    self,
+                                    "Undefined name '{}' in module {}.",
+                                    *field,
+                                    *module.name
+                                );
                                 return InterpretResult::RuntimeError;
                             }
                         }
@@ -565,14 +585,16 @@ impl VM {
     fn add_closure_to_modules(&mut self, closure: &Closure, file_path: PathBuf) {
         if closure.is_module {
             let value_id = closure.function.name;
-            self.globals.insert(
-                self.heap.builtin_constants().script_name,
+            let script_name = self.heap.builtin_constants().script_name;
+            self.modules.push(Module::new(value_id, file_path));
+            // Scriptname has to be set in the globals of the new module.
+            self.globals().insert(
+                script_name,
                 Global {
                     value: value_id.into(),
                     mutable: true,
                 },
             );
-            self.modules.push(Module::new(value_id, file_path));
         }
     }
 
@@ -900,8 +922,9 @@ impl VM {
         let constant_value = self.read_constant_value(constant_index);
         match &constant_value {
             Value::String(name) => {
-                if let Some(global) = self.globals.get(name) {
-                    self.stack_push(global.value);
+                let maybe_value = self.globals().get(name).map(|global| global.value);
+                if let Some(value) = maybe_value {
+                    self.stack_push(value);
                 } else {
                     runtime_error!(self, "Undefined variable '{}'.", self.heap.strings[name]);
                     return Some(InterpretResult::RuntimeError);
@@ -920,16 +943,16 @@ impl VM {
             Value::String(name) => *name,
             x => panic!("Internal error: non-string operand to OP_SET_GLOBAL: {x:?}"),
         };
-
-        if let Some(global) = self.globals.get_mut(&name) {
+        let stack_top_value = *self
+            .stack
+            .last()
+            .unwrap_or_else(|| panic!("stack underflow in {op:?}"));
+        if let Some(global) = self.globals().get_mut(&name) {
             if !global.mutable {
                 runtime_error!(self, "Reassignment to global 'const'.");
                 return Some(InterpretResult::RuntimeError);
             }
-            global.value = *self
-                .stack
-                .last()
-                .unwrap_or_else(|| panic!("stack underflow in {op:?}"));
+            global.value = stack_top_value;
         } else {
             runtime_error!(self, "Undefined variable '{}'.", *name);
             return Some(InterpretResult::RuntimeError);
@@ -943,13 +966,14 @@ impl VM {
         match &constant {
             Value::String(name) => {
                 let name = *name;
-                self.globals.insert(
+                let stack_top_value = *self
+                    .stack
+                    .last()
+                    .unwrap_or_else(|| panic!("stack underflow in {op:?}"));
+                self.globals().insert(
                     name,
                     Global {
-                        value: *self
-                            .stack
-                            .last()
-                            .unwrap_or_else(|| panic!("stack underflow in {op:?}")),
+                        value: stack_top_value,
                         mutable: op != OpCode::DefineGlobalConst
                             && op != OpCode::DefineGlobalConstLong,
                     },
@@ -1014,16 +1038,28 @@ impl VM {
         }
         if frame.is_module {
             self.stack.pop();
-            self.modules.pop().expect("Module underflow in OP_RETURN");
-            self.globals.insert(
-                self.heap.builtin_constants().script_name,
+            let last_module = self.modules.pop().expect("Module underflow in OP_RETURN");
+            let last_module_name = last_module.name;
+            let last_module_id = self.heap.add_module(last_module);
+            self.globals().insert(
+                last_module_name,
                 Global {
-                    value: self
-                        .modules
-                        .last()
-                        .expect("Module underflow in OP_RETURN")
-                        .name
-                        .into(),
+                    value: last_module_id,
+                    mutable: true,
+                },
+            );
+
+            let script_name = self.heap.builtin_constants().script_name;
+            let module_name: Value = self
+                .modules
+                .last()
+                .expect("Module underflow in OP_RETURN")
+                .name
+                .into();
+            self.globals().insert(
+                script_name,
+                Global {
+                    value: module_name,
                     mutable: true,
                 },
             );
@@ -1320,19 +1356,36 @@ impl VM {
         let receiver = *self
             .peek(arg_count.into())
             .expect("Stack underflow in OP_INVOKE");
-        if let Value::Instance(instance) = receiver {
-            if let Some(value) = instance.fields.get(&self.heap.strings[&method_name]) {
-                let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;
-                self.stack[new_stack_base] = *value;
-                self.call_value(*value, arg_count)
-            } else {
-                self.invoke_from_class(instance.class.into(), method_name, arg_count)
+        match receiver {
+            Value::Instance(instance) => {
+                if let Some(value) = instance.fields.get(&*method_name) {
+                    let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;
+                    self.stack[new_stack_base] = *value;
+                    self.call_value(*value, arg_count)
+                } else {
+                    self.invoke_from_class(instance.class.into(), method_name, arg_count)
+                }
             }
-        } else if let Value::List(list) = &receiver {
-            self.invoke_from_class(list.class.into(), method_name, arg_count)
-        } else {
-            runtime_error!(self, "Only instances have methods.");
-            false
+            Value::List(list) => self.invoke_from_class(list.class.into(), method_name, arg_count),
+            Value::Module(module) => {
+                if let Some(value) = module.globals.get(&method_name) {
+                    let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;
+                    self.stack[new_stack_base] = value.value;
+                    self.call_value(value.value, arg_count)
+                } else {
+                    runtime_error!(
+                        self,
+                        "Function '{}' not defined in module {}.",
+                        &*method_name,
+                        *module.name
+                    );
+                    false
+                }
+            }
+            _ => {
+                runtime_error!(self, "Only instances have methods.");
+                false
+            }
         }
     }
 
@@ -1438,7 +1491,7 @@ impl VM {
             arity,
             fun,
         });
-        self.globals.insert(
+        self.globals().insert(
             name_id,
             Global {
                 value,
@@ -1451,7 +1504,7 @@ impl VM {
         let name_id = self.heap.string_id(name);
         self.heap.strings_by_name.insert(name.to_string(), name_id);
         let value = self.heap.add_class(Class::new(name_id, true));
-        self.globals.insert(
+        self.globals().insert(
             name_id,
             Global {
                 value,
@@ -1501,36 +1554,40 @@ impl VM {
         for value in &self.stack {
             self.heap.mark_value(value);
         }
-        for (key, value) in &self.globals {
-            self.heap.mark_string(key);
-            self.heap.mark_value(&value.value);
-        }
         for frame in self.callstack.iter() {
             self.heap.mark_function(&frame.closure().function);
         }
         for upvalue in &self.open_upvalues {
             self.heap.mark_upvalue(upvalue);
         }
-        for value in &self.modules {
-            self.heap.mark_string(&value.name);
+        for module in &self.modules {
+            self.heap.mark_string(&module.name);
+            for (key, value) in &module.globals {
+                self.heap.mark_string(key);
+                self.heap.mark_value(&value.value);
+            }
         }
 
         // Trace references
         self.heap.trace();
 
         // Remove references to unmarked strings in `self.globals` and `self.heap.strings_by_name`
-        let globals_to_remove = self
-            .globals
-            .keys()
-            .filter(|string_id| !string_id.marked(black_value))
-            .copied()
-            .collect::<Vec<_>>();
-        for id in globals_to_remove {
-            if log_gc {
-                eprintln!("String/{:?} free {}", id, *id);
+        for module in &mut self.modules {
+            let globals_to_remove = module
+                .globals
+                .keys()
+                .filter(|string_id| !string_id.marked(black_value))
+                .copied()
+                .collect::<Vec<_>>();
+
+            for id in globals_to_remove {
+                if log_gc {
+                    eprintln!("String/{:?} free {}", id, *id);
+                }
+                module.globals.remove(&id);
             }
-            self.globals.remove(&id);
         }
+
         self.heap.strings_by_name.retain(|_, string_id| {
             let retain = string_id.marked(black_value);
             if !retain && log_gc {

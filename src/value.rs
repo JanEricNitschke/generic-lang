@@ -1,8 +1,8 @@
 use crate::{
     chunk::Chunk,
     heap::{
-        BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ListId, NativeFunctionId,
-        NativeMethodId, StringId, UpvalueId, ModuleId
+        BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ListId, ModuleId,
+        NativeFunctionId, NativeMethodId, StringId, UpvalueId,
     },
     vm::Global,
 };
@@ -20,7 +20,7 @@ pub enum Value {
     String(StringId),
 
     Function(FunctionId),
-    // Module(ModuleId),
+    Module(ModuleId),
 
     Closure(ClosureId),
     NativeFunction(NativeFunctionId),
@@ -32,6 +32,7 @@ pub enum Value {
     Instance(InstanceId),
     BoundMethod(BoundMethodId),
 
+    // This should really just be "NativeClass"
     List(ListId),
 }
 
@@ -52,7 +53,7 @@ impl std::fmt::Display for Value {
             Self::BoundMethod(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::List(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::Upvalue(ref_id) => f.pad(&format!("{}", **ref_id)),
-            // Self::Module(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::Module(ref_id) => f.pad(&format!("{}", **ref_id)),
         }
     }
 }
@@ -512,11 +513,12 @@ impl std::fmt::Display for List {
     }
 }
 
-
-// Do modules need to be garbage collected?
+#[derive(Debug, PartialEq, Clone, Derivative)]
+#[derivative(PartialOrd)]
 pub struct Module {
     pub name: StringId,
     pub path: PathBuf,
+    #[derivative(PartialOrd = "ignore")]
     pub globals: HashMap<StringId, Global>,
 }
 
@@ -528,7 +530,6 @@ impl Module {
             globals: HashMap::default(),
         }
     }
-
 }
 
 impl std::fmt::Display for Module {
@@ -621,11 +622,11 @@ impl From<ListId> for Value {
     }
 }
 
-// impl From<ModuleId> for Value {
-//     fn from(m: ModuleId) -> Self {
-//         Self::Module(m)
-//     }
-// }
+impl From<ModuleId> for Value {
+    fn from(m: ModuleId) -> Self {
+        Self::Module(m)
+    }
+}
 
 impl Value {
     pub const fn is_falsey(&self) -> bool {

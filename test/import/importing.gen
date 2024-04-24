@@ -1,7 +1,9 @@
 import "nested/fib.gen";
 
-print(fib(1)); # expect: 1
-Foo().hello(); # expect: Hello
+print(fib); # expect: <module fib>
+print(fib.X); # expect: 1
+print(fib.fibo(1)); # expect: 1
+fib.foo.Foo().hello(); # expect: Hello
 
 if __name__ == "<script>" {
     print("good"); # expect: good
