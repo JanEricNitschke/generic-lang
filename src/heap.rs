@@ -589,6 +589,8 @@ impl Heap {
         }
     }
 
+    // I guess this has issues with the macro?
+    #[allow(clippy::cognitive_complexity)]
     fn blacken_bound_method(&mut self, index: BoundMethodKey) {
         let item = &mut self.bound_methods.data[index];
         if item.marked == self.black_value {

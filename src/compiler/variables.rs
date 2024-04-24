@@ -125,6 +125,9 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    // Because the closure would need unique access to self while it
+    // is mutably borrowed.
+    #[allow(clippy::option_if_let_else)]
     pub(super) fn identifier_constant<S>(&mut self, name: &S) -> ConstantLongIndex
     where
         S: ToString,
