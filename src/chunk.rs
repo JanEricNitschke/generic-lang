@@ -436,8 +436,10 @@ impl<'chunk> InstructionDisassembler<'chunk> {
             offset += 1;
             writeln!(
                 f,
-                "{:04}    |                     {} {}",
+                "{:04}    |{} {} {}",
                 offset - 2,
+                // +1 for the space before opcode_name and 1 between name and operand
+                " ".repeat(self.opcode_name_alignment + self.operand_aligment + 2),
                 if is_local { "local" } else { "upvalue" },
                 index
             )?;
