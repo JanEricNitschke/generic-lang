@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -376,11 +377,11 @@ impl VM {
                     let upvalue_index = usize::from(self.read_byte());
                     let closure = self.callstack.closure();
                     let upvalue_location = closure.upvalues[upvalue_index];
-                    match *upvalue_location {
+                    match &**upvalue_location.borrow() {
                         Upvalue::Open(absolute_local_index) => {
-                            self.stack_push(self.stack[absolute_local_index]);
+                            self.stack_push(self.stack[*absolute_local_index]);
                         }
-                        Upvalue::Closed(value_id) => self.stack_push(value_id),
+                        Upvalue::Closed(value) => self.stack_push(*value.borrow()),
                     }
                 }
                 OpCode::SetUpvalue => {
@@ -397,7 +398,7 @@ impl VM {
                             self.stack[absolute_local_index] = new_value;
                         }
                         Upvalue::Closed(ref mut value) => {
-                            *value = new_value;
+                            value.replace(new_value);
                         }
                     }
                 }
@@ -1399,11 +1400,11 @@ impl VM {
         let mut upvalue = None;
 
         for (i, this) in self.open_upvalues.iter().enumerate() {
+            upvalue = Some(this);
+            upvalue_index = i;
             if this.as_open() <= local {
                 break;
             }
-            upvalue = Some(this);
-            upvalue_index = i;
         }
 
         if let Some(upvalue) = upvalue {
@@ -1427,7 +1428,7 @@ impl VM {
             let mut upvalue = self.open_upvalues.pop_front().unwrap();
 
             let pointed_value = self.stack[upvalue.as_open()];
-            *upvalue = Upvalue::Closed(pointed_value);
+            *upvalue = Upvalue::Closed(pointed_value.into());
         }
     }
 

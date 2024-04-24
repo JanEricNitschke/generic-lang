@@ -1,0 +1,23 @@
+var get;
+var set;
+
+fun outer() {
+  var x = "before";
+  var y = "before";
+  fun inner() {
+    x = "assigned";
+  }
+  fun inner_set() {
+    y = "assigned";
+  }
+  fun inner_get() {
+    print(y);
+  }
+  get = inner_get;
+  set = inner_set;
+  inner();
+  print(x);
+}
+var my_inners = outer(); # expect: assigned
+set();
+get(); # expect: assigned

@@ -227,7 +227,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             u8::try_from(upvalue_count - 1).unwrap()
         } else {
             // This is where `(Get|Set)UpvalueLong` would go
-            self.error("Too variables in function surrounding closure.");
+            self.error("Too many variables in function surrounding closure.");
             0
         }
     }

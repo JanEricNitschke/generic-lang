@@ -8,6 +8,7 @@ use crate::{
 use derivative::Derivative;
 use derive_more::{From, Neg};
 use rustc_hash::FxHashMap as HashMap;
+use std::cell::RefCell;
 
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub enum Value {
@@ -235,7 +236,7 @@ impl ::core::ops::Rem for Number {
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub enum Upvalue {
     Open(usize),
-    Closed(Value),
+    Closed(RefCell<Value>),
 }
 
 impl std::fmt::Display for Upvalue {
