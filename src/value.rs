@@ -39,15 +39,15 @@ impl std::fmt::Display for Value {
             Self::Nil => f.pad("nil"),
             Self::String(s) => f.pad(s),
             // Can i do all of these just like string?
-            Self::Function(refId) => f.pad(&format!("{}", **refId)),
-            Self::Closure(refId) => f.pad(&format!("{}", **refId)),
-            Self::NativeFunction(refId) => f.pad(&format!("{}", **refId)),
-            Self::NativeMethod(refId) => f.pad(&format!("{}", **refId)),
-            Self::Class(refId) => f.pad(&format!("{}", **refId)),
-            Self::Instance(refId) => f.pad(&format!("{}", **refId)),
-            Self::BoundMethod(refId) => f.pad(&format!("{}", **refId)),
-            Self::List(refId) => f.pad(&format!("{}", **refId)),
-            Self::Upvalue(refId) => f.pad(&format!("{}", **refId)),
+            Self::Function(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::Closure(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::NativeFunction(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::NativeMethod(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::Class(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::Instance(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::BoundMethod(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::List(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::Upvalue(ref_id) => f.pad(&format!("{}", **ref_id)),
         }
     }
 }
@@ -287,7 +287,7 @@ impl Closure {
 }
 
 impl Value {
-    pub const fn bound_method(receiver: Value, method: Value, heap: &mut Heap) -> Self {
+    pub fn bound_method(receiver: Value, method: Value, heap: &mut Heap) -> Self {
         heap.add_bound_method(BoundMethod { receiver, method })
     }
 }
@@ -407,8 +407,8 @@ impl std::fmt::Display for NativeMethod {
     }
 }
 
-pub type NativeFunctionImpl = fn(&mut Heap, &[&Value]) -> Result<Value, String>;
-pub type NativeMethodImpl = fn(&mut Heap, &mut Value, &[&Value]) -> Result<Value, String>;
+pub type NativeFunctionImpl = fn(&mut Heap, &mut [&mut Value]) -> Result<Value, String>;
+pub type NativeMethodImpl = fn(&mut Heap, &mut Value, &mut [&mut Value]) -> Result<Value, String>;
 
 const fn always_equals<T>(_: &T, _: &T) -> bool {
     true
@@ -481,7 +481,7 @@ pub struct List {
 
 impl List {
     #[must_use]
-    pub const fn new(array_class: Value) -> Self {
+    pub fn new(array_class: Value) -> Self {
         Self {
             items: Vec::new(),
             class: *array_class.as_class(),
@@ -646,13 +646,6 @@ impl Value {
     }
 
     pub fn upvalue_location(&self) -> &UpvalueId {
-        match self {
-            Self::Upvalue(v) => v,
-            _ => unreachable!("Expected upvalue, found `{}`", self),
-        }
-    }
-
-    pub fn upvalue_location_mut(&mut self) -> &mut UpvalueId {
         match self {
             Self::Upvalue(v) => v,
             _ => unreachable!("Expected upvalue, found `{}`", self),

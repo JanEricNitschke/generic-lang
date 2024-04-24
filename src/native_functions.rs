@@ -15,7 +15,7 @@ use crate::{
     vm::VM,
 };
 
-fn clock_native(heap: &mut Heap, _args: &[&Value]) -> Result<Value, String> {
+fn clock_native(_heap: &mut Heap, _args: &mut [&mut Value]) -> Result<Value, String> {
     Ok(Value::Number(
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -25,8 +25,8 @@ fn clock_native(heap: &mut Heap, _args: &[&Value]) -> Result<Value, String> {
     ))
 }
 
-fn sleep_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
-    match args[0] {
+fn sleep_native(_heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match &args[0] {
         Value::Number(Number::Integer(i)) if i >= &0 => {
             thread::sleep(Duration::from_secs(ias_u64(*i)));
         }
@@ -40,8 +40,8 @@ fn sleep_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
     Ok(Value::Nil)
 }
 
-fn assert_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
-    let value = args[0];
+fn assert_native(_heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    let value = &args[0];
     if value.is_falsey() {
         Err(format!("Assertion on `{value}` failed!"))
     } else {
@@ -49,15 +49,15 @@ fn assert_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
     }
 }
 
-fn sqrt_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
-    match args[0] {
+fn sqrt_native(_heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match &args[0] {
         Value::Number(Number::Float(n)) => Ok(n.sqrt().into()),
         Value::Number(Number::Integer(n)) => Ok((ias_f64(*n)).sqrt().into()),
         x => Err(format!("'sqrt' expected numeric argument, got: {}", *x)),
     }
 }
 
-fn input_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
+fn input_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
         Value::String(prompt) => {
             println!("{}", &heap.strings[prompt]);
@@ -75,8 +75,8 @@ fn input_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
 }
 
 #[allow(clippy::option_if_let_else)]
-fn to_float_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
-    match args[0] {
+fn to_float_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match &args[0] {
         Value::String(string_id) => {
             let string = &heap.strings[string_id];
             let converted: Result<f64, _> = string.parse();
@@ -96,8 +96,8 @@ fn to_float_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
 }
 
 #[allow(clippy::option_if_let_else)]
-fn to_int_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
-    match args[0] {
+fn to_int_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match &args[0] {
         Value::String(string_id) => {
             let string = &heap.strings[string_id];
             let converted: Result<i64, _> = string.parse();
@@ -117,8 +117,8 @@ fn to_int_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
 }
 
 #[allow(clippy::option_if_let_else)]
-fn is_int_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
-    match args[0] {
+fn is_int_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match &args[0] {
         Value::String(string_id) => {
             let string = &heap.strings[string_id];
             let converted: Result<i64, _> = string.parse();
@@ -132,14 +132,14 @@ fn is_int_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
     }
 }
 
-fn to_string_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
-    let value = args[0];
+fn to_string_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    let value = &args[0];
     let string = Value::String(heap.string_id(&value.to_string()));
     Ok(string)
 }
 
-fn type_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
-    let string = match args[0] {
+fn type_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    let string = match &args[0] {
         Value::Bool(_) => Value::String(heap.string_id(&"<type bool>")),
         Value::BoundMethod(_) => Value::String(heap.string_id(&"<type bound method>")),
         Value::Class(_) => Value::String(heap.string_id(&"<type class>")),
@@ -162,9 +162,9 @@ fn type_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
     Ok(string)
 }
 
-fn print_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
+fn print_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
     let end = if args.len() == 2 {
-        match args[1] {
+        match &args[1] {
             Value::String(string_id) => &heap.strings[string_id],
             x => {
                 return Err(format!(
@@ -175,13 +175,13 @@ fn print_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
     } else {
         "\n"
     };
-    let value = args[0];
+    let value = &args[0];
     print!("{value}{end}");
     Ok(Value::Nil)
 }
 
-fn rng_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
-    match (args[0], args[1]) {
+fn rng_native(_heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match (&args[0], &args[1]) {
         (Value::Number(Number::Integer(min)), Value::Number(Number::Integer(max))) => Ok(
             Value::Number(rand::thread_rng().gen_range(*min..*max).into()),
         ),
@@ -194,13 +194,17 @@ fn rng_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
 fn init_list_native(
     heap: &mut Heap,
     _receiver: &mut Value,
-    _args: &[&Value],
+    _args: &mut [&mut Value],
 ) -> Result<Value, String> {
     let list = List::new(*heap.native_classes.get("List").unwrap());
     Ok(heap.add_list(list))
 }
 
-fn append_native(heap: &mut Heap, receiver: &mut Value, args: &[&Value]) -> Result<Value, String> {
+fn append_native(
+    _heap: &mut Heap,
+    receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
     match receiver {
         Value::List(list) => {
             list.items.push(*args[0]);
@@ -212,11 +216,15 @@ fn append_native(heap: &mut Heap, receiver: &mut Value, args: &[&Value]) -> Resu
     }
 }
 
-fn pop_native(heap: &mut Heap, receiver: &mut Value, args: &[&Value]) -> Result<Value, String> {
+fn pop_native(
+    _heap: &mut Heap,
+    receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
     let index = if args.is_empty() {
         None
     } else {
-        let index = match args[0] {
+        let index = match &args[0] {
             Value::Number(Number::Integer(n)) => match usize::try_from(*n) {
                 Ok(index) => index,
                 Err(_) => {
@@ -259,8 +267,12 @@ fn pop_native(heap: &mut Heap, receiver: &mut Value, args: &[&Value]) -> Result<
     }
 }
 
-fn insert_native(heap: &mut Heap, receiver: &mut Value, args: &[&Value]) -> Result<Value, String> {
-    let index = match args[0] {
+fn insert_native(
+    _heap: &mut Heap,
+    receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let index = match &args[0] {
         Value::Number(Number::Integer(n)) => match usize::try_from(*n) {
             Ok(index) => index,
             Err(_) => {
@@ -295,9 +307,9 @@ fn insert_native(heap: &mut Heap, receiver: &mut Value, args: &[&Value]) -> Resu
 }
 
 fn contains_native(
-    heap: &mut Heap,
+    _heap: &mut Heap,
     receiver: &mut Value,
-    args: &[&Value],
+    args: &mut [&mut Value],
 ) -> Result<Value, String> {
     let my_list = match receiver {
         Value::List(list) => list,
@@ -317,15 +329,15 @@ fn contains_native(
 }
 
 #[allow(clippy::cast_possible_wrap)]
-fn len_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
-    match args[0] {
+fn len_native(_heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match &args[0] {
         Value::List(list) => Ok((list.items.len() as i64).into()),
         x => Err(format!("'len' expected list argument, got: `{x}` instead.")),
     }
 }
 
-fn getattr_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
-    match (args[0], args[1]) {
+fn getattr_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match (&args[0], &args[1]) {
         (Value::Instance(instance), Value::String(string_id)) => {
             let field = &heap.strings[string_id];
             instance.fields.get(field).map_or_else(
@@ -342,28 +354,29 @@ fn getattr_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
     }
 }
 
-fn setattr_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
-    if let Value::String(string_id) = args[1] {
-        let field = heap.strings[string_id].clone();
-        if let Value::Instance(instance) = args[0] {
-            instance.fields.insert(field, *args[2]);
-            Ok(Value::Nil)
-        } else {
-            Err(format!(
-                "`setattr` only works on instances, got `{}`",
-                args[0]
-            ))
-        }
+fn setattr_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    let field = if let Value::String(ref string_id) = args[1] {
+        heap.strings[string_id].clone()
     } else {
-        Err(format!(
+        return Err(format!(
             "`setattr` can only index with string indexes, got: `{}` (instance: `{}`)",
             args[1], args[0]
+        ));
+    };
+    let value = *args[2];
+    if let Value::Instance(instance) = args[0] {
+        instance.fields.insert(field, value);
+        Ok(Value::Nil)
+    } else {
+        Err(format!(
+            "`setattr` only works on instances, got `{}`",
+            args[0]
         ))
     }
 }
 
-fn hasattr_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
-    match (args[0], args[1]) {
+fn hasattr_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match (&args[0], &args[1]) {
         (Value::Instance(instance), Value::String(string_id)) => Ok(Value::Bool(
             instance.fields.contains_key(&heap.strings[string_id]),
         )),
@@ -376,8 +389,8 @@ fn hasattr_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
     }
 }
 
-fn delattr_native(heap: &mut Heap, args: &[&Value]) -> Result<Value, String> {
-    if let Value::String(string_id) = args[1] {
+fn delattr_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    if let Value::String(ref string_id) = args[1] {
         let field = &heap.strings[string_id];
         if let Value::Instance(instance) = args[0] {
             match instance.fields.remove(field) {

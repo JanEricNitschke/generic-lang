@@ -67,7 +67,7 @@ pub struct CallFrame {
 
 impl CallFrame {
     pub fn closure(&self) -> &Closure {
-        &*self.closure
+        &self.closure
     }
 }
 
@@ -200,7 +200,7 @@ impl VM {
 
             self.add_closure_to_modules(&closure, self.path.clone());
 
-            let value_id = self.heap.add_closure(closure.into());
+            let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
             self.execute_call(value_id, 0);
             self.run()
@@ -252,7 +252,7 @@ impl VM {
                     self.stack.pop().expect("Stack underflow in OP_POP.");
                 }
                 OpCode::Dup => {
-                    self.stack_push_value(self.peek(0).expect("stack underflow in OP_DUP").clone());
+                    self.stack_push_value(*self.peek(0).expect("stack underflow in OP_DUP"));
                 }
                 OpCode::DupN => {
                     // -1 because Dup1 should peek at the top most elemnt
@@ -265,7 +265,7 @@ impl VM {
                         // 1 2 3 4 3 (again depth = 1) -> grab 4
                         // 1 2 3 4 3 4
                         self.stack_push_value(
-                            self.peek(depth).expect("stack underflow in OP_DUP").clone(),
+                            *self.peek(depth).expect("stack underflow in OP_DUP"),
                         );
                     }
                 }
@@ -366,7 +366,7 @@ impl VM {
                         } else {
                             closure
                                 .upvalues
-                                .push((*self.callstack.closure()).upvalues[index]);
+                                .push(self.callstack.closure().upvalues[index]);
                         }
                     }
                     let closure_id = self.heap.add_closure(closure);
@@ -374,7 +374,7 @@ impl VM {
                 }
                 OpCode::GetUpvalue => {
                     let upvalue_index = usize::from(self.read_byte());
-                    let closure = *self.callstack.closure();
+                    let closure = self.callstack.closure();
                     let upvalue_location = closure.upvalues[upvalue_index];
                     match *upvalue_location {
                         Upvalue::Open(absolute_local_index) => {
@@ -390,7 +390,7 @@ impl VM {
                     let new_value = self
                         .stack
                         .last()
-                        .map(|x| x.clone())
+                        .copied()
                         .expect("Stack underflow in OP_SET_UPVALUE");
                     match *upvalue_location {
                         Upvalue::Open(absolute_local_index) => {
@@ -408,13 +408,13 @@ impl VM {
                 OpCode::Class => {
                     let class_name = self.read_string("OP_CLASS");
                     let class = self.heap.add_class(Class::new(class_name, false));
-                    self.stack_push_value(class.into());
+                    self.stack_push_value(class);
                 }
                 OpCode::GetProperty => {
                     let field = self.read_string("GET_PROPERTY");
-
+                    let value = *self.peek(0).expect("Stack underflow in GET_PROPERTY");
                     // Probaby better to just grab the class and ask if it is native
-                    match &self.peek(0).expect("Stack underflow in GET_PROPERTY") {
+                    match value {
                         Value::Instance(instance) => {
                             if let Some(value) = instance.fields.get(&self.heap.strings[&field]) {
                                 self.stack.pop(); // instance
@@ -523,7 +523,8 @@ impl VM {
                     for _ in 0..arg_count {
                         self.stack.pop();
                     }
-                    self.stack_push_value(self.heap.add_list(list).into());
+                    let list_value = self.heap.add_list(list);
+                    self.stack_push_value(list_value);
                 }
                 OpCode::IndexSubscript => {
                     if let Some(value) = self.index_subscript() {
@@ -636,7 +637,8 @@ impl VM {
                 };
 
                 if let Some(function) = self.compile(&contents, &name) {
-                    let function_id = self.heap.add_function(function).as_function();
+                    let function = self.heap.add_function(function);
+                    let function_id = function.as_function();
                     let closure = Closure::new(*function_id, true);
 
                     if closure.is_module {
@@ -824,12 +826,11 @@ impl VM {
                 return Some(InterpretResult::RuntimeError);
             }
         };
-
-        let list = match &self
+        let value = self
             .stack
             .pop()
-            .expect("Stack underflow in OP_INDEX_SUBSCRIPT")
-        {
+            .expect("Stack underflow in OP_INDEX_SUBSCRIPT");
+        let list = match &value {
             Value::List(list) => list,
             x => {
                 runtime_error!(self, "Can only index into lists, got `{}`.", x);
@@ -878,11 +879,11 @@ impl VM {
                 return Some(InterpretResult::RuntimeError);
             }
         };
-        let list = match &mut self
+        let mut value = self
             .stack
             .pop()
-            .expect("Stack underflow in OP_INDEX_SUBSCRIPT")
-        {
+            .expect("Stack underflow in OP_INDEX_SUBSCRIPT");
+        let list = match &mut value {
             Value::List(list) => list,
             x => {
                 runtime_error!(self, "Can only index into lists, got `{}`.", x);
@@ -1176,19 +1177,19 @@ impl VM {
     }
 
     fn call_value(&mut self, callee: Value, arg_count: u8) -> bool {
-        match &callee {
+        match callee {
             Value::NativeMethod(_) => {
                 println!("Got a native method");
                 false
             }
             Value::Closure(_) => self.execute_call(callee, arg_count),
-            Value::NativeFunction(f) => self.execute_native_function_call(f, arg_count),
+            Value::NativeFunction(f) => self.execute_native_function_call(&f, arg_count),
             Value::Class(class) => {
                 let is_native = class.is_native;
                 let maybe_initializer = class
                     .methods
                     .get(&self.heap.builtin_constants().init_string);
-                let mut instance_id = self.heap.add_instance(Instance::new(callee).into());
+                let mut instance_id = self.heap.add_instance(Instance::new(callee));
                 let stack_index = self.stack.len() - usize::from(arg_count) - 1;
                 self.stack[stack_index] = instance_id;
                 if let Some(initializer) = maybe_initializer {
@@ -1208,14 +1209,14 @@ impl VM {
                     true
                 }
             }
-            Value::BoundMethod(bound_method) => match &bound_method.method {
+            Value::BoundMethod(mut bound_method) => match bound_method.method {
                 Value::Closure(_) => {
                     let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;
                     self.stack[new_stack_base] = bound_method.receiver;
                     self.execute_call(bound_method.method, arg_count)
                 }
                 Value::NativeMethod(native_method) => self.execute_native_method_call(
-                    native_method,
+                    &native_method,
                     &mut bound_method.receiver,
                     arg_count,
                 ),
@@ -1273,8 +1274,8 @@ impl VM {
         }
         let fun = f.fun;
         let start_index = self.stack.len() - usize::from(arg_count);
-        let args = self.stack[start_index..].iter().collect::<Vec<_>>();
-        match fun(&mut self.heap, receiver, &args) {
+        let mut args = self.stack[start_index..].iter_mut().collect::<Vec<_>>();
+        match fun(&mut self.heap, receiver, args.as_mut_slice()) {
             Ok(value) => {
                 self.stack
                     .truncate(self.stack.len() - usize::from(arg_count) - 1);
@@ -1320,8 +1321,8 @@ impl VM {
         }
         let fun = f.fun;
         let start_index = self.stack.len() - usize::from(arg_count);
-        let args = self.stack[start_index..].iter().collect::<Vec<_>>();
-        match fun(&mut self.heap, &args) {
+        let mut args = self.stack[start_index..].iter_mut().collect::<Vec<_>>();
+        match fun(&mut self.heap, args.as_mut_slice()) {
             Ok(value) => {
                 self.stack
                     .truncate(self.stack.len() - usize::from(arg_count) - 1);
@@ -1347,7 +1348,7 @@ impl VM {
         match method {
             Value::Closure(_) => self.execute_call(*method, arg_count),
             Value::NativeMethod(native) => {
-                let mut receiver = self.peek(arg_count as usize).unwrap();
+                let mut receiver = *self.peek(arg_count as usize).unwrap();
                 self.execute_native_method_call(native, &mut receiver, arg_count)
             }
             x => unreachable!(
@@ -1358,10 +1359,10 @@ impl VM {
     }
 
     fn invoke(&mut self, method_name: StringId, arg_count: u8) -> bool {
-        let receiver = self
+        let receiver = *self
             .peek(arg_count.into())
             .expect("Stack underflow in OP_INVOKE");
-        if let Value::Instance(instance) = &receiver {
+        if let Value::Instance(instance) = receiver {
             if let Some(value) = instance.fields.get(&self.heap.strings[&method_name]) {
                 let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;
                 self.stack[new_stack_base] = *value;
@@ -1410,11 +1411,8 @@ impl VM {
                 return *upvalue;
             }
         }
-
-        let upvalue_id = self
-            .heap
-            .add_upvalue(Upvalue::Open(local))
-            .upvalue_location();
+        let upvalue = self.heap.add_upvalue(Upvalue::Open(local));
+        let upvalue_id = upvalue.upvalue_location();
         self.open_upvalues.insert(upvalue_index, *upvalue_id);
 
         *upvalue_id
@@ -1482,24 +1480,22 @@ impl VM {
         self.globals.insert(
             name,
             Global {
-                value: value,
+                value,
                 mutable: true,
             },
         );
     }
 
     pub fn define_native_class(&mut self, name_id: StringId) {
-        let value_id = self.heap.add_class(Class::new(name_id, true));
+        let value = self.heap.add_class(Class::new(name_id, true));
         self.globals.insert(
             name_id,
             Global {
-                value: value_id,
+                value,
                 mutable: true,
             },
         );
-        self.heap
-            .native_classes
-            .insert(name_id.to_string(), value_id);
+        self.heap.native_classes.insert(name_id.to_string(), value);
     }
 
     pub fn define_native_method(

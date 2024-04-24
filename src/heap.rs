@@ -83,8 +83,6 @@ impl<T> Item<T> {
     }
 }
 
-pub type ValueId = ArenaId<ValueKey, Value>;
-
 pub type StringId = ArenaId<StringKey, String>;
 pub type UpvalueId = ArenaId<UpvalueKey, Upvalue>;
 pub type FunctionId = ArenaId<FunctionKey, Function>;
@@ -146,23 +144,6 @@ impl<K: Key, V: ArenaValue> Arena<K, V> {
     fn flush_gray(&mut self) -> Vec<K> {
         let capacity = self.gray.capacity();
         std::mem::replace(&mut self.gray, Vec::with_capacity(capacity))
-    }
-
-    fn mark(&mut self, index: &ArenaId<K, V>, black_value: bool) -> bool {
-        debug_assert_eq!(index.arena.as_ptr().cast_const(), self);
-        self.mark_raw(index.id, black_value)
-    }
-
-    fn mark_raw(&mut self, index: K, black_value: bool) -> bool {
-        let value = &mut self.data[index];
-        if value.marked == black_value {
-            return false;
-        }
-        if self.log_gc {
-            eprintln!("{}/{:?} mark {}", self.name, index, value.item);
-        }
-        value.marked = black_value;
-        true
     }
 
     fn sweep(&mut self, black_value: bool) {
@@ -227,6 +208,7 @@ impl BuiltinConstants {
     }
 }
 
+// Has to be a macro because of mutable borrow of self
 macro_rules! gray_value {
     ($self:expr, $value:expr) => {
         match $value {
@@ -469,75 +451,6 @@ impl Heap {
             Value::BoundMethod(id) => self.blacken_bound_method(id.id),
         }
     }
-
-    pub fn gray_value(&mut self, id: &Value) {
-        match id {
-            Value::Bool(_) | Value::Nil | Value::Number(_) => {}
-            Value::Upvalue(id) => {
-                if self.log_gc {
-                    eprintln!("Upvalue/{:?} gray {}", id.id, **id);
-                }
-                self.upvalues.gray.push(id.id);
-            }
-            Value::String(id) => {
-                if self.log_gc {
-                    eprintln!("String/{:?} gray {}", id.id, **id);
-                }
-                self.strings.gray.push(id.id);
-            }
-            Value::Function(id) => {
-                if self.log_gc {
-                    eprintln!("Function/{:?} gray {}", id.id, **id);
-                }
-                self.functions.gray.push(id.id);
-            }
-            Value::NativeFunction(id) => {
-                if self.log_gc {
-                    eprintln!("NativeFunction/{:?} gray {}", id.id, **id);
-                }
-                self.native_functions.gray.push(id.id);
-            }
-            Value::NativeMethod(id) => {
-                if self.log_gc {
-                    eprintln!("NativeMethod/{:?} gray {}", id.id, **id);
-                }
-                self.native_methods.gray.push(id.id);
-            }
-            Value::Closure(id) => {
-                if self.log_gc {
-                    eprintln!("Closure/{:?} gray {}", id.id, **id);
-                }
-                self.closures.gray.push(id.id);
-            }
-            Value::Class(id) => {
-                if self.log_gc {
-                    eprintln!("Class/{:?} gray {}", id.id, **id);
-                }
-                self.classes.gray.push(id.id);
-            }
-            Value::Instance(id) => {
-                if self.log_gc {
-                    eprintln!("Instance/{:?} gray {}", id.id, **id);
-                }
-                self.instances.gray.push(id.id);
-            }
-            Value::List(id) => {
-                if self.log_gc {
-                    eprintln!("List/{:?} gray {}", id.id, **id);
-                }
-                self.lists.gray.push(id.id);
-            }
-            Value::BoundMethod(id) => {
-                if self.log_gc {
-                    eprintln!("BoundMethod/{:?} gray {}", id.id, **id);
-                }
-                self.bound_methods.gray.push(id.id);
-            }
-        }
-    }
-
-
-
 
     fn blacken_upvalue(&mut self, index: UpvalueKey) {
         let item = &mut self.upvalues.data[index];
