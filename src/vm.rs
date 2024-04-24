@@ -1096,20 +1096,7 @@ impl VM {
             .stack
             .pop()
             .expect("stack underflow in OP_EQUAL (second)");
-        let left = &left_id;
-        let right = &right_id;
-
-        // There is one case where equality-by-reference does not imply *actual* equality: NaN
-        let value = match (left, right) {
-            (Value::Number(Number::Float(left)), Value::Number(Number::Float(right)))
-                if left.is_nan() && right.is_nan() =>
-            {
-                false
-            }
-            (left, right) => left_id == right_id || left == right,
-        };
-
-        self.stack_push(value.into());
+        self.stack_push((left_id == right_id).into());
     }
 
     fn read_byte(&mut self) -> u8 {
