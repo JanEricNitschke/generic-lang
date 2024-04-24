@@ -265,12 +265,6 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         self.current_chunk().code().len()
     }
 
-    pub fn inject_strings(&mut self, names: &HashMap<String, StringId>) {
-        for (key, value) in names {
-            self.heap.strings_by_name.insert(key.clone(), *value);
-        }
-    }
-
     fn current_class(&self) -> Option<&ClassState> {
         self.class_state.last()
     }

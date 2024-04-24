@@ -11,7 +11,7 @@ mod chunk;
 mod compiler;
 mod config;
 mod heap;
-mod native_functions;
+mod natives;
 mod scanner;
 mod types;
 mod value;

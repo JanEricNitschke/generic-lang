@@ -5,7 +5,7 @@ use std::pin::Pin;
 use path_slash::PathBufExt;
 use rustc_hash::FxHashMap as HashMap;
 
-use crate::native_functions::Natives;
+use crate::natives;
 use crate::{
     chunk::{CodeOffset, InstructionDisassembler, OpCode},
     compiler::Compiler,
@@ -146,7 +146,6 @@ pub struct VM {
     stack: Vec<Value>,
     globals: HashMap<StringId, Global>,
     open_upvalues: VecDeque<UpvalueId>,
-    natives: Option<Natives>,
     modules: Vec<Module>,
     path: PathBuf,
 }
@@ -160,7 +159,6 @@ impl VM {
             stack: Vec::with_capacity(crate::config::STACK_MAX),
             globals: HashMap::default(),
             open_upvalues: VecDeque::new(),
-            natives: Some(Natives::new()),
             modules: Vec::new(),
             path,
         }
@@ -172,28 +170,13 @@ impl VM {
 
     fn compile(&mut self, source: &[u8], name: &str) -> Option<Function> {
         let scanner = Scanner::new(source);
-        let mut compiler = Compiler::new(scanner, &mut self.heap, name);
-        self.natives
-            .as_mut()
-            .expect("Natives should be defined.")
-            .register_names(&mut compiler);
+        let compiler = Compiler::new(scanner, &mut self.heap, name);
         compiler.compile()
     }
 
-    fn define_natives(&mut self) {
-        let natives = self.natives.take().expect("Natives should be defined.");
-        natives.define_natives(self);
-        self.natives = Some(natives);
-    }
-
     pub fn interpret(&mut self, source: &[u8]) -> InterpretResult {
-        self.natives
-            .as_mut()
-            .expect("Natives should be defined.")
-            .create_names(&mut self.heap);
-
         let result = if let Some(function) = self.compile(source, "<script>") {
-            self.define_natives();
+            natives::define(self);
             let function_id = self.heap.add_function(function);
 
             let closure = Closure::new(*function_id.as_function(), true);
@@ -1454,17 +1437,21 @@ impl VM {
         true
     }
 
-    pub fn define_native_function(
+    pub fn define_native_function<T: ToString>(
         &mut self,
-        name: StringId,
+        name: &T,
         arity: &'static [u8],
         fun: NativeFunctionImpl,
     ) {
-        let value = self
-            .heap
-            .add_native_function(NativeFunction { name, arity, fun });
+        let name_id = self.heap.string_id(name);
+        self.heap.strings_by_name.insert(name.to_string(), name_id);
+        let value = self.heap.add_native_function(NativeFunction {
+            name: name_id,
+            arity,
+            fun,
+        });
         self.globals.insert(
-            name,
+            name_id,
             Global {
                 value,
                 mutable: true,
@@ -1472,7 +1459,9 @@ impl VM {
         );
     }
 
-    pub fn define_native_class(&mut self, name_id: StringId) {
+    pub fn define_native_class<T: ToString>(&mut self, name: &T) {
+        let name_id = self.heap.string_id(name);
+        self.heap.strings_by_name.insert(name.to_string(), name_id);
         let value = self.heap.add_class(Class::new(name_id, true));
         self.globals.insert(
             name_id,
@@ -1484,26 +1473,32 @@ impl VM {
         self.heap.native_classes.insert(name_id.to_string(), value);
     }
 
-    pub fn define_native_method(
+    pub fn define_native_method<C: ToString, N: ToString>(
         &mut self,
-        class: StringId,
-        name: StringId,
+        class: &C,
+        name: &N,
         arity: &'static [u8],
         fun: NativeMethodImpl,
     ) {
+        let class_id = self.heap.string_id(class);
+        self.heap
+            .strings_by_name
+            .insert(class.to_string(), class_id);
+        let name_id = self.heap.string_id(name);
+        self.heap.strings_by_name.insert(name.to_string(), name_id);
         let value_id = self.heap.add_native_method(NativeMethod {
-            class,
-            name,
+            class: class_id,
+            name: name_id,
             arity,
             fun,
         });
         let target_class = self
             .heap
             .native_classes
-            .get_mut(&*class)
+            .get_mut(&*class_id)
             .unwrap()
             .as_class_mut();
-        target_class.methods.insert(name, value_id);
+        target_class.methods.insert(name_id, value_id);
     }
 
     fn collect_garbage(&mut self, stress_gc: bool, log_gc: bool) {
