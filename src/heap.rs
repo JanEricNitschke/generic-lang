@@ -12,8 +12,9 @@ use std::fmt::{Debug, Display};
 
 use crate::value::{
     BoundMethod, Class, Closure, Function, Instance, List, NativeFunction, NativeMethod, Upvalue,
-    Value,
+    Value, Module
 };
+
 
 pub trait ArenaValue: Debug + Display + PartialEq {}
 impl<T> ArenaValue for T where T: Debug + Display + PartialEq {}
@@ -30,6 +31,7 @@ new_key_type! {
     pub struct InstanceKey;
     pub struct ListKey;
     pub struct BoundMethodKey;
+    pub struct ModuleKey;
 }
 
 #[derive(Clone, PartialOrd, Debug, Derivative)]
@@ -96,6 +98,7 @@ pub type ClassId = ArenaId<ClassKey, Class>;
 pub type InstanceId = ArenaId<InstanceKey, Instance>;
 pub type ListId = ArenaId<ListKey, List>;
 pub type BoundMethodId = ArenaId<BoundMethodKey, BoundMethod>;
+pub type ModuleId = ArenaId<ModuleKey, Module>;
 
 #[derive(Clone, Debug)]
 pub struct Arena<K: Key, V: ArenaValue> {
@@ -452,6 +455,7 @@ impl Heap {
             Value::Instance(id) => self.blacken_instance(id.id),
             Value::List(id) => self.blacken_list(id.id),
             Value::BoundMethod(id) => self.blacken_bound_method(id.id),
+            // Value::Module(id) => self.blacken_module(id.id),
         }
     }
 
@@ -477,6 +481,22 @@ impl Heap {
             eprintln!("Upvalue/{:?} blacken {} end", index, item.item);
         }
     }
+
+    // fn blacken_module(&mut self, index: ModuleKey) {
+    //     let item = &mut self.modules.data[index];
+    //     if item.marked == self.black_value {
+    //         return;
+    //     }
+    //     if self.log_gc {
+    //         eprintln!("Module/{:?} blacken {} start", index, item.item);
+    //     }
+    //     if self.log_gc {
+    //         eprintln!("Module/{index:?} mark {}", item.item);
+    //     }
+    //     item.marked = self.black_value;
+    //     let module = &item.item;
+    //     self.strings.gray.push(module.name)
+    // }
 
     fn blacken_native_function(&mut self, index: NativeFunctionKey) {
         let item = &mut self.native_functions.data[index];

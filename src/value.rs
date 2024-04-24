@@ -2,13 +2,15 @@ use crate::{
     chunk::Chunk,
     heap::{
         BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ListId, NativeFunctionId,
-        NativeMethodId, StringId, UpvalueId,
+        NativeMethodId, StringId, UpvalueId, ModuleId
     },
+    vm::Global,
 };
 use derivative::Derivative;
 use derive_more::{From, Neg};
 use rustc_hash::FxHashMap as HashMap;
 
+use std::path::PathBuf;
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub enum Value {
     Bool(bool),
@@ -18,6 +20,8 @@ pub enum Value {
     String(StringId),
 
     Function(FunctionId),
+    // Module(ModuleId),
+
     Closure(ClosureId),
     NativeFunction(NativeFunctionId),
     NativeMethod(NativeMethodId),
@@ -48,6 +52,7 @@ impl std::fmt::Display for Value {
             Self::BoundMethod(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::List(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::Upvalue(ref_id) => f.pad(&format!("{}", **ref_id)),
+            // Self::Module(ref_id) => f.pad(&format!("{}", **ref_id)),
         }
     }
 }
@@ -507,6 +512,31 @@ impl std::fmt::Display for List {
     }
 }
 
+
+// Do modules need to be garbage collected?
+pub struct Module {
+    pub name: StringId,
+    pub path: PathBuf,
+    pub globals: HashMap<StringId, Global>,
+}
+
+impl Module {
+    pub fn new(name: StringId, path: PathBuf) -> Self {
+        Self {
+            name,
+            path,
+            globals: HashMap::default(),
+        }
+    }
+
+}
+
+impl std::fmt::Display for Module {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad(&format!("<module {}>", *self.name))
+    }
+}
+
 impl From<bool> for Value {
     fn from(b: bool) -> Self {
         Self::Bool(b)
@@ -591,6 +621,12 @@ impl From<ListId> for Value {
     }
 }
 
+// impl From<ModuleId> for Value {
+//     fn from(m: ModuleId) -> Self {
+//         Self::Module(m)
+//     }
+// }
+
 impl Value {
     pub const fn is_falsey(&self) -> bool {
         matches!(self, Self::Bool(false) | Self::Nil)
@@ -662,4 +698,11 @@ impl Value {
             ),
         }
     }
+
+    // pub fn as_module(&self) -> &ModuleId {
+    //     match self {
+    //         Self::Module(m) => m,
+    //         _ => unreachable!("Expected Module, found `{}`", self),
+    //     }
+    // }
 }

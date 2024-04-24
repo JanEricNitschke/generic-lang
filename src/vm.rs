@@ -13,8 +13,8 @@ use crate::{
     heap::{ClosureId, FunctionId, Heap, StringId, UpvalueId},
     scanner::Scanner,
     value::{
-        Class, Closure, Function, Instance, List, NativeFunction, NativeFunctionImpl, NativeMethod,
-        NativeMethodImpl, Number, Upvalue, Value,
+        Class, Closure, Function, Instance, List, Module, NativeFunction, NativeFunctionImpl,
+        NativeMethod, NativeMethodImpl, Number, Upvalue, Value,
     },
 };
 
@@ -46,18 +46,11 @@ macro_rules! binary_op {
 
 type BinaryOp<T> = fn(Number, Number) -> T;
 
-// To modules need to be garbage collected?
-struct Module {
-    name: StringId,
-    path: PathBuf,
-}
-
-struct Global {
+pub struct Global {
     value: Value,
     mutable: bool,
 }
 
-// Can probably just be a closureid?
 pub struct CallFrame {
     closure: ClosureId,
     ip: usize,
@@ -579,10 +572,7 @@ impl VM {
                     mutable: true,
                 },
             );
-            self.modules.push(Module {
-                name: value_id,
-                path: file_path,
-            });
+            self.modules.push(Module::new(value_id, file_path));
         }
     }
 
@@ -624,9 +614,7 @@ impl VM {
                     let function_id = function.as_function();
                     let closure = Closure::new(*function_id, true);
 
-                    if closure.is_module {
-                        self.add_closure_to_modules(&closure, file_path);
-                    }
+                    self.add_closure_to_modules(&closure, file_path);
 
                     let value_id = self.heap.add_closure(closure);
                     self.stack_push(value_id);
