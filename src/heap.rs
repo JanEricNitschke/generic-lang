@@ -467,7 +467,7 @@ impl Heap {
         match &item.item {
             Upvalue::Open(_) => {}
             Upvalue::Closed(value) => {
-                gray_value!(self, &*value.borrow());
+                gray_value!(self, value);
             }
         }
         if self.log_gc {
