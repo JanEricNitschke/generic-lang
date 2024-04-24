@@ -38,6 +38,10 @@ pub struct ArenaId<K: Key, T: ArenaValue> {
     id: K,
     #[derivative(Hash = "ignore")]
     pub arena: NonNull<Arena<K, T>>, // Yes this is terrible, yes I'm OK with it for this projec
+                                     // These could be but then i would have to put `clones` everywhere.
+                                     // use std::cell::RefCell;
+                                     // use std::rc::Rc;
+                                     // pub arena: Rc<RefCell<Arena<K, T>>>,
 }
 
 impl<K: Key, T: ArenaValue> PartialEq for ArenaId<K, T> {
