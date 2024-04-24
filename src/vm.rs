@@ -240,7 +240,7 @@ impl VM {
                     "          [ { } ]",
                     self.stack
                         .iter()
-                        .map(|v| format!("{}", v))
+                        .map(|v| format!("{v}"))
                         .collect::<Vec<_>>()
                         .join(" ][ ")
                 );
@@ -687,7 +687,7 @@ impl VM {
                 if int_only { "integers" } else { "numbers" },
                 self.stack[slice_start..]
                     .iter()
-                    .map(|v| format!("{}", v))
+                    .map(|v| format!("{v}"))
                     .collect::<Vec<_>>()
                     .join(", ")
             );
@@ -726,7 +726,7 @@ impl VM {
                 "Operands must be two numbers or two strings. Got: [{}]",
                 self.stack[slice_start..]
                     .iter()
-                    .map(|v| format!("{}", v))
+                    .map(|v| format!("{v}"))
                     .collect::<Vec<_>>()
                     .join(", ")
             );
@@ -760,7 +760,7 @@ impl VM {
                 "Operands must be numbers. Got: [{}]",
                 self.stack[slice_start..]
                     .iter()
-                    .map(|v| format!("{}", v))
+                    .map(|v| format!("{v}"))
                     .collect::<Vec<_>>()
                     .join(", ")
             );
@@ -793,7 +793,7 @@ impl VM {
                 "Operands must be numbers. Got: [{}]",
                 self.stack[slice_start..]
                     .iter()
-                    .map(|v| format!("{}", v))
+                    .map(|v| format!("{v}"))
                     .collect::<Vec<_>>()
                     .join(", ")
             );
@@ -1459,8 +1459,7 @@ impl VM {
 
         debug_assert!(
             matches!(closure_id, Value::Closure(_)),
-            "`execute_call` must be called with a `Closure`, got: {}",
-            closure_id
+            "`execute_call` must be called with a `Closure`, got: {closure_id}"
         );
 
         self.callstack

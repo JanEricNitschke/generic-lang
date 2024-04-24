@@ -669,7 +669,7 @@ impl Heap {
         let function = &item.item;
         self.strings.gray.push(function.name.id);
         for constant in function.chunk.constants() {
-            gray_value!(self, constant)
+            gray_value!(self, constant);
         }
         if self.log_gc {
             eprintln!("Function/{:?} blacken {} end", index, item.item);

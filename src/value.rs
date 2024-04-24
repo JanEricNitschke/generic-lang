@@ -287,7 +287,7 @@ impl Closure {
 }
 
 impl Value {
-    pub fn bound_method(receiver: Value, method: Value, heap: &mut Heap) -> Self {
+    pub fn bound_method(receiver: Self, method: Self, heap: &mut Heap) -> Self {
         heap.add_bound_method(BoundMethod { receiver, method })
     }
 }
