@@ -125,6 +125,9 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    // Because the closure would need unique access to self while it
+    // is mutably borrowed.
+    #[allow(clippy::option_if_let_else)]
     pub(super) fn identifier_constant<S>(&mut self, name: &S) -> ConstantLongIndex
     where
         S: ToString,
@@ -133,8 +136,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         if let Some(index) = self.globals_by_name().get(&string_id) {
             *index
         } else {
-            let value_id = self.heap.add_value(string_id.into());
-            let index = self.current_chunk().make_constant(value_id);
+            let index = self.current_chunk().make_constant(string_id.into());
             self.globals_by_name_mut().insert(string_id, index);
             index
         }
@@ -225,7 +227,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             u8::try_from(upvalue_count - 1).unwrap()
         } else {
             // This is where `(Get|Set)UpvalueLong` would go
-            self.error("Too variables in function surrounding closure.");
+            self.error("Too many variables in function surrounding closure.");
             0
         }
     }

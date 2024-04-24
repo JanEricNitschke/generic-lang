@@ -5,14 +5,13 @@ var g;
   var local = "local";
   fun f_() {
     print(local);
-    local = "after f";
+    local = 3;
     print(local);
   }
   f = f_;
-
   fun g_() {
     print(local);
-    local = "after g";
+    local = 15.0;
     print(local);
   }
   g = g_;
@@ -20,8 +19,8 @@ var g;
 
 f();
 # expect: local
-# expect: after f
+# expect: 3
 
 g();
-# expect: after f
-# expect: after g
+# expect: 3
+# expect: 15.0

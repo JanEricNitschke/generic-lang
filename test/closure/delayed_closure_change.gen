@@ -1,0 +1,25 @@
+fun outer() {
+  var x = "value";
+  fun middle() {
+    fun inner() {
+      print(x);
+      x = "new value";
+    }
+
+    print("create inner closure");
+    print(x);
+    return inner;
+  }
+
+  print("return from outer");
+  return middle;
+}
+
+var mid = outer(); # expect: return from outer
+var inner2 = mid();
+# expect: create inner closure
+# expect: value
+inner2(); # expect: value
+mid();
+# expect: create inner closure
+# expect: new value

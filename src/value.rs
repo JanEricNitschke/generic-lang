@@ -1,12 +1,15 @@
 use crate::{
     chunk::Chunk,
-    heap::{FunctionId, Heap, StringId, ValueId},
+    heap::{
+        BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ListId, NativeFunctionId,
+        NativeMethodId, StringId, UpvalueId,
+    },
 };
 use derivative::Derivative;
 use derive_more::{From, Neg};
 use rustc_hash::FxHashMap as HashMap;
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub enum Value {
     Bool(bool),
     Nil,
@@ -15,17 +18,38 @@ pub enum Value {
     String(StringId),
 
     Function(FunctionId),
-    Closure(Closure),
-    NativeFunction(NativeFunction),
-    NativeMethod(NativeMethod),
+    Closure(ClosureId),
+    NativeFunction(NativeFunctionId),
+    NativeMethod(NativeMethodId),
 
-    Upvalue(Upvalue),
+    Upvalue(UpvalueId),
 
-    Class(Class),
-    Instance(Instance),
-    BoundMethod(BoundMethod),
+    Class(ClassId),
+    Instance(InstanceId),
+    BoundMethod(BoundMethodId),
 
-    List(List),
+    List(ListId),
+}
+
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Bool(bool) => f.pad(&format!("{bool}")),
+            Self::Number(num) => f.pad(&format!("{num}")),
+            Self::Nil => f.pad("nil"),
+            Self::String(s) => f.pad(s),
+            // Can i do all of these just like string?
+            Self::Function(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::Closure(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::NativeFunction(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::NativeMethod(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::Class(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::Instance(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::BoundMethod(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::List(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::Upvalue(ref_id) => f.pad(&format!("{}", **ref_id)),
+        }
+    }
 }
 
 #[derive(Debug, Copy, PartialEq, PartialOrd, Clone, From, Neg)]
@@ -208,10 +232,16 @@ impl ::core::ops::Rem for Number {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub enum Upvalue {
     Open(usize),
-    Closed(ValueId),
+    Closed(Value),
+}
+
+impl std::fmt::Display for Upvalue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad("upvalue")
+    }
 }
 
 impl Upvalue {
@@ -226,9 +256,15 @@ impl Upvalue {
 #[derive(Debug, PartialOrd, Clone)]
 pub struct Closure {
     pub function: FunctionId,
-    pub upvalues: Vec<ValueId>,
+    pub upvalues: Vec<UpvalueId>,
     pub upvalue_count: usize,
     pub is_module: bool,
+}
+
+impl std::fmt::Display for Closure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad(&format!("{}", *self.function))
+    }
 }
 
 impl PartialEq for Closure {
@@ -251,190 +287,55 @@ impl Closure {
 }
 
 impl Value {
-    pub const fn bound_method(receiver: ValueId, method: ValueId) -> Self {
-        Self::BoundMethod(BoundMethod { receiver, method })
+    pub fn bound_method(receiver: Self, method: Self, heap: &mut Heap) -> Self {
+        heap.add_bound_method(BoundMethod { receiver, method })
     }
 }
 
-impl From<bool> for Value {
-    fn from(b: bool) -> Self {
-        Self::Bool(b)
-    }
+#[derive(Debug, PartialOrd, Clone)]
+pub struct BoundMethod {
+    // Has to be a general Value because it can be an Instance or List
+    pub receiver: Value,
+    // Has to be a general Value because it can be a NativeMethod or Closure
+    pub method: Value,
 }
 
-impl From<f64> for Value {
-    fn from(f: f64) -> Self {
-        Self::Number(f.into())
-    }
-}
-
-impl From<i64> for Value {
-    fn from(f: i64) -> Self {
-        Self::Number(f.into())
-    }
-}
-
-impl From<StringId> for Value {
-    fn from(s: StringId) -> Self {
-        Self::String(s)
-    }
-}
-
-impl From<FunctionId> for Value {
-    fn from(f: FunctionId) -> Self {
-        Self::Function(f)
-    }
-}
-
-impl From<Closure> for Value {
-    fn from(c: Closure) -> Self {
-        Self::Closure(c)
-    }
-}
-
-impl From<Class> for Value {
-    fn from(c: Class) -> Self {
-        Self::Class(c)
-    }
-}
-
-impl From<Instance> for Value {
-    fn from(i: Instance) -> Self {
-        Self::Instance(i)
-    }
-}
-
-impl From<Number> for Value {
-    fn from(n: Number) -> Self {
-        Self::Number(n)
-    }
-}
-
-impl From<List> for Value {
-    fn from(l: List) -> Self {
-        Self::List(l)
-    }
-}
-
-impl std::fmt::Display for Value {
+impl std::fmt::Display for BoundMethod {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Bool(bool) => f.pad(&format!("{bool}")),
-            Self::Number(num) => f.pad(&format!("{num}")),
-            Self::Nil => f.pad("nil"),
-            Self::String(s) => f.pad(s),
-            Self::Function(function_id) => f.pad(&format!("<fn {}>", *function_id.name)),
-            Self::Closure(closure) => f.pad(&format!("<fn {}>", *closure.function.name)),
-            Self::NativeFunction(fun) => f.pad(&format!("<native fn {}>", *fun.name)),
-            Self::NativeMethod(method) => f.pad(&format!(
-                "<native method {} of class {}>",
-                *method.name, *method.class
-            )),
-            Self::Upvalue(_) => f.pad("upvalue"),
-            Self::Class(c) => f.pad(&format!("<class {}>", *c.name)),
-            Self::Instance(instance) => f.pad(&format!(
-                "<{} instance>",
-                *(*instance.class).as_class().name
-            )),
-            Self::BoundMethod(method) => f.pad(&format!(
-                "<bound method {}.{} of {}>",
-                *method.receiver_class_name(),
-                *method.method_name(),
-                *method.receiver,
-            )),
-            Self::List(list) => f.pad(&{
-                let items = &list.items;
-                let mut comma_separated = String::new();
-                comma_separated.push('[');
-                if !items.is_empty() {
-                    for num in &items[0..items.len() - 1] {
-                        comma_separated.push_str(&num.to_string());
-                        comma_separated.push_str(", ");
-                    }
-
-                    comma_separated.push_str(&items[items.len() - 1].to_string());
-                }
-                comma_separated.push(']');
-                comma_separated
-            }),
-        }
+        f.pad(&format!(
+            "<bound method {}.{} of {}>",
+            *self.receiver_class_name(),
+            *self.method_name(),
+            self.receiver
+        ))
     }
 }
 
-impl Value {
-    pub const fn is_falsey(&self) -> bool {
-        matches!(self, Self::Bool(false) | Self::Nil)
-    }
-
-    pub fn as_closure(&self) -> &Closure {
-        match self {
-            Self::Closure(c) => c,
-            _ => unreachable!("Expected Closure, found `{}`", self),
-        }
-    }
-
-    pub fn as_native_method(&self) -> &NativeMethod {
-        match self {
-            Self::NativeMethod(n) => n,
-            _ => unreachable!("Expected Native, found `{}`", self),
-        }
-    }
-
-    pub fn as_function(&self) -> &FunctionId {
-        match self {
-            Self::Function(f) => f,
-            _ => unreachable!("Expected Function, found `{}`", self),
-        }
-    }
-
-    pub fn as_class(&self) -> &Class {
-        match self {
-            Self::Class(c) => c,
-            _ => unreachable!("Expected Class, found `{}`", self),
-        }
-    }
-
-    pub fn as_instance_mut(&mut self) -> &mut Instance {
-        match self {
-            Self::Instance(i) => i,
-            _ => unreachable!("Expected Instance, found `{}`", self),
-        }
-    }
-
-    pub fn as_class_mut(&mut self) -> &mut Class {
-        match self {
-            Self::Class(c) => c,
-            _ => unreachable!("Expected Class, found `{}`", self),
-        }
-    }
-
-    pub fn upvalue_location(&self) -> &Upvalue {
-        match self {
-            Self::Upvalue(v) => v,
-            _ => unreachable!("Expected upvalue, found `{}`", self),
-        }
-    }
-
-    pub fn upvalue_location_mut(&mut self) -> &mut Upvalue {
-        match self {
-            Self::Upvalue(v) => v,
-            _ => unreachable!("Expected upvalue, found `{}`", self),
-        }
-    }
-
-    pub fn class_name(&self) -> StringId {
-        match &self {
-            Self::Instance(instance) => instance.class.as_class().name,
-            Self::List(list) => list.class.as_class().name,
+impl BoundMethod {
+    fn method_name(&self) -> StringId {
+        match self.method {
+            Value::NativeMethod(native) => native.name,
+            Value::Closure(closure) => closure.function.name,
             x => unreachable!(
-                "Only instances and lists currently have classes. Got `{}`",
+                "Bound method only binds over closures or native methods, got `{}` instead.",
+                x
+            ),
+        }
+    }
+
+    fn receiver_class_name(&self) -> StringId {
+        match self.receiver {
+            Value::Instance(instance) => instance.class.name,
+            Value::List(list) => list.class.name,
+            x => unreachable!(
+                "Bound methods can only have instances or lists as receivers, got `{}` instead.",
                 x
             ),
         }
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub struct Function {
     pub arity: usize,
     pub chunk: Chunk,
@@ -475,6 +376,12 @@ pub struct NativeFunction {
     pub fun: NativeFunctionImpl,
 }
 
+impl std::fmt::Display for NativeFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad(&format!("<native fn {}>", *self.name))
+    }
+}
+
 #[derive(Derivative)]
 #[derivative(Debug, PartialEq, PartialOrd, Clone)]
 pub struct NativeMethod {
@@ -491,19 +398,29 @@ pub struct NativeMethod {
     pub fun: NativeMethodImpl,
 }
 
-pub type NativeFunctionImpl = fn(&mut Heap, &[&ValueId]) -> Result<ValueId, String>;
-pub type NativeMethodImpl = fn(&mut Heap, &ValueId, &[&ValueId]) -> Result<ValueId, String>;
+impl std::fmt::Display for NativeMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad(&format!(
+            "<native method {} of class {}>",
+            *self.name, *self.class
+        ))
+    }
+}
+
+pub type NativeFunctionImpl = fn(&mut Heap, &mut [&mut Value]) -> Result<Value, String>;
+pub type NativeMethodImpl = fn(&mut Heap, &mut Value, &mut [&mut Value]) -> Result<Value, String>;
 
 const fn always_equals<T>(_: &T, _: &T) -> bool {
     true
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Derivative)]
+#[derive(Debug, PartialEq, Clone, Derivative)]
 #[derivative(PartialOrd)]
 pub struct Class {
     pub name: StringId,
     #[derivative(PartialOrd = "ignore")]
-    pub methods: HashMap<StringId, ValueId>,
+    // Have to be general Value because it can be a nativemethod(how?) or a closure
+    pub methods: HashMap<StringId, Value>,
     pub is_native: bool,
 }
 
@@ -518,52 +435,34 @@ impl Class {
     }
 }
 
+impl std::fmt::Display for Class {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad(&format!("<class {}>", *self.name))
+    }
+}
+
 #[derive(Derivative)]
 #[derivative(Debug, PartialEq, PartialOrd, Clone)]
 pub struct Instance {
-    pub class: ValueId,
+    pub class: ClassId,
     #[derivative(PartialOrd = "ignore")]
-    pub fields: HashMap<String, ValueId>,
+    pub fields: HashMap<String, Value>,
 }
 
 impl Instance {
     #[must_use]
-    pub fn new(class: ValueId) -> Self {
+    pub fn new(class: Value) -> Self {
+        let id = *class.as_class();
         Self {
-            class,
+            class: id,
             fields: HashMap::default(),
         }
     }
 }
 
-#[derive(Debug, PartialOrd, Clone)]
-pub struct BoundMethod {
-    pub receiver: ValueId,
-    pub method: ValueId,
-}
-
-impl BoundMethod {
-    fn method_name(&self) -> StringId {
-        let method = &*self.method;
-        match method {
-            Value::NativeMethod(native) => native.name,
-            Value::Closure(closure) => closure.function.name,
-            x => unreachable!(
-                "Bound method only binds over closures or native methods, got `{}` instead.",
-                x
-            ),
-        }
-    }
-
-    fn receiver_class_name(&self) -> StringId {
-        match &*self.receiver {
-            Value::Instance(instance) => instance.class.as_class().name,
-            Value::List(list) => list.class.as_class().name,
-            x => unreachable!(
-                "Bound methods can only have instances or lists as receivers, got `{}` instead.",
-                x
-            ),
-        }
+impl std::fmt::Display for Instance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad(&format!("<{} instance>", *(self.class.name)))
     }
 }
 
@@ -574,18 +473,193 @@ impl PartialEq for BoundMethod {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub struct List {
-    pub items: Vec<ValueId>,
-    pub class: ValueId,
+    pub items: Vec<Value>,
+    pub class: ClassId,
 }
 
 impl List {
     #[must_use]
-    pub const fn new(array_class: ValueId) -> Self {
+    pub fn new(array_class: Value) -> Self {
         Self {
             items: Vec::new(),
-            class: array_class,
+            class: *array_class.as_class(),
+        }
+    }
+}
+
+impl std::fmt::Display for List {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let items = &self.items;
+        let mut comma_separated = String::new();
+        comma_separated.push('[');
+        if !items.is_empty() {
+            for num in &items[0..items.len() - 1] {
+                comma_separated.push_str(&num.to_string());
+                comma_separated.push_str(", ");
+            }
+
+            comma_separated.push_str(&items[items.len() - 1].to_string());
+        }
+        comma_separated.push(']');
+        f.pad(&comma_separated)
+    }
+}
+
+impl From<bool> for Value {
+    fn from(b: bool) -> Self {
+        Self::Bool(b)
+    }
+}
+
+impl From<f64> for Value {
+    fn from(f: f64) -> Self {
+        Self::Number(f.into())
+    }
+}
+
+impl From<i64> for Value {
+    fn from(f: i64) -> Self {
+        Self::Number(f.into())
+    }
+}
+
+impl From<Number> for Value {
+    fn from(n: Number) -> Self {
+        Self::Number(n)
+    }
+}
+
+impl From<StringId> for Value {
+    fn from(s: StringId) -> Self {
+        Self::String(s)
+    }
+}
+
+impl From<FunctionId> for Value {
+    fn from(f: FunctionId) -> Self {
+        Self::Function(f)
+    }
+}
+
+impl From<ClosureId> for Value {
+    fn from(c: ClosureId) -> Self {
+        Self::Closure(c)
+    }
+}
+
+impl From<NativeFunctionId> for Value {
+    fn from(n: NativeFunctionId) -> Self {
+        Self::NativeFunction(n)
+    }
+}
+
+impl From<NativeMethodId> for Value {
+    fn from(n: NativeMethodId) -> Self {
+        Self::NativeMethod(n)
+    }
+}
+
+impl From<UpvalueId> for Value {
+    fn from(u: UpvalueId) -> Self {
+        Self::Upvalue(u)
+    }
+}
+
+impl From<ClassId> for Value {
+    fn from(c: ClassId) -> Self {
+        Self::Class(c)
+    }
+}
+
+impl From<InstanceId> for Value {
+    fn from(i: InstanceId) -> Self {
+        Self::Instance(i)
+    }
+}
+
+impl From<BoundMethodId> for Value {
+    fn from(b: BoundMethodId) -> Self {
+        Self::BoundMethod(b)
+    }
+}
+
+impl From<ListId> for Value {
+    fn from(l: ListId) -> Self {
+        Self::List(l)
+    }
+}
+
+impl Value {
+    pub const fn is_falsey(&self) -> bool {
+        matches!(self, Self::Bool(false) | Self::Nil)
+    }
+
+    pub fn as_closure(&self) -> &ClosureId {
+        match self {
+            Self::Closure(c) => c,
+            _ => unreachable!("Expected Closure, found `{}`", self),
+        }
+    }
+
+    pub fn as_string(&self) -> &StringId {
+        match self {
+            Self::String(s) => s,
+            _ => unreachable!("Expected String, found `{}`", self),
+        }
+    }
+
+    pub fn as_native_method(&self) -> &NativeMethodId {
+        match self {
+            Self::NativeMethod(n) => n,
+            _ => unreachable!("Expected Native, found `{}`", self),
+        }
+    }
+
+    pub fn as_function(&self) -> &FunctionId {
+        match self {
+            Self::Function(f) => f,
+            _ => unreachable!("Expected Function, found `{}`", self),
+        }
+    }
+
+    pub fn as_class(&self) -> &ClassId {
+        match self {
+            Self::Class(c) => c,
+            _ => unreachable!("Expected Class, found `{}`", self),
+        }
+    }
+
+    pub fn as_instance_mut(&mut self) -> &mut InstanceId {
+        match self {
+            Self::Instance(i) => i,
+            _ => unreachable!("Expected Instance, found `{}`", self),
+        }
+    }
+
+    pub fn as_class_mut(&mut self) -> &mut ClassId {
+        match self {
+            Self::Class(c) => c,
+            _ => unreachable!("Expected Class, found `{}`", self),
+        }
+    }
+
+    pub fn upvalue_location(&self) -> &UpvalueId {
+        match self {
+            Self::Upvalue(v) => v,
+            _ => unreachable!("Expected upvalue, found `{}`", self),
+        }
+    }
+
+    pub fn class_name(&self) -> StringId {
+        match &self {
+            Self::Instance(instance) => instance.class.name,
+            Self::List(list) => list.class.name,
+            x => unreachable!(
+                "Only instances and lists currently have classes. Got `{}`",
+                x
+            ),
         }
     }
 }

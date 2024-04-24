@@ -10,23 +10,23 @@ use rustc_hash::FxHashMap as HashMap;
 
 use crate::{
     compiler::Compiler,
-    heap::{Heap, StringId, ValueId},
+    heap::{Heap, StringId},
     value::{ias_f64, ias_u64, List, Number, Value},
     vm::VM,
 };
 
-fn clock_native(heap: &mut Heap, _args: &[&ValueId]) -> Result<ValueId, String> {
-    Ok(heap.add_value(Value::Number(
+fn clock_native(_heap: &mut Heap, _args: &mut [&mut Value]) -> Result<Value, String> {
+    Ok(Value::Number(
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs_f64()
             .into(),
-    )))
+    ))
 }
 
-fn sleep_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
-    match &heap.values[args[0]] {
+fn sleep_native(_heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match &args[0] {
         Value::Number(Number::Integer(i)) if i >= &0 => {
             thread::sleep(Duration::from_secs(ias_u64(*i)));
         }
@@ -37,35 +37,35 @@ fn sleep_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
             ));
         }
     };
-    Ok(heap.builtin_constants().nil)
+    Ok(Value::Nil)
 }
 
-fn assert_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
-    let value = &heap.values[args[0]];
+fn assert_native(_heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    let value = &args[0];
     if value.is_falsey() {
         Err(format!("Assertion on `{value}` failed!"))
     } else {
-        Ok(heap.builtin_constants().nil)
+        Ok(Value::Nil)
     }
 }
 
-fn sqrt_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
-    match &heap.values[args[0]] {
-        Value::Number(Number::Float(n)) => Ok(heap.add_value(n.sqrt().into())),
-        Value::Number(Number::Integer(n)) => Ok(heap.add_value((ias_f64(*n)).sqrt().into())),
+fn sqrt_native(_heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match &args[0] {
+        Value::Number(Number::Float(n)) => Ok(n.sqrt().into()),
+        Value::Number(Number::Integer(n)) => Ok((ias_f64(*n)).sqrt().into()),
         x => Err(format!("'sqrt' expected numeric argument, got: {}", *x)),
     }
 }
 
-fn input_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
-    match &heap.values[args[0]] {
+fn input_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match &args[0] {
         Value::String(prompt) => {
             println!("{}", &heap.strings[prompt]);
             let mut choice = String::new();
             match io::stdin().read_line(&mut choice) {
                 Ok(_) => {
                     let string = Value::String(heap.string_id(&choice.trim()));
-                    Ok(heap.add_value(string))
+                    Ok(string)
                 }
                 Err(e) => Err(format!("'input' could not read line: {e}")),
             }
@@ -75,20 +75,20 @@ fn input_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
 }
 
 #[allow(clippy::option_if_let_else)]
-fn to_float_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
-    match &heap.values[args[0]] {
+fn to_float_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match &args[0] {
         Value::String(string_id) => {
             let string = &heap.strings[string_id];
             let converted: Result<f64, _> = string.parse();
             match converted {
-                Ok(result) => Ok(heap.add_value(Value::Number(result.into()))),
+                Ok(result) => Ok(Value::Number(result.into())),
                 Err(_) => Err(format!(
                     "'float' could not convert string '{string}' to a float."
                 )),
             }
         }
-        Value::Number(n) => Ok(heap.add_value(Value::Number(f64::from(*n).into()))),
-        Value::Bool(value) => Ok(heap.add_value(Value::Number(f64::from(*value).into()))),
+        Value::Number(n) => Ok(Value::Number(f64::from(*n).into())),
+        Value::Bool(value) => Ok(Value::Number(f64::from(*value).into())),
         x => Err(format!(
             "'float' expected string, number or bool argument, got: {x}"
         )),
@@ -96,20 +96,20 @@ fn to_float_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String
 }
 
 #[allow(clippy::option_if_let_else)]
-fn to_int_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
-    match &heap.values[args[0]] {
+fn to_int_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match &args[0] {
         Value::String(string_id) => {
             let string = &heap.strings[string_id];
             let converted: Result<i64, _> = string.parse();
             match converted {
-                Ok(result) => Ok(heap.add_value(Value::Number(result.into()))),
+                Ok(result) => Ok(Value::Number(result.into())),
                 Err(_) => Err(format!(
                     "'int' could not convert string '{string}' to an integer."
                 )),
             }
         }
-        Value::Number(n) => Ok(heap.add_value(Value::Number(i64::from(*n).into()))),
-        Value::Bool(value) => Ok(heap.add_value(Value::Number(i64::from(*value).into()))),
+        Value::Number(n) => Ok(Value::Number(i64::from(*n).into())),
+        Value::Bool(value) => Ok(Value::Number(i64::from(*value).into())),
         x => Err(format!(
             "'int' expected string, number or bool argument, got: {x}"
         )),
@@ -117,39 +117,36 @@ fn to_int_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> 
 }
 
 #[allow(clippy::option_if_let_else)]
-fn is_int_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
-    match &heap.values[args[0]] {
+fn is_int_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match &args[0] {
         Value::String(string_id) => {
             let string = &heap.strings[string_id];
             let converted: Result<i64, _> = string.parse();
             match converted {
-                Ok(_) => Ok(heap.builtin_constants().true_),
-                Err(_) => Ok(heap.builtin_constants().false_),
+                Ok(_) => Ok(Value::Bool(true)),
+                Err(_) => Ok(Value::Bool(false)),
             }
         }
-        Value::Number(n) => Ok(heap.add_value(Value::Number(i64::from(*n).into()))),
-        Value::Bool(value) => Ok(heap.add_value(Value::Number(i64::from(*value).into()))),
-        x => Err(format!(
-            "'int' expected string, number or bool argument, got: {x}"
-        )),
+        Value::Number(_) | Value::Bool(_) => Ok(Value::Bool(true)),
+        _ => Ok(Value::Bool(false)),
     }
 }
 
-fn to_string_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
-    let value = &heap.values[args[0]];
+fn to_string_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    let value = &args[0];
     let string = Value::String(heap.string_id(&value.to_string()));
-    Ok(heap.add_value(string))
+    Ok(string)
 }
 
-fn type_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
-    let string = match &heap.values[args[0]] {
+fn type_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    let string = match &args[0] {
         Value::Bool(_) => Value::String(heap.string_id(&"<type bool>")),
         Value::BoundMethod(_) => Value::String(heap.string_id(&"<type bound method>")),
         Value::Class(_) => Value::String(heap.string_id(&"<type class>")),
         Value::Closure(_) => Value::String(heap.string_id(&"<type closure>")),
         Value::Function(_) => Value::String(heap.string_id(&"<type function>")),
         Value::Instance(instance) => Value::String(
-            heap.string_id(&("<type ".to_string() + instance.class.as_class().name.as_str() + ">")),
+            heap.string_id(&("<type ".to_string() + instance.class.name.as_str() + ">")),
         ),
         Value::NativeFunction(_) => Value::String(heap.string_id(&"<type native function>")),
         Value::NativeMethod(_) => Value::String(heap.string_id(&"<type native method>")),
@@ -162,12 +159,12 @@ fn type_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
         Value::Upvalue(_) => Value::String(heap.string_id(&"<type upvalue>")),
         Value::List(_) => Value::String(heap.string_id(&"<type list>")),
     };
-    Ok(heap.add_value(string))
+    Ok(string)
 }
 
-fn print_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
+fn print_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
     let end = if args.len() == 2 {
-        match &heap.values[args[1]] {
+        match &args[1] {
             Value::String(string_id) => &heap.strings[string_id],
             x => {
                 return Err(format!(
@@ -178,17 +175,16 @@ fn print_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
     } else {
         "\n"
     };
-    let value = &heap.values[args[0]];
+    let value = &args[0];
     print!("{value}{end}");
-    Ok(heap.builtin_constants().nil)
+    Ok(Value::Nil)
 }
 
-fn rng_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
-    match (&heap.values[args[0]], &heap.values[args[1]]) {
-        (Value::Number(Number::Integer(min)), Value::Number(Number::Integer(max))) => Ok(heap
-            .add_value(Value::Number(
-                rand::thread_rng().gen_range(*min..*max).into(),
-            ))),
+fn rng_native(_heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match (&args[0], &args[1]) {
+        (Value::Number(Number::Integer(min)), Value::Number(Number::Integer(max))) => Ok(
+            Value::Number(rand::thread_rng().gen_range(*min..*max).into()),
+        ),
         (other_1, other_2) => Err(format!(
             "'rng' expected two integers as arguments, got: `{other_1}` and `{other_2}` instead."
         )),
@@ -197,22 +193,22 @@ fn rng_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
 
 fn init_list_native(
     heap: &mut Heap,
-    _receiver: &ValueId,
-    _args: &[&ValueId],
-) -> Result<ValueId, String> {
+    _receiver: &mut Value,
+    _args: &mut [&mut Value],
+) -> Result<Value, String> {
     let list = List::new(*heap.native_classes.get("List").unwrap());
-    Ok(heap.add_value(list.into()))
+    Ok(heap.add_list(list))
 }
 
 fn append_native(
-    heap: &mut Heap,
-    receiver: &ValueId,
-    args: &[&ValueId],
-) -> Result<ValueId, String> {
-    match &mut heap.values[receiver] {
+    _heap: &mut Heap,
+    receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
+    match receiver {
         Value::List(list) => {
             list.items.push(*args[0]);
-            Ok(heap.builtin_constants().nil)
+            Ok(Value::Nil)
         }
         x => Err(format!(
             "'append' expects its first argument to be a list, got `{x}` instead."
@@ -220,11 +216,15 @@ fn append_native(
     }
 }
 
-fn pop_native(heap: &mut Heap, receiver: &ValueId, args: &[&ValueId]) -> Result<ValueId, String> {
+fn pop_native(
+    _heap: &mut Heap,
+    receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
     let index = if args.is_empty() {
         None
     } else {
-        let index = match &heap.values[args[0]] {
+        let index = match &args[0] {
             Value::Number(Number::Integer(n)) => match usize::try_from(*n) {
                 Ok(index) => index,
                 Err(_) => {
@@ -240,7 +240,7 @@ fn pop_native(heap: &mut Heap, receiver: &ValueId, args: &[&ValueId]) -> Result<
         Some(index)
     };
 
-    let my_list = match &mut heap.values[receiver] {
+    let my_list = match receiver {
         Value::List(list) => list,
         x => {
             return Err(format!(
@@ -268,11 +268,11 @@ fn pop_native(heap: &mut Heap, receiver: &ValueId, args: &[&ValueId]) -> Result<
 }
 
 fn insert_native(
-    heap: &mut Heap,
-    receiver: &ValueId,
-    args: &[&ValueId],
-) -> Result<ValueId, String> {
-    let index = match &heap.values[args[0]] {
+    _heap: &mut Heap,
+    receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let index = match &args[0] {
         Value::Number(Number::Integer(n)) => match usize::try_from(*n) {
             Ok(index) => index,
             Err(_) => {
@@ -286,7 +286,7 @@ fn insert_native(
         }
     };
 
-    let my_list = match &mut heap.values[receiver] {
+    let my_list = match receiver {
         Value::List(list) => list,
         x => {
             return Err(format!(
@@ -302,16 +302,16 @@ fn insert_native(
         ))
     } else {
         my_list.items.insert(index, *args[1]);
-        Ok(heap.builtin_constants().nil)
+        Ok(Value::Nil)
     }
 }
 
 fn contains_native(
-    heap: &mut Heap,
-    receiver: &ValueId,
-    args: &[&ValueId],
-) -> Result<ValueId, String> {
-    let my_list = match &heap.values[receiver] {
+    _heap: &mut Heap,
+    receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let my_list = match receiver {
         Value::List(list) => list,
         x => {
             return Err(format!(
@@ -320,24 +320,24 @@ fn contains_native(
         }
     };
 
-    for value_id in &my_list.items {
-        if **value_id == heap.values[args[0]] {
-            return Ok(heap.builtin_constants().true_);
+    for value in &my_list.items {
+        if value == args[0] {
+            return Ok(Value::Bool(true));
         }
     }
-    Ok(heap.builtin_constants().false_)
+    Ok(Value::Bool(false))
 }
 
 #[allow(clippy::cast_possible_wrap)]
-fn len_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
-    match &heap.values[args[0]] {
-        Value::List(list) => Ok(heap.add_value((list.items.len() as i64).into())),
+fn len_native(_heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match &args[0] {
+        Value::List(list) => Ok((list.items.len() as i64).into()),
         x => Err(format!("'len' expected list argument, got: `{x}` instead.")),
     }
 }
 
-fn getattr_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
-    match (&heap.values[args[0]], &heap.values[args[1]]) {
+fn getattr_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match (&args[0], &args[1]) {
         (Value::Instance(instance), Value::String(string_id)) => {
             let field = &heap.strings[string_id];
             instance.fields.get(field).map_or_else(
@@ -354,31 +354,32 @@ fn getattr_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String>
     }
 }
 
-fn setattr_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
-    if let Value::String(string_id) = &heap.values[args[1]] {
-        let field = heap.strings[string_id].clone();
-        if let Value::Instance(instance) = &mut heap.values[args[0]] {
-            instance.fields.insert(field, *args[2]);
-            Ok(heap.builtin_constants().nil)
-        } else {
-            Err(format!(
-                "`setattr` only works on instances, got `{}`",
-                heap.values[args[0]]
-            ))
-        }
+fn setattr_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    let field = if let Value::String(ref string_id) = args[1] {
+        heap.strings[string_id].clone()
+    } else {
+        return Err(format!(
+            "`setattr` can only index with string indexes, got: `{}` (instance: `{}`)",
+            args[1], args[0]
+        ));
+    };
+    let value = *args[2];
+    if let Value::Instance(instance) = args[0] {
+        instance.fields.insert(field, value);
+        Ok(Value::Nil)
     } else {
         Err(format!(
-            "`setattr` can only index with string indexes, got: `{}` (instance: `{}`)",
-            heap.values[args[1]], heap.values[args[0]]
+            "`setattr` only works on instances, got `{}`",
+            args[0]
         ))
     }
 }
 
-fn hasattr_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
-    match (&heap.values[args[0]], &heap.values[args[1]]) {
-        (Value::Instance(instance), Value::String(string_id)) => Ok(heap
-            .builtin_constants()
-            .bool(instance.fields.contains_key(&heap.strings[string_id]))),
+fn hasattr_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    match (&args[0], &args[1]) {
+        (Value::Instance(instance), Value::String(string_id)) => Ok(Value::Bool(
+            instance.fields.contains_key(&heap.strings[string_id]),
+        )),
         (instance @ Value::Instance(_), x) => Err(format!(
             "`hasattr` can only index with string indexes, got: `{x}` (instance: `{instance}`)"
         )),
@@ -388,24 +389,24 @@ fn hasattr_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String>
     }
 }
 
-fn delattr_native(heap: &mut Heap, args: &[&ValueId]) -> Result<ValueId, String> {
-    if let Value::String(string_id) = &heap.values[args[1]] {
+fn delattr_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+    if let Value::String(ref string_id) = args[1] {
         let field = &heap.strings[string_id];
-        if let Value::Instance(instance) = &mut heap.values[args[0]] {
+        if let Value::Instance(instance) = args[0] {
             match instance.fields.remove(field) {
-                Some(_) => Ok(heap.builtin_constants().nil),
+                Some(_) => Ok(Value::Nil),
                 None => Err(format!("Undefined property '{field}'.")),
             }
         } else {
             Err(format!(
                 "`delattr` only works on instances, got `{}`",
-                heap.values[args[0]]
+                args[0]
             ))
         }
     } else {
         Err(format!(
             "`delattr` can only index with string indexes, got: `{}` (instance: `{}`)",
-            heap.values[args[1]], heap.values[args[0]]
+            args[1], args[0]
         ))
     }
 }
