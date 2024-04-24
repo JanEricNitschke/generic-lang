@@ -6,11 +6,8 @@ use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rustc_hash::FxHashMap as HashMap;
-
 use crate::{
-    compiler::Compiler,
-    heap::{Heap, StringId},
+    heap::Heap,
     value::{ias_f64, ias_u64, List, Number, Value},
     vm::VM,
 };
@@ -411,82 +408,29 @@ fn delattr_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, Str
     }
 }
 
-pub struct Natives {
-    string_ids: HashMap<String, StringId>,
-}
+pub fn define_natives(vm: &mut VM) {
+    vm.define_native_function(&"clock", &[0], clock_native);
+    vm.define_native_function(&"assert", &[1], assert_native);
+    vm.define_native_function(&"sleep", &[1], sleep_native);
+    vm.define_native_function(&"sqrt", &[1], sqrt_native);
+    vm.define_native_function(&"input", &[1], input_native);
+    vm.define_native_function(&"float", &[1], to_float_native);
+    vm.define_native_function(&"int", &[1], to_int_native);
+    vm.define_native_function(&"is_int", &[1], is_int_native);
+    vm.define_native_function(&"str", &[1], to_string_native);
+    vm.define_native_function(&"type", &[1], type_native);
+    vm.define_native_function(&"print", &[1, 2], print_native);
+    vm.define_native_function(&"getattr", &[2], getattr_native);
+    vm.define_native_function(&"setattr", &[3], setattr_native);
+    vm.define_native_function(&"hasattr", &[2], hasattr_native);
+    vm.define_native_function(&"delattr", &[2], delattr_native);
+    vm.define_native_function(&"rng", &[2], rng_native);
+    vm.define_native_function(&"len", &[1], len_native);
 
-impl Natives {
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            string_ids: HashMap::default(),
-        }
-    }
-
-    pub fn create_names(&mut self, heap: &mut Heap) {
-        for name in [
-            "clock", "sleep", "assert", "sqrt", "input", "float", "int", "str", "type", "getattr",
-            "setattr", "hasattr", "delattr", "rng", "print", "append", "pop", "insert", "len",
-            "List", "contains", "is_int",
-        ] {
-            let string_id = heap.string_id(&name);
-            self.string_ids.insert(name.to_string(), string_id);
-        }
-    }
-
-    pub fn register_names(&self, compiler: &mut Compiler) {
-        compiler.inject_strings(&self.string_ids);
-    }
-
-    pub fn define_natives(&self, vm: &mut VM) {
-        vm.define_native_function(self.string_ids["clock"], &[0], clock_native);
-        vm.define_native_function(self.string_ids["assert"], &[1], assert_native);
-        vm.define_native_function(self.string_ids["sleep"], &[1], sleep_native);
-        vm.define_native_function(self.string_ids["sqrt"], &[1], sqrt_native);
-        vm.define_native_function(self.string_ids["input"], &[1], input_native);
-        vm.define_native_function(self.string_ids["float"], &[1], to_float_native);
-        vm.define_native_function(self.string_ids["int"], &[1], to_int_native);
-        vm.define_native_function(self.string_ids["is_int"], &[1], is_int_native);
-        vm.define_native_function(self.string_ids["str"], &[1], to_string_native);
-        vm.define_native_function(self.string_ids["type"], &[1], type_native);
-        vm.define_native_function(self.string_ids["print"], &[1, 2], print_native);
-        vm.define_native_function(self.string_ids["getattr"], &[2], getattr_native);
-        vm.define_native_function(self.string_ids["setattr"], &[3], setattr_native);
-        vm.define_native_function(self.string_ids["hasattr"], &[2], hasattr_native);
-        vm.define_native_function(self.string_ids["delattr"], &[2], delattr_native);
-        vm.define_native_function(self.string_ids["rng"], &[2], rng_native);
-        vm.define_native_function(self.string_ids["len"], &[1], len_native);
-
-        vm.define_native_class(self.string_ids["List"]);
-        vm.define_native_method(
-            self.string_ids["List"],
-            self.string_ids["append"],
-            &[1],
-            append_native,
-        );
-        vm.define_native_method(
-            self.string_ids["List"],
-            vm.init_string(),
-            &[0],
-            init_list_native,
-        );
-        vm.define_native_method(
-            self.string_ids["List"],
-            self.string_ids["pop"],
-            &[0, 1],
-            pop_native,
-        );
-        vm.define_native_method(
-            self.string_ids["List"],
-            self.string_ids["insert"],
-            &[2],
-            insert_native,
-        );
-        vm.define_native_method(
-            self.string_ids["List"],
-            self.string_ids["contains"],
-            &[1],
-            contains_native,
-        );
-    }
+    vm.define_native_class(&"List");
+    vm.define_native_method(&"List", &"append", &[1], append_native);
+    vm.define_native_method(&"List", &*vm.init_string(), &[0], init_list_native);
+    vm.define_native_method(&"List", &"pop", &[0, 1], pop_native);
+    vm.define_native_method(&"List", &"insert", &[2], insert_native);
+    vm.define_native_method(&"List", &"contains", &[1], contains_native);
 }
