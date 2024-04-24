@@ -176,7 +176,7 @@ impl VM {
 
     pub fn interpret(&mut self, source: &[u8]) -> InterpretResult {
         let result = if let Some(function) = self.compile(source, "<script>") {
-            natives::define_natives(self);
+            natives::define(self);
             let function_id = self.heap.add_function(function);
 
             let closure = Closure::new(*function_id.as_function(), true);
