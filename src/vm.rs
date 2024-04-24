@@ -396,8 +396,8 @@ impl VM {
                         Upvalue::Open(absolute_local_index) => {
                             self.stack[absolute_local_index] = new_value;
                         }
-                        Upvalue::Closed(ref mut value_id) => {
-                            *value_id = new_value;
+                        Upvalue::Closed(ref mut value) => {
+                            *value = new_value;
                         }
                     }
                 }
