@@ -1,16 +1,15 @@
+use path_slash::PathBufExt;
+use rustc_hash::FxHashMap as HashMap;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::pin::Pin;
-
-use path_slash::PathBufExt;
-use rustc_hash::FxHashMap as HashMap;
 
 use crate::natives;
 use crate::{
     chunk::{CodeOffset, InstructionDisassembler, OpCode},
     compiler::Compiler,
     config,
-    heap::{ClosureId, FunctionId, Heap, StringId, UpvalueId},
+    heap::{ClosureId, FunctionId, Heap, ModuleId, StringId, UpvalueId},
     scanner::Scanner,
     value::{
         Class, Closure, Function, Instance, List, Module, NativeFunction, NativeFunctionImpl,
@@ -50,6 +49,12 @@ type BinaryOp<T> = fn(Number, Number) -> T;
 pub struct Global {
     pub value: Value,
     mutable: bool,
+}
+
+impl std::fmt::Display for Global {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Value: {}, mutable: {}", self.value, self.mutable)
+    }
 }
 
 pub struct CallFrame {
@@ -139,8 +144,10 @@ pub struct VM {
     callstack: CallStack,
     stack: Vec<Value>,
     open_upvalues: VecDeque<UpvalueId>,
-    modules: Vec<Module>,
+    // Could also keep a cache of the last module or its globals for performance
+    modules: Vec<ModuleId>,
     path: PathBuf,
+    builtins: HashMap<StringId, Global>,
 }
 
 impl VM {
@@ -153,11 +160,24 @@ impl VM {
             open_upvalues: VecDeque::new(),
             modules: Vec::new(),
             path,
+            builtins: HashMap::default(),
         }
     }
 
     pub fn globals(&mut self) -> &mut HashMap<StringId, Global> {
         &mut self.modules.last_mut().unwrap().globals
+    }
+
+    pub fn current_module(&mut self) -> ModuleId {
+        *self.modules.last().unwrap()
+    }
+
+    pub fn defining_module(&mut self) -> ModuleId {
+        let current_closure = self.callstack.current().closure;
+        match current_closure.containing_module {
+            Some(module) if !current_closure.is_module => module,
+            _ => self.current_module(),
+        }
     }
 
     pub fn init_string(&self) -> StringId {
@@ -174,7 +194,7 @@ impl VM {
         let result = if let Some(function) = self.compile(source, "<script>") {
             let function_id = self.heap.add_function(function);
 
-            let closure = Closure::new(*function_id.as_function(), true);
+            let closure = Closure::new(*function_id.as_function(), true, None);
 
             self.add_closure_to_modules(&closure, self.path.clone(), None, None);
 
@@ -207,6 +227,12 @@ impl VM {
                 let mut disassembler = InstructionDisassembler::new(&function.chunk);
                 *disassembler.offset = self.callstack.current().ip;
                 if trace_execution > 1 {
+                    for (key, value) in &self.modules.last().unwrap().globals {
+                        println!("{}: {}", **key, value);
+                    }
+                    for (key, value) in &self.defining_module().globals {
+                        println!("{}: {}", **key, value);
+                    }
                     println!(
                         "Current module: {} at module depth {} and total call depth {}.",
                         *self
@@ -332,7 +358,7 @@ impl VM {
                 OpCode::Closure => {
                     let value = self.read_constant(false);
                     let function = value.as_function();
-                    let mut closure = Closure::new(*function, false);
+                    let mut closure = Closure::new(*function, false, self.modules.last().copied());
 
                     for _ in 0..closure.upvalue_count {
                         let is_local = self.read_byte();
@@ -615,8 +641,10 @@ impl VM {
             let value_id = closure.function.name;
             let script_name = self.heap.builtin_constants().script_name;
             let alias = alias.map_or(value_id, |alias| alias);
-            self.modules
-                .push(Module::new(value_id, file_path, names_to_import, alias));
+            let module_id =
+                self.heap
+                    .add_module(Module::new(value_id, file_path, names_to_import, alias));
+            self.modules.push(*module_id.as_module());
             // Scriptname has to be set in the globals of the new module.
             self.globals().insert(
                 script_name,
@@ -694,7 +722,7 @@ impl VM {
                 if let Some(function) = self.compile(&contents, &name) {
                     let function = self.heap.add_function(function);
                     let function_id = function.as_function();
-                    let closure = Closure::new(*function_id, true);
+                    let closure = Closure::new(*function_id, true, self.modules.last().copied());
 
                     self.add_closure_to_modules(&closure, file_path, names_to_import, alias);
 
@@ -982,12 +1010,21 @@ impl VM {
         let constant_value = self.read_constant_value(constant_index);
         match &constant_value {
             Value::String(name) => {
-                let maybe_value = self.globals().get(name).map(|global| global.value);
+                let maybe_value = self
+                    .defining_module()
+                    .globals
+                    .get(name)
+                    .map(|global| global.value);
                 if let Some(value) = maybe_value {
                     self.stack_push(value);
                 } else {
-                    runtime_error!(self, "Undefined variable '{}'.", self.heap.strings[name]);
-                    return Some(InterpretResult::RuntimeError);
+                    let maybe_builtin = self.builtins.get(name).map(|global| global.value);
+                    if let Some(value) = maybe_builtin {
+                        self.stack_push(value);
+                    } else {
+                        runtime_error!(self, "Undefined variable '{}'.", self.heap.strings[name]);
+                        return Some(InterpretResult::RuntimeError);
+                    }
                 }
             }
 
@@ -1007,15 +1044,24 @@ impl VM {
             .stack
             .last()
             .unwrap_or_else(|| panic!("stack underflow in {op:?}"));
-        if let Some(global) = self.globals().get_mut(&name) {
+        if let Some(global) = self.defining_module().globals.get_mut(&name) {
             if !global.mutable {
                 runtime_error!(self, "Reassignment to global 'const'.");
                 return Some(InterpretResult::RuntimeError);
             }
             global.value = stack_top_value;
         } else {
-            runtime_error!(self, "Undefined variable '{}'.", *name);
-            return Some(InterpretResult::RuntimeError);
+            let maybe_builtin = self.builtins.get_mut(&name);
+            if let Some(global) = maybe_builtin {
+                if !global.mutable {
+                    runtime_error!(self, "Reassignment to global 'const'.");
+                    return Some(InterpretResult::RuntimeError);
+                }
+                global.value = stack_top_value;
+            } else {
+                runtime_error!(self, "Undefined variable '{}'.", *name);
+                return Some(InterpretResult::RuntimeError);
+            }
         }
 
         None
@@ -1101,6 +1147,7 @@ impl VM {
             let mut last_module = self.modules.pop().expect("Module underflow in OP_RETURN");
             let last_module_alias = last_module.alias;
             let names_to_import = std::mem::take(&mut last_module.names_to_import);
+
             if let Some(names) = names_to_import {
                 for name in names {
                     let value = last_module
@@ -1110,11 +1157,10 @@ impl VM {
                     self.globals().insert(name, *value);
                 }
             } else {
-                let last_module_id = self.heap.add_module(last_module);
                 self.globals().insert(
                     last_module_alias,
                     Global {
-                        value: last_module_id,
+                        value: last_module.into(),
                         mutable: true,
                     },
                 );
@@ -1562,7 +1608,7 @@ impl VM {
             arity,
             fun,
         });
-        self.globals().insert(
+        self.builtins.insert(
             name_id,
             Global {
                 value,
@@ -1575,7 +1621,7 @@ impl VM {
         let name_id = self.heap.string_id(name);
         self.heap.strings_by_name.insert(name.to_string(), name_id);
         let value = self.heap.add_class(Class::new(name_id, true));
-        self.globals().insert(
+        self.builtins.insert(
             name_id,
             Global {
                 value,
@@ -1632,17 +1678,17 @@ impl VM {
             self.heap.mark_upvalue(upvalue);
         }
         for module in &self.modules {
-            self.heap.mark_string(&module.name);
-            for (key, value) in &module.globals {
-                self.heap.mark_string(key);
-                self.heap.mark_value(&value.value);
-            }
+            self.heap.mark_module(module);
+        }
+        for builtin in self.builtins.values() {
+            self.heap.mark_value(&builtin.value);
         }
 
         // Trace references
         self.heap.trace();
 
-        // Remove references to unmarked strings in `self.globals` and `self.heap.strings_by_name`
+        // Remove references to unmarked strings in `globals` and `heap.strings_by_name`
+        // and `builtins`
         for module in &mut self.modules {
             let globals_to_remove = module
                 .globals
@@ -1657,6 +1703,16 @@ impl VM {
                 }
                 module.globals.remove(&id);
             }
+        }
+
+        let builtins_to_remove = self
+            .builtins
+            .keys()
+            .filter(|string_id| !string_id.marked(black_value))
+            .copied()
+            .collect::<Vec<_>>();
+        for id in builtins_to_remove {
+            self.builtins.remove(&id);
         }
 
         self.heap.strings_by_name.retain(|_, string_id| {

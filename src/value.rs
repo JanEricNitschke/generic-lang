@@ -265,6 +265,7 @@ pub struct Closure {
     pub upvalues: Vec<UpvalueId>,
     pub upvalue_count: usize,
     pub is_module: bool,
+    pub containing_module: Option<ModuleId>,
 }
 
 impl std::fmt::Display for Closure {
@@ -281,13 +282,14 @@ impl PartialEq for Closure {
 }
 
 impl Closure {
-    pub fn new(function: FunctionId, is_module: bool) -> Self {
+    pub fn new(function: FunctionId, is_module: bool, containing_module: Option<ModuleId>) -> Self {
         let upvalue_count = function.upvalue_count;
         Self {
             function,
             upvalues: Vec::with_capacity(upvalue_count),
             upvalue_count,
             is_module,
+            containing_module,
         }
     }
 }
@@ -709,10 +711,10 @@ impl Value {
         }
     }
 
-    // pub fn as_module(&self) -> &ModuleId {
-    //     match self {
-    //         Self::Module(m) => m,
-    //         _ => unreachable!("Expected Module, found `{}`", self),
-    //     }
-    // }
+    pub fn as_module(&self) -> &ModuleId {
+        match self {
+            Self::Module(m) => m,
+            _ => unreachable!("Expected Module, found `{}`", self),
+        }
+    }
 }

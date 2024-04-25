@@ -1,6 +1,6 @@
 import "../foo.gen";
 
-var X = 1;
+var X = "Right X";
 var Y = 2;
 
 fun printX() {

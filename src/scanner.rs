@@ -93,6 +93,8 @@ pub enum TokenKind {
     Yield,
     Async,
     Await,
+
+    StopIteration,
 }
 
 impl std::fmt::Display for TokenKind {
@@ -384,6 +386,7 @@ impl<'a> Scanner<'a> {
                 Some(b'w') => self.check_keyword(2, "itch", TokenKind::Switch),
                 _ => TokenKind::Identifier,
             },
+            b'S' => self.check_keyword(1, "topIteration", TokenKind::StopIteration),
             b't' => match self.source.get(self.start + 1) {
                 Some(b'h') => self.check_keyword(2, "is", TokenKind::This),
                 Some(b'r') => self.check_keyword(2, "ue", TokenKind::True),

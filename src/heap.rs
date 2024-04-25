@@ -440,16 +440,16 @@ impl Heap {
         self.blacken_value(id);
     }
 
-    pub fn mark_string(&mut self, id: &StringId) {
-        self.blacken_string(id.id);
-    }
-
     pub fn mark_function(&mut self, id: &FunctionId) {
         self.blacken_function(id.id);
     }
 
     pub fn mark_upvalue(&mut self, id: &UpvalueId) {
         self.blacken_upvalue(id.id);
+    }
+
+    pub fn mark_module(&mut self, id: &ModuleId) {
+        self.blacken_module(id.id);
     }
 
     #[allow(clippy::too_many_lines)]

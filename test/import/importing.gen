@@ -3,11 +3,11 @@ import "nested/fib.gen";
 var X = "Wrong X";
 
 print(fib); # expect: <module fib>
-print(fib.X); # expect: 1
+print(fib.X); # expect: Right X
 print(fib.fibo(1)); # expect: 1
 fib.foo.Foo().hello(); # expect: Hello
 
-# fib.printX(); expect: 1
+fib.printX(); # expect: Right X
 
 if __name__ == "<script>" {
     print("good"); # expect: good
