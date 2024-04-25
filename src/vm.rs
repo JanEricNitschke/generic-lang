@@ -176,7 +176,7 @@ impl VM {
 
             let closure = Closure::new(*function_id.as_function(), true);
 
-            self.add_closure_to_modules(&closure, self.path.clone());
+            self.add_closure_to_modules(&closure, self.path.clone(), None, None);
 
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
@@ -534,20 +534,42 @@ impl VM {
                 }
                 OpCode::Import => {
                     let file_path = self.stack.pop().expect("Stack underflow in OP_IMPORT");
-                    match file_path {
-                        Value::String(string_id) => {
-                            if let Some(value) = self.import_file(string_id) {
-                                return value;
+                    if let Some(value) = self.import_file(file_path, None, None) {
+                        return value;
+                    }
+                }
+                OpCode::ImportAs => {
+                    let alias = self.read_string("OP_IMPORT_AS");
+                    let file_path = self.stack.pop().expect("Stack underflow in OP_IMPORT_AS");
+                    if let Some(value) = self.import_file(file_path, None, Some(alias)) {
+                        return value;
+                    }
+                }
+                OpCode::ImportFrom => {
+                    let n_names_to_import = self.read_byte();
+                    let names_to_import = if n_names_to_import > 0 {
+                        let mut names = Vec::with_capacity(n_names_to_import as usize);
+                        for _ in 0..n_names_to_import {
+                            let name = self.stack.pop().expect("Stack underflow in OP_IMPORT_FROM");
+                            if let Value::String(name) = name {
+                                names.push(name);
+                            } else {
+                                runtime_error!(
+                                    self,
+                                    "Imported names must be strings, got `{}` instead.",
+                                    name
+                                );
+                                return InterpretResult::RuntimeError;
                             }
                         }
-                        x => {
-                            runtime_error!(
-                                self,
-                                "Imported file path must be a string, got `{}` instead.",
-                                x
-                            );
-                            return InterpretResult::RuntimeError;
-                        }
+                        Some(names)
+                    } else {
+                        None
+                    };
+
+                    let file_path = self.stack.pop().expect("Stack underflow in OP_IMPORT_FROM");
+                    if let Some(value) = self.import_file(file_path, names_to_import, None) {
+                        return value;
                     }
                 }
             };
@@ -582,11 +604,19 @@ impl VM {
         }
     }
 
-    fn add_closure_to_modules(&mut self, closure: &Closure, file_path: PathBuf) {
+    fn add_closure_to_modules(
+        &mut self,
+        closure: &Closure,
+        file_path: PathBuf,
+        names_to_import: Option<Vec<StringId>>,
+        alias: Option<StringId>,
+    ) {
         if closure.is_module {
             let value_id = closure.function.name;
             let script_name = self.heap.builtin_constants().script_name;
-            self.modules.push(Module::new(value_id, file_path));
+            let alias = alias.map_or(value_id, |alias| alias);
+            self.modules
+                .push(Module::new(value_id, file_path, names_to_import, alias));
             // Scriptname has to be set in the globals of the new module.
             self.globals().insert(
                 script_name,
@@ -599,7 +629,24 @@ impl VM {
     }
 
     #[allow(clippy::option_if_let_else)]
-    fn import_file(&mut self, string_id: StringId) -> Option<InterpretResult> {
+    fn import_file(
+        &mut self,
+        file_path_value: Value,
+        names_to_import: Option<Vec<StringId>>,
+        alias: Option<StringId>,
+    ) -> Option<InterpretResult> {
+        let string_id = match file_path_value {
+            Value::String(string_id) => string_id,
+            x => {
+                runtime_error!(
+                    self,
+                    "Imported file path must be a string, got `{}` instead.",
+                    x
+                );
+                return Some(InterpretResult::RuntimeError);
+            }
+        };
+
         let file_path = self.modules.last().map_or_else(
             || PathBuf::from(&*string_id),
             |module| {
@@ -636,7 +683,7 @@ impl VM {
                     let function_id = function.as_function();
                     let closure = Closure::new(*function_id, true);
 
-                    self.add_closure_to_modules(&closure, file_path);
+                    self.add_closure_to_modules(&closure, file_path, names_to_import, alias);
 
                     let value_id = self.heap.add_closure(closure);
                     self.stack_push(value_id);
@@ -1038,16 +1085,27 @@ impl VM {
         }
         if frame.is_module {
             self.stack.pop();
-            let last_module = self.modules.pop().expect("Module underflow in OP_RETURN");
-            let last_module_name = last_module.name;
-            let last_module_id = self.heap.add_module(last_module);
-            self.globals().insert(
-                last_module_name,
-                Global {
-                    value: last_module_id,
-                    mutable: true,
-                },
-            );
+            let mut last_module = self.modules.pop().expect("Module underflow in OP_RETURN");
+            let last_module_alias = last_module.alias;
+            let names_to_import = std::mem::take(&mut last_module.names_to_import);
+            if let Some(names) = names_to_import {
+                for name in names {
+                    let value = last_module
+                        .globals
+                        .get(&name)
+                        .expect("Imported name not found.");
+                    self.globals().insert(name, *value);
+                }
+            } else {
+                let last_module_id = self.heap.add_module(last_module);
+                self.globals().insert(
+                    last_module_alias,
+                    Global {
+                        value: last_module_id,
+                        mutable: true,
+                    },
+                );
+            }
 
             let script_name = self.heap.builtin_constants().script_name;
             let module_name: Value = self

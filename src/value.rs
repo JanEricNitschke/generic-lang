@@ -520,14 +520,23 @@ pub struct Module {
     pub path: PathBuf,
     #[derivative(PartialOrd = "ignore")]
     pub globals: HashMap<StringId, Global>,
+    pub names_to_import: Option<Vec<StringId>>,
+    pub alias: StringId,
 }
 
 impl Module {
-    pub fn new(name: StringId, path: PathBuf) -> Self {
+    pub fn new(
+        name: StringId,
+        path: PathBuf,
+        names_to_import: Option<Vec<StringId>>,
+        alias: StringId,
+    ) -> Self {
         Self {
             name,
             path,
             globals: HashMap::default(),
+            names_to_import,
+            alias,
         }
     }
 }

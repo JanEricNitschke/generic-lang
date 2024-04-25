@@ -88,6 +88,11 @@ pub enum TokenKind {
 
     Import,
     From,
+    As,
+
+    Yield,
+    Async,
+    Await,
 }
 
 impl std::fmt::Display for TokenKind {
@@ -330,7 +335,18 @@ impl<'a> Scanner<'a> {
 
     fn identifier_type(&mut self) -> TokenKind {
         match self.source[self.start] {
-            b'a' => self.check_keyword(1, "nd", TokenKind::And),
+            b'a' => match self.source.get(self.start + 1) {
+                Some(b'n') => self.check_keyword(2, "d", TokenKind::And),
+                Some(b's') => match self.check_keyword(2, "", TokenKind::As) {
+                    TokenKind::As => TokenKind::As,
+                    _ => match self.source.get(self.start + 2) {
+                        Some(b'y') => self.check_keyword(3, "nc", TokenKind::Async),
+                        Some(b'w') => self.check_keyword(3, "ait", TokenKind::Await),
+                        _ => TokenKind::Identifier,
+                    },
+                },
+                _ => TokenKind::Identifier,
+            },
             b'b' => self.check_keyword(1, "reak", TokenKind::Break),
             b'c' => match self.source.get(self.start + 1) {
                 Some(b'a') => self.check_keyword(2, "se", TokenKind::Case),
@@ -383,6 +399,7 @@ impl<'a> Scanner<'a> {
             },
             b'v' => self.check_keyword(1, "ar", TokenKind::Var),
             b'w' => self.check_keyword(1, "hile", TokenKind::While),
+            b'y' => self.check_keyword(1, "ield", TokenKind::Yield),
             _ => TokenKind::Identifier,
         }
     }

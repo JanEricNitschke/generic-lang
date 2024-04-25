@@ -1,6 +1,11 @@
 import "../foo.gen";
 
 var X = 1;
+var Y = 2;
+
+fun printX() {
+  print(X);
+}
 
 fun fibo(n) {
   if (n < 2) {

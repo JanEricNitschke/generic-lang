@@ -1,0 +1,6 @@
+from "nested/fib.gen" import fibo, Y;
+
+
+print(fibo(1)); # expect: 1
+print(Y); # expect: 2
+print(X); # expect runtime error: Undefined variable 'X'.
