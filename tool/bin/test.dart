@@ -455,6 +455,8 @@ void _defineTestSuites() {
   var onlyImport = {
     "test/import/nested/fib.gen": "skip",
     "test/import/foo.gen": "skip",
+    "test/import/circular/circ2.gen": "skip",
+    "test/import/circular/circ3.gen": "skip",
   };
 
   // JVM doesn't correctly implement IEEE equality on boxed doubles.

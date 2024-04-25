@@ -656,10 +656,30 @@ impl VM {
                 path
             },
         );
+
         let file_path = match file_path.strip_prefix("./") {
             Ok(file_path) => file_path.to_owned(),
             Err(_) => file_path,
         };
+        let file_path = match file_path.canonicalize() {
+            Ok(file_path) => file_path,
+            Err(_) => file_path,
+        };
+
+        let name = if let Some(stem) = file_path.file_stem() {
+            stem.to_str().unwrap().to_string()
+        } else {
+            runtime_error!(self, "Import path should have a filestem.");
+            return Some(InterpretResult::RuntimeError);
+        };
+        let name_id = self.heap.string_id(&name);
+
+        for module in &self.modules {
+            if module.path.canonicalize().unwrap() == file_path {
+                runtime_error!(self, "Circular import of module `{}` detected.", *name_id);
+                return Some(InterpretResult::RuntimeError);
+            }
+        }
 
         match std::fs::read(&file_path) {
             Err(_) => {
@@ -671,13 +691,6 @@ impl VM {
                 return Some(InterpretResult::RuntimeError);
             }
             Ok(contents) => {
-                let name = if let Some(stem) = file_path.file_stem() {
-                    stem.to_str().unwrap().to_string()
-                } else {
-                    runtime_error!(self, "Import path should have a filestem.");
-                    return Some(InterpretResult::RuntimeError);
-                };
-
                 if let Some(function) = self.compile(&contents, &name) {
                     let function = self.heap.add_function(function);
                     let function_id = function.as_function();
