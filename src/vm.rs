@@ -277,6 +277,24 @@ impl VM {
                         );
                     }
                 }
+                OpCode::LoadOne => {
+                    self.stack.push(1.into());
+                }
+                OpCode::LoadTwo => {
+                    self.stack.push(2.into());
+                }
+                OpCode::LoadZero => {
+                    self.stack.push(0.into());
+                }
+                OpCode::LoadMinusOne => {
+                    self.stack.push((-1).into());
+                }
+                OpCode::LoadZerof => {
+                    self.stack.push((0.0).into());
+                }
+                OpCode::LoadOnef => {
+                    self.stack.push((1.0).into());
+                }
                 op @ (OpCode::GetLocal | OpCode::GetLocalLong) => self.get_local(op),
                 op @ (OpCode::SetLocal | OpCode::SetLocalLong) => self.set_local(op),
                 op @ (OpCode::GetGlobal | OpCode::GetGlobalLong) => {
@@ -347,6 +365,9 @@ impl VM {
                 }
                 OpCode::Greater => binary_op!(self, >, false),
                 OpCode::Less => binary_op!(self, <, false),
+                OpCode::GreaterEqual => binary_op!(self, >=, false),
+                OpCode::LessEqual => binary_op!(self, <=, false),
+                OpCode::NotEqual => binary_op!(self, !=, false),
                 OpCode::Jump => {
                     let offset = self.read_16bit_number();
                     self.callstack.current_mut().ip += offset;

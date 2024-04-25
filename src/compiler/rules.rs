@@ -213,12 +213,12 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         );
 
         match operator {
-            TK::BangEqual => self.emit_bytes(OpCode::Equal, OpCode::Not, line),
+            TK::BangEqual => self.emit_byte(OpCode::NotEqual, line),
             TK::EqualEqual => self.emit_byte(OpCode::Equal, line),
             TK::Greater => self.emit_byte(OpCode::Greater, line),
-            TK::GreaterEqual => self.emit_bytes(OpCode::Less, OpCode::Not, line),
+            TK::GreaterEqual => self.emit_byte(OpCode::GreaterEqual, line),
             TK::Less => self.emit_byte(OpCode::Less, line),
-            TK::LessEqual => self.emit_bytes(OpCode::Greater, OpCode::Not, line),
+            TK::LessEqual => self.emit_byte(OpCode::LessEqual, line),
             TK::Plus => self.emit_byte(OpCode::Add, line),
             TK::Minus => self.emit_byte(OpCode::Subtract, line),
             TK::Star => self.emit_byte(OpCode::Multiply, line),
