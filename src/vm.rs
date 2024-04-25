@@ -340,7 +340,7 @@ impl VM {
                 OpCode::Nil => self.stack_push(Value::Nil),
                 OpCode::True => self.stack_push(Value::Bool(true)),
                 OpCode::False => self.stack_push(Value::Bool(false)),
-                OpCode::Equal => self.equal(),
+                OpCode::Equal => self.equal(false),
                 OpCode::Add => {
                     if let Some(value) = self.add() {
                         return value;
@@ -367,7 +367,7 @@ impl VM {
                 OpCode::Less => binary_op!(self, <, false),
                 OpCode::GreaterEqual => binary_op!(self, >=, false),
                 OpCode::LessEqual => binary_op!(self, <=, false),
-                OpCode::NotEqual => binary_op!(self, !=, false),
+                OpCode::NotEqual => self.equal(true),
                 OpCode::Jump => {
                     let offset = self.read_16bit_number();
                     self.callstack.current_mut().ip += offset;
@@ -1232,7 +1232,7 @@ impl VM {
         self.stack_push(value.into());
     }
 
-    fn equal(&mut self) {
+    fn equal(&mut self, negate: bool) {
         let left_id = self
             .stack
             .pop()
@@ -1241,7 +1241,12 @@ impl VM {
             .stack
             .pop()
             .expect("stack underflow in OP_EQUAL (second)");
-        self.stack_push((left_id == right_id).into());
+        let result = if negate {
+            left_id != right_id
+        } else {
+            left_id == right_id
+        };
+        self.stack_push(result.into());
     }
 
     fn read_byte(&mut self) -> u8 {
