@@ -295,6 +295,8 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             self.scoped_block();
         } else if self.match_(TK::Import) {
             self.import_statement();
+        } else if self.match_(TK::From) {
+            self.import_from_statement();
         } else {
             self.expression_statement();
         }
@@ -305,9 +307,65 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             self.error("Can only import source files from top-level code.");
         };
 
-        self.expression();
-        self.consume(TK::Semicolon, "Expect ';' after imported file path.");
-        self.emit_byte(OpCode::Import, self.line());
+        self.expression(); // File path to the module
+
+        if self.match_(TK::As) {
+            self.consume(TK::Identifier, "Expect name to import as.");
+            let name = self.previous.as_ref().unwrap().as_str().to_string();
+            let name_constant = self.identifier_constant(&name);
+
+            self.consume(TK::Semicolon, "Expect ';' after import alias");
+            self.emit_byte(OpCode::ImportAs, self.line());
+
+            if !self.emit_number(name_constant.0, false) {
+                self.error("Too many constants created for OP_IMPORT_FROM.");
+            }
+        } else {
+            self.consume(TK::Semicolon, "Expect ';' after imported file path.");
+            self.emit_byte(OpCode::Import, self.line());
+        }
+    }
+
+    fn import_from_statement(&mut self) {
+        if self.function_type() != FunctionType::Script {
+            self.error("Can only import source files from top-level code.");
+        };
+
+        self.expression(); // This is the filepath to the module
+        self.consume(TK::Import, "Expect 'import' after imported file path.");
+
+        let mut import_count = 0;
+        loop {
+            // Best way would be to have these as variable length opcodes
+            // with the indices pointing to the constants.
+            // But i am not sure how to get that working with the disassembly,
+            // or more generally where to put the length of the opcode.
+            // self.consume(TK::Identifier, "Expect name to import.");
+            // let long_index = self.identifier_constant(&self.previous.as_ref().unwrap().as_str().to_string());
+            // if let Ok(short) = u8::try_from(*long_index) {
+            //     self.emit_byte(short, self.line());
+            // } else {
+            //     self.error("Too many names to import from module.");
+            // }
+
+            // So instead they get stored directly on the stack.
+            self.consume(TK::Identifier, "Expect name to import.");
+            let global_id = self
+                .heap
+                .string_id(&self.previous.as_ref().unwrap().as_str());
+            self.emit_constant(global_id);
+
+            if import_count == 255 {
+                self.error("Too many names to import from module.");
+            }
+
+            import_count += 1;
+            if !self.match_(TK::Comma) {
+                break;
+            }
+        }
+        self.consume(TK::Semicolon, "Expect ';' after names to import name.");
+        self.emit_bytes(OpCode::ImportFrom, import_count, self.line());
     }
 
     fn conditional_statement(&mut self, if_statement: bool) {

@@ -152,6 +152,7 @@ pub(super) fn type_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Va
         Value::String(_) => Value::String(heap.string_id(&"<type string>")),
         Value::Upvalue(_) => Value::String(heap.string_id(&"<type upvalue>")),
         Value::List(_) => Value::String(heap.string_id(&"<type list>")),
+        Value::Module(_) => Value::String(heap.string_id(&"<type module>")),
     };
     Ok(string)
 }

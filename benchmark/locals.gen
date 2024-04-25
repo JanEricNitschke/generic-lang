@@ -1,0 +1,7 @@
+var i = 0;
+i = 0;
+while (i < 1000000) {
+  i = i + 1;
+  var A; var B; var C; var D; var E; var F; var G; var H; var I; var J; var K; var L; var M; var N; var O; var P; var Q; var R; var S; var T; var U; var V; var W; var X; var Y; var Z;
+  A; B; C; D; E; F; G; H; I; J; K; L; M; N; O; P; Q; R; S; T; U; V; W; X; Y; Z;
+}

@@ -1,0 +1,5 @@
+import "nested/fib.gen" as fob;
+
+print(fob); # expect: <module fib>
+print(fob.X); # expect: Right X
+print(fib.fibo(1)); # expect runtime error: Undefined variable 'fib'.

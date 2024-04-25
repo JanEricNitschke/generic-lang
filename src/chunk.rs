@@ -115,6 +115,8 @@ pub enum OpCode {
     StoreSubscript,
 
     Import,
+    ImportFrom,
+    ImportAs,
 }
 
 impl OpCode {
@@ -265,7 +267,8 @@ impl<'chunk> InstructionDisassembler<'chunk> {
                 | Dup | CloseUpvalue | Inherit | IndexSubscript | StoreSubscript | Import => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | Return | GetUpvalue | SetUpvalue | Class
-                | GetProperty | SetProperty | Method | GetSuper | BuildList | DupN => 1,
+                | GetProperty | SetProperty | Method | GetSuper | BuildList | DupN | ImportFrom
+                | ImportAs => 1,
                 Jump | JumpIfFalse | JumpIfTrue | Loop | Invoke | SuperInvoke => 2,
                 ConstantLong
                 | GetGlobalLong
@@ -533,7 +536,10 @@ impl<'chunk> std::fmt::Debug for InstructionDisassembler<'chunk> {
                 SetGlobalLong,
             ),
             closure(Closure),
-            byte(Call, GetUpvalue, SetUpvalue, Class, GetLocal, SetLocal, BuildList, DupN),
+            byte(
+                Call, GetUpvalue, SetUpvalue, Class, GetLocal, SetLocal, BuildList, DupN,
+                ImportFrom, ImportAs
+            ),
             byte_long(GetLocalLong, SetLocalLong),
             jump(Jump, JumpIfFalse, JumpIfTrue, Loop),
             invoke(Invoke, SuperInvoke),

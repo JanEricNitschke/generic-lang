@@ -11,8 +11,8 @@ use slotmap::{new_key_type, HopSlotMap as SlotMap, Key};
 use std::fmt::{Debug, Display};
 
 use crate::value::{
-    BoundMethod, Class, Closure, Function, Instance, List, NativeFunction, NativeMethod, Upvalue,
-    Value,
+    BoundMethod, Class, Closure, Function, Instance, List, Module, NativeFunction, NativeMethod,
+    Upvalue, Value,
 };
 
 pub trait ArenaValue: Debug + Display + PartialEq {}
@@ -30,6 +30,7 @@ new_key_type! {
     pub struct InstanceKey;
     pub struct ListKey;
     pub struct BoundMethodKey;
+    pub struct ModuleKey;
 }
 
 #[derive(Clone, PartialOrd, Debug, Derivative)]
@@ -96,6 +97,7 @@ pub type ClassId = ArenaId<ClassKey, Class>;
 pub type InstanceId = ArenaId<InstanceKey, Instance>;
 pub type ListId = ArenaId<ListKey, List>;
 pub type BoundMethodId = ArenaId<BoundMethodKey, BoundMethod>;
+pub type ModuleId = ArenaId<ModuleKey, Module>;
 
 #[derive(Clone, Debug)]
 pub struct Arena<K: Key, V: ArenaValue> {
@@ -276,6 +278,12 @@ macro_rules! gray_value {
                 }
                 $self.bound_methods.gray.push(id.id);
             }
+            Value::Module(id) => {
+                if $self.log_gc {
+                    eprintln!("Module/{:?} gray {}", id.id, **id);
+                }
+                $self.modules.gray.push(id.id);
+            }
         }
     };
 }
@@ -297,6 +305,7 @@ pub struct Heap {
     pub instances: Arena<InstanceKey, Instance>,
     pub lists: Arena<ListKey, List>,
     pub upvalues: Arena<UpvalueKey, Upvalue>,
+    pub modules: Arena<ModuleKey, Module>,
 
     log_gc: bool,
     next_gc: usize,
@@ -325,6 +334,7 @@ impl Heap {
             instances: Arena::new("Instance", log_gc),
             lists: Arena::new("List", log_gc),
             upvalues: Arena::new("Upvalue", log_gc),
+            modules: Arena::new("Module", log_gc),
 
             log_gc,
             next_gc: 1024 * 1024,
@@ -388,6 +398,7 @@ impl Heap {
             || !self.instances.gray.is_empty()
             || !self.lists.gray.is_empty()
             || !self.bound_methods.gray.is_empty()
+            || !self.modules.gray.is_empty()
         {
             for index in self.strings.flush_gray() {
                 self.blacken_string(index);
@@ -419,15 +430,14 @@ impl Heap {
             for index in self.bound_methods.flush_gray() {
                 self.blacken_bound_method(index);
             }
+            for index in self.modules.flush_gray() {
+                self.blacken_module(index);
+            }
         }
     }
 
     pub fn mark_value(&mut self, id: &Value) {
         self.blacken_value(id);
-    }
-
-    pub fn mark_string(&mut self, id: &StringId) {
-        self.blacken_string(id.id);
     }
 
     pub fn mark_function(&mut self, id: &FunctionId) {
@@ -436,6 +446,10 @@ impl Heap {
 
     pub fn mark_upvalue(&mut self, id: &UpvalueId) {
         self.blacken_upvalue(id.id);
+    }
+
+    pub fn mark_module(&mut self, id: &ModuleId) {
+        self.blacken_module(id.id);
     }
 
     #[allow(clippy::too_many_lines)]
@@ -452,6 +466,7 @@ impl Heap {
             Value::Instance(id) => self.blacken_instance(id.id),
             Value::List(id) => self.blacken_list(id.id),
             Value::BoundMethod(id) => self.blacken_bound_method(id.id),
+            Value::Module(id) => self.blacken_module(id.id),
         }
     }
 
@@ -475,6 +490,26 @@ impl Heap {
         }
         if self.log_gc {
             eprintln!("Upvalue/{:?} blacken {} end", index, item.item);
+        }
+    }
+
+    fn blacken_module(&mut self, index: ModuleKey) {
+        let item = &mut self.modules.data[index];
+        if item.marked == self.black_value {
+            return;
+        }
+        if self.log_gc {
+            eprintln!("Module/{:?} blacken {} start", index, item.item);
+        }
+        if self.log_gc {
+            eprintln!("Module/{index:?} mark {}", item.item);
+        }
+        item.marked = self.black_value;
+        let module = &item.item;
+        self.strings.gray.push(module.name.id);
+        for (key, value) in &module.globals {
+            self.strings.gray.push(key.id);
+            gray_value!(self, &value.value);
         }
     }
 
@@ -743,5 +778,9 @@ impl Heap {
 
     pub fn add_upvalue(&mut self, value: Upvalue) -> Value {
         self.upvalues.add(value, self.black_value).into()
+    }
+
+    pub fn add_module(&mut self, value: Module) -> Value {
+        self.modules.add(value, self.black_value).into()
     }
 }

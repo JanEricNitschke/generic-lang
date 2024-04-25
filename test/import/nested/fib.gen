@@ -1,6 +1,13 @@
 import "../foo.gen";
 
-fun fib(n) {
+var X = "Right X";
+var Y = 2;
+
+fun printX() {
+  print(X);
+}
+
+fun fibo(n) {
   if (n < 2) {
     return n;
   }

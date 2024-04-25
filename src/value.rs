@@ -1,14 +1,16 @@
 use crate::{
     chunk::Chunk,
     heap::{
-        BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ListId, NativeFunctionId,
-        NativeMethodId, StringId, UpvalueId,
+        BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ListId, ModuleId,
+        NativeFunctionId, NativeMethodId, StringId, UpvalueId,
     },
+    vm::Global,
 };
 use derivative::Derivative;
 use derive_more::{From, Neg};
 use rustc_hash::FxHashMap as HashMap;
 
+use std::path::PathBuf;
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub enum Value {
     Bool(bool),
@@ -18,6 +20,8 @@ pub enum Value {
     String(StringId),
 
     Function(FunctionId),
+    Module(ModuleId),
+
     Closure(ClosureId),
     NativeFunction(NativeFunctionId),
     NativeMethod(NativeMethodId),
@@ -28,6 +32,7 @@ pub enum Value {
     Instance(InstanceId),
     BoundMethod(BoundMethodId),
 
+    // This should really just be "NativeClass"
     List(ListId),
 }
 
@@ -48,6 +53,7 @@ impl std::fmt::Display for Value {
             Self::BoundMethod(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::List(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::Upvalue(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::Module(ref_id) => f.pad(&format!("{}", **ref_id)),
         }
     }
 }
@@ -259,6 +265,7 @@ pub struct Closure {
     pub upvalues: Vec<UpvalueId>,
     pub upvalue_count: usize,
     pub is_module: bool,
+    pub containing_module: Option<ModuleId>,
 }
 
 impl std::fmt::Display for Closure {
@@ -275,13 +282,14 @@ impl PartialEq for Closure {
 }
 
 impl Closure {
-    pub fn new(function: FunctionId, is_module: bool) -> Self {
+    pub fn new(function: FunctionId, is_module: bool, containing_module: Option<ModuleId>) -> Self {
         let upvalue_count = function.upvalue_count;
         Self {
             function,
             upvalues: Vec::with_capacity(upvalue_count),
             upvalue_count,
             is_module,
+            containing_module,
         }
     }
 }
@@ -507,6 +515,40 @@ impl std::fmt::Display for List {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Derivative)]
+#[derivative(PartialOrd)]
+pub struct Module {
+    pub name: StringId,
+    pub path: PathBuf,
+    #[derivative(PartialOrd = "ignore")]
+    pub globals: HashMap<StringId, Global>,
+    pub names_to_import: Option<Vec<StringId>>,
+    pub alias: StringId,
+}
+
+impl Module {
+    pub fn new(
+        name: StringId,
+        path: PathBuf,
+        names_to_import: Option<Vec<StringId>>,
+        alias: StringId,
+    ) -> Self {
+        Self {
+            name,
+            path,
+            globals: HashMap::default(),
+            names_to_import,
+            alias,
+        }
+    }
+}
+
+impl std::fmt::Display for Module {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad(&format!("<module {}>", *self.name))
+    }
+}
+
 impl From<bool> for Value {
     fn from(b: bool) -> Self {
         Self::Bool(b)
@@ -591,6 +633,12 @@ impl From<ListId> for Value {
     }
 }
 
+impl From<ModuleId> for Value {
+    fn from(m: ModuleId) -> Self {
+        Self::Module(m)
+    }
+}
+
 impl Value {
     pub const fn is_falsey(&self) -> bool {
         matches!(self, Self::Bool(false) | Self::Nil)
@@ -660,6 +708,13 @@ impl Value {
                 "Only instances and lists currently have classes. Got `{}`",
                 x
             ),
+        }
+    }
+
+    pub fn as_module(&self) -> &ModuleId {
+        match self {
+            Self::Module(m) => m,
+            _ => unreachable!("Expected Module, found `{}`", self),
         }
     }
 }
