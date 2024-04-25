@@ -73,11 +73,16 @@ pub enum OpCode {
     Equal,
     Greater,
     Less,
-    // NotEqual,
-    // GreaterEqual,
-    // LessEqual,
+    NotEqual,
+    GreaterEqual,
+    LessEqual,
 
-    // One, Two, Zero, Minus1?
+    LoadOne,
+    LoadTwo,
+    LoadZero,
+    LoadOnef,
+    LoadZerof,
+    LoadMinusOne,
     // CompZero
     // AddOne
     // SubOne
@@ -263,8 +268,10 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         std::mem::size_of::<OpCode>()
             + match opcode {
                 Negate | Add | Subtract | Multiply | Divide | Mod | Exp | FloorDiv | BitAnd
-                | BitOr | BitXor | Nil | True | False | Not | Equal | Greater | Less | Pop
-                | Dup | CloseUpvalue | Inherit | IndexSubscript | StoreSubscript | Import => 0,
+                | BitOr | BitXor | Nil | True | False | Not | Equal | Greater | Less
+                | LessEqual | GreaterEqual | NotEqual | Pop | Dup | CloseUpvalue | Inherit
+                | IndexSubscript | StoreSubscript | Import | LoadOne | LoadTwo | LoadZero
+                | LoadMinusOne | LoadOnef | LoadZerof => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | Return | GetUpvalue | SetUpvalue | Class
                 | GetProperty | SetProperty | Method | GetSuper | BuildList | DupN | ImportFrom
@@ -549,6 +556,9 @@ impl<'chunk> std::fmt::Debug for InstructionDisassembler<'chunk> {
                 Divide,
                 Dup,
                 Equal,
+                GreaterEqual,
+                LessEqual,
+                NotEqual,
                 False,
                 Greater,
                 Inherit,
@@ -570,6 +580,12 @@ impl<'chunk> std::fmt::Debug for InstructionDisassembler<'chunk> {
                 IndexSubscript,
                 StoreSubscript,
                 Import,
+                LoadOne,
+                LoadTwo,
+                LoadZero,
+                LoadMinusOne,
+                LoadOnef,
+                LoadZerof,
             ),
         )?;
         Ok(())

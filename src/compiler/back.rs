@@ -2,7 +2,7 @@ use crate::{
     chunk::{CodeOffset, OpCode},
     scanner::{Token, TokenKind},
     types::Line,
-    value::Value,
+    value::{Number, Value},
 };
 
 use super::{Compiler, FunctionType};
@@ -39,13 +39,25 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         self.emit_byte(OpCode::Return, line);
     }
 
+    #[allow(illegal_floating_point_literal_pattern)]
     pub(super) fn emit_constant<T>(&mut self, value: T)
     where
         T: Into<Value>,
     {
         let line = self.line();
-        if !self.current_chunk().write_constant(value.into(), line) {
-            self.error("Too many constants in one chunk.");
+        let value = value.into();
+        match value {
+            Value::Number(Number::Integer(1)) => self.emit_byte(OpCode::LoadOne, line),
+            Value::Number(Number::Integer(2)) => self.emit_byte(OpCode::LoadTwo, line),
+            Value::Number(Number::Integer(-1)) => self.emit_byte(OpCode::LoadMinusOne, line),
+            Value::Number(Number::Integer(0)) => self.emit_byte(OpCode::LoadZero, line),
+            Value::Number(Number::Float(0.0)) => self.emit_byte(OpCode::LoadZerof, line),
+            Value::Number(Number::Float(1.0)) => self.emit_byte(OpCode::LoadOnef, line),
+            _ => {
+                if !self.current_chunk().write_constant(value, line) {
+                    self.error("Too many constants in one chunk.");
+                }
+            }
         }
     }
 
