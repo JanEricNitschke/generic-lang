@@ -25,3 +25,8 @@ my_object.other(3);
 
 print("x" in my_object); # expect: true
 print("z" in my_object); # expect: false
+
+class BadClass {}
+
+var bad_object = BadClass();
+"x" in bad_object; # expect runtime error: Undefined property 'contains'.
