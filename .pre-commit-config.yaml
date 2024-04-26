@@ -9,6 +9,11 @@ repos:
       - id: check-merge-conflict
       - id: check-toml
       - id: check-xml
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.20.8
+    hooks:
+      - id: typos
+        args: []
   - repo: https://github.com/doublify/pre-commit-rust
     rev: v1.0
     hooks:

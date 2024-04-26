@@ -103,6 +103,7 @@ pub enum OpCode {
     Pop,
     Dup,
     DupN,
+    Swap,
 
     Return,
 
@@ -245,7 +246,7 @@ impl std::fmt::Debug for Chunk {
 pub struct InstructionDisassembler<'chunk> {
     chunk: &'chunk Chunk,
     pub offset: CodeOffset,
-    operand_aligment: usize,
+    operand_alignment: usize,
     opcode_name_alignment: usize,
 }
 
@@ -255,7 +256,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         Self {
             chunk,
             offset: CodeOffset(0),
-            operand_aligment: 4,
+            operand_alignment: 4,
             // +3 because we add "OP_" to the start.
             opcode_name_alignment: OpCode::max_name_length() + 3,
         }
@@ -271,7 +272,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
                 | BitOr | BitXor | Nil | True | False | Not | Equal | Greater | Less
                 | LessEqual | GreaterEqual | NotEqual | Pop | Dup | CloseUpvalue | Inherit
                 | IndexSubscript | StoreSubscript | Import | LoadOne | LoadTwo | LoadZero
-                | LoadMinusOne | LoadOnef | LoadZerof => 0,
+                | LoadMinusOne | LoadOnef | LoadZerof | Swap => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | Return | GetUpvalue | SetUpvalue | Class
                 | GetProperty | SetProperty | Method | GetSuper | BuildList | DupN | ImportFrom
@@ -308,7 +309,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
             name,
             *constant_index,
             OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
-            OPERAND_ALIGNMENT = self.operand_aligment
+            OPERAND_ALIGNMENT = self.operand_alignment
         )?;
         writeln!(
             f,
@@ -336,7 +337,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
             *constant_index,
             *self.chunk.get_constant(*constant_index.as_ref()),
             OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
-            OPERAND_ALIGNMENT = self.operand_aligment
+            OPERAND_ALIGNMENT = self.operand_alignment
         )
     }
 
@@ -361,7 +362,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
             f,
             "{name:-OPCODE_NAME_ALIGNMENT$} {slot:>OPERAND_ALIGNMENT$}",
             OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
-            OPERAND_ALIGNMENT = self.operand_aligment
+            OPERAND_ALIGNMENT = self.operand_alignment
         )
     }
 
@@ -379,7 +380,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
             f,
             "{name:-OPCODE_NAME_ALIGNMENT$} {slot:>OPERAND_ALIGNMENT$}",
             OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
-            OPERAND_ALIGNMENT = self.operand_aligment
+            OPERAND_ALIGNMENT = self.operand_alignment
         )
     }
 
@@ -405,7 +406,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
             *offset,
             target,
             OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
-            OPERAND_ALIGNMENT = self.operand_aligment
+            OPERAND_ALIGNMENT = self.operand_alignment
         )
     }
 
@@ -427,7 +428,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
             f,
             "{name:-OPCODE_NAME_ALIGNMENT$} {constant:>OPERAND_ALIGNMENT$} {value}",
             OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
-            OPERAND_ALIGNMENT = self.operand_aligment
+            OPERAND_ALIGNMENT = self.operand_alignment
         )?;
 
         let function = value.as_function();
@@ -449,7 +450,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
                 "{:04}    |{} {} {}",
                 offset - 2,
                 // +1 for the space before opcode_name and 1 between name and operand
-                " ".repeat(self.opcode_name_alignment + self.operand_aligment + 2),
+                " ".repeat(self.opcode_name_alignment + self.operand_alignment + 2),
                 if is_local { "local" } else { "upvalue" },
                 index
             )?;
@@ -472,7 +473,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         writeln!(
             f,
             "{formatted_name:-OPCODE_NAME_ALIGNMENT$} {constant:>OPERAND_ALIGNMENT$} '{constant_value}'",
-            OPCODE_NAME_ALIGNMENT =self.opcode_name_alignment, OPERAND_ALIGNMENT = self.operand_aligment
+            OPCODE_NAME_ALIGNMENT =self.opcode_name_alignment, OPERAND_ALIGNMENT = self.operand_alignment
         )
     }
 }
@@ -512,7 +513,7 @@ impl<'chunk> std::fmt::Debug for InstructionDisassembler<'chunk> {
                 f,
                 "{:>OPERAND_ALIGNMENT$} ",
                 *self.chunk.get_line(offset),
-                OPERAND_ALIGNMENT = self.operand_aligment
+                OPERAND_ALIGNMENT = self.operand_alignment
             )?;
         }
 
@@ -586,6 +587,7 @@ impl<'chunk> std::fmt::Debug for InstructionDisassembler<'chunk> {
                 LoadMinusOne,
                 LoadOnef,
                 LoadZerof,
+                Swap,
             ),
         )?;
         Ok(())

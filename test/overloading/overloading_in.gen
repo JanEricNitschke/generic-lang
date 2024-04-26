@@ -1,0 +1,32 @@
+
+var my_list = [1, 2, 3];
+print(3 in my_list); # expect: true
+print(4 in my_list); # expect: false
+
+class MyClass {
+
+    __init__() {
+        this.x = 1;
+    }
+
+    contains(value) {
+        return value == "x";
+    }
+
+    other(value) {
+        return value == "y";
+    }
+}
+
+var my_object = MyClass();
+
+my_object.other(3);
+
+
+print("x" in my_object); # expect: true
+print("z" in my_object); # expect: false
+
+class BadClass {}
+
+var bad_object = BadClass();
+"x" in bad_object; # expect runtime error: Undefined property 'contains'.

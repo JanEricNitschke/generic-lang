@@ -173,7 +173,7 @@ macro_rules! run_instruction {
                 $self.stack_push_value(*$self.peek(0).expect("stack underflow in OP_DUP"));
             }
             OpCode::DupN => {
-                // -1 because Dup1 should peek at the top most elemnt
+                // -1 because Dup1 should peek at the top most element
                 let depth = usize::from($self.read_byte()) - 1;
                 for _ in (0..=depth).rev() {
                     // Always look at depth because each iteration pushes an
@@ -186,6 +186,10 @@ macro_rules! run_instruction {
                         *$self.peek(depth).expect("stack underflow in OP_DUP"),
                     );
                 }
+            }
+            OpCode::Swap => {
+                let len = $self.stack.len();
+                $self.stack.swap(len-1, len-2);
             }
             OpCode::LoadOne => {
                 $self.stack.push(1.into());
@@ -352,7 +356,7 @@ macro_rules! run_instruction {
             OpCode::GetProperty => {
                 let field = $self.read_string("GET_PROPERTY");
                 let value = *$self.peek(0).expect("Stack underflow in GET_PROPERTY");
-                // Probaby better to just grab the class and ask if it is native
+                // Probably better to just grab the class and ask if it is native
                 match value {
                     Value::Instance(instance) => {
                         if let Some(value) = instance.fields.get(&*field) {
@@ -406,7 +410,7 @@ macro_rules! run_instruction {
                     x => {
                         runtime_error!(
                             $self,
-                            "Tried to set propery '{}' of non-instance `{}`",
+                            "Tried to set property '{}' of non-instance `{}`",
                             field,
                             x
                         );

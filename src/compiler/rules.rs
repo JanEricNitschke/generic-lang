@@ -10,6 +10,7 @@ use super::Compiler;
 pub(super) enum Precedence {
     None,
     Assignment, // =
+    In,         // in
     Or,         // or
     And,        // and
     Equality,   // == !=
@@ -51,7 +52,7 @@ macro_rules! make_rules {
     ($($token:ident = [$prefix:ident, $infix:ident, $precedence:ident]),* $(,)?) => {{
         // Horrible hack to pre-fill the array with *something* before assigning the right values based on the macro input
         // Needed because `Rule` cannot be `Copy` (due to `fn`s)
-        // If the tokens get input into the makro in the same order
+        // If the tokens get input into the macro in the same order
         // That they appear in the enum then the loop is not needed.
         let mut rules = [$(Rule { prefix: make_rules!(@parse_fn $prefix), infix: make_rules!(@parse_fn $infix), precedence: Precedence::$precedence }),*];
         $(
@@ -109,7 +110,7 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Less         = [None,     binary,    Comparison],
         LessEqual    = [None,     binary,    Comparison],
         Identifier   = [variable, None,      None      ],
-        In           = [None,     None,      None      ],
+        In           = [None,     binary,    In        ],
         String       = [string,   None,      None      ],
         Number       = [number,   None,      None      ],
         Integer      = [integer,  None,      None      ],
@@ -197,21 +198,24 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         match operator {
             TK::Minus => self.emit_byte(OpCode::Negate, line),
             TK::Bang => self.emit_byte(OpCode::Not, line),
-            _ => unreachable!("Unkown unary operator: {}", operator),
+            _ => unreachable!("Unknown unary operator: {}", operator),
         }
     }
 
     fn binary(&mut self, _can_assign: bool) {
+        // First operand is already on the stack
         let operator = self.previous.as_ref().unwrap().kind;
         let line = self.line();
         let rule = self.get_rule(operator);
 
+        // Correctly put the second operand on the stack
         self.parse_precedence(
             Precedence::try_from_primitive(u8::from(rule.precedence) + 1).expect(
-                "Invalid precendence in 'binary', should never be called for `Primary expression`.",
+                "Invalid precedence in 'binary', should never be called for `Primary expression`.",
             ),
         );
 
+        // Emit the correct byte code to perform the operation on the two values
         match operator {
             TK::BangEqual => self.emit_byte(OpCode::NotEqual, line),
             TK::EqualEqual => self.emit_byte(OpCode::Equal, line),
@@ -229,8 +233,25 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             TK::Percent => self.emit_byte(OpCode::Mod, line),
             TK::StarStar => self.emit_byte(OpCode::Exp, line),
             TK::SlashSlash => self.emit_byte(OpCode::FloorDiv, line),
-            _ => unreachable!("Unkown binary operator: {}", operator),
+            TK::In => self.in_(),
+            _ => unreachable!("Unknown binary operator: {}", operator),
         }
+    }
+
+    fn in_(&mut self) {
+        // Order on the stack is element -- container
+        // To call a method container.contains(element)
+        // We need container -- element
+        // Then call OP_INVOKE with "contains" and `1`
+        let line = self.line();
+        // Swap the order
+        self.emit_byte(OpCode::Swap, line);
+        self.emit_byte(OpCode::Invoke, line);
+        let contains_constant = self.identifier_constant(&"contains");
+        if !self.emit_number(contains_constant.0, false) {
+            self.error("Too many constants created for OP_IN.");
+        }
+        self.emit_byte(1, line);
     }
 
     fn call(&mut self, _can_assign: bool) {
@@ -301,7 +322,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             TK::False => self.emit_byte(OpCode::False, self.line()),
             TK::Nil => self.emit_byte(OpCode::Nil, self.line()),
             TK::True => self.emit_byte(OpCode::True, self.line()),
-            _ => unreachable!("Unkown literal: {}", literal),
+            _ => unreachable!("Unknown literal: {}", literal),
         }
     }
 
