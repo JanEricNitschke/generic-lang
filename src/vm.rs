@@ -57,6 +57,7 @@ impl std::fmt::Display for Global {
     }
 }
 
+#[derive(Debug)]
 pub struct CallFrame {
     closure: ClosureId,
     ip: usize,
@@ -70,7 +71,8 @@ impl CallFrame {
     }
 }
 
-struct CallStack {
+#[derive(Debug)]
+pub struct CallStack {
     frames: Vec<CallFrame>,
     current_closure: Option<ClosureId>,
     current_function: Option<FunctionId>,
@@ -134,15 +136,407 @@ impl CallStack {
         self.current_function.unwrap()
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.frames.len()
     }
 }
 
+// Macro for performance reasons
+// with macro/inlined it takes ~300ms to run fib.gen
+// with function and wrapping return value in option takes ~450ms
+macro_rules! run_instruction {
+    ($self:ident, $trace_execution:expr, $stress_gc:expr, $log_gc:expr) => {
+        if $trace_execution > 0 {
+            let function = &$self.callstack.function();
+            let mut disassembler = InstructionDisassembler::new(&function.chunk);
+            *disassembler.offset = $self.callstack.current().ip;
+            if $trace_execution > 1 {
+                println!(
+                    "Current module: {} at module depth {} and total call depth {}.",
+                    *$self.modules.last().expect("Module underflow in disassembler").name,
+                    $self.modules.len(),
+                    $self.callstack.len()
+                );
+            }
+            println!(
+                "          [ { } ]",
+                $self.stack.iter().map(|v| format!("{v}")).collect::<Vec<_>>().join(" ][ ")
+            );
+            print!("{disassembler:?}");
+        }
+        $self.collect_garbage($stress_gc, $log_gc);
+        match OpCode::try_from($self.read_byte()).expect("Internal error: unrecognized opcode") {
+            OpCode::Pop => {
+                $self.stack.pop().expect("Stack underflow in OP_POP.");
+            }
+            OpCode::Dup => {
+                $self.stack_push_value(*$self.peek(0).expect("stack underflow in OP_DUP"));
+            }
+            OpCode::DupN => {
+                // -1 because Dup1 should peek at the top most elemnt
+                let depth = usize::from($self.read_byte()) - 1;
+                for _ in (0..=depth).rev() {
+                    // Always look at depth because each iteration pushes an
+                    // additional item onto the stack.
+                    // So for N = 2
+                    // 1 2 3 4 (depth = 1) -> grab 3
+                    // 1 2 3 4 3 (again depth = 1) -> grab 4
+                    // 1 2 3 4 3 4
+                    $self.stack_push_value(
+                        *$self.peek(depth).expect("stack underflow in OP_DUP"),
+                    );
+                }
+            }
+            OpCode::LoadOne => {
+                $self.stack.push(1.into());
+            }
+            OpCode::LoadTwo => {
+                $self.stack.push(2.into());
+            }
+            OpCode::LoadZero => {
+                $self.stack.push(0.into());
+            }
+            OpCode::LoadMinusOne => {
+                $self.stack.push((-1).into());
+            }
+            OpCode::LoadZerof => {
+                $self.stack.push((0.0).into());
+            }
+            OpCode::LoadOnef => {
+                $self.stack.push((1.0).into());
+            }
+            op @ (OpCode::GetLocal | OpCode::GetLocalLong) => $self.get_local(op),
+            op @ (OpCode::SetLocal | OpCode::SetLocalLong) => $self.set_local(op),
+            op @ (OpCode::GetGlobal | OpCode::GetGlobalLong) => {
+                if let Some(value) = $self.get_global(op) {
+                    return value;
+                }
+            }
+            op @ (OpCode::SetGlobal | OpCode::SetGlobalLong) => {
+                if let Some(value) = $self.set_global(op) {
+                    return value;
+                }
+            }
+            op @ (OpCode::DefineGlobal
+            | OpCode::DefineGlobalLong
+            | OpCode::DefineGlobalConst
+            | OpCode::DefineGlobalConstLong) => $self.define_global(op),
+            OpCode::JumpIfFalse => $self.jump_conditional(false),
+            OpCode::JumpIfTrue => $self.jump_conditional(true),
+            OpCode::Call => {
+                if let Some(value) = $self.call() {
+                    return value;
+                }
+            }
+            OpCode::Return => {
+                if let Some(value) = $self.return_() {
+                    return value;
+                }
+            }
+            OpCode::Constant => {
+                let value = $self.read_constant(false);
+                $self.stack_push(value);
+            }
+            OpCode::ConstantLong => {
+                let value = $self.read_constant(true);
+                $self.stack_push(value);
+            }
+            OpCode::Negate => {
+                if let Some(value) = $self.negate() {
+                    return value;
+                }
+            }
+            OpCode::Not => $self.not_(),
+            OpCode::Nil => $self.stack_push(Value::Nil),
+            OpCode::True => $self.stack_push(Value::Bool(true)),
+            OpCode::False => $self.stack_push(Value::Bool(false)),
+            OpCode::Equal => $self.equal(false),
+            OpCode::Add => {
+                if let Some(value) = $self.add() {
+                    return value;
+                }
+            }
+            OpCode::Subtract => binary_op!($self, -, false),
+            OpCode::Multiply => binary_op!($self, *, false),
+            OpCode::Divide => binary_op!($self, /, false),
+            OpCode::BitXor => binary_op!($self, ^, true),
+            OpCode::BitAnd => binary_op!($self, &, true),
+            OpCode::BitOr => binary_op!($self, |, true),
+            OpCode::Exp => {
+                if let Some(value) = $self.exponatiate() {
+                    return value;
+                }
+            }
+            OpCode::Mod => binary_op!($self, %, false),
+            OpCode::FloorDiv => {
+                if let Some(value) = $self.floor_div() {
+                    return value;
+                }
+            }
+            OpCode::Greater => binary_op!($self, >, false),
+            OpCode::Less => binary_op!($self, <, false),
+            OpCode::GreaterEqual => binary_op!($self, >=, false),
+            OpCode::LessEqual => binary_op!($self, <=, false),
+            OpCode::NotEqual => $self.equal(true),
+            OpCode::Jump => {
+                let offset = $self.read_16bit_number();
+                $self.callstack.current_mut().ip += offset;
+            }
+            OpCode::Loop => {
+                let offset = $self.read_16bit_number();
+                $self.callstack.current_mut().ip -= offset;
+            }
+            OpCode::Closure => {
+                let value = $self.read_constant(false);
+                let function = value.as_function();
+                let mut closure = Closure::new(*function, false, $self.modules.last().copied());
+
+                for _ in 0..closure.upvalue_count {
+                    let is_local = $self.read_byte();
+                    debug_assert!(
+                        is_local == 0 || is_local == 1,
+                        "'is_local` must be 0 or 1, got {is_local}"
+                    );
+                    let is_local = is_local == 1;
+
+                    let index = usize::from($self.read_byte());
+                    if is_local {
+                        closure.upvalues.push($self.capture_upvalue(index));
+                    } else {
+                        closure
+                            .upvalues
+                            .push($self.callstack.closure().upvalues[index]);
+                    }
+                }
+                let closure_id = $self.heap.add_closure(closure);
+                $self.stack_push(closure_id);
+            }
+            OpCode::GetUpvalue => {
+                let upvalue_index = usize::from($self.read_byte());
+                let closure = $self.callstack.closure();
+                let upvalue_location = closure.upvalues[upvalue_index];
+                match *upvalue_location {
+                    Upvalue::Open(absolute_local_index) => {
+                        $self.stack_push($self.stack[absolute_local_index]);
+                    }
+                    Upvalue::Closed(value) => $self.stack_push(value),
+                }
+            }
+            OpCode::SetUpvalue => {
+                let upvalue_index = usize::from($self.read_byte());
+                let closure = $self.callstack.closure();
+                let mut upvalue_location = closure.upvalues[upvalue_index];
+                let new_value = $self
+                    .stack
+                    .last()
+                    .copied()
+                    .expect("Stack underflow in OP_SET_UPVALUE");
+                match *upvalue_location {
+                    Upvalue::Open(absolute_local_index) => {
+                        $self.stack[absolute_local_index] = new_value;
+                    }
+                    Upvalue::Closed(ref mut value) => {
+                        *value = new_value;
+                    }
+                }
+            }
+            OpCode::CloseUpvalue => {
+                $self.close_upvalue($self.stack.len() - 1);
+                $self.stack.pop();
+            }
+            OpCode::Class => {
+                let class_name = $self.read_string("OP_CLASS");
+                let class = $self.heap.add_class(Class::new(class_name, false));
+                $self.stack_push_value(class);
+            }
+            OpCode::GetProperty => {
+                let field = $self.read_string("GET_PROPERTY");
+                let value = *$self.peek(0).expect("Stack underflow in GET_PROPERTY");
+                // Probaby better to just grab the class and ask if it is native
+                match value {
+                    Value::Instance(instance) => {
+                        if let Some(value) = instance.fields.get(&*field) {
+                            $self.stack.pop(); // instance
+                            $self.stack_push(*value);
+                        } else if $self.bind_method(instance.class.into(), field) {
+                            // Just using the side effects
+                        } else {
+                            runtime_error!($self, "Undefined property '{}'.", *field);
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                    Value::List(list) => {
+                        if $self.bind_method(list.class.into(), field) {
+                            // Just using the side effects
+                        } else {
+                            runtime_error!($self, "Undefined property '{}'.", *field);
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                    Value::Module(module) => {
+                        if let Some(value) = module.globals.get(&field) {
+                            $self.stack.pop(); // instance
+                            $self.stack_push(value.value);
+                        } else {
+                            runtime_error!(
+                                $self,
+                                "Undefined name '{}' in module {}.",
+                                *field,
+                                *module.name
+                            );
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                    x => {
+                        runtime_error!(
+                            $self,
+                            "Tried to get property '{}' of non-instance `{}`.",
+                            *field,
+                            x
+                        );
+                        return InterpretResult::RuntimeError;
+                    }
+                };
+            }
+            OpCode::SetProperty => {
+                let field_string_id = $self.read_string("SET_PROPERTY");
+                let field = &$self.heap.strings[&field_string_id];
+                match &$self.peek(1).expect("Stack underflow in SET_PROPERTY") {
+                    Value::Instance(instance) => instance,
+                    x => {
+                        runtime_error!(
+                            $self,
+                            "Tried to set propery '{}' of non-instance `{}`",
+                            field,
+                            x
+                        );
+                        return InterpretResult::RuntimeError;
+                    }
+                };
+                let value = $self.stack.pop().expect("Stack underflow in SET_PROPERTY");
+                let mut instance = $self.stack.pop().expect("Stack underflow in SET_PROPERTY");
+                instance
+                    .as_instance_mut()
+                    .fields
+                    .insert(field.to_string(), value);
+                $self.stack_push(value);
+            }
+            OpCode::Method => {
+                let method_name = $self.read_string("OP_METHOD");
+                $self.define_method(method_name);
+            }
+            OpCode::Invoke => {
+                let method_name = $self.read_string("OP_INVOKE");
+                let arg_count = $self.read_byte();
+                if !$self.invoke(method_name, arg_count) {
+                    return InterpretResult::RuntimeError;
+                }
+            }
+            OpCode::Inherit => {
+                let superclass_id = $self.peek(1).expect("Stack underflow in OP_INHERIT");
+                let superclass = if let Value::Class(superclass) = &superclass_id {
+                    if superclass.is_native {
+                        runtime_error!($self, "Can not inherit from native classes yet.");
+                        return InterpretResult::RuntimeError;
+                    }
+                    superclass
+                } else {
+                    runtime_error!($self, "Superclass must be a class.");
+                    return InterpretResult::RuntimeError;
+                };
+                let methods = superclass.methods.clone();
+                let mut subclass = $self.stack.pop().expect("Stack underflow in OP_INHERIT");
+                subclass.as_class_mut().methods.extend(methods);
+            }
+            OpCode::GetSuper => {
+                let method_name = $self.read_string("OP_GET_SUPER");
+                let superclass = $self.stack.pop().expect("Stack underflow in OP_GET_SUPER");
+                if !$self.bind_method(superclass, method_name) {
+                    return InterpretResult::RuntimeError;
+                }
+            }
+            OpCode::SuperInvoke => {
+                let method_name = $self.read_string("OP_SUPER_INVOKE");
+                let arg_count = $self.read_byte();
+                let superclass = $self
+                    .stack
+                    .pop()
+                    .expect("Stack underflow in OP_SUPER_INVOKE");
+                if !$self.invoke_from_class(superclass, method_name, arg_count) {
+                    return InterpretResult::RuntimeError;
+                }
+            }
+            OpCode::BuildList => {
+                let mut list = List::new(*$self.heap.native_classes.get("List").unwrap());
+
+                let arg_count = $self.read_byte();
+                for index in (0..arg_count).rev() {
+                    list.items.push(*$self.peek(index as usize).unwrap());
+                }
+                for _ in 0..arg_count {
+                    $self.stack.pop();
+                }
+                let list_value = $self.heap.add_list(list);
+                $self.stack_push_value(list_value);
+            }
+            OpCode::IndexSubscript => {
+                if let Some(value) = $self.index_subscript() {
+                    return value;
+                }
+            }
+            OpCode::StoreSubscript => {
+                if let Some(value) = $self.store_subscript() {
+                    return value;
+                }
+            }
+            OpCode::Import => {
+                let file_path = $self.stack.pop().expect("Stack underflow in OP_IMPORT");
+                if let Some(value) = $self.import_file(file_path, None, None) {
+                    return value;
+                }
+            }
+            OpCode::ImportAs => {
+                let alias = $self.read_string("OP_IMPORT_AS");
+                let file_path = $self.stack.pop().expect("Stack underflow in OP_IMPORT_AS");
+                if let Some(value) = $self.import_file(file_path, None, Some(alias)) {
+                    return value;
+                }
+            }
+            OpCode::ImportFrom => {
+                let n_names_to_import = $self.read_byte();
+                let names_to_import = if n_names_to_import > 0 {
+                    let mut names = Vec::with_capacity(n_names_to_import as usize);
+                    for _ in 0..n_names_to_import {
+                        let name = $self.stack.pop().expect("Stack underflow in OP_IMPORT_FROM");
+                        if let Value::String(name) = name {
+                            names.push(name);
+                        } else {
+                            runtime_error!(
+                                $self,
+                                "Imported names must be strings, got `{}` instead.",
+                                name
+                            );
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                    Some(names)
+                } else {
+                    None
+                };
+
+                let file_path = $self.stack.pop().expect("Stack underflow in OP_IMPORT_FROM");
+                if let Some(value) = $self.import_file(file_path, names_to_import, None) {
+                    return value;
+                }
+            }
+        };
+    };
+}
+
 pub struct VM {
-    heap: Pin<Box<Heap>>,
-    callstack: CallStack,
-    stack: Vec<Value>,
+    pub heap: Pin<Box<Heap>>,
+    pub callstack: CallStack,
+    pub stack: Vec<Value>,
     open_upvalues: VecDeque<UpvalueId>,
     // Could also keep a cache of the last module or its globals for performance
     modules: Vec<ModuleId>,
@@ -222,408 +616,30 @@ impl VM {
         let stress_gc = config::STRESS_GC.load();
         let log_gc = config::LOG_GC.load();
         loop {
-            if trace_execution > 0 {
-                let function = &self.callstack.function();
-                let mut disassembler = InstructionDisassembler::new(&function.chunk);
-                *disassembler.offset = self.callstack.current().ip;
-                if trace_execution > 1 {
-                    for (key, value) in &self.modules.last().unwrap().globals {
-                        println!("{}: {}", **key, value);
-                    }
-                    for (key, value) in &self.defining_module().globals {
-                        println!("{}: {}", **key, value);
-                    }
-                    println!(
-                        "Current module: {} at module depth {} and total call depth {}.",
-                        *self
-                            .modules
-                            .last()
-                            .expect("Module underflow in disassembler")
-                            .name,
-                        self.modules.len(),
-                        self.callstack.len()
-                    );
-                }
-                println!(
-                    "          [ { } ]",
-                    self.stack
-                        .iter()
-                        .map(|v| format!("{v}"))
-                        .collect::<Vec<_>>()
-                        .join(" ][ ")
-                );
-                print!("{disassembler:?}");
-            }
-            self.collect_garbage(stress_gc, log_gc);
-            match OpCode::try_from(self.read_byte()).expect("Internal error: unrecognized opcode") {
-                OpCode::Pop => {
-                    self.stack.pop().expect("Stack underflow in OP_POP.");
-                }
-                OpCode::Dup => {
-                    self.stack_push_value(*self.peek(0).expect("stack underflow in OP_DUP"));
-                }
-                OpCode::DupN => {
-                    // -1 because Dup1 should peek at the top most elemnt
-                    let depth = usize::from(self.read_byte()) - 1;
-                    for _ in (0..=depth).rev() {
-                        // Always look at depth because each iteration pushes an
-                        // additional item onto the stack.
-                        // So for N = 2
-                        // 1 2 3 4 (depth = 1) -> grab 3
-                        // 1 2 3 4 3 (again depth = 1) -> grab 4
-                        // 1 2 3 4 3 4
-                        self.stack_push_value(
-                            *self.peek(depth).expect("stack underflow in OP_DUP"),
-                        );
-                    }
-                }
-                OpCode::LoadOne => {
-                    self.stack.push(1.into());
-                }
-                OpCode::LoadTwo => {
-                    self.stack.push(2.into());
-                }
-                OpCode::LoadZero => {
-                    self.stack.push(0.into());
-                }
-                OpCode::LoadMinusOne => {
-                    self.stack.push((-1).into());
-                }
-                OpCode::LoadZerof => {
-                    self.stack.push((0.0).into());
-                }
-                OpCode::LoadOnef => {
-                    self.stack.push((1.0).into());
-                }
-                op @ (OpCode::GetLocal | OpCode::GetLocalLong) => self.get_local(op),
-                op @ (OpCode::SetLocal | OpCode::SetLocalLong) => self.set_local(op),
-                op @ (OpCode::GetGlobal | OpCode::GetGlobalLong) => {
-                    if let Some(value) = self.get_global(op) {
-                        return value;
-                    }
-                }
-                op @ (OpCode::SetGlobal | OpCode::SetGlobalLong) => {
-                    if let Some(value) = self.set_global(op) {
-                        return value;
-                    }
-                }
-                op @ (OpCode::DefineGlobal
-                | OpCode::DefineGlobalLong
-                | OpCode::DefineGlobalConst
-                | OpCode::DefineGlobalConstLong) => self.define_global(op),
-                OpCode::JumpIfFalse => self.jump_conditional(false),
-                OpCode::JumpIfTrue => self.jump_conditional(true),
-                OpCode::Call => {
-                    if let Some(value) = self.call() {
-                        return value;
-                    }
-                }
-                OpCode::Return => {
-                    if let Some(value) = self.return_() {
-                        return value;
-                    }
-                }
-                OpCode::Constant => {
-                    let value = self.read_constant(false);
-                    self.stack_push(value);
-                }
-                OpCode::ConstantLong => {
-                    let value = self.read_constant(true);
-                    self.stack_push(value);
-                }
-                OpCode::Negate => {
-                    if let Some(value) = self.negate() {
-                        return value;
-                    }
-                }
-                OpCode::Not => self.not_(),
-                OpCode::Nil => self.stack_push(Value::Nil),
-                OpCode::True => self.stack_push(Value::Bool(true)),
-                OpCode::False => self.stack_push(Value::Bool(false)),
-                OpCode::Equal => self.equal(false),
-                OpCode::Add => {
-                    if let Some(value) = self.add() {
-                        return value;
-                    }
-                }
-                OpCode::Subtract => binary_op!(self, -, false),
-                OpCode::Multiply => binary_op!(self, *, false),
-                OpCode::Divide => binary_op!(self, /, false),
-                OpCode::BitXor => binary_op!(self, ^, true),
-                OpCode::BitAnd => binary_op!(self, &, true),
-                OpCode::BitOr => binary_op!(self, |, true),
-                OpCode::Exp => {
-                    if let Some(value) = self.exponatiate() {
-                        return value;
-                    }
-                }
-                OpCode::Mod => binary_op!(self, %, false),
-                OpCode::FloorDiv => {
-                    if let Some(value) = self.floor_div() {
-                        return value;
-                    }
-                }
-                OpCode::Greater => binary_op!(self, >, false),
-                OpCode::Less => binary_op!(self, <, false),
-                OpCode::GreaterEqual => binary_op!(self, >=, false),
-                OpCode::LessEqual => binary_op!(self, <=, false),
-                OpCode::NotEqual => self.equal(true),
-                OpCode::Jump => {
-                    let offset = self.read_16bit_number();
-                    self.callstack.current_mut().ip += offset;
-                }
-                OpCode::Loop => {
-                    let offset = self.read_16bit_number();
-                    self.callstack.current_mut().ip -= offset;
-                }
-                OpCode::Closure => {
-                    let value = self.read_constant(false);
-                    let function = value.as_function();
-                    let mut closure = Closure::new(*function, false, self.modules.last().copied());
-
-                    for _ in 0..closure.upvalue_count {
-                        let is_local = self.read_byte();
-                        debug_assert!(
-                            is_local == 0 || is_local == 1,
-                            "'is_local` must be 0 or 1, got {is_local}"
-                        );
-                        let is_local = is_local == 1;
-
-                        let index = usize::from(self.read_byte());
-                        if is_local {
-                            closure.upvalues.push(self.capture_upvalue(index));
-                        } else {
-                            closure
-                                .upvalues
-                                .push(self.callstack.closure().upvalues[index]);
-                        }
-                    }
-                    let closure_id = self.heap.add_closure(closure);
-                    self.stack_push(closure_id);
-                }
-                OpCode::GetUpvalue => {
-                    let upvalue_index = usize::from(self.read_byte());
-                    let closure = self.callstack.closure();
-                    let upvalue_location = closure.upvalues[upvalue_index];
-                    match *upvalue_location {
-                        Upvalue::Open(absolute_local_index) => {
-                            self.stack_push(self.stack[absolute_local_index]);
-                        }
-                        Upvalue::Closed(value) => self.stack_push(value),
-                    }
-                }
-                OpCode::SetUpvalue => {
-                    let upvalue_index = usize::from(self.read_byte());
-                    let closure = self.callstack.closure();
-                    let mut upvalue_location = closure.upvalues[upvalue_index];
-                    let new_value = self
-                        .stack
-                        .last()
-                        .copied()
-                        .expect("Stack underflow in OP_SET_UPVALUE");
-                    match *upvalue_location {
-                        Upvalue::Open(absolute_local_index) => {
-                            self.stack[absolute_local_index] = new_value;
-                        }
-                        Upvalue::Closed(ref mut value) => {
-                            *value = new_value;
-                        }
-                    }
-                }
-                OpCode::CloseUpvalue => {
-                    self.close_upvalue(self.stack.len() - 1);
-                    self.stack.pop();
-                }
-                OpCode::Class => {
-                    let class_name = self.read_string("OP_CLASS");
-                    let class = self.heap.add_class(Class::new(class_name, false));
-                    self.stack_push_value(class);
-                }
-                OpCode::GetProperty => {
-                    let field = self.read_string("GET_PROPERTY");
-                    let value = *self.peek(0).expect("Stack underflow in GET_PROPERTY");
-                    // Probaby better to just grab the class and ask if it is native
-                    match value {
-                        Value::Instance(instance) => {
-                            if let Some(value) = instance.fields.get(&*field) {
-                                self.stack.pop(); // instance
-                                self.stack_push(*value);
-                            } else if self.bind_method(instance.class.into(), field) {
-                                // Just using the side effects
-                            } else {
-                                runtime_error!(self, "Undefined property '{}'.", *field);
-                                return InterpretResult::RuntimeError;
-                            }
-                        }
-                        Value::List(list) => {
-                            if self.bind_method(list.class.into(), field) {
-                                // Just using the side effects
-                            } else {
-                                runtime_error!(self, "Undefined property '{}'.", *field);
-                                return InterpretResult::RuntimeError;
-                            }
-                        }
-                        Value::Module(module) => {
-                            if let Some(value) = module.globals.get(&field) {
-                                self.stack.pop(); // instance
-                                self.stack_push(value.value);
-                            } else {
-                                runtime_error!(
-                                    self,
-                                    "Undefined name '{}' in module {}.",
-                                    *field,
-                                    *module.name
-                                );
-                                return InterpretResult::RuntimeError;
-                            }
-                        }
-                        x => {
-                            runtime_error!(
-                                self,
-                                "Tried to get property '{}' of non-instance `{}`.",
-                                *field,
-                                x
-                            );
-                            return InterpretResult::RuntimeError;
-                        }
-                    };
-                }
-                OpCode::SetProperty => {
-                    let field_string_id = self.read_string("SET_PROPERTY");
-                    let field = &self.heap.strings[&field_string_id];
-                    match &self.peek(1).expect("Stack underflow in SET_PROPERTY") {
-                        Value::Instance(instance) => instance,
-                        x => {
-                            runtime_error!(
-                                self,
-                                "Tried to set propery '{}' of non-instance `{}`",
-                                field,
-                                x
-                            );
-                            return InterpretResult::RuntimeError;
-                        }
-                    };
-                    let value = self.stack.pop().expect("Stack underflow in SET_PROPERTY");
-                    let mut instance = self.stack.pop().expect("Stack underflow in SET_PROPERTY");
-                    instance
-                        .as_instance_mut()
-                        .fields
-                        .insert(field.to_string(), value);
-                    self.stack_push(value);
-                }
-                OpCode::Method => {
-                    let method_name = self.read_string("OP_METHOD");
-                    self.define_method(method_name);
-                }
-                OpCode::Invoke => {
-                    let method_name = self.read_string("OP_INVOKE");
-                    let arg_count = self.read_byte();
-                    if !self.invoke(method_name, arg_count) {
-                        return InterpretResult::RuntimeError;
-                    }
-                }
-                OpCode::Inherit => {
-                    let superclass_id = self.peek(1).expect("Stack underflow in OP_INHERIT");
-                    let superclass = if let Value::Class(superclass) = &superclass_id {
-                        if superclass.is_native {
-                            runtime_error!(self, "Can not inherit from native classes yet.");
-                            return InterpretResult::RuntimeError;
-                        }
-                        superclass
-                    } else {
-                        runtime_error!(self, "Superclass must be a class.");
-                        return InterpretResult::RuntimeError;
-                    };
-                    let methods = superclass.methods.clone();
-                    let mut subclass = self.stack.pop().expect("Stack underflow in OP_INHERIT");
-                    subclass.as_class_mut().methods.extend(methods);
-                }
-                OpCode::GetSuper => {
-                    let method_name = self.read_string("OP_GET_SUPER");
-                    let superclass = self.stack.pop().expect("Stack underflow in OP_GET_SUPER");
-                    if !self.bind_method(superclass, method_name) {
-                        return InterpretResult::RuntimeError;
-                    }
-                }
-                OpCode::SuperInvoke => {
-                    let method_name = self.read_string("OP_SUPER_INVOKE");
-                    let arg_count = self.read_byte();
-                    let superclass = self
-                        .stack
-                        .pop()
-                        .expect("Stack underflow in OP_SUPER_INVOKE");
-                    if !self.invoke_from_class(superclass, method_name, arg_count) {
-                        return InterpretResult::RuntimeError;
-                    }
-                }
-                OpCode::BuildList => {
-                    let mut list = List::new(*self.heap.native_classes.get("List").unwrap());
-
-                    let arg_count = self.read_byte();
-                    for index in (0..arg_count).rev() {
-                        list.items.push(*self.peek(index as usize).unwrap());
-                    }
-                    for _ in 0..arg_count {
-                        self.stack.pop();
-                    }
-                    let list_value = self.heap.add_list(list);
-                    self.stack_push_value(list_value);
-                }
-                OpCode::IndexSubscript => {
-                    if let Some(value) = self.index_subscript() {
-                        return value;
-                    }
-                }
-                OpCode::StoreSubscript => {
-                    if let Some(value) = self.store_subscript() {
-                        return value;
-                    }
-                }
-                OpCode::Import => {
-                    let file_path = self.stack.pop().expect("Stack underflow in OP_IMPORT");
-                    if let Some(value) = self.import_file(file_path, None, None) {
-                        return value;
-                    }
-                }
-                OpCode::ImportAs => {
-                    let alias = self.read_string("OP_IMPORT_AS");
-                    let file_path = self.stack.pop().expect("Stack underflow in OP_IMPORT_AS");
-                    if let Some(value) = self.import_file(file_path, None, Some(alias)) {
-                        return value;
-                    }
-                }
-                OpCode::ImportFrom => {
-                    let n_names_to_import = self.read_byte();
-                    let names_to_import = if n_names_to_import > 0 {
-                        let mut names = Vec::with_capacity(n_names_to_import as usize);
-                        for _ in 0..n_names_to_import {
-                            let name = self.stack.pop().expect("Stack underflow in OP_IMPORT_FROM");
-                            if let Value::String(name) = name {
-                                names.push(name);
-                            } else {
-                                runtime_error!(
-                                    self,
-                                    "Imported names must be strings, got `{}` instead.",
-                                    name
-                                );
-                                return InterpretResult::RuntimeError;
-                            }
-                        }
-                        Some(names)
-                    } else {
-                        None
-                    };
-
-                    let file_path = self.stack.pop().expect("Stack underflow in OP_IMPORT_FROM");
-                    if let Some(value) = self.import_file(file_path, names_to_import, None) {
-                        return value;
-                    }
-                }
-            };
+            run_instruction!(self, trace_execution, stress_gc, log_gc);
         }
     }
 
-    fn peek(&self, n: usize) -> Option<&Value> {
+    pub fn execute_and_run_function(&mut self, closure: Value, arg_count: u8) -> InterpretResult {
+        self.stack_push(closure);
+        self.execute_call(closure, arg_count);
+        self.run_function()
+    }
+
+    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+    pub fn run_function(&mut self) -> InterpretResult {
+        let trace_execution = config::TRACE_EXECUTION.load();
+        let stress_gc = config::STRESS_GC.load();
+        let log_gc = config::LOG_GC.load();
+
+        let call_depth = self.callstack.len();
+        while self.callstack.len() >= call_depth {
+            run_instruction!(self, trace_execution, stress_gc, log_gc);
+        }
+        InterpretResult::Ok
+    }
+
+    pub fn peek(&self, n: usize) -> Option<&Value> {
         let len = self.stack.len();
         if n >= len {
             None
@@ -1411,8 +1427,10 @@ impl VM {
         }
         let fun = f.fun;
         let start_index = self.stack.len() - usize::from(arg_count);
-        let mut args = self.stack[start_index..].iter_mut().collect::<Vec<_>>();
-        match fun(&mut self.heap, receiver, args.as_mut_slice()) {
+        let mut args: Vec<Value> = self.stack[start_index..].to_vec();
+        let mut ref_args: Vec<&mut Value> = args.iter_mut().collect();
+        let result = fun(self, receiver, ref_args.as_mut_slice());
+        match result {
             Ok(value) => {
                 self.stack
                     .truncate(self.stack.len() - usize::from(arg_count) - 1);
@@ -1458,8 +1476,10 @@ impl VM {
         }
         let fun = f.fun;
         let start_index = self.stack.len() - usize::from(arg_count);
-        let mut args = self.stack[start_index..].iter_mut().collect::<Vec<_>>();
-        match fun(&mut self.heap, args.as_mut_slice()) {
+        let mut args: Vec<Value> = self.stack[start_index..].to_vec();
+        let mut ref_args: Vec<&mut Value> = args.iter_mut().collect();
+        let result = fun(self, ref_args.as_mut_slice());
+        match result {
             Ok(value) => {
                 self.stack
                     .truncate(self.stack.len() - usize::from(arg_count) - 1);
@@ -1585,7 +1605,7 @@ impl VM {
         }
     }
 
-    fn execute_call(&mut self, closure_id: Value, arg_count: u8) -> bool {
+    pub fn execute_call(&mut self, closure_id: Value, arg_count: u8) -> bool {
         let closure = closure_id.as_closure();
         let arity = closure.function.arity;
         let arg_count = usize::from(arg_count);

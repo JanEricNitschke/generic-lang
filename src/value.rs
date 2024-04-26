@@ -4,7 +4,7 @@ use crate::{
         BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ListId, ModuleId,
         NativeFunctionId, NativeMethodId, StringId, UpvalueId,
     },
-    vm::Global,
+    vm::{Global, VM},
 };
 use derivative::Derivative;
 use derive_more::{From, Neg};
@@ -415,8 +415,8 @@ impl std::fmt::Display for NativeMethod {
     }
 }
 
-pub type NativeFunctionImpl = fn(&mut Heap, &mut [&mut Value]) -> Result<Value, String>;
-pub type NativeMethodImpl = fn(&mut Heap, &mut Value, &mut [&mut Value]) -> Result<Value, String>;
+pub type NativeFunctionImpl = fn(&mut VM, &mut [&mut Value]) -> Result<Value, String>;
+pub type NativeMethodImpl = fn(&mut VM, &mut Value, &mut [&mut Value]) -> Result<Value, String>;
 
 const fn always_equals<T>(_: &T, _: &T) -> bool {
     true

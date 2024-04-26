@@ -6,12 +6,12 @@ mod native_functions;
 use crate::vm::VM;
 
 use crate::natives::list::{
-    append_native, contains_native, delattr_native, getattr_native, hasattr_native,
-    init_list_native, insert_native, len_native, pop_native, setattr_native,
+    append_native, contains_native, init_list_native, insert_native, len_native, pop_native,
 };
 use crate::natives::native_functions::{
-    assert_native, clock_native, input_native, is_int_native, print_native, rng_native,
-    sleep_native, sqrt_native, to_float_native, to_int_native, to_string_native, type_native,
+    assert_native, clock_native, delattr_native, getattr_native, hasattr_native, input_native,
+    is_int_native, print_native, rng_native, setattr_native, sleep_native, sqrt_native,
+    to_float_native, to_int_native, to_string_native, type_native,
 };
 
 pub fn define(vm: &mut VM) {
