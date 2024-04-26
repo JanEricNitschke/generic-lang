@@ -1,0 +1,19 @@
+class Test1 {
+    __str__() {
+        fun nested() {
+            fun inner() {
+                return "Apple";
+            }
+            return inner();
+        }
+        return nested();
+    }
+}
+
+class Test2 {}
+
+var inst1 = Test1();
+var inst2 = Test2();
+
+print(str(inst1)); # expect: Apple
+print(str(inst2)); # expect: <Test2 instance>

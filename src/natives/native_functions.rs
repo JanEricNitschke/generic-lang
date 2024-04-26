@@ -128,8 +128,18 @@ pub(super) fn is_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Valu
 
 pub(super) fn to_string_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     let value = &args[0];
-    let string = Value::String(vm.heap.string_id(&value.to_string()));
-    Ok(string)
+    match value {
+        Value::Instance(instance) => {
+            if let Some(closure) = instance.class.methods.get(&vm.heap.string_id(&"__str__")) {
+                vm.execute_and_run_function(*closure, 0);
+                let returned_value = vm.stack.pop().expect("Stack underflow in print_native");
+                Ok(returned_value)
+            } else {
+                Ok(Value::String(vm.heap.string_id(&value.to_string())))
+            }
+        }
+        _ => Ok(Value::String(vm.heap.string_id(&value.to_string()))),
+    }
 }
 
 pub(super) fn type_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
