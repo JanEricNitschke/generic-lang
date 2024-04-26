@@ -1,19 +1,19 @@
 use crate::{
-    heap::Heap,
     value::{List, Number, Value},
+    vm::VM,
 };
 
 pub(super) fn init_list_native(
-    heap: &mut Heap,
+    vm: &mut VM,
     _receiver: &mut Value,
     _args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    let list = List::new(*heap.native_classes.get("List").unwrap());
-    Ok(heap.add_list(list))
+    let list = List::new(*vm.heap.native_classes.get("List").unwrap());
+    Ok(vm.heap.add_list(list))
 }
 
 pub(super) fn append_native(
-    _heap: &mut Heap,
+    _vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
@@ -29,7 +29,7 @@ pub(super) fn append_native(
 }
 
 pub(super) fn pop_native(
-    _heap: &mut Heap,
+    _vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
@@ -80,7 +80,7 @@ pub(super) fn pop_native(
 }
 
 pub(super) fn insert_native(
-    _heap: &mut Heap,
+    _vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
@@ -119,7 +119,7 @@ pub(super) fn insert_native(
 }
 
 pub(super) fn contains_native(
-    _heap: &mut Heap,
+    _vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
@@ -141,84 +141,9 @@ pub(super) fn contains_native(
 }
 
 #[allow(clippy::cast_possible_wrap)]
-pub(super) fn len_native(_heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
+pub(super) fn len_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
         Value::List(list) => Ok((list.items.len() as i64).into()),
         x => Err(format!("'len' expected list argument, got: `{x}` instead.")),
-    }
-}
-
-pub(super) fn getattr_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
-    match (&args[0], &args[1]) {
-        (Value::Instance(instance), Value::String(string_id)) => {
-            let field = &heap.strings[string_id];
-            instance.fields.get(field).map_or_else(
-                || Err(format!("Undefined property '{}'.", *field)),
-                |value_id| Ok(*value_id),
-            )
-        }
-        (instance @ Value::Instance(_), x) => Err(format!(
-            "`getattr` can only index with string indexes, got: `{x}` (instance: `{instance}`)"
-        )),
-        (not_instance, _) => Err(format!(
-            "`getattr` only works on instances, got `{not_instance}`"
-        )),
-    }
-}
-
-pub(super) fn setattr_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
-    let field = if let Value::String(ref string_id) = args[1] {
-        heap.strings[string_id].clone()
-    } else {
-        return Err(format!(
-            "`setattr` can only index with string indexes, got: `{}` (instance: `{}`)",
-            args[1], args[0]
-        ));
-    };
-    let value = *args[2];
-    if let Value::Instance(instance) = args[0] {
-        instance.fields.insert(field, value);
-        Ok(Value::Nil)
-    } else {
-        Err(format!(
-            "`setattr` only works on instances, got `{}`",
-            args[0]
-        ))
-    }
-}
-
-pub(super) fn hasattr_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
-    match (&args[0], &args[1]) {
-        (Value::Instance(instance), Value::String(string_id)) => Ok(Value::Bool(
-            instance.fields.contains_key(&heap.strings[string_id]),
-        )),
-        (instance @ Value::Instance(_), x) => Err(format!(
-            "`hasattr` can only index with string indexes, got: `{x}` (instance: `{instance}`)"
-        )),
-        (not_instance, _) => Err(format!(
-            "`hasattr` only works on instances, got `{not_instance}`"
-        )),
-    }
-}
-
-pub(super) fn delattr_native(heap: &mut Heap, args: &mut [&mut Value]) -> Result<Value, String> {
-    if let Value::String(ref string_id) = args[1] {
-        let field = &heap.strings[string_id];
-        if let Value::Instance(instance) = args[0] {
-            match instance.fields.remove(field) {
-                Some(_) => Ok(Value::Nil),
-                None => Err(format!("Undefined property '{field}'.")),
-            }
-        } else {
-            Err(format!(
-                "`delattr` only works on instances, got `{}`",
-                args[0]
-            ))
-        }
-    } else {
-        Err(format!(
-            "`delattr` can only index with string indexes, got: `{}` (instance: `{}`)",
-            args[1], args[0]
-        ))
     }
 }
