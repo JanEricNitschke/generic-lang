@@ -15,7 +15,7 @@ A rudimentary vscode extension exists in the form of [generic-lang-vscode](https
 
 ## Building
 
-The interpeter can be build like this:
+The interpreter can be build like this:
 ```bash
 cargo build --release
 ```

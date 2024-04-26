@@ -37,7 +37,7 @@ new_key_type! {
 #[derivative(Hash)]
 pub struct ArenaId<K: Key, T: ArenaValue> {
     id: K,
-    // Yes this is terrible, yes I'm OK with it for this projec
+    // Yes this is terrible, yes I'm OK with it for this project
     // These could be but then i would have to put `clones` everywhere.
     // use std::cell::RefCell;
     // use std::rc::Rc;

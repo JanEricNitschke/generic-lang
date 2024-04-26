@@ -1,0 +1,8 @@
+[default]
+extend-ignore-identifiers-re = []
+
+[default.extend-identifiers]
+
+[default.extend-words]
+# Don't correct the end 'true' when matching tokens.
+ue = "ue"

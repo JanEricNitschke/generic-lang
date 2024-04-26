@@ -131,13 +131,7 @@ pub(super) fn contains_native(
             ))
         }
     };
-
-    for value in &my_list.items {
-        if value == args[0] {
-            return Ok(Value::Bool(true));
-        }
-    }
-    Ok(Value::Bool(false))
+    Ok(my_list.items.contains(args[0]).into())
 }
 
 #[allow(clippy::cast_possible_wrap)]

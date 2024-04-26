@@ -210,7 +210,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
     fn continue_statement(&mut self) {
         // Better alternative to cloning it and then setting it back because
         // LoopState does not implement copy because of the contained vector
-        // Even though that vector is not actuall used here.
+        // Even though that vector is not actually used here.
         // Could possibly also do map over the Some content here.
         let loop_state = self.loop_state_mut().take();
         match loop_state {
