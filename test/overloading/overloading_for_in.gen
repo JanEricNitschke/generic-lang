@@ -1,0 +1,64 @@
+class MyList {
+    __init__() {
+        this.data = [5,4,3,2,1];
+    }
+
+    __iter__() {
+        return MyIterator(this);
+    }
+}
+
+class MyIterator {
+    __init__(list) {
+        this.list = list;
+        this.index = 0;
+    }
+
+    __next__() {
+        if (this.index < len(this.list.data)) {
+            var result = this.list.data[this.index];
+            this.index += 1;
+            return result;
+        } else {
+            return StopIteration;
+        }
+    }
+}
+
+fun outer() {
+    fun middle() {
+        fun inner() {
+            var my_list = MyList();
+
+            foreach (var val in my_list) {
+                print(val); 
+            }
+        }
+        inner();
+    }
+    middle();
+}
+
+outer(); # expect: 5
+         # expect: 4
+         # expect: 3
+         # expect: 2
+         # expect: 1
+
+fun fibo() {
+    foreach (var val in [1,1,2,3,5,8]) {
+        if (val == 2) {
+            continue;
+        }
+        if (val == 8) {
+            break;
+        }
+        print(val);
+    }
+}
+
+fibo(); # expect: 1
+        # expect: 1
+        # expect: 3
+        # expect: 5
+

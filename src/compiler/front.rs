@@ -279,6 +279,8 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
     fn statement(&mut self) {
         if self.match_(TK::For) {
             self.for_statement();
+        } else if self.match_(TK::ForEach) {
+            self.foreach_statement();
         } else if self.match_(TK::If) || self.match_(TK::Unless) {
             self.conditional_statement(self.check_previous(TK::If));
         } else if self.match_(TK::Return) {
@@ -297,6 +299,8 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             self.import_statement();
         } else if self.match_(TK::From) {
             self.import_from_statement();
+        } else if self.match_(TK::Async) || self.match_(TK::Await) | self.match_(TK::Yield) {
+            self.error("Async, await and yield are not yet implemented.");
         } else {
             self.expression_statement();
         }
@@ -442,6 +446,119 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         self.emit_byte(OpCode::Pop, line);
         self.patch_break_jumps();
         *self.loop_state_mut() = old_loop_state;
+    }
+
+    fn foreach_statement(&mut self) {
+        // Loop:
+        // foreach (var val in my_list) {
+        //     print(val);
+        // }
+        // Should be identical to:
+        // {
+        //     var iter = my_list.__iter__();
+        //     var val = 0;
+
+        //     while ((val = iter.__next__()) != StopIteration) {
+        //         print(val);
+        //     }
+        // }
+
+        self.begin_scope();
+        self.consume(TK::LeftParen, "Expect '(' after 'foreach'.");
+        let line = self.line();
+
+        // Compile initializer, store loop variable
+        if !(self.match_(TK::Var) || self.match_(TK::Const)) {
+            self.error("Expect variable declaration ('var' or 'const') after '(' in 'foreach'.");
+        }
+
+        // Define loop variable
+        let name = self.current.clone().unwrap(); // Needed for aliasing
+        let is_mutable = self.check_previous(TK::Var);
+        let global = self.parse_variable("Expect variable name.", is_mutable);
+        self.emit_byte(OpCode::Nil, self.line());
+        self.consume(TK::In, "Expect 'in' after variable declaration.");
+        self.define_variable(global, is_mutable);
+        // Challenge 25/2: alias loop variables
+        let loop_var = u8::try_from(self.locals().len() - 1)
+            .expect("Creating loop variable led to too many locals.");
+
+        // Get the iterable
+        self.expression();
+        self.consume(TK::RightParen, "Expect ')' after iterable.");
+
+        // Define the iterator
+        self.emit_byte(OpCode::Invoke, line);
+        let iter_constant = self.identifier_constant(&"__iter__");
+        if !self.emit_number(iter_constant.0, false) {
+            self.error("Too many constants created for OP_FOREACH.");
+        }
+        self.emit_byte(0, line);
+
+        // Do i even need this? This never actually needs a name.
+        self.add_local(self.synthetic_identifier_token(b"@iter"), true);
+        self.define_variable(None, true);
+        let iter_var = u8::try_from(self.locals().len() - 1)
+            .expect("Creating loop iterator led to too many locals.");
+
+        // Store old loop state to restore at then end
+        let old_loop_state = {
+            let start = CodeOffset(self.current_chunk_len());
+            let depth = self.scope_depth();
+            std::mem::replace(
+                self.loop_state_mut(),
+                Some(LoopState {
+                    depth,
+                    start,
+                    break_jumps: Vec::new(),
+                }),
+            )
+        };
+
+        // Alias loop variable for this iteration of the loop
+        self.begin_scope();
+        self.emit_bytes(OpCode::GetLocal, loop_var, line);
+        self.add_local(name, is_mutable);
+        self.mark_initialized();
+        let inner_var = u8::try_from(self.locals().len() - 1)
+            .expect("Aliasing loop variable led to too many locals.");
+
+        // Compile the check clause as a call to "__next__" on the iterator
+        // and an assignment to the loop variable
+        // then check the loop variable for "StopIteration"
+        // This is the loop check AND increment
+        self.emit_bytes(OpCode::GetLocal, iter_var, line);
+        self.emit_byte(OpCode::Invoke, line);
+        let next_constant = self.identifier_constant(&"__next__");
+        if !self.emit_number(next_constant.0, false) {
+            self.error("Too many constants created for OP_FOREACH.");
+        }
+        self.emit_byte(0, line);
+        self.emit_bytes(OpCode::SetLocal, inner_var, line);
+        self.emit_byte(OpCode::StopIteration, line);
+        self.emit_byte(OpCode::NotEqual, line);
+
+        // Body of the loop
+        self.consume(TK::LeftBrace, "Expect '{' after condition.");
+        let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
+        self.emit_byte(OpCode::Pop, line);
+        self.scoped_block();
+
+        // Clean up alias for loop variable
+        self.emit_bytes(OpCode::GetLocal, inner_var, line);
+        self.emit_bytes(OpCode::SetLocal, loop_var, line);
+        self.emit_byte(OpCode::Pop, line);
+        self.end_scope();
+
+        // Loop back to the check/increment clause
+        let loop_start = self.loop_state().as_ref().unwrap().start;
+        self.emit_loop(loop_start);
+        self.patch_jump(exit_jump);
+        self.emit_byte(OpCode::Pop, line);
+        self.patch_break_jumps();
+        *self.loop_state_mut() = old_loop_state;
+
+        self.end_scope();
     }
 
     fn for_statement(&mut self) {

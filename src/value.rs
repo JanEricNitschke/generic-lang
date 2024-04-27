@@ -1,8 +1,8 @@
 use crate::{
     chunk::Chunk,
     heap::{
-        BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ListId, ModuleId,
-        NativeFunctionId, NativeMethodId, StringId, UpvalueId,
+        BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ListId, ListIteratorId,
+        ModuleId, NativeFunctionId, NativeMethodId, StringId, UpvalueId,
     },
     vm::{Global, VM},
 };
@@ -15,6 +15,7 @@ use std::path::PathBuf;
 pub enum Value {
     Bool(bool),
     Nil,
+    StopIteration,
     Number(Number),
 
     String(StringId),
@@ -34,6 +35,7 @@ pub enum Value {
 
     // This should really just be "NativeClass"
     List(ListId),
+    ListIterator(ListIteratorId),
 }
 
 impl std::fmt::Display for Value {
@@ -42,6 +44,7 @@ impl std::fmt::Display for Value {
             Self::Bool(bool) => f.pad(&format!("{bool}")),
             Self::Number(num) => f.pad(&format!("{num}")),
             Self::Nil => f.pad("nil"),
+            Self::StopIteration => f.pad("StopIteration"),
             Self::String(s) => f.pad(s),
             // Can i do all of these just like string?
             Self::Function(ref_id) => f.pad(&format!("{}", **ref_id)),
@@ -52,6 +55,7 @@ impl std::fmt::Display for Value {
             Self::Instance(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::BoundMethod(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::List(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::ListIterator(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::Upvalue(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::Module(ref_id) => f.pad(&format!("{}", **ref_id)),
         }
@@ -515,6 +519,29 @@ impl std::fmt::Display for List {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
+pub struct ListIterator {
+    pub list: ListId,
+    pub index: usize,
+    pub class: ClassId,
+}
+
+impl ListIterator {
+    pub fn new(list: ListId, iterator_class: Value) -> Self {
+        Self {
+            list,
+            index: 0,
+            class: *iterator_class.as_class(),
+        }
+    }
+}
+
+impl std::fmt::Display for ListIterator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad(&format!("<list iterator of {}>", *self.list))
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Derivative)]
 #[derivative(PartialOrd)]
 pub struct Module {
@@ -630,6 +657,12 @@ impl From<BoundMethodId> for Value {
 impl From<ListId> for Value {
     fn from(l: ListId) -> Self {
         Self::List(l)
+    }
+}
+
+impl From<ListIteratorId> for Value {
+    fn from(l: ListIteratorId) -> Self {
+        Self::ListIterator(l)
     }
 }
 

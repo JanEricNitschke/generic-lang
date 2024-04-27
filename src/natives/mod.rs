@@ -6,11 +6,12 @@ mod native_functions;
 use crate::vm::VM;
 
 use crate::natives::list::{
-    append_native, contains_native, init_list_native, insert_native, len_native, pop_native,
+    append_native, contains_native, init_list_native, insert_native, iter_native,
+    list_iter_next_native, pop_native,
 };
 use crate::natives::native_functions::{
     assert_native, clock_native, delattr_native, getattr_native, hasattr_native, input_native,
-    is_int_native, print_native, rng_native, setattr_native, sleep_native, sqrt_native,
+    is_int_native, len_native, print_native, rng_native, setattr_native, sleep_native, sqrt_native,
     to_float_native, to_int_native, to_string_native, type_native,
 };
 
@@ -39,4 +40,8 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"List", &"pop", &[0, 1], pop_native);
     vm.define_native_method(&"List", &"insert", &[2], insert_native);
     vm.define_native_method(&"List", &"contains", &[1], contains_native);
+    vm.define_native_method(&"List", &"__iter__", &[0], iter_native);
+
+    vm.define_native_class(&"ListIterator");
+    vm.define_native_method(&"ListIterator", &"__next__", &[0, 1], list_iter_next_native);
 }

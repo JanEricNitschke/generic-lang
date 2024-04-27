@@ -67,6 +67,7 @@ pub enum TokenKind {
     Else,
     False,
     For,
+    ForEach,
     Fun,
     If,
     In,
@@ -343,10 +344,10 @@ impl<'a> Scanner<'a> {
                     TokenKind::As => TokenKind::As,
                     _ => match self.source.get(self.start + 2) {
                         Some(b'y') => self.check_keyword(3, "nc", TokenKind::Async),
-                        Some(b'w') => self.check_keyword(3, "ait", TokenKind::Await),
                         _ => TokenKind::Identifier,
                     },
                 },
+                Some(b'w') => self.check_keyword(2, "ait", TokenKind::Await),
                 _ => TokenKind::Identifier,
             },
             b'b' => self.check_keyword(1, "reak", TokenKind::Break),
@@ -367,7 +368,16 @@ impl<'a> Scanner<'a> {
             b'e' => self.check_keyword(1, "lse", TokenKind::Else),
             b'f' => match self.source.get(self.start + 1) {
                 Some(b'a') => self.check_keyword(2, "lse", TokenKind::False),
-                Some(b'o') => self.check_keyword(2, "r", TokenKind::For),
+                Some(b'o') => match self.source.get(self.start + 2) {
+                    Some(b'r') => match self.check_keyword(3, "", TokenKind::For) {
+                        TokenKind::For => TokenKind::For,
+                        _ => match self.source.get(self.start + 3) {
+                            Some(b'e') => self.check_keyword(4, "ach", TokenKind::ForEach),
+                            _ => TokenKind::Identifier,
+                        },
+                    },
+                    _ => TokenKind::Identifier,
+                },
                 Some(b'u') => self.check_keyword(2, "n", TokenKind::Fun),
                 Some(b'r') => self.check_keyword(2, "om", TokenKind::From),
                 _ => TokenKind::Identifier,

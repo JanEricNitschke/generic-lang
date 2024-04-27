@@ -1,5 +1,5 @@
 use crate::{
-    value::{List, Number, Value},
+    value::{List, ListIterator, Number, Value},
     vm::VM,
 };
 
@@ -134,10 +134,44 @@ pub(super) fn contains_native(
     Ok(my_list.items.contains(args[0]).into())
 }
 
-#[allow(clippy::cast_possible_wrap)]
-pub(super) fn len_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
-    match &args[0] {
-        Value::List(list) => Ok((list.items.len() as i64).into()),
-        x => Err(format!("'len' expected list argument, got: `{x}` instead.")),
+pub(super) fn iter_native(
+    vm: &mut VM,
+    receiver: &mut Value,
+    _args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let my_list = match receiver {
+        Value::List(list) => list,
+        x => {
+            return Err(format!(
+                "'iter' expects to be called on a list, got `{x}` instead."
+            ))
+        }
+    };
+    let my_iterator = ListIterator::new(
+        *my_list,
+        *vm.heap.native_classes.get("ListIterator").unwrap(),
+    );
+    Ok(vm.heap.add_list_iterator(my_iterator))
+}
+
+pub(super) fn list_iter_next_native(
+    _vm: &mut VM,
+    receiver: &mut Value,
+    _args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let mut my_iter = match receiver {
+        Value::ListIterator(iter) => *iter,
+        x => {
+            return Err(format!(
+                "'next' expects to be called on a list iterator, got `{x}` instead."
+            ))
+        }
+    };
+    if my_iter.index < my_iter.list.items.len() {
+        let value = my_iter.list.items[my_iter.index];
+        my_iter.index += 1;
+        Ok(value)
+    } else {
+        Ok(Value::StopIteration)
     }
 }
