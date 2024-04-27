@@ -11,7 +11,7 @@ use crate::natives::list::{
 };
 use crate::natives::native_functions::{
     assert_native, clock_native, delattr_native, getattr_native, hasattr_native, input_native,
-    is_int_native, len_native, print_native, rng_native, setattr_native, sleep_native, sqrt_native,
+    is_int_native, len_native, print_native, rng_native, setattr_native, sleep_native,
     to_float_native, to_int_native, to_string_native, type_native,
 };
 
@@ -19,7 +19,6 @@ pub fn define(vm: &mut VM) {
     vm.define_native_function(&"clock", &[0], clock_native);
     vm.define_native_function(&"assert", &[1], assert_native);
     vm.define_native_function(&"sleep", &[1], sleep_native);
-    vm.define_native_function(&"sqrt", &[1], sqrt_native);
     vm.define_native_function(&"input", &[1], input_native);
     vm.define_native_function(&"float", &[1], to_float_native);
     vm.define_native_function(&"int", &[1], to_int_native);

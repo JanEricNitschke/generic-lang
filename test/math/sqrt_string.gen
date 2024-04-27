@@ -1,0 +1,5 @@
+import "math";
+
+print(math.sqrt(9)); # expect: 3.0
+
+math.sqrt("s"); # expect runtime error: 'sqrt' expected numeric argument, got: s
