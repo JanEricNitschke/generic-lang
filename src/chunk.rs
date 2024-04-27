@@ -69,6 +69,7 @@ pub enum OpCode {
     Nil,
     True,
     False,
+    StopIteration,
 
     Equal,
     Greater,
@@ -269,10 +270,10 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         std::mem::size_of::<OpCode>()
             + match opcode {
                 Negate | Add | Subtract | Multiply | Divide | Mod | Exp | FloorDiv | BitAnd
-                | BitOr | BitXor | Nil | True | False | Not | Equal | Greater | Less
-                | LessEqual | GreaterEqual | NotEqual | Pop | Dup | CloseUpvalue | Inherit
-                | IndexSubscript | StoreSubscript | Import | LoadOne | LoadTwo | LoadZero
-                | LoadMinusOne | LoadOnef | LoadZerof | Swap => 0,
+                | BitOr | BitXor | Nil | True | False | StopIteration | Not | Equal | Greater
+                | Less | LessEqual | GreaterEqual | NotEqual | Pop | Dup | CloseUpvalue
+                | Inherit | IndexSubscript | StoreSubscript | Import | LoadOne | LoadTwo
+                | LoadZero | LoadMinusOne | LoadOnef | LoadZerof | Swap => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | Return | GetUpvalue | SetUpvalue | Class
                 | GetProperty | SetProperty | Method | GetSuper | BuildList | DupN | ImportFrom
@@ -573,6 +574,7 @@ impl<'chunk> std::fmt::Debug for InstructionDisassembler<'chunk> {
                 FloorDiv,
                 Negate,
                 Nil,
+                StopIteration,
                 Not,
                 Pop,
                 Return,

@@ -254,6 +254,7 @@ macro_rules! run_instruction {
             OpCode::Nil => $self.stack_push(Value::Nil),
             OpCode::True => $self.stack_push(Value::Bool(true)),
             OpCode::False => $self.stack_push(Value::Bool(false)),
+            OpCode::StopIteration => $self.stack.push(Value::StopIteration),
             OpCode::Equal => $self.equal(false),
             OpCode::Add => {
                 if let Some(value) = $self.add() {
@@ -371,6 +372,14 @@ macro_rules! run_instruction {
                     }
                     Value::List(list) => {
                         if $self.bind_method(list.class.into(), field) {
+                            // Just using the side effects
+                        } else {
+                            runtime_error!($self, "Undefined property '{}'.", *field);
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                    Value::ListIterator(iterator) => {
+                        if $self.bind_method(iterator.class.into(), field) {
                             // Just using the side effects
                         } else {
                             runtime_error!($self, "Undefined property '{}'.", *field);
@@ -1534,6 +1543,9 @@ impl VM {
                 }
             }
             Value::List(list) => self.invoke_from_class(list.class.into(), method_name, arg_count),
+            Value::ListIterator(iterator) => {
+                self.invoke_from_class(iterator.class.into(), method_name, arg_count)
+            }
             Value::Module(module) => {
                 if let Some(value) = module.globals.get(&method_name) {
                     let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;

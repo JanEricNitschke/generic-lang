@@ -127,4 +127,12 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             line: self.line(),
         }
     }
+
+    pub(super) fn synthetic_identifier_token(&self, identifier: &'scanner [u8]) -> Token<'scanner> {
+        Token {
+            kind: TokenKind::Identifier,
+            lexeme: identifier,
+            line: self.line(),
+        }
+    }
 }

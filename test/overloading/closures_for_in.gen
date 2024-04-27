@@ -1,0 +1,38 @@
+var globalOne;
+var globalTwo;
+
+var globalThree;
+var globalFour;
+
+fun main() {
+  for (var a = 1; a <= 2; a = a + 1) {
+    fun closure() {
+      print(a);
+    }
+    if (globalOne == nil) {
+      globalOne = closure;
+    } else {
+      globalTwo = closure;
+    }
+  }
+}
+
+main();
+globalOne(); # expect: 1
+globalTwo(); # expect: 2
+
+fun main_each() {
+    foreach(var a in [1, 2]) {
+        fun closure() {
+            print(a);
+        }
+        if (globalThree == nil) {
+            globalThree = closure;
+        } else {
+            globalFour = closure;
+        }
+    }
+}
+main_each();
+globalThree(); # expect: 1
+globalFour(); # expect: 2

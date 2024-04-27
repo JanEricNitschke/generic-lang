@@ -156,6 +156,7 @@ pub(super) fn type_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value,
         Value::NativeFunction(_) => Value::String(vm.heap.string_id(&"<type native function>")),
         Value::NativeMethod(_) => Value::String(vm.heap.string_id(&"<type native method>")),
         Value::Nil => Value::String(vm.heap.string_id(&"<type nil>")),
+        Value::StopIteration => Value::String(vm.heap.string_id(&"<type StopIteration>")),
         Value::Number(n) => match n {
             Number::Float(_) => Value::String(vm.heap.string_id(&"<type float>")),
             Number::Integer(_) => Value::String(vm.heap.string_id(&"<type int>")),
@@ -163,6 +164,7 @@ pub(super) fn type_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value,
         Value::String(_) => Value::String(vm.heap.string_id(&"<type string>")),
         Value::Upvalue(_) => Value::String(vm.heap.string_id(&"<type upvalue>")),
         Value::List(_) => Value::String(vm.heap.string_id(&"<type list>")),
+        Value::ListIterator(_) => Value::String(vm.heap.string_id(&"<type list iterator>")),
         Value::Module(_) => Value::String(vm.heap.string_id(&"<type module>")),
     };
     Ok(string)
@@ -280,5 +282,13 @@ pub(super) fn delattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Val
             "`delattr` can only index with string indexes, got: `{}` (instance: `{}`)",
             args[1], args[0]
         ))
+    }
+}
+
+#[allow(clippy::cast_possible_wrap)]
+pub(super) fn len_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+    match &args[0] {
+        Value::List(list) => Ok((list.items.len() as i64).into()),
+        x => Err(format!("'len' expected list argument, got: `{x}` instead.")),
     }
 }

@@ -11,8 +11,8 @@ use slotmap::{new_key_type, HopSlotMap as SlotMap, Key};
 use std::fmt::{Debug, Display};
 
 use crate::value::{
-    BoundMethod, Class, Closure, Function, Instance, List, Module, NativeFunction, NativeMethod,
-    Upvalue, Value,
+    BoundMethod, Class, Closure, Function, Instance, List, ListIterator, Module, NativeFunction,
+    NativeMethod, Upvalue, Value,
 };
 
 pub trait ArenaValue: Debug + Display + PartialEq {}
@@ -29,6 +29,7 @@ new_key_type! {
     pub struct ClassKey;
     pub struct InstanceKey;
     pub struct ListKey;
+    pub struct ListIteratorKey;
     pub struct BoundMethodKey;
     pub struct ModuleKey;
 }
@@ -96,6 +97,7 @@ pub type NativeMethodId = ArenaId<NativeMethodKey, NativeMethod>;
 pub type ClassId = ArenaId<ClassKey, Class>;
 pub type InstanceId = ArenaId<InstanceKey, Instance>;
 pub type ListId = ArenaId<ListKey, List>;
+pub type ListIteratorId = ArenaId<ListIteratorKey, ListIterator>;
 pub type BoundMethodId = ArenaId<BoundMethodKey, BoundMethod>;
 pub type ModuleId = ArenaId<ModuleKey, Module>;
 
@@ -217,7 +219,7 @@ impl BuiltinConstants {
 macro_rules! gray_value {
     ($self:expr, $value:expr) => {
         match $value {
-            Value::Bool(_) | Value::Nil | Value::Number(_) => {}
+            Value::Bool(_) | Value::Nil | Value::StopIteration | Value::Number(_) => {}
             Value::Upvalue(id) => {
                 if $self.log_gc {
                     eprintln!("Upvalue/{:?} gray {}", id.id, **id);
@@ -272,6 +274,12 @@ macro_rules! gray_value {
                 }
                 $self.lists.gray.push(id.id);
             }
+            Value::ListIterator(id) => {
+                if $self.log_gc {
+                    eprintln!("ListIterator/{:?} gray {}", id.id, **id);
+                }
+                $self.listiterators.gray.push(id.id);
+            }
             Value::BoundMethod(id) => {
                 if $self.log_gc {
                     eprintln!("BoundMethod/{:?} gray {}", id.id, **id);
@@ -304,6 +312,7 @@ pub struct Heap {
     pub classes: Arena<ClassKey, Class>,
     pub instances: Arena<InstanceKey, Instance>,
     pub lists: Arena<ListKey, List>,
+    pub listiterators: Arena<ListIteratorKey, ListIterator>,
     pub upvalues: Arena<UpvalueKey, Upvalue>,
     pub modules: Arena<ModuleKey, Module>,
 
@@ -333,6 +342,7 @@ impl Heap {
             classes: Arena::new("Class", log_gc),
             instances: Arena::new("Instance", log_gc),
             lists: Arena::new("List", log_gc),
+            listiterators: Arena::new("ListIterator", log_gc),
             upvalues: Arena::new("Upvalue", log_gc),
             modules: Arena::new("Module", log_gc),
 
@@ -455,7 +465,7 @@ impl Heap {
     #[allow(clippy::too_many_lines)]
     fn blacken_value(&mut self, index: &Value) {
         match index {
-            Value::Bool(_) | Value::Nil | Value::Number(_) => {}
+            Value::Bool(_) | Value::Nil | Value::StopIteration | Value::Number(_) => {}
             Value::Upvalue(id) => self.blacken_upvalue(id.id),
             Value::String(id) => self.blacken_string(id.id),
             Value::Function(id) => self.blacken_function(id.id),
@@ -465,6 +475,7 @@ impl Heap {
             Value::Class(id) => self.blacken_class(id.id),
             Value::Instance(id) => self.blacken_instance(id.id),
             Value::List(id) => self.blacken_list(id.id),
+            Value::ListIterator(id) => self.blacken_list_iterator(id.id),
             Value::BoundMethod(id) => self.blacken_bound_method(id.id),
             Value::Module(id) => self.blacken_module(id.id),
         }
@@ -675,6 +686,27 @@ impl Heap {
         }
     }
 
+    fn blacken_list_iterator(&mut self, index: ListIteratorKey) {
+        let item = &mut self.listiterators.data[index];
+        if item.marked == self.black_value {
+            return;
+        }
+        if self.log_gc {
+            eprintln!("ListIterator/{:?} blacken {} start", index, item.item);
+        }
+
+        if self.log_gc {
+            eprintln!("ListIterator/{index:?} mark {}", item.item);
+        }
+        item.marked = self.black_value;
+
+        let list_iterator = &item.item;
+        self.lists.gray.push(list_iterator.list.id);
+        if self.log_gc {
+            eprintln!("ListIterator/{:?} blacken {} end", index, item.item);
+        }
+    }
+
     fn blacken_string(&mut self, index: StringKey) {
         let item = &mut self.strings.data[index];
         if item.marked == self.black_value {
@@ -774,6 +806,10 @@ impl Heap {
 
     pub fn add_list(&mut self, value: List) -> Value {
         self.lists.add(value, self.black_value).into()
+    }
+
+    pub fn add_list_iterator(&mut self, value: ListIterator) -> Value {
+        self.listiterators.add(value, self.black_value).into()
     }
 
     pub fn add_upvalue(&mut self, value: Upvalue) -> Value {
