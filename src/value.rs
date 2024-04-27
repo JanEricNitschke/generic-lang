@@ -421,6 +421,7 @@ impl std::fmt::Display for NativeMethod {
 
 pub type NativeFunctionImpl = fn(&mut VM, &mut [&mut Value]) -> Result<Value, String>;
 pub type NativeMethodImpl = fn(&mut VM, &mut Value, &mut [&mut Value]) -> Result<Value, String>;
+pub type ModuleContents = Vec<(&'static str, &'static [u8], NativeFunctionImpl)>;
 
 const fn always_equals<T>(_: &T, _: &T) -> bool {
     true

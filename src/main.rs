@@ -13,6 +13,7 @@ mod config;
 mod heap;
 mod natives;
 mod scanner;
+mod stdlib;
 mod types;
 mod value;
 mod vm;

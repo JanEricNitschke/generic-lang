@@ -1,3 +1,0 @@
-print(sqrt(9)); # expect: 3.0
-
-sqrt("s"); # expect runtime error: 'sqrt' expected numeric argument, got: s
