@@ -39,7 +39,6 @@ impl TryFrom<ConstantLongIndex> for ConstantIndex {
 pub enum OpCode {
     Constant,
     ConstantLong,
-    Closure,
 
     DefineGlobal,
     DefineGlobalLong,
@@ -72,10 +71,11 @@ pub enum OpCode {
     StopIteration,
 
     Equal,
-    Greater,
-    Less,
     NotEqual,
+
+    Greater,
     GreaterEqual,
+    Less,
     LessEqual,
 
     LoadOne,
@@ -106,13 +106,14 @@ pub enum OpCode {
     DupN,
     Swap,
 
+    Invoke,
+    Method,
+    Closure,
     Return,
 
     Class,
     SetProperty,
     GetProperty,
-    Method,
-    Invoke,
     Inherit,
     GetSuper,
     SuperInvoke,

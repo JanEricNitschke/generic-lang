@@ -16,10 +16,11 @@ pub enum TokenKind {
     RightBrace,
     LeftBracket,
     RightBracket,
-    Colon,
 
+    Colon,
     Comma,
     Dot,
+
     Minus,
     MinusEqual,
     Plus,
@@ -37,11 +38,8 @@ pub enum TokenKind {
     AmperEqual,
     Hat,
     HatEqual,
-
     StarStar,
     SlashSlash,
-
-    // One Or Two Character Tokens.
     Bang,
     BangEqual,
     Equal,
@@ -51,38 +49,43 @@ pub enum TokenKind {
     Less,
     LessEqual,
 
+    In,
+
     // Literals.
     Identifier,
     String,
-    Number,
+    Float,
     Integer,
+    False,
+    True,
+    Nil,
+    StopIteration,
 
     // Keywords.
     And,
-    Case,
-    Class,
-    Continue,
-    Break,
-    Default,
+    Or,
+    If,
+    Unless,
     Else,
-    False,
     For,
     ForEach,
-    Fun,
-    If,
-    In,
-    Unless,
-    Nil,
-    Or,
-    Return,
-    Switch,
-    Super,
-    This,
-    True,
-    Const,
-    Var,
     While,
     Until,
+    Continue,
+    Break,
+    Switch,
+    Default,
+    Case,
+
+    Const,
+    Var,
+
+    Class,
+    This,
+    Super,
+
+    Fun,
+    Return,
 
     Error,
     Eof,
@@ -94,8 +97,6 @@ pub enum TokenKind {
     Yield,
     Async,
     Await,
-
-    StopIteration,
 }
 
 impl std::fmt::Display for TokenKind {
@@ -320,7 +321,7 @@ impl<'a> Scanner<'a> {
             return self.make_token(TokenKind::Integer);
         }
 
-        self.make_token(TokenKind::Number)
+        self.make_token(TokenKind::Float)
     }
 
     #[allow(clippy::trivially_copy_pass_by_ref)]
