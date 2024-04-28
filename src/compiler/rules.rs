@@ -112,7 +112,7 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Identifier    = [variable, None,      None      ],
         In            = [None,     binary,    In        ],
         String        = [string,   None,      None      ],
-        Number        = [number,   None,      None      ],
+        Float        = [number,   None,      None      ],
         Integer       = [integer,  None,      None      ],
         And           = [None,     and,       And       ],
         Case          = [None,     None,      None      ],
