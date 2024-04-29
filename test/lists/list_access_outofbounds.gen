@@ -1,2 +1,2 @@
 var my_list = [1, 2, 3];
-print(my_list[6]); # expect runtime error: Index `6` is out of bounds of list  with len `3`.
+print(my_list[6]); # expect runtime error: Index `6` is out of bounds of list with len `3`.

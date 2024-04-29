@@ -1,8 +1,8 @@
 use crate::{
     chunk::Chunk,
     heap::{
-        BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ListId, ListIteratorId,
-        ModuleId, NativeFunctionId, NativeMethodId, StringId, UpvalueId,
+        BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ModuleId,
+        NativeFunctionId, NativeMethodId, StringId, UpvalueId,
     },
     vm::{Global, VM},
 };
@@ -32,10 +32,9 @@ pub enum Value {
     Class(ClassId),
     Instance(InstanceId),
     BoundMethod(BoundMethodId),
-
     // This should really just be "NativeClass"
-    List(ListId),
-    ListIterator(ListIteratorId),
+    // List(ListId),
+    // ListIterator(ListIteratorId),
 }
 
 impl std::fmt::Display for Value {
@@ -54,8 +53,8 @@ impl std::fmt::Display for Value {
             Self::Class(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::Instance(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::BoundMethod(ref_id) => f.pad(&format!("{}", **ref_id)),
-            Self::List(ref_id) => f.pad(&format!("{}", **ref_id)),
-            Self::ListIterator(ref_id) => f.pad(&format!("{}", **ref_id)),
+            // Self::List(ref_id) => f.pad(&format!("{}", **ref_id)),
+            // Self::ListIterator(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::Upvalue(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::Module(ref_id) => f.pad(&format!("{}", **ref_id)),
         }
@@ -338,9 +337,8 @@ impl BoundMethod {
     fn receiver_class_name(&self) -> StringId {
         match self.receiver {
             Value::Instance(instance) => instance.class.name,
-            Value::List(list) => list.class.name,
             x => unreachable!(
-                "Bound methods can only have instances or lists as receivers, got `{}` instead.",
+                "Bound methods can only have instances as receivers, got `{}` instead.",
                 x
             ),
         }
@@ -460,22 +458,27 @@ pub struct Instance {
     pub class: ClassId,
     #[derivative(PartialOrd = "ignore")]
     pub fields: HashMap<String, Value>,
+    pub backing: Option<NativeClass>,
 }
 
 impl Instance {
     #[must_use]
-    pub fn new(class: Value) -> Self {
+    pub fn new(class: Value, backing: Option<NativeClass>) -> Self {
         let id = *class.as_class();
         Self {
             class: id,
             fields: HashMap::default(),
+            backing,
         }
     }
 }
 
 impl std::fmt::Display for Instance {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad(&format!("<{} instance>", *(self.class.name)))
+        match &self.backing {
+            Some(native_class) => f.pad(&format!("{native_class}")),
+            None => f.pad(&format!("<{} instance>", *(self.class.name))),
+        }
     }
 }
 
@@ -483,63 +486,6 @@ impl PartialEq for BoundMethod {
     fn eq(&self, _other: &Self) -> bool {
         // Two different bound methods are always considered different
         false
-    }
-}
-
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
-pub struct List {
-    pub items: Vec<Value>,
-    pub class: ClassId,
-}
-
-impl List {
-    #[must_use]
-    pub fn new(array_class: Value) -> Self {
-        Self {
-            items: Vec::new(),
-            class: *array_class.as_class(),
-        }
-    }
-}
-
-impl std::fmt::Display for List {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let items = &self.items;
-        let mut comma_separated = String::new();
-        comma_separated.push('[');
-        if !items.is_empty() {
-            for num in &items[0..items.len() - 1] {
-                comma_separated.push_str(&num.to_string());
-                comma_separated.push_str(", ");
-            }
-
-            comma_separated.push_str(&items[items.len() - 1].to_string());
-        }
-        comma_separated.push(']');
-        f.pad(&comma_separated)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
-pub struct ListIterator {
-    pub list: ListId,
-    pub index: usize,
-    pub class: ClassId,
-}
-
-impl ListIterator {
-    pub fn new(list: ListId, iterator_class: Value) -> Self {
-        Self {
-            list,
-            index: 0,
-            class: *iterator_class.as_class(),
-        }
-    }
-}
-
-impl std::fmt::Display for ListIterator {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad(&format!("<list iterator of {}>", *self.list))
     }
 }
 
@@ -655,18 +601,6 @@ impl From<BoundMethodId> for Value {
     }
 }
 
-impl From<ListId> for Value {
-    fn from(l: ListId) -> Self {
-        Self::List(l)
-    }
-}
-
-impl From<ListIteratorId> for Value {
-    fn from(l: ListIteratorId) -> Self {
-        Self::ListIterator(l)
-    }
-}
-
 impl From<ModuleId> for Value {
     fn from(m: ModuleId) -> Self {
         Self::Module(m)
@@ -713,6 +647,13 @@ impl Value {
         }
     }
 
+    pub fn as_instance(&mut self) -> &InstanceId {
+        match self {
+            Self::Instance(i) => i,
+            _ => unreachable!("Expected Instance, found `{}`", self),
+        }
+    }
+
     pub fn as_instance_mut(&mut self) -> &mut InstanceId {
         match self {
             Self::Instance(i) => i,
@@ -737,11 +678,7 @@ impl Value {
     pub fn class_name(&self) -> StringId {
         match &self {
             Self::Instance(instance) => instance.class.name,
-            Self::List(list) => list.class.name,
-            x => unreachable!(
-                "Only instances and lists currently have classes. Got `{}`",
-                x
-            ),
+            x => unreachable!("Only instances have classes. Got `{}`", x),
         }
     }
 
@@ -750,5 +687,131 @@ impl Value {
             Self::Module(m) => m,
             _ => unreachable!("Expected Module, found `{}`", self),
         }
+    }
+
+    pub fn as_list(&self) -> &List {
+        match self {
+            Self::Instance(inst) => match &inst.backing {
+                Some(NativeClass::List(list)) => list,
+                _ => unreachable!("Expected List, found `{}`", self),
+            },
+            _ => unreachable!("Expected List, found `{}`", self),
+        }
+    }
+
+    pub fn as_list_mut(&mut self) -> &mut List {
+        match self {
+            Self::Instance(inst) => match &mut inst.backing {
+                Some(NativeClass::List(list)) => list,
+                _ => unreachable!("Expected List, found something else."),
+            },
+            _ => unreachable!("Expected List, found `{}`", self),
+        }
+    }
+
+    pub fn as_list_iter_mut(&mut self) -> &mut ListIterator {
+        match self {
+            Self::Instance(inst) => match &mut inst.backing {
+                Some(NativeClass::ListIterator(list_iter)) => list_iter,
+                _ => unreachable!("Expected ListIterator, found something else."),
+            },
+            _ => unreachable!("Expected ListIterator, found `{}`", self),
+        }
+    }
+}
+
+#[derive(Derivative, PartialOrd)]
+#[derivative(Debug, PartialEq, Clone)]
+pub enum NativeClass {
+    List(List),
+    ListIterator(ListIterator),
+}
+
+impl NativeClass {
+    pub fn new(kind: &str) -> Self {
+        match kind {
+            "List" => Self::List(List::new()),
+            "ListIterator" => Self::ListIterator(ListIterator::new(None)),
+            _ => unreachable!("Unknown native class `{}`.", kind),
+        }
+    }
+}
+
+impl std::fmt::Display for NativeClass {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::List(list) => list.fmt(f),
+            Self::ListIterator(list_iter) => list_iter.fmt(f),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
+pub struct List {
+    pub items: Vec<Value>,
+}
+
+impl List {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { items: Vec::new() }
+    }
+}
+
+impl std::fmt::Display for List {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let items = &self.items;
+        let mut comma_separated = String::new();
+        comma_separated.push('[');
+        if !items.is_empty() {
+            for num in &items[0..items.len() - 1] {
+                comma_separated.push_str(&num.to_string());
+                comma_separated.push_str(", ");
+            }
+
+            comma_separated.push_str(&items[items.len() - 1].to_string());
+        }
+        comma_separated.push(']');
+        f.pad(&comma_separated)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
+pub struct ListIterator {
+    pub list: Option<InstanceId>,
+    pub index: usize,
+}
+
+impl ListIterator {
+    pub const fn new(list: Option<InstanceId>) -> Self {
+        Self { list, index: 0 }
+    }
+
+    pub fn get_list(&self) -> Option<&List> {
+        self.list.as_ref().and_then(|item| match &item.backing {
+            Some(NativeClass::List(list)) => Some(list),
+            _ => None,
+        })
+    }
+}
+
+impl std::fmt::Display for ListIterator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.list {
+            Some(list) => f.pad(&format!("<list iterator of {}>", *list)),
+            None => f.pad("<list iterator>"),
+        }
+    }
+}
+
+impl From<List> for NativeClass {
+    fn from(list: List) -> Self {
+        Self::List(list)
+    }
+}
+
+impl From<ListIterator> for NativeClass {
+    fn from(list_iterator: ListIterator) -> Self {
+        Self::ListIterator(list_iterator)
     }
 }

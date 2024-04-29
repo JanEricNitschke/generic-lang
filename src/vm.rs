@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 
 use crate::natives;
+use crate::value::NativeClass;
 use crate::{
     chunk::{CodeOffset, InstructionDisassembler, OpCode},
     compiler::Compiler,
@@ -371,22 +372,6 @@ macro_rules! run_instruction {
                             return InterpretResult::RuntimeError;
                         }
                     }
-                    Value::List(list) => {
-                        if $self.bind_method(list.class.into(), field) {
-                            // Just using the side effects
-                        } else {
-                            runtime_error!($self, "Undefined property '{}'.", *field);
-                            return InterpretResult::RuntimeError;
-                        }
-                    }
-                    Value::ListIterator(iterator) => {
-                        if $self.bind_method(iterator.class.into(), field) {
-                            // Just using the side effects
-                        } else {
-                            runtime_error!($self, "Undefined property '{}'.", *field);
-                            return InterpretResult::RuntimeError;
-                        }
-                    }
                     Value::Module(module) => {
                         if let Some(value) = module.globals.get(&field) {
                             $self.stack.pop(); // instance
@@ -481,7 +466,7 @@ macro_rules! run_instruction {
                 }
             }
             OpCode::BuildList => {
-                let mut list = List::new(*$self.heap.native_classes.get("List").unwrap());
+                let mut list = List::new();
 
                 let arg_count = $self.read_byte();
                 for index in (0..arg_count).rev() {
@@ -490,8 +475,9 @@ macro_rules! run_instruction {
                 for _ in 0..arg_count {
                     $self.stack.pop();
                 }
-                let list_value = $self.heap.add_list(list);
-                $self.stack_push_value(list_value);
+                let instance = Instance::new(*$self.heap.native_classes.get("List").unwrap(), Some(list.into()));
+                let instance_value = $self.heap.add_instance(instance);
+                $self.stack_push_value(instance_value);
             }
             OpCode::IndexSubscript => {
                 if let Some(value) = $self.index_subscript() {
@@ -588,10 +574,6 @@ impl VM {
             Some(module) if !current_closure.is_module => module,
             _ => self.current_module(),
         }
-    }
-
-    pub fn init_string(&self) -> StringId {
-        self.heap.builtin_constants().init_string
     }
 
     fn compile(&mut self, source: &[u8], name: &str) -> Option<Function> {
@@ -1072,16 +1054,25 @@ impl VM {
             .pop()
             .expect("Stack underflow in OP_INDEX_SUBSCRIPT");
         let list = match &value {
-            Value::List(list) => list,
+            Value::Instance(instance) => {
+                if let Some(NativeClass::List(list)) = &instance.backing {
+                    list
+                } else {
+                    runtime_error!(self, "Can only index into lists, got `{}`.", value);
+                    return Some(InterpretResult::RuntimeError);
+                }
+            }
+
             x => {
                 runtime_error!(self, "Can only index into lists, got `{}`.", x);
                 return Some(InterpretResult::RuntimeError);
             }
         };
+
         let Some(value) = list.items.get(index) else {
             runtime_error!(
                 self,
-                "Index `{}` is out of bounds of list  with len `{}`.",
+                "Index `{}` is out of bounds of list with len `{}`.",
                 index,
                 list.items.len()
             );
@@ -1125,7 +1116,15 @@ impl VM {
             .pop()
             .expect("Stack underflow in OP_INDEX_SUBSCRIPT");
         let list = match &mut value {
-            Value::List(list) => list,
+            Value::Instance(instance) => {
+                if let Some(NativeClass::List(list)) = &mut instance.backing {
+                    list
+                } else {
+                    runtime_error!(self, "Can only index into lists, got `{}`.", value);
+                    return Some(InterpretResult::RuntimeError);
+                }
+            }
+
             x => {
                 runtime_error!(self, "Can only index into lists, got `{}`.", x);
                 return Some(InterpretResult::RuntimeError);
@@ -1137,7 +1136,7 @@ impl VM {
         } else {
             runtime_error!(
                 self,
-                "Index `{}` is out of bounds of list  with len `{}`.",
+                "Index `{}` is out of bounds of list with len `{}`.",
                 index,
                 list.items.len()
             );
@@ -1465,7 +1464,12 @@ impl VM {
                 let maybe_initializer = class
                     .methods
                     .get(&self.heap.builtin_constants().init_string);
-                let mut instance_id = self.heap.add_instance(Instance::new(callee));
+                let backing = if is_native {
+                    Some(NativeClass::new(&class.name))
+                } else {
+                    None
+                };
+                let mut instance_id = self.heap.add_instance(Instance::new(callee, backing));
                 let stack_index = self.stack.len() - usize::from(arg_count) - 1;
                 self.stack[stack_index] = instance_id;
                 if let Some(initializer) = maybe_initializer {
@@ -1652,10 +1656,6 @@ impl VM {
                     self.invoke_from_class(instance.class.into(), method_name, arg_count)
                 }
             }
-            Value::List(list) => self.invoke_from_class(list.class.into(), method_name, arg_count),
-            Value::ListIterator(iterator) => {
-                self.invoke_from_class(iterator.class.into(), method_name, arg_count)
-            }
             Value::Module(module) => {
                 if let Some(value) = module.globals.get(&method_name) {
                     let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;
@@ -1799,17 +1799,19 @@ impl VM {
         self.stdlib.insert(name_id, functions);
     }
 
-    pub fn define_native_class<T: ToString>(&mut self, name: &T) {
+    pub fn define_native_class<T: ToString>(&mut self, name: &T, add_to_builtins: bool) {
         let name_id = self.heap.string_id(name);
         self.heap.strings_by_name.insert(name.to_string(), name_id);
         let value = self.heap.add_class(Class::new(name_id, true));
-        self.builtins.insert(
-            name_id,
-            Global {
-                value,
-                mutable: true,
-            },
-        );
+        if add_to_builtins {
+            self.builtins.insert(
+                name_id,
+                Global {
+                    value,
+                    mutable: true,
+                },
+            );
+        }
         self.heap.native_classes.insert(name_id.to_string(), value);
     }
 
