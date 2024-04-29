@@ -247,12 +247,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         let line = self.line();
         // Swap the order
         self.emit_byte(OpCode::Swap, line);
-        self.emit_byte(OpCode::Invoke, line);
-        let contains_constant = self.identifier_constant(&"contains");
-        if !self.emit_number(contains_constant.0, false) {
-            self.error("Too many constants created for OP_IN.");
-        }
-        self.emit_byte(1, line);
+        self.invoke_fixed(&"contains", 1, "Too many constants created for OP_IN.");
     }
 
     fn call(&mut self, _can_assign: bool) {
@@ -394,7 +389,11 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 self.expression();
             } else {
                 self.emit_bytes(OpCode::DupN, 2, line);
-                self.emit_byte(OpCode::IndexSubscript, line);
+                self.invoke_fixed(
+                    &"__getitem__",
+                    1,
+                    "Too many constants created for OP_SUBSCRIPT.",
+                );
                 self.expression();
                 match previous_kind {
                     TK::PlusEqual => self.emit_byte(OpCode::Add, line),
@@ -408,9 +407,17 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                     _ => unreachable!("Unexpected byte code "),
                 }
             }
-            self.emit_byte(OpCode::StoreSubscript, line);
+            self.invoke_fixed(
+                &"__setitem__",
+                2,
+                "Too many constants created for OP_SUBSCRIPT.",
+            );
         } else {
-            self.emit_byte(OpCode::IndexSubscript, line);
+            self.invoke_fixed(
+                &"__getitem__",
+                1,
+                "Too many constants created for OP_SUBSCRIPT.",
+            );
         }
     }
 
@@ -468,5 +475,15 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 self.error("Too many constants while compiling OP_SUPER_INVOKE");
             }
         }
+    }
+
+    fn invoke_fixed<S: ToString>(&mut self, name: &S, arg_count: u8, error_message: &str) {
+        let name_constant = self.identifier_constant(name);
+        let line = self.line();
+        self.emit_byte(OpCode::Invoke, line);
+        if !self.emit_number(name_constant.0, false) {
+            self.error(error_message);
+        }
+        self.emit_byte(arg_count, line);
     }
 }

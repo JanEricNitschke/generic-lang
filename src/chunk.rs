@@ -119,8 +119,6 @@ pub enum OpCode {
     SuperInvoke,
 
     BuildList,
-    IndexSubscript,
-    StoreSubscript,
 
     Import,
     ImportFrom,
@@ -273,8 +271,8 @@ impl<'chunk> InstructionDisassembler<'chunk> {
                 Negate | Add | Subtract | Multiply | Divide | Mod | Exp | FloorDiv | BitAnd
                 | BitOr | BitXor | Nil | True | False | StopIteration | Not | Equal | Greater
                 | Less | LessEqual | GreaterEqual | NotEqual | Pop | Dup | CloseUpvalue
-                | Inherit | IndexSubscript | StoreSubscript | Import | LoadOne | LoadTwo
-                | LoadZero | LoadMinusOne | LoadOnef | LoadZerof | Swap => 0,
+                | Inherit | Import | LoadOne | LoadTwo | LoadZero | LoadMinusOne | LoadOnef
+                | LoadZerof | Swap => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | Return | GetUpvalue | SetUpvalue | Class
                 | GetProperty | SetProperty | Method | GetSuper | BuildList | DupN | ImportFrom
@@ -581,8 +579,6 @@ impl<'chunk> std::fmt::Debug for InstructionDisassembler<'chunk> {
                 Return,
                 Subtract,
                 True,
-                IndexSubscript,
-                StoreSubscript,
                 Import,
                 LoadOne,
                 LoadTwo,

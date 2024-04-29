@@ -1,0 +1,30 @@
+var my_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+print(my_list[3]); # expect: 4
+
+class MyClass {
+
+    __init__() {
+        this.x = 1;
+        this.y = 2;
+    }
+
+    __getitem__(a) {
+        if (a == 0) {
+            return this.x;
+        }
+        if (a == 1) {
+            return this.y;
+        }
+        return nil;
+    }
+}
+
+var my_object = MyClass();
+print(my_object[0]); # expect: 1
+print(my_object[1]); # expect: 2
+print(my_object[2]); # expect: nil
+
+class BadClass {}
+
+var bad_object = BadClass();
+bad_object[1]; # expect runtime error: Undefined property '__getitem__'.

@@ -3,7 +3,7 @@ use crate::{
     vm::VM,
 };
 
-pub(super) fn append_native(
+pub(super) fn list_append_native(
     _vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
@@ -13,7 +13,7 @@ pub(super) fn append_native(
     Ok(Value::Nil)
 }
 
-pub(super) fn pop_native(
+pub(super) fn list_pop_native(
     _vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
@@ -57,7 +57,72 @@ pub(super) fn pop_native(
     }
 }
 
-pub(super) fn insert_native(
+pub(super) fn list_get_native(
+    _vm: &mut VM,
+    receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let index = match &args[0] {
+        Value::Number(Number::Integer(n)) => match usize::try_from(*n) {
+            Ok(index) => index,
+            Err(_) => {
+                return Err(format!(
+                    "Can not index into list with negative or too large numbers, got `{n}`."
+                ));
+            }
+        },
+        x => {
+            return Err(format!("Can only index into list with integer, got `{x}`."));
+        }
+    };
+
+    let my_list = receiver.as_list();
+
+    my_list.items.get(index).map_or_else(
+        || {
+            Err(format!(
+                "Index `{index}` is out of bounds of list with len `{}`.",
+                my_list.items.len()
+            ))
+        },
+        |value| Ok(*value),
+    )
+}
+
+pub(super) fn list_set_native(
+    _vm: &mut VM,
+    receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let index = match &args[0] {
+        Value::Number(Number::Integer(n)) => match usize::try_from(*n) {
+            Ok(index) => index,
+            Err(_) => {
+                return Err(format!(
+                    "Can not index into list with negative or too large numbers, got `{n}`."
+                ));
+            }
+        },
+        x => {
+            return Err(format!("Can only index into list with integer, got `{x}`."));
+        }
+    };
+
+    let my_list = receiver.as_list_mut();
+
+    match my_list.items.get_mut(index) {
+        Some(value) => {
+            *value = *args[1];
+            Ok(Value::Nil)
+        }
+        None => Err(format!(
+            "Index `{index}` is out of bounds of list with len `{}`.",
+            my_list.items.len()
+        )),
+    }
+}
+
+pub(super) fn list_insert_native(
     _vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
@@ -89,7 +154,7 @@ pub(super) fn insert_native(
     }
 }
 
-pub(super) fn contains_native(
+pub(super) fn list_contains_native(
     _vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
@@ -98,7 +163,7 @@ pub(super) fn contains_native(
     Ok(my_list.items.contains(args[0]).into())
 }
 
-pub(super) fn iter_native(
+pub(super) fn list_iter_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],

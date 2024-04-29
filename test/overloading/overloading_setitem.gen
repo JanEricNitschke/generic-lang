@@ -1,0 +1,43 @@
+var my_list = [1, 2, 3];
+my_list[2] = 16;
+my_list[1] += 2;
+print(my_list); # expect: [1, 4, 16]
+
+class MyClass {
+
+    __init__() {
+        this.x = 1;
+        this.y = 2;
+    }
+
+    __setitem__(prop, val) {
+        if (prop == 0) {
+            this.x = val;
+            return;
+        }
+        if (prop == 1) {
+            this.y = val;
+        }
+    }
+
+    __getitem__(a) {
+        if (a == 0) {
+            return this.x;
+        }
+        if (a == 1) {
+            return this.y;
+        }
+        return nil;
+    }
+}
+
+var my_object = MyClass();
+my_object[0] = "X";
+my_object[1] += 2;
+print(my_object.x); # expect: X
+print(my_object.y); # expect: 4
+
+class BadClass {}
+
+var bad_object = BadClass();
+bad_object[1] = 2; # expect runtime error: Undefined property '__setitem__'.

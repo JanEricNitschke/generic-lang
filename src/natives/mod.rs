@@ -6,7 +6,8 @@ mod native_functions;
 use crate::vm::VM;
 
 use crate::natives::list::{
-    append_native, contains_native, insert_native, iter_native, list_iter_next_native, pop_native,
+    list_append_native, list_contains_native, list_get_native, list_insert_native,
+    list_iter_native, list_iter_next_native, list_pop_native, list_set_native,
 };
 use crate::natives::native_functions::{
     assert_native, clock_native, delattr_native, getattr_native, hasattr_native, input_native,
@@ -37,11 +38,13 @@ pub fn define(vm: &mut VM) {
     // without giving any data or we have to make it so they are not accessible in
     // user land.
     vm.define_native_class(&"List", true);
-    vm.define_native_method(&"List", &"append", &[1], append_native);
-    vm.define_native_method(&"List", &"pop", &[0, 1], pop_native);
-    vm.define_native_method(&"List", &"insert", &[2], insert_native);
-    vm.define_native_method(&"List", &"contains", &[1], contains_native);
-    vm.define_native_method(&"List", &"__iter__", &[0], iter_native);
+    vm.define_native_method(&"List", &"append", &[1], list_append_native);
+    vm.define_native_method(&"List", &"pop", &[0, 1], list_pop_native);
+    vm.define_native_method(&"List", &"insert", &[2], list_insert_native);
+    vm.define_native_method(&"List", &"contains", &[1], list_contains_native);
+    vm.define_native_method(&"List", &"__iter__", &[0], list_iter_native);
+    vm.define_native_method(&"List", &"__getitem__", &[1], list_get_native);
+    vm.define_native_method(&"List", &"__setitem__", &[2], list_set_native);
 
     vm.define_native_class(&"ListIterator", false);
     vm.define_native_method(&"ListIterator", &"__next__", &[0, 1], list_iter_next_native);
