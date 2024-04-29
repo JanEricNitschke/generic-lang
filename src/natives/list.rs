@@ -1,31 +1,16 @@
 use crate::{
-    value::{List, ListIterator, Number, Value},
+    value::{Instance, ListIterator, Number, Value},
     vm::VM,
 };
-
-pub(super) fn init_list_native(
-    vm: &mut VM,
-    _receiver: &mut Value,
-    _args: &mut [&mut Value],
-) -> Result<Value, String> {
-    let list = List::new(*vm.heap.native_classes.get("List").unwrap());
-    Ok(vm.heap.add_list(list))
-}
 
 pub(super) fn append_native(
     _vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    match receiver {
-        Value::List(list) => {
-            list.items.push(*args[0]);
-            Ok(Value::Nil)
-        }
-        x => Err(format!(
-            "'append' expects its first argument to be a list, got `{x}` instead."
-        )),
-    }
+    let list = receiver.as_list_mut();
+    list.items.push(*args[0]);
+    Ok(Value::Nil)
 }
 
 pub(super) fn pop_native(
@@ -52,14 +37,7 @@ pub(super) fn pop_native(
         Some(index)
     };
 
-    let my_list = match receiver {
-        Value::List(list) => list,
-        x => {
-            return Err(format!(
-                "'pop' expects its first argument to be a list, got `{x}` instead."
-            ))
-        }
-    };
+    let my_list = receiver.as_list_mut();
 
     match index {
         Some(index) => {
@@ -98,14 +76,7 @@ pub(super) fn insert_native(
         }
     };
 
-    let my_list = match receiver {
-        Value::List(list) => list,
-        x => {
-            return Err(format!(
-                "'insert' expects its first argument to be a list, got `{x}` instead."
-            ))
-        }
-    };
+    let my_list = receiver.as_list_mut();
 
     let length = my_list.items.len();
     if index > length {
@@ -123,14 +94,7 @@ pub(super) fn contains_native(
     receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    let my_list = match receiver {
-        Value::List(list) => list,
-        x => {
-            return Err(format!(
-                "'contains' expects to be called on a list, got `{x}` instead."
-            ))
-        }
-    };
+    let my_list = receiver.as_list();
     Ok(my_list.items.contains(args[0]).into())
 }
 
@@ -139,19 +103,11 @@ pub(super) fn iter_native(
     receiver: &mut Value,
     _args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    let my_list = match receiver {
-        Value::List(list) => list,
-        x => {
-            return Err(format!(
-                "'iter' expects to be called on a list, got `{x}` instead."
-            ))
-        }
-    };
-    let my_iterator = ListIterator::new(
-        *my_list,
-        *vm.heap.native_classes.get("ListIterator").unwrap(),
-    );
-    Ok(vm.heap.add_list_iterator(my_iterator))
+    let my_list = receiver.as_instance();
+    let my_iterator = ListIterator::new(Some(*my_list));
+    let target_class = vm.heap.native_classes.get("ListIterator").unwrap();
+    let my_instance = Instance::new(*target_class, Some(my_iterator.into()));
+    Ok(vm.heap.add_instance(my_instance))
 }
 
 pub(super) fn list_iter_next_native(
@@ -159,19 +115,18 @@ pub(super) fn list_iter_next_native(
     receiver: &mut Value,
     _args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    let mut my_iter = match receiver {
-        Value::ListIterator(iter) => *iter,
-        x => {
-            return Err(format!(
-                "'next' expects to be called on a list iterator, got `{x}` instead."
-            ))
+    let my_iter = receiver.as_list_iter_mut();
+    let my_list = my_iter.get_list();
+    match my_list {
+        Some(my_list) => {
+            if my_iter.index < my_list.items.len() {
+                let value = my_list.items[my_iter.index];
+                my_iter.index += 1;
+                Ok(value)
+            } else {
+                Ok(Value::StopIteration)
+            }
         }
-    };
-    if my_iter.index < my_iter.list.items.len() {
-        let value = my_iter.list.items[my_iter.index];
-        my_iter.index += 1;
-        Ok(value)
-    } else {
-        Ok(Value::StopIteration)
+        None => Ok(Value::StopIteration),
     }
 }

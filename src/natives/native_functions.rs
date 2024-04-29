@@ -4,6 +4,7 @@ use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::value::NativeClass;
 use crate::{
     value::{ias_u64, Number, Value},
     vm::VM,
@@ -155,8 +156,6 @@ pub(super) fn type_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value,
         },
         Value::String(_) => Value::String(vm.heap.string_id(&"<type string>")),
         Value::Upvalue(_) => Value::String(vm.heap.string_id(&"<type upvalue>")),
-        Value::List(_) => Value::String(vm.heap.string_id(&"<type list>")),
-        Value::ListIterator(_) => Value::String(vm.heap.string_id(&"<type list iterator>")),
         Value::Module(_) => Value::String(vm.heap.string_id(&"<type module>")),
     };
     Ok(string)
@@ -280,7 +279,16 @@ pub(super) fn delattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Val
 #[allow(clippy::cast_possible_wrap)]
 pub(super) fn len_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
-        Value::List(list) => Ok((list.items.len() as i64).into()),
-        x => Err(format!("'len' expected list argument, got: `{x}` instead.")),
+        Value::Instance(instance) => match &instance.backing {
+            Some(NativeClass::List(list)) => Ok((list.items.len() as i64).into()),
+            _ => Err(format!(
+                "'len' expected list argument, got: `{}` instead.",
+                **instance
+            )),
+        },
+        _ => Err(format!(
+            "'len' expected list argument, got: `{}` instead.",
+            &args[0]
+        )),
     }
 }
