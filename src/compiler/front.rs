@@ -58,6 +58,53 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         self.parse_precedence(Precedence::Assignment);
     }
 
+    pub(super) fn declaration(&mut self) {
+        if self.match_(TK::Var) {
+            self.var_declaration(true);
+        } else if self.match_(TK::Const) {
+            self.var_declaration(false);
+        } else if self.match_(TK::Fun) {
+            self.fun_declaration();
+        } else if self.match_(TK::Class) {
+            self.class_declaration();
+        } else {
+            self.statement();
+        }
+        if self.panic_mode {
+            self.synchronize();
+        }
+    }
+
+    fn statement(&mut self) {
+        if self.match_(TK::If) || self.match_(TK::Unless) {
+            self.conditional_statement(self.check_previous(TK::If));
+        } else if self.match_(TK::LeftBrace) {
+            self.scoped_block();
+        } else if self.match_(TK::For) {
+            self.for_statement();
+        } else if self.match_(TK::ForEach) {
+            self.foreach_statement();
+        } else if self.match_(TK::Return) {
+            self.return_statement();
+        } else if self.match_(TK::While) || self.match_(TK::Until) {
+            self.loop_statement(self.check_previous(TK::While));
+        } else if self.match_(TK::Continue) {
+            self.continue_statement();
+        } else if self.match_(TK::Break) {
+            self.break_statement();
+        } else if self.match_(TK::Switch) {
+            self.switch_statement();
+        } else if self.match_(TK::Import) {
+            self.import_statement();
+        } else if self.match_(TK::From) {
+            self.import_from_statement();
+        } else if self.match_(TK::Async) || self.match_(TK::Await) | self.match_(TK::Yield) {
+            self.error("Async, await and yield are not yet implemented.");
+        } else {
+            self.expression_statement();
+        }
+    }
+
     fn block(&mut self) {
         while !self.check(TK::RightBrace) && !self.check(TK::Eof) {
             self.declaration();
@@ -256,53 +303,6 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
                 state.break_jumps.push(self.emit_jump(OpCode::Jump));
                 *self.loop_state_mut() = Some(state);
             }
-        }
-    }
-
-    pub(super) fn declaration(&mut self) {
-        if self.match_(TK::Var) {
-            self.var_declaration(true);
-        } else if self.match_(TK::Const) {
-            self.var_declaration(false);
-        } else if self.match_(TK::Fun) {
-            self.fun_declaration();
-        } else if self.match_(TK::Class) {
-            self.class_declaration();
-        } else {
-            self.statement();
-        }
-        if self.panic_mode {
-            self.synchronize();
-        }
-    }
-
-    fn statement(&mut self) {
-        if self.match_(TK::If) || self.match_(TK::Unless) {
-            self.conditional_statement(self.check_previous(TK::If));
-        } else if self.match_(TK::LeftBrace) {
-            self.scoped_block();
-        } else if self.match_(TK::For) {
-            self.for_statement();
-        } else if self.match_(TK::ForEach) {
-            self.foreach_statement();
-        } else if self.match_(TK::Return) {
-            self.return_statement();
-        } else if self.match_(TK::While) || self.match_(TK::Until) {
-            self.loop_statement(self.check_previous(TK::While));
-        } else if self.match_(TK::Continue) {
-            self.continue_statement();
-        } else if self.match_(TK::Break) {
-            self.break_statement();
-        } else if self.match_(TK::Switch) {
-            self.switch_statement();
-        } else if self.match_(TK::Import) {
-            self.import_statement();
-        } else if self.match_(TK::From) {
-            self.import_from_statement();
-        } else if self.match_(TK::Async) || self.match_(TK::Await) | self.match_(TK::Yield) {
-            self.error("Async, await and yield are not yet implemented.");
-        } else {
-            self.expression_statement();
         }
     }
 

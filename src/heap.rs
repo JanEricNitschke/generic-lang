@@ -19,7 +19,6 @@ pub trait ArenaValue: Debug + Display + PartialEq {}
 impl<T> ArenaValue for T where T: Debug + Display + PartialEq {}
 
 new_key_type! {
-    pub struct ValueKey;
     pub struct FunctionKey;
     pub struct StringKey;
     pub struct UpvalueKey;
@@ -40,8 +39,8 @@ pub struct ArenaId<K: Key, T: ArenaValue> {
     // These could be but then i would have to put `clones` everywhere.
     // use std::cell::RefCell;
     // use std::rc::Rc;
-    // pub arena: Rc<RefCell<Arena<K, T>>>,
-    pub arena: NonNull<Arena<K, T>>,
+    // arena: Rc<RefCell<Arena<K, T>>>,
+    arena: NonNull<Arena<K, T>>,
 }
 
 impl<K: Key, T: ArenaValue> PartialEq for ArenaId<K, T> {
@@ -69,7 +68,7 @@ impl<K: Key, T: ArenaValue> DerefMut for ArenaId<K, T> {
 }
 
 impl<K: Key, T: ArenaValue> ArenaId<K, T> {
-    pub fn marked(&self, black_value: bool) -> bool {
+    pub(super) fn marked(&self, black_value: bool) -> bool {
         unsafe { self.arena.as_ref().is_marked(self.id, black_value) }
     }
 }
@@ -198,13 +197,13 @@ impl<K: Key, V: ArenaValue> std::ops::IndexMut<K> for Arena<K, V> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BuiltinConstants {
-    pub init_string: StringId,
-    pub script_name: StringId,
+    pub(super) init_string: StringId,
+    pub(super) script_name: StringId,
 }
 
 impl BuiltinConstants {
     #[must_use]
-    pub fn new(heap: &mut Heap) -> Self {
+    fn new(heap: &mut Heap) -> Self {
         Self {
             init_string: heap.string_id(&"__init__".to_string()),
             script_name: heap.string_id(&"__name__".to_string()),
@@ -294,26 +293,26 @@ macro_rules! gray_value {
 #[derive(Clone, Debug)]
 pub struct Heap {
     builtin_constants: Option<BuiltinConstants>,
-    pub strings_by_name: HashMap<String, StringId>,
-    pub native_classes: HashMap<String, Value>,
+    pub(super) strings_by_name: HashMap<String, StringId>,
+    pub(super) native_classes: HashMap<String, Value>,
 
-    pub strings: Arena<StringKey, String>,
-    pub functions: Arena<FunctionKey, Function>,
-    pub bound_methods: Arena<BoundMethodKey, BoundMethod>,
-    pub closures: Arena<ClosureKey, Closure>,
-    pub native_functions: Arena<NativeFunctionKey, NativeFunction>,
-    pub native_methods: Arena<NativeMethodKey, NativeMethod>,
-    pub classes: Arena<ClassKey, Class>,
-    pub instances: Arena<InstanceKey, Instance>,
-    pub upvalues: Arena<UpvalueKey, Upvalue>,
-    pub modules: Arena<ModuleKey, Module>,
+    pub(super) strings: Arena<StringKey, String>,
+    functions: Arena<FunctionKey, Function>,
+    bound_methods: Arena<BoundMethodKey, BoundMethod>,
+    closures: Arena<ClosureKey, Closure>,
+    native_functions: Arena<NativeFunctionKey, NativeFunction>,
+    native_methods: Arena<NativeMethodKey, NativeMethod>,
+    classes: Arena<ClassKey, Class>,
+    instances: Arena<InstanceKey, Instance>,
+    upvalues: Arena<UpvalueKey, Upvalue>,
+    modules: Arena<ModuleKey, Module>,
 
     next_gc: usize,
-    pub black_value: bool,
+    pub(super) black_value: bool,
 }
 
 impl Heap {
-    pub fn new() -> Pin<Box<Self>> {
+    pub(super) fn new() -> Pin<Box<Self>> {
         let strings_by_name: HashMap<String, StringId> = HashMap::default();
 
         let mut heap = Box::pin(Self {
@@ -375,11 +374,11 @@ impl Heap {
         heap
     }
 
-    pub fn builtin_constants(&self) -> &BuiltinConstants {
+    pub(super) fn builtin_constants(&self) -> &BuiltinConstants {
         self.builtin_constants.as_ref().unwrap()
     }
 
-    pub fn string_id<S>(&mut self, s: &S) -> StringId
+    pub(super) fn string_id<S>(&mut self, s: &S) -> StringId
     where
         S: ToString,
     {
@@ -406,11 +405,11 @@ impl Heap {
     }
 
     #[cfg(not(feature = "stress_gc"))]
-    pub const fn needs_gc(&self) -> bool {
+    pub(super) const fn needs_gc(&self) -> bool {
         self.bytes_allocated() > self.next_gc
     }
 
-    pub fn gc_start(&mut self) {
+    pub(super) fn gc_start(&mut self) {
         #[cfg(feature = "log_gc")]
         {
             eprintln!("-- gc begin");
@@ -428,7 +427,7 @@ impl Heap {
         }
     }
 
-    pub fn trace(&mut self) {
+    pub(super) fn trace(&mut self) {
         #[cfg(feature = "log_gc")]
         {
             eprintln!("-- trace start");
@@ -477,19 +476,19 @@ impl Heap {
         }
     }
 
-    pub fn mark_value(&mut self, id: &Value) {
+    pub(super) fn mark_value(&mut self, id: &Value) {
         self.blacken_value(id);
     }
 
-    pub fn mark_function(&mut self, id: &FunctionId) {
+    pub(super) fn mark_function(&mut self, id: &FunctionId) {
         self.blacken_function(id.id);
     }
 
-    pub fn mark_upvalue(&mut self, id: &UpvalueId) {
+    pub(super) fn mark_upvalue(&mut self, id: &UpvalueId) {
         self.blacken_upvalue(id.id);
     }
 
-    pub fn mark_module(&mut self, id: &ModuleId) {
+    pub(super) fn mark_module(&mut self, id: &ModuleId) {
         self.blacken_module(id.id);
     }
 
@@ -756,7 +755,7 @@ impl Heap {
         }
     }
 
-    pub fn sweep(&mut self) {
+    pub(super) fn sweep(&mut self) {
         #[cfg(feature = "log_gc")]
         eprintln!("-- sweep start");
         #[cfg(feature = "log_gc")]
@@ -789,43 +788,43 @@ impl Heap {
         }
     }
 
-    pub fn add_string(&mut self, value: String) -> Value {
+    fn add_string(&mut self, value: String) -> Value {
         self.strings.add(value, self.black_value).into()
     }
 
-    pub fn add_function(&mut self, value: Function) -> Value {
+    pub(super) fn add_function(&mut self, value: Function) -> Value {
         self.functions.add(value, self.black_value).into()
     }
 
-    pub fn add_bound_method(&mut self, value: BoundMethod) -> Value {
+    pub(super) fn add_bound_method(&mut self, value: BoundMethod) -> Value {
         self.bound_methods.add(value, self.black_value).into()
     }
 
-    pub fn add_closure(&mut self, value: Closure) -> Value {
+    pub(super) fn add_closure(&mut self, value: Closure) -> Value {
         self.closures.add(value, self.black_value).into()
     }
 
-    pub fn add_native_function(&mut self, value: NativeFunction) -> Value {
+    pub(super) fn add_native_function(&mut self, value: NativeFunction) -> Value {
         self.native_functions.add(value, self.black_value).into()
     }
 
-    pub fn add_native_method(&mut self, value: NativeMethod) -> Value {
+    pub(super) fn add_native_method(&mut self, value: NativeMethod) -> Value {
         self.native_methods.add(value, self.black_value).into()
     }
 
-    pub fn add_class(&mut self, value: Class) -> Value {
+    pub(super) fn add_class(&mut self, value: Class) -> Value {
         self.classes.add(value, self.black_value).into()
     }
 
-    pub fn add_instance(&mut self, value: Instance) -> Value {
+    pub(super) fn add_instance(&mut self, value: Instance) -> Value {
         self.instances.add(value, self.black_value).into()
     }
 
-    pub fn add_upvalue(&mut self, value: Upvalue) -> Value {
+    pub(super) fn add_upvalue(&mut self, value: Upvalue) -> Value {
         self.upvalues.add(value, self.black_value).into()
     }
 
-    pub fn add_module(&mut self, value: Module) -> Value {
+    pub(super) fn add_module(&mut self, value: Module) -> Value {
         self.modules.add(value, self.black_value).into()
     }
 }

@@ -50,7 +50,7 @@ type BinaryOp<T> = fn(Number, Number) -> T;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Copy)]
 pub struct Global {
-    pub value: Value,
+    pub(super) value: Value,
     mutable: bool,
 }
 
@@ -61,7 +61,7 @@ impl std::fmt::Display for Global {
 }
 
 #[derive(Debug)]
-pub struct CallFrame {
+struct CallFrame {
     closure: ClosureId,
     ip: usize,
     stack_base: usize,
@@ -69,13 +69,13 @@ pub struct CallFrame {
 }
 
 impl CallFrame {
-    pub fn closure(&self) -> &Closure {
+    fn closure(&self) -> &Closure {
         &self.closure
     }
 }
 
 #[derive(Debug)]
-pub struct CallStack {
+struct CallStack {
     frames: Vec<CallFrame>,
     current_closure: Option<ClosureId>,
     current_function: Option<FunctionId>,
@@ -139,7 +139,7 @@ impl CallStack {
         self.current_function.unwrap()
     }
 
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         self.frames.len()
     }
 }
@@ -571,9 +571,9 @@ macro_rules! run_instruction {
 }
 
 pub struct VM {
-    pub heap: Pin<Box<Heap>>,
-    pub callstack: CallStack,
-    pub stack: Vec<Value>,
+    pub(super) heap: Pin<Box<Heap>>,
+    pub(super) stack: Vec<Value>,
+    callstack: CallStack,
     open_upvalues: VecDeque<UpvalueId>,
     // Could also keep a cache of the last module or its globals for performance
     modules: Vec<ModuleId>,
@@ -584,7 +584,7 @@ pub struct VM {
 
 impl VM {
     #[must_use]
-    pub fn new(path: PathBuf) -> Self {
+    pub(super) fn new(path: PathBuf) -> Self {
         Self {
             heap: Heap::new(),
             callstack: CallStack::new(),
@@ -597,29 +597,7 @@ impl VM {
         }
     }
 
-    pub fn globals(&mut self) -> &mut HashMap<StringId, Global> {
-        &mut self.modules.last_mut().unwrap().globals
-    }
-
-    pub fn current_module(&mut self) -> ModuleId {
-        *self.modules.last().unwrap()
-    }
-
-    pub fn defining_module(&mut self) -> ModuleId {
-        let current_closure = self.callstack.current().closure;
-        match current_closure.containing_module {
-            Some(module) if !current_closure.is_module => module,
-            _ => self.current_module(),
-        }
-    }
-
-    fn compile(&mut self, source: &[u8], name: &str) -> Option<Function> {
-        let scanner = Scanner::new(source);
-        let compiler = Compiler::new(scanner, &mut self.heap, name);
-        compiler.compile()
-    }
-
-    pub fn interpret(&mut self, source: &[u8]) -> InterpretResult {
+    pub(super) fn interpret(&mut self, source: &[u8]) -> InterpretResult {
         let result = if let Some(function) = self.compile(source, "<script>") {
             let function_id = self.heap.add_function(function);
 
@@ -646,6 +624,12 @@ impl VM {
         result
     }
 
+    fn compile(&mut self, source: &[u8], name: &str) -> Option<Function> {
+        let scanner = Scanner::new(source);
+        let compiler = Compiler::new(scanner, &mut self.heap, name);
+        compiler.compile()
+    }
+
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn run(&mut self) -> InterpretResult {
         loop {
@@ -653,14 +637,34 @@ impl VM {
         }
     }
 
-    pub fn execute_and_run_function(&mut self, closure: Value, arg_count: u8) -> InterpretResult {
+    fn globals(&mut self) -> &mut HashMap<StringId, Global> {
+        &mut self.modules.last_mut().unwrap().globals
+    }
+
+    fn current_module(&mut self) -> ModuleId {
+        *self.modules.last().unwrap()
+    }
+
+    fn defining_module(&mut self) -> ModuleId {
+        let current_closure = self.callstack.current().closure;
+        match current_closure.containing_module {
+            Some(module) if !current_closure.is_module => module,
+            _ => self.current_module(),
+        }
+    }
+
+    pub(super) fn execute_and_run_function(
+        &mut self,
+        closure: Value,
+        arg_count: u8,
+    ) -> InterpretResult {
         self.stack_push(closure);
         self.execute_call(closure, arg_count);
         self.run_function()
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    pub fn run_function(&mut self) -> InterpretResult {
+    pub(super) fn run_function(&mut self) -> InterpretResult {
         let call_depth = self.callstack.len();
         while self.callstack.len() >= call_depth {
             run_instruction!(self);
@@ -668,7 +672,7 @@ impl VM {
         InterpretResult::Ok
     }
 
-    pub fn peek(&self, n: usize) -> Option<&Value> {
+    fn peek(&self, n: usize) -> Option<&Value> {
         let len = self.stack.len();
         if n >= len {
             None
@@ -1640,7 +1644,7 @@ impl VM {
         }
     }
 
-    pub fn execute_call(&mut self, closure_id: Value, arg_count: u8) -> bool {
+    fn execute_call(&mut self, closure_id: Value, arg_count: u8) -> bool {
         let closure = closure_id.as_closure();
         let arity = closure.function.arity;
         let arg_count = usize::from(arg_count);
@@ -1676,7 +1680,7 @@ impl VM {
         true
     }
 
-    pub fn define_native_function<T: ToString>(
+    pub(super) fn define_native_function<T: ToString>(
         &mut self,
         name: &T,
         arity: &'static [u8],
@@ -1698,7 +1702,7 @@ impl VM {
         );
     }
 
-    pub fn register_stdlib_module<T: ToString>(
+    pub(super) fn register_stdlib_module<T: ToString>(
         &mut self,
         name: &T,
         functions: Vec<(&'static str, &'static [u8], NativeFunctionImpl)>,
@@ -1708,7 +1712,7 @@ impl VM {
         self.stdlib.insert(name_id, functions);
     }
 
-    pub fn define_native_class<T: ToString>(&mut self, name: &T, add_to_builtins: bool) {
+    pub(super) fn define_native_class<T: ToString>(&mut self, name: &T, add_to_builtins: bool) {
         let name_id = self.heap.string_id(name);
         self.heap.strings_by_name.insert(name.to_string(), name_id);
         let value = self.heap.add_class(Class::new(name_id, true));
@@ -1724,7 +1728,7 @@ impl VM {
         self.heap.native_classes.insert(name_id.to_string(), value);
     }
 
-    pub fn define_native_method<C: ToString, N: ToString>(
+    pub(super) fn define_native_method<C: ToString, N: ToString>(
         &mut self,
         class: &C,
         name: &N,

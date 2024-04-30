@@ -122,7 +122,7 @@ pub struct Compiler<'scanner, 'heap> {
 
 impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
     #[must_use]
-    pub fn new(scanner: Scanner<'scanner>, heap: &'heap mut Heap, name: &str) -> Self {
+    pub(super) fn new(scanner: Scanner<'scanner>, heap: &'heap mut Heap, name: &str) -> Self {
         let function_name = heap.string_id(&name);
 
         Compiler {
@@ -135,6 +135,21 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             rules: make_rules(),
             nestable_state: vec![NestableState::new(function_name, FunctionType::Script)],
             class_state: vec![],
+        }
+    }
+
+    pub(super) fn compile(mut self) -> Option<Function> {
+        self.advance();
+
+        while !self.match_(TokenKind::Eof) {
+            self.declaration();
+        }
+
+        self.end();
+        if self.had_error {
+            None
+        } else {
+            Some(self.nestable_state.pop().unwrap().current_function)
         }
     }
 
@@ -179,21 +194,6 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         let result = f(self);
         self.nestable_state.push(state);
         result
-    }
-
-    pub fn compile(mut self) -> Option<Function> {
-        self.advance();
-
-        while !self.match_(TokenKind::Eof) {
-            self.declaration();
-        }
-
-        self.end();
-        if self.had_error {
-            None
-        } else {
-            Some(self.nestable_state.pop().unwrap().current_function)
-        }
     }
 
     fn end(&mut self) {
@@ -257,11 +257,11 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         &mut self.nestable_state.last_mut().unwrap().upvalues
     }
 
-    pub(super) fn current_chunk(&mut self) -> &mut Chunk {
+    fn current_chunk(&mut self) -> &mut Chunk {
         &mut self.current_function_mut().chunk
     }
 
-    pub(super) fn current_chunk_len(&mut self) -> usize {
+    fn current_chunk_len(&mut self) -> usize {
         self.current_chunk().code().len()
     }
 

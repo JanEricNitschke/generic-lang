@@ -128,7 +128,7 @@ pub enum OpCode {
 }
 
 impl OpCode {
-    pub const fn to_long(self) -> Self {
+    pub(super) const fn to_long(self) -> Self {
         match self {
             Self::GetLocal => Self::GetLocalLong,
             Self::GetGlobal => Self::GetGlobalLong,
@@ -152,14 +152,14 @@ impl OpCode {
 #[derivative(PartialOrd)]
 pub struct Chunk {
     name: StringId,
-    pub code: Vec<u8>,
+    code: Vec<u8>,
     #[derivative(PartialOrd = "ignore")]
     lines: Vec<(usize, Line)>,
     constants: Vec<Value>,
 }
 
 impl Chunk {
-    pub fn new(name: StringId) -> Self {
+    pub(super) fn new(name: StringId) -> Self {
         Self {
             name,
             code: Vec::default(),
@@ -168,22 +168,22 @@ impl Chunk {
         }
     }
 
-    pub fn constants(&self) -> &[Value] {
+    pub(super) fn constants(&self) -> &[Value] {
         &self.constants
     }
 
-    pub fn code(&self) -> &[u8] {
+    pub(super) fn code(&self) -> &[u8] {
         &self.code
     }
 
-    pub fn get_constant<T>(&self, index: T) -> &Value
+    pub(super) fn get_constant<T>(&self, index: T) -> &Value
     where
         T: Into<usize>,
     {
         &self.constants[index.into()]
     }
 
-    pub fn write<T>(&mut self, what: T, line: Line)
+    pub(super) fn write<T>(&mut self, what: T, line: Line)
     where
         T: Into<u8>,
     {
@@ -196,19 +196,19 @@ impl Chunk {
         }
     }
 
-    pub fn patch<T>(&mut self, offset: CodeOffset, what: T)
+    pub(super) fn patch<T>(&mut self, offset: CodeOffset, what: T)
     where
         T: Into<u8>,
     {
         self.code[*offset] = what.into();
     }
 
-    pub fn make_constant(&mut self, what: Value) -> ConstantLongIndex {
+    pub(super) fn make_constant(&mut self, what: Value) -> ConstantLongIndex {
         self.constants.push(what);
         ConstantLongIndex(self.constants.len() - 1)
     }
 
-    pub fn write_constant(&mut self, what: Value, line: Line) -> bool {
+    pub(super) fn write_constant(&mut self, what: Value, line: Line) -> bool {
         let long_index = self.make_constant(what);
         if let Ok(short_index) = u8::try_from(*long_index) {
             self.write(OpCode::Constant, line);
@@ -220,7 +220,7 @@ impl Chunk {
         }
     }
 
-    pub fn write_24bit_number(&mut self, what: usize, line: Line) -> bool {
+    pub(super) fn write_24bit_number(&mut self, what: usize, line: Line) -> bool {
         let (a, b, c, d) = crate::bitwise::get_4_bytes(what);
         if a > 0 {
             return false;
@@ -229,6 +229,17 @@ impl Chunk {
         self.write(c, line);
         self.write(d, line);
         true
+    }
+
+    pub(super) fn get_line(&self, offset: CodeOffset) -> Line {
+        let mut iter = self.lines.iter();
+        let (mut consumed, mut line) = iter.next().unwrap();
+        while consumed <= *offset.as_ref() {
+            let entry = iter.next().unwrap();
+            consumed += entry.0;
+            line = entry.1;
+        }
+        line
     }
 }
 
@@ -245,16 +256,16 @@ impl std::fmt::Debug for Chunk {
 }
 
 // Debug helpers
-pub struct InstructionDisassembler<'chunk> {
+struct InstructionDisassembler<'chunk> {
     chunk: &'chunk Chunk,
-    pub offset: CodeOffset,
+    offset: CodeOffset,
     operand_alignment: usize,
     opcode_name_alignment: usize,
 }
 
 impl<'chunk> InstructionDisassembler<'chunk> {
     #[must_use]
-    pub fn new(chunk: &'chunk Chunk) -> Self {
+    fn new(chunk: &'chunk Chunk) -> Self {
         Self {
             chunk,
             offset: CodeOffset(0),
@@ -265,7 +276,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
     }
 
     #[allow(clippy::enum_glob_use)]
-    pub fn instruction_len(&self, offset: usize) -> usize {
+    fn instruction_len(&self, offset: usize) -> usize {
         use OpCode::*;
         let opcode = OpCode::try_from_primitive(self.chunk.code[offset]).unwrap();
         std::mem::size_of::<OpCode>()
@@ -592,19 +603,6 @@ impl<'chunk> std::fmt::Debug for InstructionDisassembler<'chunk> {
             ),
         )?;
         Ok(())
-    }
-}
-
-impl Chunk {
-    pub fn get_line(&self, offset: CodeOffset) -> Line {
-        let mut iter = self.lines.iter();
-        let (mut consumed, mut line) = iter.next().unwrap();
-        while consumed <= *offset.as_ref() {
-            let entry = iter.next().unwrap();
-            consumed += entry.0;
-            line = entry.1;
-        }
-        line
     }
 }
 

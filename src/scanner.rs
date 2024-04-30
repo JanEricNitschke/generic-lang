@@ -4,7 +4,7 @@ use shrinkwraprs::Shrinkwrap;
 use crate::types::Line;
 
 #[derive(Shrinkwrap, PartialEq, Eq, Clone, Copy)]
-pub struct TokenLength(pub usize);
+pub struct TokenLength(pub(super) usize);
 
 #[derive(IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Clone, Copy, Debug)]
 #[repr(u8)]
@@ -107,13 +107,13 @@ impl std::fmt::Display for TokenKind {
 
 #[derive(Clone, Debug)]
 pub struct Token<'a> {
-    pub kind: TokenKind,
-    pub lexeme: &'a [u8],
-    pub line: Line,
+    pub(super) kind: TokenKind,
+    pub(super) lexeme: &'a [u8],
+    pub(super) line: Line,
 }
 
 impl<'a> Token<'a> {
-    pub fn as_str(&'a self) -> &'a str {
+    pub(super) fn as_str(&'a self) -> &'a str {
         std::str::from_utf8(self.lexeme).unwrap()
     }
 }
@@ -128,7 +128,7 @@ pub struct Scanner<'a> {
 
 impl<'a> Scanner<'a> {
     #[must_use]
-    pub const fn new(source: &'a [u8]) -> Self {
+    pub(super) const fn new(source: &'a [u8]) -> Self {
         Self {
             source,
             start: 0,
@@ -138,7 +138,7 @@ impl<'a> Scanner<'a> {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn scan(&mut self) -> Token<'a> {
+    pub(super) fn scan(&mut self) -> Token<'a> {
         use TokenKind as TK;
         self.skip_whitespace();
         self.start = self.current;
