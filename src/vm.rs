@@ -28,6 +28,9 @@ pub enum InterpretResult {
     RuntimeError,
 }
 
+/// Report runtime errors with the correct line number and function name.
+///
+/// Macro for borrow checking reasons.
 macro_rules! runtime_error {
     ($self:ident, $($arg:expr),* $(,)?) => {
         eprintln!($($arg),*);
@@ -38,6 +41,7 @@ macro_rules! runtime_error {
     };
 }
 
+/// Handle binary operations between numbers.
 macro_rules! binary_op {
     ($self:ident, $op:tt, $intonly:tt) => {
         if !$self.binary_op(|a, b| a $op b, $intonly) {
@@ -48,6 +52,7 @@ macro_rules! binary_op {
 
 type BinaryOp<T> = fn(Number, Number) -> T;
 
+/// Wrapper around a global value to store whether it is mutable or not.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Copy)]
 pub struct Global {
     pub(super) value: Value,
@@ -60,6 +65,14 @@ impl std::fmt::Display for Global {
     }
 }
 
+/// A call frame for the call stack.
+///
+/// Contains the closure corresponding to the relevant function,
+/// the instruction pointer within the function, as well as the `stack_base`
+/// of the function in the global stack.
+///
+/// Additionally, it contains a boolean indicating whether the closure is a module,
+/// in order to handle transferring globals one module end.
 #[derive(Debug)]
 struct CallFrame {
     closure: ClosureId,
@@ -74,9 +87,14 @@ impl CallFrame {
     }
 }
 
+/// Actual call stack of the VM.
+///
+/// Contains stored references for the current closure and function,
+/// to not have to grab them from the vector every time.
 #[derive(Debug)]
 struct CallStack {
     frames: Vec<CallFrame>,
+    // Maybe this could either be a straight pointer or at least not an Option.
     current_closure: Option<ClosureId>,
     current_function: Option<FunctionId>,
 }
@@ -144,9 +162,14 @@ impl CallStack {
     }
 }
 
-// Macro for performance reasons
-// with macro/inlined it takes ~300ms to run fib.gen
-// with function and wrapping return value in option takes ~450ms
+/// Main switch for the `OpCode` execution.
+///
+/// This is a macro for performance reasons.
+/// with macro/inlined it takes ~300ms to run fib.gen
+/// with function and wrapping return value in option takes ~450ms
+///
+/// Directly inlining does not work in order to handle dynamic execution
+/// from native functions which need direct access to this.
 macro_rules! run_instruction {
     ($self:ident) => {
         #[cfg(feature = "trace_execution")]
@@ -570,6 +593,9 @@ macro_rules! run_instruction {
     };
 }
 
+/// The main struct for the virtual machine and heart of the interpreter.
+///
+/// Contains the heap, stack, callstack, open upvalues, modules, builtins, and stdlib.
 pub struct VM {
     pub(super) heap: Pin<Box<Heap>>,
     pub(super) stack: Vec<Value>,
@@ -577,6 +603,7 @@ pub struct VM {
     open_upvalues: VecDeque<UpvalueId>,
     // Could also keep a cache of the last module or its globals for performance
     modules: Vec<ModuleId>,
+    // This could also just be passed to the interperet function.
     path: PathBuf,
     builtins: HashMap<StringId, Global>,
     stdlib: HashMap<StringId, ModuleContents>,
@@ -597,6 +624,10 @@ impl VM {
         }
     }
 
+    /// Main interpret step for an input of bytes.
+    ///
+    /// Works by compiling the source to bytecode and then running it.
+    /// Even the main script is compiled as a function.
     pub(super) fn interpret(&mut self, source: &[u8]) -> InterpretResult {
         let result = if let Some(function) = self.compile(source, "<script>") {
             let function_id = self.heap.add_function(function);
@@ -610,6 +641,8 @@ impl VM {
             self.execute_call(value_id, 0);
 
             // Need to have the first module loaded before defining natives
+            // Probably not actually needed in that order anymore as they are
+            // now defined in the builtins.
             natives::define(self);
             stdlib::register(self);
 
@@ -630,6 +663,9 @@ impl VM {
         compiler.compile()
     }
 
+    /// Infinite loop over the bytecode.
+    ///
+    /// Returns when a return instruction is hit at the top level.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn run(&mut self) -> InterpretResult {
         loop {
@@ -645,6 +681,21 @@ impl VM {
         *self.modules.last().unwrap()
     }
 
+    /// Get the module present when the current closure was defined.
+    ///
+    /// Needed to properly handle captured globals in modules.
+    /// Module closures have to be handles specially as while they are being defined
+    /// they are not yet in the module list.
+    ///
+    /// Normally a module is compiled to bytecode. Then it is scheduled to be
+    /// executed in the main loop. Its `containing_module` is the one that imports it.
+    /// However, when it is actually executed it is on top of the module list
+    /// and this is where the globals have to come from. Not from its `containing_module`.
+    ///
+    /// This is different for normal function closures. They are created once the `fun`
+    /// statement is executed at runtime. At this point the module is already on the
+    /// module list and correctly becomes their `containing_module`. Then, whenever they
+    /// are actually called, they refer to the correct globals.
     fn defining_module(&mut self) -> ModuleId {
         let current_closure = self.callstack.current().closure;
         match current_closure.containing_module {
@@ -841,7 +892,7 @@ impl VM {
             );
         }
         // Stdlib rust module
-        //  Add all the functions to the modules globals
+        // Add all the functions to the modules globals
         // If we only want to import some functions then we just move them
         // from the new module to the current globals, the module then gets dropped.
         if let Some(names_to_import) = names_to_import {

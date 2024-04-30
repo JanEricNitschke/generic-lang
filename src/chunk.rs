@@ -256,16 +256,16 @@ impl std::fmt::Debug for Chunk {
 }
 
 // Debug helpers
-struct InstructionDisassembler<'chunk> {
+pub struct InstructionDisassembler<'chunk> {
     chunk: &'chunk Chunk,
-    offset: CodeOffset,
+    pub(super) offset: CodeOffset,
     operand_alignment: usize,
     opcode_name_alignment: usize,
 }
 
 impl<'chunk> InstructionDisassembler<'chunk> {
     #[must_use]
-    fn new(chunk: &'chunk Chunk) -> Self {
+    pub(super) fn new(chunk: &'chunk Chunk) -> Self {
         Self {
             chunk,
             offset: CodeOffset(0),

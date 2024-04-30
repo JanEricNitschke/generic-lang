@@ -430,7 +430,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         };
 
         self.expression();
-        self.consume(TK::LeftBrace, "Expect '{' after condition.");
+        self.consume(TK::LeftBrace, "Expect '{' before loop body.");
 
         let exit_jump = self.emit_jump(if while_statement {
             OpCode::JumpIfFalse
@@ -515,14 +515,6 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             )
         };
 
-        // Alias loop variable for this iteration of the loop
-        self.begin_scope();
-        self.emit_bytes(OpCode::GetLocal, loop_var, line);
-        self.add_local(name, is_mutable);
-        self.mark_initialized();
-        let inner_var = u8::try_from(self.locals().len() - 1)
-            .expect("Aliasing loop variable led to too many locals.");
-
         // Compile the check clause as a call to "__next__" on the iterator
         // and an assignment to the loop variable
         // then check the loop variable for "StopIteration"
@@ -534,17 +526,27 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             self.error("Too many constants created for OP_FOREACH.");
         }
         self.emit_byte(0, line);
-        self.emit_bytes(OpCode::SetLocal, inner_var, line);
+        self.emit_bytes(OpCode::SetLocal, loop_var, line);
         self.emit_byte(OpCode::StopIteration, line);
         self.emit_byte(OpCode::NotEqual, line);
 
-        // Body of the loop
-        self.consume(TK::LeftBrace, "Expect '{' after condition.");
         let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
+        //Clean up the comparison result if no jump
         self.emit_byte(OpCode::Pop, line);
+
+        // Alias loop variable for this iteration of the loop
+        self.begin_scope();
+        self.emit_bytes(OpCode::GetLocal, loop_var, line);
+        self.add_local(name, is_mutable);
+        self.mark_initialized();
+        let inner_var = u8::try_from(self.locals().len() - 1)
+            .expect("Aliasing loop variable led to too many locals.");
+
+        // Body of the loop
+        self.consume(TK::LeftBrace, "Expect '{' before loop body.");
         self.scoped_block();
 
-        // Clean up alias for loop variable
+        // Clean up alias for loop variable after the body.
         self.emit_bytes(OpCode::GetLocal, inner_var, line);
         self.emit_bytes(OpCode::SetLocal, loop_var, line);
         self.emit_byte(OpCode::Pop, line);
@@ -554,6 +556,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         let loop_start = self.loop_state().as_ref().unwrap().start;
         self.emit_loop(loop_start);
         self.patch_jump(exit_jump);
+        // Clean up the comparison result if jump
         self.emit_byte(OpCode::Pop, line);
         self.patch_break_jumps();
         *self.loop_state_mut() = old_loop_state;

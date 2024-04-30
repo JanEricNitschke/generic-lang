@@ -13,7 +13,6 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         let scope_depth = self.scope_depth();
         let mut instructions = vec![];
         let line = self.line();
-
         {
             let locals = self.locals_mut();
             while locals
