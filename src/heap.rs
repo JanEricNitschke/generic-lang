@@ -644,6 +644,13 @@ impl Heap {
                         gray_value!(self, item);
                     }
                 }
+                NativeClass::Dict(dict) => {
+                    for (key, value) in &dict.items {
+                        gray_value!(self, key);
+                        gray_value!(self, value);
+                    }
+                
+                }
             }
         }
         if self.log_gc {

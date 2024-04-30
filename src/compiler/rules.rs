@@ -365,26 +365,63 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         self.emit_bytes(OpCode::BuildList, item_count, self.line());
     }
 
+    fn parse_dict_entry(&mut self) {
+        self.parse_precedence(Precedence::Or);
+        self.consume(TK::Colon, "Expect ':' after key.");
+        self.parse_precedence(Precedence::Or);
+    }
+
     // TODO: Extend to also handles dicts.
     // Empty {} should be dict. Otherwise dict is {a:b, c:d,...}
     // and set is {a, b, c, ...}
     fn hash_collection(&mut self, _can_assign: bool) {
         let mut item_count = 0;
-        // Handle trailing comma
-        while !self.check(TK::RightBrace) {
-            // No assignments
+        let mut is_dict = true;
+
+        if !self.check(TK::RightBrace) {
             self.parse_precedence(Precedence::Or);
-            if item_count == 255 {
-                self.error("Can't have more than 255 items in a set literal.");
-                break;
+            is_dict = self.match_(TK::Colon);
+
+            if is_dict {
+                self.parse_precedence(Precedence::Or);
             }
             item_count += 1;
-            if !self.match_(TK::Comma) {
-                break;
+            // Handle potential trailing comma after (first/only) element
+            self.match_(TK::Comma);
+
+            while !self.check(TK::RightBrace) {
+                if is_dict {
+                    self.parse_dict_entry();
+                } else {
+                    self.parse_precedence(Precedence::Or);
+                }
+
+                if item_count == 255 {
+                    self.error("Can't have more than 255 items in a set literal.");
+                    break;
+                }
+                item_count += 1;
+                if !self.match_(TK::Comma) {
+                    break;
+                }
             }
         }
-        self.consume(TK::RightBrace, "Expect '}' after set literal.");
-        self.emit_bytes(OpCode::BuildSet, item_count, self.line());
+        self.consume(
+            TK::RightBrace,
+            &format!(
+                "Expect '}}' after {} literal.",
+                if is_dict { "dict" } else { "set" }
+            ),
+        );
+        self.emit_bytes(
+            if is_dict {
+                OpCode::BuildDict
+            } else {
+                OpCode::BuildSet
+            },
+            item_count,
+            self.line(),
+        );
     }
 
     fn subscript(&mut self, can_assign: bool) {

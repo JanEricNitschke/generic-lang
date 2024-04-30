@@ -15,7 +15,7 @@ use crate::{
     stdlib,
     value::{
         Class, Closure, Function, Instance, List, Module, ModuleContents, NativeFunction,
-        NativeFunctionImpl, NativeMethod, NativeMethodImpl, Number, Set, Upvalue, Value,
+        NativeFunctionImpl, NativeMethod, NativeMethodImpl, Number, Set, Upvalue, Value, Dict,
     },
 };
 
@@ -479,7 +479,6 @@ macro_rules! run_instruction {
                 let instance_value = $self.heap.add_instance(instance);
                 $self.stack_push_value(instance_value);
             }
-            // TODO: Fix these two, currently both lists
             OpCode::BuildSet => {
                 let mut set = Set::new();
 
@@ -499,17 +498,22 @@ macro_rules! run_instruction {
                 let instance_value = $self.heap.add_instance(instance);
                 $self.stack_push_value(instance_value);
             }
+            // TODO: Fix these two, currently a list
             OpCode::BuildDict => {
-                let mut list = List::new();
-
+                let mut dict = Dict::new();
+                // Number of key, value pairs.
                 let arg_count = $self.read_byte();
                 for index in (0..arg_count).rev() {
-                    list.items.push(*$self.peek(index as usize).unwrap());
+                    let key = $self.peek((2*index+1) as usize).unwrap();
+                    let value = $self.peek((2*index) as usize).unwrap();
+                    dict.items.insert(*key, *value);
                 }
                 for _ in 0..arg_count {
+                    // Pop key AND value
+                    $self.stack.pop();
                     $self.stack.pop();
                 }
-                let instance = Instance::new(*$self.heap.native_classes.get("List").unwrap(), Some(list.into()));
+                let instance = Instance::new(*$self.heap.native_classes.get("Dict").unwrap(), Some(dict.into()));
                 let instance_value = $self.heap.add_instance(instance);
                 $self.stack_push_value(instance_value);
             }

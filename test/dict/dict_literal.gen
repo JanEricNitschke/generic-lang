@@ -1,0 +1,8 @@
+var my_dict = {
+    "name": "John",
+    "age": 30,
+    "city": "New York"
+};
+var my_empty_dict = {};
+print(my_empty_dict); # expect: {}
+print(type(my_empty_dict)); # expect: <class Dict>

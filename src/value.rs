@@ -73,8 +73,6 @@ impl std::fmt::Display for Value {
             Self::Class(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::Instance(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::BoundMethod(ref_id) => f.pad(&format!("{}", **ref_id)),
-            // Self::List(ref_id) => f.pad(&format!("{}", **ref_id)),
-            // Self::ListIterator(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::Upvalue(ref_id) => f.pad(&format!("{}", **ref_id)),
             Self::Module(ref_id) => f.pad(&format!("{}", **ref_id)),
         }
@@ -766,6 +764,26 @@ impl Value {
             _ => unreachable!("Expected Set, found `{}`", self),
         }
     }
+
+    pub fn as_dict(&self) -> &Dict {
+        match self {
+            Self::Instance(inst) => match &inst.backing {
+                Some(NativeClass::Dict(dict)) => dict,
+                _ => unreachable!("Expected Dict, found `{}`", self),
+            },
+            _ => unreachable!("Expected Dict, found `{}`", self),
+        }
+    }
+
+    pub fn as_dict_mut(&mut self) -> &mut Dict {
+        match self {
+            Self::Instance(inst) => match &mut inst.backing {
+                Some(NativeClass::Dict(dict)) => dict,
+                _ => unreachable!("Expected Dict, found something else."),
+            },
+            _ => unreachable!("Expected Dict, found `{}`", self),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -773,6 +791,7 @@ pub enum NativeClass {
     List(List),
     ListIterator(ListIterator),
     Set(Set),
+    Dict(Dict),
 }
 
 impl NativeClass {
@@ -781,6 +800,7 @@ impl NativeClass {
             "List" => Self::List(List::new()),
             "ListIterator" => Self::ListIterator(ListIterator::new(None)),
             "Set" => Self::Set(Set::new()),
+            "Dict" => Self::Dict(Dict::new()),
             _ => unreachable!("Unknown native class `{}`.", kind),
         }
     }
@@ -792,6 +812,7 @@ impl std::fmt::Display for NativeClass {
             Self::List(list) => list.fmt(f),
             Self::ListIterator(list_iter) => list_iter.fmt(f),
             Self::Set(set) => set.fmt(f),
+            Self::Dict(dict) => dict.fmt(f),
         }
     }
 }
@@ -887,6 +908,41 @@ impl std::fmt::Display for Set {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Dict {
+    pub items: HashMap<Value, Value>,
+}
+
+impl Dict {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            items: HashMap::default(),
+        }
+    }
+}
+
+impl std::fmt::Display for Dict {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let items = &self.items;
+        let mut comma_separated = String::new();
+        comma_separated.push('{');
+        if !items.is_empty() {
+            for (key, value) in items {
+                comma_separated.push_str(&key.to_string());
+                comma_separated.push_str(": ");
+                comma_separated.push_str(&value.to_string());
+                comma_separated.push_str(", ");
+            }
+            // Remove the last ", "
+            comma_separated.pop();
+            comma_separated.pop();
+        }
+        comma_separated.push('}');
+        f.pad(&comma_separated)
+    }
+}
+
 impl From<List> for NativeClass {
     fn from(list: List) -> Self {
         Self::List(list)
@@ -902,5 +958,11 @@ impl From<ListIterator> for NativeClass {
 impl From<Set> for NativeClass {
     fn from(set: Set) -> Self {
         Self::Set(set)
+    }
+}
+
+impl From<Dict> for NativeClass {
+    fn from(dict: Dict) -> Self {
+        Self::Dict(dict)
     }
 }
