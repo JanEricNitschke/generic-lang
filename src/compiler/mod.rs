@@ -11,7 +11,6 @@ use shrinkwraprs::Shrinkwrap;
 use crate::{
     chunk::{Chunk, CodeOffset, ConstantLongIndex},
     compiler::rules::{make_rules, Rules},
-    config,
     heap::{Heap, StringId},
     scanner::{Scanner, Token, TokenKind},
     types::Line,
@@ -200,7 +199,8 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
     fn end(&mut self) {
         self.emit_return();
 
-        if config::PRINT_CODE.load() && !self.had_error {
+        #[cfg(feature = "print_code")]
+        if !self.had_error {
             println!("{:?}", self.current_chunk());
         }
     }

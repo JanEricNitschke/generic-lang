@@ -99,8 +99,8 @@ pub type ModuleId = ArenaId<ModuleKey, Module>;
 
 #[derive(Clone, Debug)]
 pub struct Arena<K: Key, V: ArenaValue> {
+    #[cfg(feature = "log_gc")]
     name: &'static str,
-    log_gc: bool,
 
     data: SlotMap<K, Item<V>>,
     bytes_allocated: usize,
@@ -110,10 +110,10 @@ pub struct Arena<K: Key, V: ArenaValue> {
 
 impl<K: Key, V: ArenaValue> Arena<K, V> {
     #[must_use]
-    fn new(name: &'static str, log_gc: bool) -> Self {
+    fn new(#[cfg(feature = "log_gc")] name: &'static str) -> Self {
         Self {
+            #[cfg(feature = "log_gc")]
             name,
-            log_gc,
             data: SlotMap::with_key(),
             bytes_allocated: 0,
             gray: Vec::new(),
@@ -124,7 +124,8 @@ impl<K: Key, V: ArenaValue> Arena<K, V> {
         let id = self.data.insert(Item::new(value, !black_value));
         self.bytes_allocated += std::mem::size_of::<V>();
 
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!(
                 "{}/{:?} allocate {} for {}",
                 self.name,
@@ -150,12 +151,12 @@ impl<K: Key, V: ArenaValue> Arena<K, V> {
     }
 
     fn sweep(&mut self, black_value: bool) {
-        self.data.retain(|key, value| {
-            let retain = value.marked == black_value;
-            if !retain && self.log_gc {
-                eprintln!("{}/{:?} free {}", self.name, key, value.item);
+        self.data.retain(|_key, value| {
+            #[cfg(feature = "log_gc")]
+            if !(value.marked == black_value) {
+                eprintln!("{}/{:?} free {}", self.name, _key, value.item);
             }
-            retain
+            value.marked == black_value
         });
         self.bytes_allocated = std::mem::size_of::<V>() * self.data.len();
     }
@@ -217,61 +218,71 @@ macro_rules! gray_value {
         match $value {
             Value::Bool(_) | Value::Nil | Value::StopIteration | Value::Number(_) => {}
             Value::Upvalue(id) => {
-                if $self.log_gc {
+                #[cfg(feature = "log_gc")]
+                {
                     eprintln!("Upvalue/{:?} gray {}", id.id, **id);
                 }
                 $self.upvalues.gray.push(id.id);
             }
             Value::String(id) => {
-                if $self.log_gc {
+                #[cfg(feature = "log_gc")]
+                {
                     eprintln!("String/{:?} gray {}", id.id, **id);
                 }
                 $self.strings.gray.push(id.id);
             }
             Value::Function(id) => {
-                if $self.log_gc {
+                #[cfg(feature = "log_gc")]
+                {
                     eprintln!("Function/{:?} gray {}", id.id, **id);
                 }
                 $self.functions.gray.push(id.id);
             }
             Value::NativeFunction(id) => {
-                if $self.log_gc {
+                #[cfg(feature = "log_gc")]
+                {
                     eprintln!("NativeFunction/{:?} gray {}", id.id, **id);
                 }
                 $self.native_functions.gray.push(id.id);
             }
             Value::NativeMethod(id) => {
-                if $self.log_gc {
+                #[cfg(feature = "log_gc")]
+                {
                     eprintln!("NativeMethod/{:?} gray {}", id.id, **id);
                 }
                 $self.native_methods.gray.push(id.id);
             }
             Value::Closure(id) => {
-                if $self.log_gc {
+                #[cfg(feature = "log_gc")]
+                {
                     eprintln!("Closure/{:?} gray {}", id.id, **id);
                 }
                 $self.closures.gray.push(id.id);
             }
             Value::Class(id) => {
-                if $self.log_gc {
+                #[cfg(feature = "log_gc")]
+                {
                     eprintln!("Class/{:?} gray {}", id.id, **id);
                 }
                 $self.classes.gray.push(id.id);
             }
             Value::Instance(id) => {
-                if $self.log_gc {
+                #[cfg(feature = "log_gc")]
+                {
                     eprintln!("Instance/{:?} gray {}", id.id, **id);
                 }
                 $self.instances.gray.push(id.id);
             }
             Value::BoundMethod(id) => {
-                if $self.log_gc {
+                #[cfg(feature = "log_gc")]
+                {
                     eprintln!("BoundMethod/{:?} gray {}", id.id, **id);
                 }
                 $self.bound_methods.gray.push(id.id);
             }
             Value::Module(id) => {
-                if $self.log_gc {
+                #[cfg(feature = "log_gc")]
+                {
                     eprintln!("Module/{:?} gray {}", id.id, **id);
                 }
                 $self.modules.gray.push(id.id);
@@ -297,15 +308,12 @@ pub struct Heap {
     pub upvalues: Arena<UpvalueKey, Upvalue>,
     pub modules: Arena<ModuleKey, Module>,
 
-    log_gc: bool,
     next_gc: usize,
     pub black_value: bool,
 }
 
 impl Heap {
     pub fn new() -> Pin<Box<Self>> {
-        let log_gc = crate::config::LOG_GC.load();
-
         let strings_by_name: HashMap<String, StringId> = HashMap::default();
 
         let mut heap = Box::pin(Self {
@@ -313,18 +321,47 @@ impl Heap {
             strings_by_name,
             native_classes: HashMap::default(),
 
-            strings: Arena::new("String", log_gc),
-            functions: Arena::new("Function", log_gc),
-            bound_methods: Arena::new("BoundMethod", log_gc),
-            closures: Arena::new("Closure", log_gc),
-            native_functions: Arena::new("NativeFunction", log_gc),
-            native_methods: Arena::new("NativeMethod", log_gc),
-            classes: Arena::new("Class", log_gc),
-            instances: Arena::new("Instance", log_gc),
-            upvalues: Arena::new("Upvalue", log_gc),
-            modules: Arena::new("Module", log_gc),
+            strings: Arena::new(
+                #[cfg(feature = "log_gc")]
+                "String",
+            ),
+            functions: Arena::new(
+                #[cfg(feature = "log_gc")]
+                "Function",
+            ),
+            bound_methods: Arena::new(
+                #[cfg(feature = "log_gc")]
+                "BoundMethod",
+            ),
+            closures: Arena::new(
+                #[cfg(feature = "log_gc")]
+                "Closure",
+            ),
+            native_functions: Arena::new(
+                #[cfg(feature = "log_gc")]
+                "NativeFunction",
+            ),
+            native_methods: Arena::new(
+                #[cfg(feature = "log_gc")]
+                "NativeMethod",
+            ),
+            classes: Arena::new(
+                #[cfg(feature = "log_gc")]
+                "Class",
+            ),
+            instances: Arena::new(
+                #[cfg(feature = "log_gc")]
+                "Instance",
+            ),
+            upvalues: Arena::new(
+                #[cfg(feature = "log_gc")]
+                "Upvalue",
+            ),
+            modules: Arena::new(
+                #[cfg(feature = "log_gc")]
+                "Module",
+            ),
 
-            log_gc,
             next_gc: 1024 * 1024,
             black_value: true,
         });
@@ -368,12 +405,14 @@ impl Heap {
             + self.modules.bytes_allocated()
     }
 
+    #[cfg(not(feature = "stress_gc"))]
     pub const fn needs_gc(&self) -> bool {
         self.bytes_allocated() > self.next_gc
     }
 
     pub fn gc_start(&mut self) {
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("-- gc begin");
         }
 
@@ -390,7 +429,8 @@ impl Heap {
     }
 
     pub fn trace(&mut self) {
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("-- trace start");
         }
         while !self.functions.gray.is_empty()
@@ -475,10 +515,9 @@ impl Heap {
         if item.marked == self.black_value {
             return;
         }
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("Upvalue/{:?} blacken {} start", index, item.item);
-        }
-        if self.log_gc {
             eprintln!("Upvalue{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
@@ -488,7 +527,8 @@ impl Heap {
                 gray_value!(self, value);
             }
         }
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("Upvalue/{:?} blacken {} end", index, item.item);
         }
     }
@@ -498,10 +538,9 @@ impl Heap {
         if item.marked == self.black_value {
             return;
         }
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("Module/{:?} blacken {} start", index, item.item);
-        }
-        if self.log_gc {
             eprintln!("Module/{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
@@ -518,17 +557,17 @@ impl Heap {
         if item.marked == self.black_value {
             return;
         }
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("NativeFunction/{:?} blacken {} start", index, item.item);
-        }
-        if self.log_gc {
             eprintln!("NativeFunction/{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
 
         let function = &item.item;
         self.strings.gray.push(function.name.id);
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("NativeFunction/{:?} blacken {} end", index, item.item);
         }
     }
@@ -538,10 +577,9 @@ impl Heap {
         if item.marked == self.black_value {
             return;
         }
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("NativeMethod/{:?} blacken {} start", index, item.item);
-        }
-        if self.log_gc {
             eprintln!("NativeMethod/{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
@@ -549,7 +587,8 @@ impl Heap {
         let function = &item.item;
         self.strings.gray.push(function.name.id);
         self.strings.gray.push(function.class.id);
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("NativeMethod/{:?} blacken {} end", index, item.item);
         }
     }
@@ -559,11 +598,9 @@ impl Heap {
         if item.marked == self.black_value {
             return;
         }
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("Closure/{:?} blacken {} start", index, item.item);
-        }
-
-        if self.log_gc {
             eprintln!("Closure/{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
@@ -573,7 +610,8 @@ impl Heap {
         for upvalue in &closure.upvalues {
             self.upvalues.gray.push(upvalue.id);
         }
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("Closure/{:?} blacken {} end", index, item.item);
         }
     }
@@ -583,11 +621,9 @@ impl Heap {
         if item.marked == self.black_value {
             return;
         }
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("Class/{:?} blacken {} start", index, item.item);
-        }
-
-        if self.log_gc {
             eprintln!("Class/{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
@@ -598,7 +634,8 @@ impl Heap {
             self.strings.gray.push(method_name.id);
             gray_value!(self, method);
         }
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("Class/{:?} blacken {} end", index, item.item);
         }
     }
@@ -610,11 +647,9 @@ impl Heap {
         if item.marked == self.black_value {
             return;
         }
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("Instance/{:?} blacken {} start", index, item.item);
-        }
-
-        if self.log_gc {
             eprintln!("Instance/{index:?} mark {}", item.item);
         }
 
@@ -652,7 +687,8 @@ impl Heap {
                 }
             }
         }
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("Instance/{:?} blacken {} end", index, item.item);
         }
     }
@@ -664,11 +700,9 @@ impl Heap {
         if item.marked == self.black_value {
             return;
         }
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("BoundMethod/{:?} blacken {} start", index, item.item);
-        }
-
-        if self.log_gc {
             eprintln!("BoundMethod/{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
@@ -676,7 +710,8 @@ impl Heap {
         let bound_method = &item.item;
         gray_value!(self, &bound_method.receiver);
         gray_value!(self, &bound_method.method);
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("BoundMethod/{:?} blacken {} end", index, item.item);
         }
     }
@@ -686,14 +721,14 @@ impl Heap {
         if item.marked == self.black_value {
             return;
         }
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("String/{:?} blacken {} start", index, item.item);
-        }
-        if self.log_gc {
             eprintln!("String/{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("String/{:?} blacken {} end", index, item.item);
         }
     }
@@ -703,11 +738,9 @@ impl Heap {
         if item.marked == self.black_value {
             return;
         }
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("Function/{:?} blacken {} start", index, item.item);
-        }
-
-        if self.log_gc {
             eprintln!("Function/{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
@@ -717,16 +750,16 @@ impl Heap {
         for constant in function.chunk.constants() {
             gray_value!(self, constant);
         }
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("Function/{:?} blacken {} end", index, item.item);
         }
     }
 
     pub fn sweep(&mut self) {
-        if self.log_gc {
-            eprintln!("-- sweep start");
-        }
-
+        #[cfg(feature = "log_gc")]
+        eprintln!("-- sweep start");
+        #[cfg(feature = "log_gc")]
         let before = self.bytes_allocated();
 
         self.functions.sweep(self.black_value);
@@ -743,7 +776,8 @@ impl Heap {
         self.black_value = !self.black_value;
 
         self.next_gc = self.bytes_allocated() * crate::config::GC_HEAP_GROW_FACTOR;
-        if self.log_gc {
+        #[cfg(feature = "log_gc")]
+        {
             eprintln!("-- gc end");
             eprintln!(
                 "   collected {} (from {} to {}) next at {}",
