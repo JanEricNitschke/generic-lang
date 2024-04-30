@@ -1,8 +1,4 @@
-use crate::{
-    value::Value,
-    vm::VM,
-};
-
+use crate::{value::Value, vm::VM};
 
 pub(super) fn dict_get_native(
     _vm: &mut VM,
@@ -13,11 +9,10 @@ pub(super) fn dict_get_native(
     if !args[0].is_hasheable() {
         return Err(format!("Key `{}` is not hashable.", args[0]));
     }
-    match dict.items.get(args[0]) {
-        Some(value) => Ok(*value),
-        None => Err(format!("Key `{}` not found.", args[0])),
-    }
-
+    dict.items.get(args[0]).map_or_else(
+        || Err(format!("Key `{}` not found.", args[0])),
+        |value| Ok(*value),
+    )
 }
 
 pub(super) fn dict_set_native(

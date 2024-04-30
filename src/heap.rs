@@ -649,7 +649,6 @@ impl Heap {
                         gray_value!(self, key);
                         gray_value!(self, value);
                     }
-                
                 }
             }
         }

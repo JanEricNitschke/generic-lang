@@ -1,0 +1,7 @@
+var my_dict = {
+    "name": "John",
+    "age": 30,
+    "city": "New York"
+};
+my_dict["age"] = 28;
+print(my_dict); # expect: {name: John, age: 28, city: New York}

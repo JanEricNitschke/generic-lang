@@ -14,8 +14,8 @@ use crate::{
     scanner::Scanner,
     stdlib,
     value::{
-        Class, Closure, Function, Instance, List, Module, ModuleContents, NativeFunction,
-        NativeFunctionImpl, NativeMethod, NativeMethodImpl, Number, Set, Upvalue, Value, Dict,
+        Class, Closure, Dict, Function, Instance, List, Module, ModuleContents, NativeFunction,
+        NativeFunctionImpl, NativeMethod, NativeMethodImpl, Number, Set, Upvalue, Value,
     },
 };
 

@@ -5,4 +5,5 @@ var my_dict = {
 };
 var my_empty_dict = {};
 print(my_empty_dict); # expect: {}
-print(type(my_empty_dict)); # expect: <class Dict>
+print(type(my_empty_dict)); # expect: <type Dict>
+print(my_dict); # expect: {age: 30, city: New York, name: John}

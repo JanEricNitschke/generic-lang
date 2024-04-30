@@ -1,9 +1,9 @@
 #![allow(clippy::unnecessary_wraps)]
 
+mod dict;
 mod list;
 mod native_functions;
 mod set;
-mod dict;
 
 use crate::vm::VM;
 
