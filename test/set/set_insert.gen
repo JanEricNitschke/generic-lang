@@ -1,0 +1,5 @@
+var my_set = Set();
+my_set.insert(3);
+print(my_set); # expect: {3}
+
+my_set.insert(1.0); # expect runtime error: Value `1.0` is not hashable.

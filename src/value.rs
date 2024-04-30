@@ -8,8 +8,8 @@ use crate::{
 };
 use derivative::Derivative;
 use derive_more::{From, Neg};
-use rustc_hash::FxHashMap as HashMap;
-
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub enum Value {
@@ -32,9 +32,29 @@ pub enum Value {
     Class(ClassId),
     Instance(InstanceId),
     BoundMethod(BoundMethodId),
-    // This should really just be "NativeClass"
-    // List(ListId),
-    // ListIterator(ListIteratorId),
+}
+
+// This is fake btw. But it is only used for hash,
+// which throws unreachable for all the variants where it doesnt actually hold.
+impl Eq for Value {}
+impl Hash for Value {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Bool(b) => b.hash(state),
+            Self::Nil => state.write_u8(0),
+            Self::StopIteration => state.write_u8(1),
+            Self::Number(n) => match n {
+                Number::Float(_) => unreachable!(
+                    "Only hashable types are Bool, Nil, Integer, and String, got {self}."
+                ),
+                Number::Integer(i) => i.hash(state),
+            },
+            Self::String(s) => s.hash(state),
+            _ => {
+                unreachable!("Only hashable types are Bool, Nil, Integer, and String, got {self}.")
+            }
+        }
+    }
 }
 
 impl std::fmt::Display for Value {
@@ -241,7 +261,7 @@ impl ::core::ops::Rem for Number {
     }
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub enum Upvalue {
     Open(usize),
     Closed(Value),
@@ -345,7 +365,7 @@ impl BoundMethod {
     }
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub struct Function {
     pub arity: usize,
     pub chunk: Chunk,
@@ -425,7 +445,7 @@ const fn always_equals<T>(_: &T, _: &T) -> bool {
     true
 }
 
-#[derive(Debug, PartialEq, Clone, Derivative)]
+#[derive(Debug, PartialEq, Eq, Clone, Derivative)]
 #[derivative(PartialOrd)]
 pub struct Class {
     pub name: StringId,
@@ -456,8 +476,9 @@ impl std::fmt::Display for Class {
 #[derivative(Debug, PartialEq, PartialOrd, Clone)]
 pub struct Instance {
     pub class: ClassId,
-    #[derivative(PartialOrd = "ignore")]
+    #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
     pub fields: HashMap<String, Value>,
+    #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
     pub backing: Option<NativeClass>,
 }
 
@@ -489,7 +510,7 @@ impl PartialEq for BoundMethod {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Derivative)]
+#[derive(Debug, PartialEq, Eq, Clone, Derivative)]
 #[derivative(PartialOrd)]
 pub struct Module {
     pub name: StringId,
@@ -612,6 +633,13 @@ impl Value {
         matches!(self, Self::Bool(false) | Self::Nil)
     }
 
+    pub const fn is_hasheable(&self) -> bool {
+        matches!(
+            self,
+            Self::Bool(_) | Self::Nil | Self::Number(Number::Integer(_)) | Self::String(_)
+        )
+    }
+
     pub fn as_closure(&self) -> &ClosureId {
         match self {
             Self::Closure(c) => c,
@@ -718,13 +746,33 @@ impl Value {
             _ => unreachable!("Expected ListIterator, found `{}`", self),
         }
     }
+
+    pub fn as_set(&self) -> &Set {
+        match self {
+            Self::Instance(inst) => match &inst.backing {
+                Some(NativeClass::Set(set)) => set,
+                _ => unreachable!("Expected Set, found `{}`", self),
+            },
+            _ => unreachable!("Expected Set, found `{}`", self),
+        }
+    }
+
+    pub fn as_set_mut(&mut self) -> &mut Set {
+        match self {
+            Self::Instance(inst) => match &mut inst.backing {
+                Some(NativeClass::Set(set)) => set,
+                _ => unreachable!("Expected Set, found something else."),
+            },
+            _ => unreachable!("Expected Set, found `{}`", self),
+        }
+    }
 }
 
-#[derive(Derivative, PartialOrd)]
-#[derivative(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub enum NativeClass {
     List(List),
     ListIterator(ListIterator),
+    Set(Set),
 }
 
 impl NativeClass {
@@ -732,6 +780,7 @@ impl NativeClass {
         match kind {
             "List" => Self::List(List::new()),
             "ListIterator" => Self::ListIterator(ListIterator::new(None)),
+            "Set" => Self::Set(Set::new()),
             _ => unreachable!("Unknown native class `{}`.", kind),
         }
     }
@@ -742,11 +791,12 @@ impl std::fmt::Display for NativeClass {
         match self {
             Self::List(list) => list.fmt(f),
             Self::ListIterator(list_iter) => list_iter.fmt(f),
+            Self::Set(set) => set.fmt(f),
         }
     }
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub struct List {
     pub items: Vec<Value>,
 }
@@ -804,6 +854,39 @@ impl std::fmt::Display for ListIterator {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Set {
+    pub items: HashSet<Value>,
+}
+
+impl Set {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            items: HashSet::default(),
+        }
+    }
+}
+
+impl std::fmt::Display for Set {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let items = &self.items;
+        let mut comma_separated = String::new();
+        comma_separated.push('{');
+        if !items.is_empty() {
+            for num in items {
+                comma_separated.push_str(&num.to_string());
+                comma_separated.push_str(", ");
+            }
+            // Remove the last ", "
+            comma_separated.pop();
+            comma_separated.pop();
+        }
+        comma_separated.push('}');
+        f.pad(&comma_separated)
+    }
+}
+
 impl From<List> for NativeClass {
     fn from(list: List) -> Self {
         Self::List(list)
@@ -813,5 +896,11 @@ impl From<List> for NativeClass {
 impl From<ListIterator> for NativeClass {
     fn from(list_iterator: ListIterator) -> Self {
         Self::ListIterator(list_iterator)
+    }
+}
+
+impl From<Set> for NativeClass {
+    fn from(set: Set) -> Self {
+        Self::Set(set)
     }
 }

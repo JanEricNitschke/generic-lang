@@ -72,80 +72,80 @@ pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 74];
 #[rustfmt::skip]
 pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
     make_rules!(
-        LeftParen     = [grouping, call,      Call      ],
-        RightParen    = [None,     None,      None      ],
-        LeftBrace     = [None,     None,      None      ],
-        RightBrace    = [None,     None,      None      ],
-        Colon         = [None,     None,      None      ],
-        LeftBracket   = [list,     subscript, Call      ],
-        RightBracket  = [None,     None,      None      ],
-        Comma         = [None,     None,      None      ],
-        Default       = [None,     None,      None      ],
-        Dot           = [None,     dot,       Call      ],
-        Minus         = [unary,    binary,    Term      ],
-        MinusEqual    = [None,     None,      None      ],
-        Plus          = [None,     binary,    Term      ],
-        PlusEqual     = [None,     None,      None      ],
-        Pipe          = [None,     binary,    BitOr     ],
-        PipeEqual     = [None,     None,      None      ],
-        Percent       = [None,     binary,    Factor    ],
-        PercentEqual  = [None,     None,      None      ],
-        Amper         = [None,     binary,    BitAnd    ],
-        AmperEqual    = [None,     None,      None      ],
-        Hat           = [None,     binary,    BitXor    ],
-        HatEqual      = [None,     None,      None      ],
-        Semicolon     = [None,     None,      None      ],
-        Slash         = [None,     binary,    Factor    ],
-        SlashEqual    = [None,     None,      None      ],
-        SlashSlash    = [None,     binary,    Factor    ],
-        Star          = [None,     binary,    Factor    ],
-        StarEqual     = [None,     None,      None      ],
-        StarStar      = [None,     binary,    Exponent  ],
-        Bang          = [unary,    None,      None      ],
-        BangEqual     = [None,     binary,    Equality  ],
-        Equal         = [None,     None,      None      ],
-        EqualEqual    = [None,     binary,    Equality  ],
-        Greater       = [None,     binary,    Comparison],
-        GreaterEqual  = [None,     binary,    Comparison],
-        Less          = [None,     binary,    Comparison],
-        LessEqual     = [None,     binary,    Comparison],
-        Identifier    = [variable, None,      None      ],
-        In            = [None,     binary,    In        ],
-        String        = [string,   None,      None      ],
-        Float        = [number,   None,      None      ],
-        Integer       = [integer,  None,      None      ],
-        And           = [None,     and,       And       ],
-        Case          = [None,     None,      None      ],
-        Class         = [None,     None,      None      ],
-        Const         = [None,     None,      None      ],
-        Continue      = [None,     None,      None      ],
-        Break         = [None,     None,      None      ],
-        Else          = [None,     None,      None      ],
-        False         = [literal,  None,      None      ],
-        For           = [None,     None,      None      ],
-        Fun           = [None,     None,      None      ],
-        If            = [None,     None,      None      ],
-        Unless        = [None,     None,      None      ],
-        Nil           = [literal,  None,      None      ],
-        Or            = [None,     or,        Or        ],
-        Return        = [None,     None,      None      ],
-        Switch        = [None,     None,      None      ],
-        Super         = [super_,   None,      None      ],
-        This          = [this,     None,      None      ],
-        True          = [literal,  None,      None      ],
-        Var           = [None,     None,      None      ],
-        While         = [None,     None,      None      ],
-        Until         = [None,     None,      None      ],
-        From          = [None,     None,      None      ],
-        Import        = [None,     None,      None      ],
-        From          = [None,     None,      None      ],
-        As            = [None,     None,      None      ],
-        Error         = [None,     None,      None      ],
-        Eof           = [None,     None,      None      ],
-        Yield         = [None,     None,      None      ],
-        Await         = [None,     None,      None      ],
-        Async         = [None,     None,      None      ],
-        StopIteration = [literal,  None,      None      ],
+        LeftParen     = [grouping,        call,      Call      ],
+        RightParen    = [None,            None,      None      ],
+        LeftBrace     = [hash_collection, None,      None      ],
+        RightBrace    = [None,            None,      None      ],
+        Colon         = [None,            None,      None      ],
+        LeftBracket   = [list,            subscript, Call      ],
+        RightBracket  = [None,            None,      None      ],
+        Comma         = [None,            None,      None      ],
+        Default       = [None,            None,      None      ],
+        Dot           = [None,            dot,       Call      ],
+        Minus         = [unary,           binary,    Term      ],
+        MinusEqual    = [None,            None,      None      ],
+        Plus          = [None,            binary,    Term      ],
+        PlusEqual     = [None,            None,      None      ],
+        Pipe          = [None,            binary,    BitOr     ],
+        PipeEqual     = [None,            None,      None      ],
+        Percent       = [None,            binary,    Factor    ],
+        PercentEqual  = [None,            None,      None      ],
+        Amper         = [None,            binary,    BitAnd    ],
+        AmperEqual    = [None,            None,      None      ],
+        Hat           = [None,            binary,    BitXor    ],
+        HatEqual      = [None,            None,      None      ],
+        Semicolon     = [None,            None,      None      ],
+        Slash         = [None,            binary,    Factor    ],
+        SlashEqual    = [None,            None,      None      ],
+        SlashSlash    = [None,            binary,    Factor    ],
+        Star          = [None,            binary,    Factor    ],
+        StarEqual     = [None,            None,      None      ],
+        StarStar      = [None,            binary,    Exponent  ],
+        Bang          = [unary,           None,      None      ],
+        BangEqual     = [None,            binary,    Equality  ],
+        Equal         = [None,            None,      None      ],
+        EqualEqual    = [None,            binary,    Equality  ],
+        Greater       = [None,            binary,    Comparison],
+        GreaterEqual  = [None,            binary,    Comparison],
+        Less          = [None,            binary,    Comparison],
+        LessEqual     = [None,            binary,    Comparison],
+        Identifier    = [variable,        None,      None      ],
+        In            = [None,            binary,    In        ],
+        String        = [string,          None,      None      ],
+        Float         = [number,          None,      None      ],
+        Integer       = [integer,         None,      None      ],
+        And           = [None,            and,       And       ],
+        Case          = [None,            None,      None      ],
+        Class         = [None,            None,      None      ],
+        Const         = [None,            None,      None      ],
+        Continue      = [None,            None,      None      ],
+        Break         = [None,            None,      None      ],
+        Else          = [None,            None,      None      ],
+        False         = [literal,         None,      None      ],
+        For           = [None,            None,      None      ],
+        Fun           = [None,            None,      None      ],
+        If            = [None,            None,      None      ],
+        Unless        = [None,            None,      None      ],
+        Nil           = [literal,         None,      None      ],
+        Or            = [None,            or,        Or        ],
+        Return        = [None,            None,      None      ],
+        Switch        = [None,            None,      None      ],
+        Super         = [super_,          None,      None      ],
+        This          = [this,            None,      None      ],
+        True          = [literal,         None,      None      ],
+        Var           = [None,            None,      None      ],
+        While         = [None,            None,      None      ],
+        Until         = [None,            None,      None      ],
+        From          = [None,            None,      None      ],
+        Import        = [None,            None,      None      ],
+        From          = [None,            None,      None      ],
+        As            = [None,            None,      None      ],
+        Error         = [None,            None,      None      ],
+        Eof           = [None,            None,      None      ],
+        Yield         = [None,            None,      None      ],
+        Await         = [None,            None,      None      ],
+        Async         = [None,            None,      None      ],
+        StopIteration = [literal,         None,      None      ],
     )
 }
 
@@ -323,6 +323,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    // TODO: Make this also create sets?
     fn grouping(&mut self, _can_assign: bool) {
         self.expression();
         self.consume(TK::RightParen, "Expect ')' after expression.");
@@ -347,26 +348,43 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
 
     fn list(&mut self, _can_assign: bool) {
         let mut item_count = 0;
-        if !self.check(TK::RightBracket) {
-            loop {
-                if self.check(TK::RightBracket) {
-                    // Trailing comma
-                    break;
-                }
-                // No assignments
-                self.parse_precedence(Precedence::Or);
-                if item_count == 255 {
-                    self.error("Can't have more than 255 items in a list literal.");
-                    break;
-                }
-                item_count += 1;
-                if !self.match_(TK::Comma) {
-                    break;
-                }
+        // Handle trailing comma
+        while !self.check(TK::RightBracket) {
+            // No assignments
+            self.parse_precedence(Precedence::Or);
+            if item_count == 255 {
+                self.error("Can't have more than 255 items in a list literal.");
+                break;
+            }
+            item_count += 1;
+            if !self.match_(TK::Comma) {
+                break;
             }
         }
         self.consume(TK::RightBracket, "Expect ']' after list literal.");
         self.emit_bytes(OpCode::BuildList, item_count, self.line());
+    }
+
+    // TODO: Extend to also handles dicts.
+    // Empty {} should be dict. Otherwise dict is {a:b, c:d,...}
+    // and set is {a, b, c, ...}
+    fn hash_collection(&mut self, _can_assign: bool) {
+        let mut item_count = 0;
+        // Handle trailing comma
+        while !self.check(TK::RightBrace) {
+            // No assignments
+            self.parse_precedence(Precedence::Or);
+            if item_count == 255 {
+                self.error("Can't have more than 255 items in a set literal.");
+                break;
+            }
+            item_count += 1;
+            if !self.match_(TK::Comma) {
+                break;
+            }
+        }
+        self.consume(TK::RightBrace, "Expect '}' after set literal.");
+        self.emit_bytes(OpCode::BuildSet, item_count, self.line());
     }
 
     fn subscript(&mut self, can_assign: bool) {

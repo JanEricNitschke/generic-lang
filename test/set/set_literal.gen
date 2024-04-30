@@ -1,0 +1,2 @@
+var my_set = {1,2,3};
+print(my_set); # expect: {1, 2, 3}

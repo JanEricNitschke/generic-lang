@@ -1,0 +1,1 @@
+var my_set = {1, 1.0}; # expect runtime error: Value `1.0` is not hashable when this is required for items in a set.

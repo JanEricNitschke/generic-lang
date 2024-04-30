@@ -119,6 +119,8 @@ pub enum OpCode {
     SuperInvoke,
 
     BuildList,
+    BuildSet,
+    BuildDict,
 
     Import,
     ImportFrom,
@@ -146,7 +148,7 @@ impl OpCode {
     }
 }
 
-#[derive(PartialEq, Derivative, Clone)]
+#[derive(PartialEq, Eq, Derivative, Clone)]
 #[derivative(PartialOrd)]
 pub struct Chunk {
     name: StringId,
@@ -275,8 +277,8 @@ impl<'chunk> InstructionDisassembler<'chunk> {
                 | LoadZerof | Swap => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | Return | GetUpvalue | SetUpvalue | Class
-                | GetProperty | SetProperty | Method | GetSuper | BuildList | DupN | ImportFrom
-                | ImportAs => 1,
+                | GetProperty | SetProperty | Method | GetSuper | BuildList | BuildSet
+                | BuildDict | DupN | ImportFrom | ImportAs => 1,
                 Jump | JumpIfFalse | JumpIfTrue | Loop | Invoke | SuperInvoke => 2,
                 ConstantLong
                 | GetGlobalLong
@@ -545,8 +547,8 @@ impl<'chunk> std::fmt::Debug for InstructionDisassembler<'chunk> {
             ),
             closure(Closure),
             byte(
-                Call, GetUpvalue, SetUpvalue, Class, GetLocal, SetLocal, BuildList, DupN,
-                ImportFrom, ImportAs
+                Call, GetUpvalue, SetUpvalue, Class, GetLocal, SetLocal, BuildList, BuildSet,
+                BuildDict, DupN, ImportFrom, ImportAs,
             ),
             byte_long(GetLocalLong, SetLocalLong),
             jump(Jump, JumpIfFalse, JumpIfTrue, Loop),

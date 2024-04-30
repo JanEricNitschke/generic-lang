@@ -639,6 +639,11 @@ impl Heap {
                         self.instances.gray.push(list.id);
                     }
                 }
+                NativeClass::Set(set) => {
+                    for item in &set.items {
+                        gray_value!(self, item);
+                    }
+                }
             }
         }
         if self.log_gc {

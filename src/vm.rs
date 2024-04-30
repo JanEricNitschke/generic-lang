@@ -15,7 +15,7 @@ use crate::{
     stdlib,
     value::{
         Class, Closure, Function, Instance, List, Module, ModuleContents, NativeFunction,
-        NativeFunctionImpl, NativeMethod, NativeMethodImpl, Number, Upvalue, Value,
+        NativeFunctionImpl, NativeMethod, NativeMethodImpl, Number, Set, Upvalue, Value,
     },
 };
 
@@ -47,7 +47,7 @@ macro_rules! binary_op {
 
 type BinaryOp<T> = fn(Number, Number) -> T;
 
-#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Copy)]
 pub struct Global {
     pub value: Value,
     mutable: bool,
@@ -466,6 +466,40 @@ macro_rules! run_instruction {
                 }
             }
             OpCode::BuildList => {
+                let mut list = List::new();
+
+                let arg_count = $self.read_byte();
+                for index in (0..arg_count).rev() {
+                    list.items.push(*$self.peek(index as usize).unwrap());
+                }
+                for _ in 0..arg_count {
+                    $self.stack.pop();
+                }
+                let instance = Instance::new(*$self.heap.native_classes.get("List").unwrap(), Some(list.into()));
+                let instance_value = $self.heap.add_instance(instance);
+                $self.stack_push_value(instance_value);
+            }
+            // TODO: Fix these two, currently both lists
+            OpCode::BuildSet => {
+                let mut set = Set::new();
+
+                let arg_count = $self.read_byte();
+                for index in (0..arg_count).rev() {
+                    let value = $self.peek(index as usize).unwrap();
+                    if !value.is_hasheable() {
+                        runtime_error!($self, "Value `{}` is not hashable when this is required for items in a set.", value);
+                        return InterpretResult::RuntimeError;
+                    }
+                    set.items.insert(*$self.peek(index as usize).unwrap());
+                }
+                for _ in 0..arg_count {
+                    $self.stack.pop();
+                }
+                let instance = Instance::new(*$self.heap.native_classes.get("Set").unwrap(), Some(set.into()));
+                let instance_value = $self.heap.add_instance(instance);
+                $self.stack_push_value(instance_value);
+            }
+            OpCode::BuildDict => {
                 let mut list = List::new();
 
                 let arg_count = $self.read_byte();
