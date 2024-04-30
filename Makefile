@@ -1,4 +1,5 @@
 DEBUG_BIN := ./target/debug/generic
+STRESS_GC_BIN := ./target/stress_gc/generic
 REL_BIN := ./target/release/generic
 
 test_level := chap30_optimization
@@ -6,6 +7,9 @@ sources := src/*.rs src/compiler/*.rs Cargo.toml
 
 $(DEBUG_BIN): $(sources)
 	cargo build
+
+$(STRESS_GC_BIN): $(sources)
+	cargo build --profile stress_gc --features stress_gc
 
 $(REL_BIN): $(sources)
 	cargo build --release
@@ -22,8 +26,8 @@ custom-dart-test: $(DEBUG_BIN)
 	dart tool/bin/test.dart clox --interpreter ./$(DEBUG_BIN)
 
 .PHONY: stress-gc-test
-stress-gc-test: $(DEBUG_BIN)
-	dart tool/bin/test.dart clox --interpreter ./$(DEBUG_BIN) --arguments --stress-gc
+stress-gc-test: $(STRESS_GC_BIN)
+	dart tool/bin/test.dart clox --interpreter ./$(STRESS_GC_BIN)
 
 .PHONY: test
 test: cargo-test setup-dart custom-dart-test stress-gc-test

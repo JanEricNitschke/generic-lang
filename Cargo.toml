@@ -34,3 +34,18 @@ path-slash   = "0.2.1"
 strum        = "0.26"
 strum_macros = "0.26"
 convert_case = "0.6.0"
+
+[features]
+print_code              = []
+trace_execution         = []
+trace_execution_verbose = ["trace_execution"]
+log_gc                  = []
+stress_gc               = []
+
+[profile.release]
+lto           = true
+codegen-units = 1
+panic         = "abort"
+
+[profile.stress_gc]
+inherits = "dev"

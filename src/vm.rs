@@ -4,12 +4,13 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::pin::Pin;
 
+#[cfg(feature = "trace_execution")]
+use crate::chunk::InstructionDisassembler;
 use crate::natives;
 use crate::value::NativeClass;
 use crate::{
-    chunk::{CodeOffset, InstructionDisassembler, OpCode},
+    chunk::{CodeOffset, OpCode},
     compiler::Compiler,
-    config,
     heap::{ClosureId, FunctionId, Heap, ModuleId, StringId, UpvalueId},
     scanner::Scanner,
     stdlib,
@@ -147,12 +148,14 @@ impl CallStack {
 // with macro/inlined it takes ~300ms to run fib.gen
 // with function and wrapping return value in option takes ~450ms
 macro_rules! run_instruction {
-    ($self:ident, $trace_execution:expr, $stress_gc:expr, $log_gc:expr) => {
-        if $trace_execution > 0 {
+    ($self:ident) => {
+        #[cfg(feature = "trace_execution")]
+        {
             let function = &$self.callstack.function();
             let mut disassembler = InstructionDisassembler::new(&function.chunk);
             *disassembler.offset = $self.callstack.current().ip;
-            if $trace_execution > 1 {
+            #[cfg(feature = "trace_execution_verbose")]
+            {
                 println!(
                     "Current module: {} at module depth {} and total call depth {}.",
                     *$self.modules.last().expect("Module underflow in disassembler").name,
@@ -166,7 +169,7 @@ macro_rules! run_instruction {
             );
             print!("{disassembler:?}");
         }
-        $self.collect_garbage($stress_gc, $log_gc);
+        $self.collect_garbage();
         match OpCode::try_from($self.read_byte()).expect("Internal error: unrecognized opcode") {
             OpCode::Pop => {
                 $self.stack.pop().expect("Stack underflow in OP_POP.");
@@ -498,7 +501,6 @@ macro_rules! run_instruction {
                 let instance_value = $self.heap.add_instance(instance);
                 $self.stack_push_value(instance_value);
             }
-            // TODO: Fix these two, currently a list
             OpCode::BuildDict => {
                 let mut dict = Dict::new();
                 // Number of key, value pairs.
@@ -639,11 +641,8 @@ impl VM {
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn run(&mut self) -> InterpretResult {
-        let trace_execution = config::TRACE_EXECUTION.load();
-        let stress_gc = config::STRESS_GC.load();
-        let log_gc = config::LOG_GC.load();
         loop {
-            run_instruction!(self, trace_execution, stress_gc, log_gc);
+            run_instruction!(self);
         }
     }
 
@@ -655,13 +654,9 @@ impl VM {
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     pub fn run_function(&mut self) -> InterpretResult {
-        let trace_execution = config::TRACE_EXECUTION.load();
-        let stress_gc = config::STRESS_GC.load();
-        let log_gc = config::LOG_GC.load();
-
         let call_depth = self.callstack.len();
         while self.callstack.len() >= call_depth {
-            run_instruction!(self, trace_execution, stress_gc, log_gc);
+            run_instruction!(self);
         }
         InterpretResult::Ok
     }
@@ -1750,8 +1745,9 @@ impl VM {
         target_class.methods.insert(name_id, value_id);
     }
 
-    fn collect_garbage(&mut self, stress_gc: bool, log_gc: bool) {
-        if !stress_gc && !self.heap.needs_gc() {
+    fn collect_garbage(&mut self) {
+        #[cfg(not(feature = "stress_gc"))]
+        if !self.heap.needs_gc() {
             return;
         }
         let black_value = self.heap.black_value;
@@ -1789,7 +1785,8 @@ impl VM {
                 .collect::<Vec<_>>();
 
             for id in globals_to_remove {
-                if log_gc {
+                #[cfg(feature = "log_gc")]
+                {
                     eprintln!("String/{:?} free {}", id, *id);
                 }
                 module.globals.remove(&id);
@@ -1807,11 +1804,11 @@ impl VM {
         }
 
         self.heap.strings_by_name.retain(|_, string_id| {
-            let retain = string_id.marked(black_value);
-            if !retain && log_gc {
+            #[cfg(feature = "log_gc")]
+            if !string_id.marked(black_value) {
                 eprintln!("String/{:?} free {}", string_id, **string_id);
             }
-            retain
+            string_id.marked(black_value)
         });
 
         // Finally, sweep

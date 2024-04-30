@@ -23,27 +23,10 @@ mod vm;
 #[command(version)]
 struct Args {
     file: Option<PathBuf>,
-
-    #[arg(long, default_value_t = 0)]
-    trace_execution: usize,
-
-    #[arg(long)]
-    print_code: bool,
-
-    #[arg(long)]
-    stress_gc: bool,
-
-    #[arg(long)]
-    log_gc: bool,
 }
 
 fn main() {
     let args = Args::parse();
-
-    config::TRACE_EXECUTION.store(args.trace_execution);
-    config::PRINT_CODE.store(args.print_code);
-    config::STRESS_GC.store(args.stress_gc);
-    config::LOG_GC.store(args.log_gc);
 
     args.file.map_or_else(repl, run_file);
 }
