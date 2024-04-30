@@ -1,7 +1,9 @@
 #![allow(clippy::unnecessary_wraps)]
 
+mod dict;
 mod list;
 mod native_functions;
+mod set;
 
 use crate::vm::VM;
 
@@ -9,6 +11,11 @@ use crate::natives::list::{
     list_append_native, list_contains_native, list_get_native, list_insert_native,
     list_iter_native, list_iter_next_native, list_pop_native, list_set_native,
 };
+
+use crate::natives::set::{set_contains_native, set_insert_native, set_remove_native};
+
+use crate::natives::dict::{dict_get_native, dict_set_native};
+
 use crate::natives::native_functions::{
     assert_native, clock_native, delattr_native, getattr_native, hasattr_native, input_native,
     is_int_native, len_native, print_native, rng_native, setattr_native, sleep_native,
@@ -48,4 +55,13 @@ pub fn define(vm: &mut VM) {
 
     vm.define_native_class(&"ListIterator", false);
     vm.define_native_method(&"ListIterator", &"__next__", &[0, 1], list_iter_next_native);
+
+    vm.define_native_class(&"Set", true);
+    vm.define_native_method(&"Set", &"contains", &[1], set_contains_native);
+    vm.define_native_method(&"Set", &"insert", &[1], set_insert_native);
+    vm.define_native_method(&"Set", &"remove", &[1], set_remove_native);
+
+    vm.define_native_class(&"Dict", true);
+    vm.define_native_method(&"Dict", &"__getitem__", &[1], dict_get_native);
+    vm.define_native_method(&"Dict", &"__setitem__", &[2], dict_set_native);
 }
