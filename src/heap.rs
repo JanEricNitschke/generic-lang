@@ -1,3 +1,21 @@
+//! Handles the allocation of most complex types.
+//!
+//! While booleans, `nil` and `StopIteration` are stored directly on the stack,
+//! all other objects only have references stored there.
+//! The actual objects leave in the heap.
+//!
+//! The heap is managed via arenas for each type of `Value`.
+//!
+//! Currently, for ease of use, each value holds an `Id` that wraps
+//! the key of the object in its respective arena as well as a pointer to the arena.
+//! This makes for short syntax via `deref` and allows the retrieval of the objects
+//! without direct access to the heap instance.
+//!
+//! However it requires the use of unsafe and `Pin` and also has a memory
+//! overhead as each `Id` has to store the key AND the pointer.
+//!
+//! Garbage collection occurs via `mark and sweep`.
+
 use rustc_hash::FxHashMap as HashMap;
 use std::collections::hash_map::Entry;
 use std::{
@@ -18,6 +36,8 @@ use crate::value::{
 pub trait ArenaValue: Debug + Display + PartialEq {}
 impl<T> ArenaValue for T where T: Debug + Display + PartialEq {}
 
+// Define separate key types for each `Value` variant to ensure
+// that no misuse occurs.
 new_key_type! {
     pub struct FunctionKey;
     pub struct StringKey;
@@ -31,6 +51,7 @@ new_key_type! {
     pub struct ModuleKey;
 }
 
+/// Wrapper for the key of the object as well as the arena that contains it.
 #[derive(Clone, PartialOrd, Debug, Derivative)]
 #[derivative(Hash)]
 pub struct ArenaId<K: Key, T: ArenaValue> {
@@ -73,6 +94,9 @@ impl<K: Key, T: ArenaValue> ArenaId<K, T> {
     }
 }
 
+/// Wrapper attaching a flag indicating whether an object
+/// has been marked during the mark phase of mark and sweep
+/// garbage collection.
 #[derive(Clone, Debug, PartialEq)]
 struct Item<T> {
     marked: bool,
@@ -85,6 +109,7 @@ impl<T> Item<T> {
     }
 }
 
+// Separate Id types for each `Value` variant.
 pub type StringId = ArenaId<StringKey, String>;
 pub type UpvalueId = ArenaId<UpvalueKey, Upvalue>;
 pub type FunctionId = ArenaId<FunctionKey, Function>;
@@ -96,6 +121,12 @@ pub type InstanceId = ArenaId<InstanceKey, Instance>;
 pub type BoundMethodId = ArenaId<BoundMethodKey, BoundMethod>;
 pub type ModuleId = ArenaId<ModuleKey, Module>;
 
+/// Arenas storing each `Value` variant.
+///
+/// Each arena has a name when logging the garbage collector.
+/// The main core of the arenas is a `HopSlotMap` storing the actual values.
+/// Additionally, they store their overall number of allocated bytes as well
+/// as a vector of items to process for `mark and sweep`.
 #[derive(Clone, Debug)]
 pub struct Arena<K: Key, V: ArenaValue> {
     #[cfg(feature = "log_gc")]
@@ -119,6 +150,9 @@ impl<K: Key, V: ArenaValue> Arena<K, V> {
         }
     }
 
+    /// Add a value to the arena and return a corresponding Id.
+    ///
+    /// Also update the total number of bytes allocated in this arena.
     fn add(&mut self, value: V, black_value: bool) -> ArenaId<K, V> {
         let id = self.data.insert(Item::new(value, !black_value));
         self.bytes_allocated += std::mem::size_of::<V>();
@@ -144,11 +178,15 @@ impl<K: Key, V: ArenaValue> Arena<K, V> {
         self.data[index].marked == black_value
     }
 
+    /// Clear the gray values and return them for processing.
     fn flush_gray(&mut self) -> Vec<K> {
         let capacity = self.gray.capacity();
         std::mem::replace(&mut self.gray, Vec::with_capacity(capacity))
     }
 
+    /// Remove all non-marked values from the arena.
+    ///
+    /// Also update the total number of allocated bytes.
     fn sweep(&mut self, black_value: bool) {
         self.data.retain(|_key, value| {
             #[cfg(feature = "log_gc")]
@@ -195,9 +233,14 @@ impl<K: Key, V: ArenaValue> std::ops::IndexMut<K> for Arena<K, V> {
     }
 }
 
+/// Collection of all builtin constants that are needed in different parts
+/// of the heap or VM.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BuiltinConstants {
+    /// Name of the initializer, currently `__init__`
     pub(super) init_string: StringId,
+    /// Identifier that contains the name of the current module.
+    /// Currently `__name__`.
     pub(super) script_name: StringId,
 }
 
@@ -211,7 +254,10 @@ impl BuiltinConstants {
     }
 }
 
-// Has to be a macro because of mutable borrow of self
+/// Switch to add a `Value` to the gray vector of the correct arena.
+///
+/// Needs to be a macro because it is used in multiple places and a function
+/// runs into issues with the borrow checker.
 macro_rules! gray_value {
     ($self:expr, $value:expr) => {
         match $value {
@@ -290,6 +336,9 @@ macro_rules! gray_value {
     };
 }
 
+/// Main representation of the heap in generic.
+///
+/// Heart is multiple arenas, one for each variant of `Value.`
 #[derive(Clone, Debug)]
 pub struct Heap {
     builtin_constants: Option<BuiltinConstants>,
@@ -378,6 +427,7 @@ impl Heap {
         self.builtin_constants.as_ref().unwrap()
     }
 
+    /// Uniquefy string Ids so that each actual string is mapped to the same Id.
     pub(super) fn string_id<S>(&mut self, s: &S) -> StringId
     where
         S: ToString,
@@ -409,6 +459,11 @@ impl Heap {
         self.bytes_allocated() > self.next_gc
     }
 
+    /// Prepare the garbage collection by marking all
+    /// values used by the heap itself.
+    ///
+    /// These include the builtin constant as well
+    /// as native classes.
     pub(super) fn gc_start(&mut self) {
         #[cfg(feature = "log_gc")]
         {
@@ -427,6 +482,10 @@ impl Heap {
         }
     }
 
+    /// Trace through all reachable values.
+    ///
+    /// For that repeatedly iterate over all marked values
+    /// and mark everything that can be reached by them.
     pub(super) fn trace(&mut self) {
         #[cfg(feature = "log_gc")]
         {
@@ -492,7 +551,6 @@ impl Heap {
         self.blacken_module(id.id);
     }
 
-    #[allow(clippy::too_many_lines)]
     fn blacken_value(&mut self, index: &Value) {
         match index {
             Value::Bool(_) | Value::Nil | Value::StopIteration | Value::Number(_) => {}
@@ -509,6 +567,9 @@ impl Heap {
         }
     }
 
+    /// Closed upvalues refer to a separate value that has to be marked.
+    ///
+    /// Open ones do not contain any data that is stored on the heap.
     fn blacken_upvalue(&mut self, index: UpvalueKey) {
         let item = &mut self.upvalues.data[index];
         if item.marked == self.black_value {
@@ -532,6 +593,8 @@ impl Heap {
         }
     }
 
+    /// Modules need to mark their heap stored name as well as all
+    /// the keys and values stored in their globals.
     fn blacken_module(&mut self, index: ModuleKey) {
         let item = &mut self.modules.data[index];
         if item.marked == self.black_value {
@@ -551,6 +614,8 @@ impl Heap {
         }
     }
 
+    /// Native functions only have their name on the heap.
+    /// The implementation is directly in rust.
     fn blacken_native_function(&mut self, index: NativeFunctionKey) {
         let item = &mut self.native_functions.data[index];
         if item.marked == self.black_value {
@@ -571,6 +636,7 @@ impl Heap {
         }
     }
 
+    /// Native methods store their name as well as the class they belong to.
     fn blacken_native_method(&mut self, index: NativeMethodKey) {
         let item = &mut self.native_methods.data[index];
         if item.marked == self.black_value {
@@ -592,6 +658,7 @@ impl Heap {
         }
     }
 
+    /// Closures store their wrapped function ad well as the captured upvalues.
     fn blacken_closure(&mut self, index: ClosureKey) {
         let item = &mut self.closures.data[index];
         if item.marked == self.black_value {
@@ -615,6 +682,7 @@ impl Heap {
         }
     }
 
+    /// Classes store their name as well as their methods with their names.
     fn blacken_class(&mut self, index: ClassKey) {
         let item = &mut self.classes.data[index];
         if item.marked == self.black_value {
@@ -640,6 +708,10 @@ impl Heap {
     }
 
     // I feel this is still within reason.
+    /// Instances store the name of the class they belong to as well as their fields.
+    ///
+    /// If they represent an instance of a native class, then the data structure
+    /// that handles the native functionality may itself reference more heap allocated data.
     #[allow(clippy::cognitive_complexity)]
     fn blacken_instance(&mut self, index: InstanceKey) {
         let item = &mut self.instances.data[index];
@@ -692,7 +764,8 @@ impl Heap {
         }
     }
 
-    // I guess this has issues with the macro?
+    /// Bound methods store the instance they are bound to
+    /// as well as the method they are binding.
     #[allow(clippy::cognitive_complexity)]
     fn blacken_bound_method(&mut self, index: BoundMethodKey) {
         let item = &mut self.bound_methods.data[index];
@@ -715,6 +788,7 @@ impl Heap {
         }
     }
 
+    /// Strings dont actually contain anything else.
     fn blacken_string(&mut self, index: StringKey) {
         let item = &mut self.strings.data[index];
         if item.marked == self.black_value {
@@ -732,6 +806,8 @@ impl Heap {
         }
     }
 
+    /// Function contain their own name as well as a list of constants,
+    /// although none of these should currently be heap allocated.
     fn blacken_function(&mut self, index: FunctionKey) {
         let item = &mut self.functions.data[index];
         if item.marked == self.black_value {
