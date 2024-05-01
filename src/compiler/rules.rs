@@ -258,6 +258,9 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     }
 
     /// Parse `X in Y`
+    ///
+    /// Work by invoking `Y.contains(X)`.
+    ///
     /// Order on the stack is element -- container
     /// To call a method container.contains(element)
     // We need container -- element
@@ -278,7 +281,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Parse property access.
     ///
     /// This is actually fairly complicated, as cases like
-    /// `a.b;` and `a.b = c;` `a.b();` `a.b() = c;` all have to handled correctly here.
+    /// `a.b;`, `a.b = c;`, `a.b();` and `a.b() = c;` all have to be handled correctly here.
     fn dot(&mut self, can_assign: bool) {
         self.consume(TK::Identifier, "Expect property name after '.'.");
         let name_constant =
@@ -475,6 +478,13 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         self.parse_precedence(Precedence::Or);
     }
 
+    /// Parse subscript (`a[b]`) expressions.
+    ///
+    /// Implemented similar to [`Compiler::dot`] to handle getting
+    /// and setting.
+    ///
+    /// Also works by invoking `__getitem__` or `__setitem__`
+    /// on the value to allow classes to overload how this operation works.
     fn subscript(&mut self, can_assign: bool) {
         self.parse_precedence(Precedence::Or);
         self.consume(TK::RightBracket, "Expect ']' after index.");
@@ -527,6 +537,11 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Short circuiting `and`.
+    ///
+    /// The result of such an expression is the first operand that evaluates
+    /// falsey or the last operand if all are truthy.
+    /// The second expression is not evaluated if the first is already false.
     fn and(&mut self, _can_assign: bool) {
         let end_jump = self.emit_jump(OpCode::JumpIfFalse);
         self.emit_byte(OpCode::Pop, self.line());
@@ -534,6 +549,9 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         self.patch_jump(end_jump);
     }
 
+    /// Short circuiting `or`.
+    ///
+    /// Work equivalently to [`Compiler::and`].
     fn or(&mut self, _can_assign: bool) {
         let end_jump = self.emit_jump(OpCode::JumpIfTrue);
         self.emit_byte(OpCode::Pop, self.line());
@@ -541,6 +559,12 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         self.patch_jump(end_jump);
     }
 
+    /// Handle `this`.
+    ///
+    /// If inside a class this simply works on the local variable
+    /// `this`which is initialized to the specific instance.
+    ///
+    /// Outside of a class context this is a syntax error.
     fn this(&mut self, _can_assign: bool) {
         if self.current_class().is_none() {
             self.error("Can't use 'this' outside of a class.");
@@ -549,6 +573,14 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         self.variable(false);
     }
 
+    /// Handle `super` expressions that interact with the superlcass.
+    ///
+    /// Like `this`, `super` also only work when used inside class.
+    /// Additionally, the class is required to have a superclass.
+    /// Both are checked statically at compile time.
+    ///
+    /// Unlike `this`, only method access either in the form of a call
+    /// or to create a bound method is possible.
     fn super_(&mut self, _can_assign: bool) {
         match self.current_class() {
             None => {
@@ -583,6 +615,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Helper function to deal with operators that delegate to overloaded methods.
     fn invoke_fixed<S: ToString>(&mut self, name: &S, arg_count: u8, error_message: &str) {
         let name_constant = self.identifier_constant(name);
         let line = self.line();
