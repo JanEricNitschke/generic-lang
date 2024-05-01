@@ -1,3 +1,5 @@
+//! Contains the `OpCode` enum as well as the chunks containing the bytecode to be interpreted.
+
 use crate::{heap::StringId, types::Line, value::Value};
 use convert_case::{Case, Casing};
 use derivative::Derivative;
@@ -32,6 +34,7 @@ impl TryFrom<ConstantLongIndex> for ConstantIndex {
     }
 }
 
+/// The set of `OpCodes` emitted by the compiler to be interpreted/executed by the VM.
 #[derive(
     IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Debug, Clone, Copy, EnumIter, AsRefStr,
 )]
@@ -140,6 +143,9 @@ impl OpCode {
         }
     }
 
+    /// Get the length of the longest `OpCode` when turned into snake case.
+    ///
+    /// Used for aligning debugging output.
     fn max_name_length() -> usize {
         Self::iter()
             .map(|v| v.as_ref().to_case(Case::ScreamingSnake).len())
@@ -148,12 +154,20 @@ impl OpCode {
     }
 }
 
+/// Wraps block of bytecode used for interpretation.
+///
+/// Each main script, module and function has its own `Chunk`.
+/// Each chunk has a name, mainly for debugging purposes, its code,
+/// line information for each entry in the code array as well as a constant
+/// table for literal constants that appear in the chunk.
 #[derive(PartialEq, Eq, Derivative, Clone)]
 #[derivative(PartialOrd)]
 pub struct Chunk {
     name: StringId,
     code: Vec<u8>,
     #[derivative(PartialOrd = "ignore")]
+    /// Lines are runlength encoded as there are usually
+    /// multiple bytes that originate from the same line.
     lines: Vec<(usize, Line)>,
     constants: Vec<Value>,
 }
@@ -176,6 +190,7 @@ impl Chunk {
         &self.code
     }
 
+    /// Retrieve a constant by index.
     pub(super) fn get_constant<T>(&self, index: T) -> &Value
     where
         T: Into<usize>,
@@ -183,6 +198,8 @@ impl Chunk {
         &self.constants[index.into()]
     }
 
+    /// Write a byte (`OpCode` or operand) into the chunk.
+    /// Also update the line information accordingly.
     pub(super) fn write<T>(&mut self, what: T, line: Line)
     where
         T: Into<u8>,
@@ -196,6 +213,10 @@ impl Chunk {
         }
     }
 
+    /// Patch an existing entry in the code.
+    ///
+    /// Mainly used for patching forward jumps in conditions
+    /// where the size of the code to jump over is not yet known.
     pub(super) fn patch<T>(&mut self, offset: CodeOffset, what: T)
     where
         T: Into<u8>,
@@ -203,11 +224,15 @@ impl Chunk {
         self.code[*offset] = what.into();
     }
 
+    /// Add a constant to the constant table and return its index.
     pub(super) fn make_constant(&mut self, what: Value) -> ConstantLongIndex {
         self.constants.push(what);
         ConstantLongIndex(self.constants.len() - 1)
     }
 
+    /// Write a constant into the code.
+    /// Create it in the constant table and write the index preceded by
+    /// the corresponding `OpCode`.
     pub(super) fn write_constant(&mut self, what: Value, line: Line) -> bool {
         let long_index = self.make_constant(what);
         if let Ok(short_index) = u8::try_from(*long_index) {
@@ -231,6 +256,7 @@ impl Chunk {
         true
     }
 
+    /// Decode the runlength encoded lines for a specific offset.
     pub(super) fn get_line(&self, offset: CodeOffset) -> Line {
         let mut iter = self.lines.iter();
         let (mut consumed, mut line) = iter.next().unwrap();
@@ -255,7 +281,8 @@ impl std::fmt::Debug for Chunk {
     }
 }
 
-// Debug helpers
+/// Debug helper for disassembling a chunks code into
+/// a human readable format.
 pub struct InstructionDisassembler<'chunk> {
     chunk: &'chunk Chunk,
     pub(super) offset: CodeOffset,
