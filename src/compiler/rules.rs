@@ -34,7 +34,7 @@ pub(super) enum Precedence {
 // Typedef for the functions that parse the different types of expressions
 type ParseFn<'scanner, 'arena> = fn(&mut Compiler<'scanner, 'arena>, bool) -> ();
 
-// This the functions that handle the parsing of an operator as a prefix or infix
+// This  specifies the functions that handle the parsing of an operator as prefix or infix,
 // as well as its precedence. There will be one such struct for each Token.
 #[derive(Clone)]
 pub(super) struct Rule<'scanner, 'arena> {
@@ -120,7 +120,7 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Identifier    = [variable,        None,      None      ],
         In            = [None,            binary,    In        ],
         String        = [string,          None,      None      ],
-        Float         = [number,          None,      None      ],
+        Float         = [float,           None,      None      ],
         Integer       = [integer,         None,      None      ],
         And           = [None,            and,       And       ],
         Case          = [None,            None,      None      ],
@@ -276,6 +276,9 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     }
 
     /// Parse property access.
+    ///
+    /// This is actually fairly complicated, as cases like
+    /// `a.b;` and `a.b = c;` `a.b();` `a.b() = c;` all have to handled correctly here.
     fn dot(&mut self, can_assign: bool) {
         self.consume(TK::Identifier, "Expect property name after '.'.");
         let name_constant =
@@ -333,6 +336,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Handles the four tokens that directly corresponds to values.
     fn literal(&mut self, _can_assign: bool) {
         let literal = self.previous.as_ref().unwrap().kind;
         match literal {
@@ -344,22 +348,39 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
-    // TODO: Make this also create sets?
+    // TODO: Make this also create tuples?
+    /// Used for grouping expressions to overwrite default precedence.
+    ///
+    /// The full expression within the grouping will be parsed as one.
     fn grouping(&mut self, _can_assign: bool) {
         self.expression();
         self.consume(TK::RightParen, "Expect ')' after expression.");
     }
 
-    fn number(&mut self, _can_assign: bool) {
+    /// Emit a float literal constant.
+    ///
+    /// The value is token from the last token, extracts the characters
+    /// and parses them to a float.
+    /// The constant gets loaded into the current chunks constant table
+    /// and the index is pushed after the corresponding `OpCode`.
+    /// The VM then loads the constant from the constant table using that index.
+    fn float(&mut self, _can_assign: bool) {
         let value: f64 = self.previous.as_ref().unwrap().as_str().parse().unwrap();
         self.emit_constant(value);
     }
 
+    /// Emit an integer literal.
+    ///
+    /// Works equivalent to [`Compiler::float`].
     fn integer(&mut self, _can_assign: bool) {
         let value: i64 = self.previous.as_ref().unwrap().as_str().parse().unwrap();
         self.emit_constant(value);
     }
 
+    /// Emit a string constant.
+    ///
+    /// Here, the string is taken from the lexeme of the token with the last and first
+    /// character (`"`) stripped. Rest works like for [`Compiler::float`].
     fn string(&mut self, _can_assign: bool) {
         let lexeme = self.previous.as_ref().unwrap().as_str();
         let value = lexeme[1..lexeme.len() - 1].to_string();
@@ -367,6 +388,9 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         self.emit_constant(string_id);
     }
 
+    /// Parse a list literal ([a, b, c(,)])
+    ///
+    /// Handles optional trailing commas.
     fn list(&mut self, _can_assign: bool) {
         let mut item_count = 0;
         // Handle trailing comma
@@ -386,15 +410,15 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         self.emit_bytes(OpCode::BuildList, item_count, self.line());
     }
 
-    fn parse_dict_entry(&mut self) {
-        self.parse_precedence(Precedence::Or);
-        self.consume(TK::Colon, "Expect ':' after key.");
-        self.parse_precedence(Precedence::Or);
-    }
-
-    // TODO: Extend to also handles dicts.
-    // Empty {} should be dict. Otherwise dict is {a:b, c:d,...}
-    // and set is {a, b, c, ...}
+    /// Handle the hashed collection `set`and `dict``.`
+    ///
+    /// Sets effectively work equivalent to [`Compiler::list`], except
+    /// that curly braces are used instead of square ones.
+    /// Dicts work similar, instead that each entry is of the form:
+    /// `key: value`. Whether the code is parsed as set or dict is determined
+    /// by the presence of a colon after the first token.
+    ///
+    /// Another noteworthy point is that empty braces are parsed as a dict.
     fn hash_collection(&mut self, _can_assign: bool) {
         let mut item_count = 0;
         let mut is_dict = true;
@@ -443,6 +467,12 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             item_count,
             self.line(),
         );
+    }
+
+    fn parse_dict_entry(&mut self) {
+        self.parse_precedence(Precedence::Or);
+        self.consume(TK::Colon, "Expect ':' after key.");
+        self.parse_precedence(Precedence::Or);
     }
 
     fn subscript(&mut self, can_assign: bool) {
