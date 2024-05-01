@@ -1,13 +1,23 @@
+//! This module handles functionality related variables.
+//!
+//! Contains functions for resolving variables ad upvalue, local or global.
+
 use crate::chunk::{ConstantLongIndex, OpCode};
 
 use super::{Compiler, Local, ScopeDepth, Upvalue};
 use crate::scanner::{Token, TokenKind as TK};
 
 impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
+    /// Start a new scope.
     pub(super) fn begin_scope(&mut self) {
         **self.scope_depth_mut() += 1;
     }
 
+    /// End the most recent scope.
+    ///
+    /// Handles all local variables with a depth larger than the new
+    /// (outer) scope. Each local is either popped directly from the stack
+    /// or turned into a closed upvalue.
     pub(super) fn end_scope(&mut self) {
         **self.scope_depth_mut() -= 1;
         let scope_depth = self.scope_depth();
@@ -33,6 +43,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Handle a named variable based on the identifier of the last token.
     pub(super) fn variable(&mut self, can_assign: bool) {
         self.named_variable(
             &self.previous.as_ref().unwrap().as_str().to_string(),
@@ -40,6 +51,13 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         );
     }
 
+    /// Handle a named variable with the given name.
+    ///
+    /// First checks of the name belongs to a local variable.
+    /// If none is found, upvalues are search, before finally it is assumed to
+    /// belong to a global variable.
+    ///
+    /// Also handles whether the variable is to be gotten or set.
     pub(super) fn named_variable<S>(&mut self, name: &S, can_assign: bool)
     where
         S: ToString,
@@ -126,6 +144,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
 
     // Because the closure would need unique access to self while it
     // is mutably borrowed.
+    /// Global values are constant names bound to values.
+    /// If already a global with that name exists then its index is used.
+    /// Otherwise a new global is created and the string constant corresponding
+    /// to its name is added to the constant table.
     #[allow(clippy::option_if_let_else)]
     pub(super) fn identifier_constant<S>(&mut self, name: &S) -> ConstantLongIndex
     where
@@ -141,6 +163,13 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Resolve a local variable by its name.
+    ///
+    /// Iterate from the top of the locals backwards until one
+    /// with that name is found. If the variable is the most recent one,
+    /// than it is read during its own initializer, which is not allowed.
+    ///
+    /// If it is not found at all, then `None` is returned.
     fn resolve_local<S>(&mut self, name: &S) -> Option<usize>
     where
         S: ToString,
@@ -180,6 +209,11 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         });
     }
 
+    /// Try to find the upvalue with the given name.
+    ///
+    /// Iterates up the scopes checking if a local or upvalue with that name
+    /// exists. If nothing is found or the current scope is the outermost,
+    /// then `None` is returned.
     fn resolve_upvalue<S>(&mut self, name: &S) -> Option<u8>
     where
         S: ToString,
@@ -200,6 +234,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         None
     }
 
+    /// Resolve an upvalue or add a new one if it does not yet exist.
     fn add_upvalue(&mut self, local_index: usize, is_local: bool) -> u8 {
         if let Ok(local_index) = u8::try_from(local_index) {
             // Return index if we already have it
@@ -231,6 +266,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Declare a variable in a local scope.
+    ///
+    /// If called from the top level, no action is taken.
+    /// Otherwise
     pub(super) fn declare_variable(&mut self, mutable: bool) {
         if *self.scope_depth() == 0 {
             return;
