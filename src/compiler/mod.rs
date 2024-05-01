@@ -1,3 +1,7 @@
+//! The compiler module contains the compiler for the Generic language.
+//!
+//! It compiles tokens from the scanner into bytecode for the VM to execute.
+
 mod back;
 mod error;
 mod front;
@@ -21,6 +25,13 @@ use crate::{
 #[shrinkwrap(mutable)]
 struct ScopeDepth(i32);
 
+/// Represents a local variable in the current scope.
+///
+/// Store their depth in order to properly release them when a scope ends,
+/// whether they are mutable, and whether they are captured by a closure.
+/// Also contains the token they were created from. This is usually an identifier.
+/// Synthetic tokens exist for `super`, `this`, and other hidden variables like
+/// the iterator in foreach loops.
 #[derive(Debug)]
 struct Local<'scanner> {
     name: Token<'scanner>,
@@ -29,6 +40,14 @@ struct Local<'scanner> {
     is_captured: bool,
 }
 
+/// Characterizes the types of functions.
+///
+/// - Function is a normal function.
+/// - Initializer is a constructor and is special because it returns `this` on exit without
+///     a return statement or on a bare `return`. Returns with values are not allowed.
+/// - Method is a method on a class. It is special because the local slot 0 is always `this`.
+/// - Script is the top-level code in a file (main script or imported modules).
+///     Does not allow `return` statements.
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum FunctionType {
     Function,
@@ -37,19 +56,37 @@ enum FunctionType {
     Script,
 }
 
+/// Struct to handle the state of a loop.
+///
+/// Needed for nested loops to properly assign jump targets for continue and break.
 #[derive(Clone)]
 struct LoopState {
+    /// The depth of the scope when the loop was entered.
+    /// Needed to free all locals declared inside the loop.
     depth: ScopeDepth,
+    /// The bytecode index of the start of the loop.
+    /// Used to jump to the start at the end of an iteration or using `continue`.
     start: CodeOffset,
+    /// Bytecode indices of `break` statements inside the loop.
+    /// Needed to patch all of them when the compilation of the loop body is finished.
+    /// Required as there is no way to know how long the loop body will be when the `break` is compiled.
     break_jumps: Vec<CodeOffset>,
 }
 
+/// Struct to handle the state of an upvalue.
+///
+/// Tracks the position of the upvalue and whether is is captured directly from
+/// a local variable or from the upvalue of an enclosing closure.
 #[derive(Clone, Debug)]
 struct Upvalue {
     index: u8,
     is_local: bool,
 }
 
+/// Nestable part of the compiler state
+///
+/// This struct is used to keep track of the state of the compiler that can be nested
+/// when compilingn ested functions.
 struct NestableState<'scanner> {
     current_function: Function,
     function_type: FunctionType,
@@ -59,19 +96,6 @@ struct NestableState<'scanner> {
     upvalues: Vec<Upvalue>,
     scope_depth: ScopeDepth,
     loop_state: Option<LoopState>,
-}
-
-struct ClassState {
-    pub has_superclass: bool,
-}
-
-impl ClassState {
-    #[must_use]
-    const fn new() -> Self {
-        Self {
-            has_superclass: false,
-        }
-    }
 }
 
 impl<'scanner> NestableState<'scanner> {
@@ -104,11 +128,33 @@ impl<'scanner> NestableState<'scanner> {
     }
 }
 
+/// Keep track of the state of a class declaration
+///
+/// Similar to `LoopState`, this is needed for nested class declarations.
+/// Currently only tracks whether the class has a superclass.
+struct ClassState {
+    pub has_superclass: bool,
+}
+
+impl ClassState {
+    #[must_use]
+    const fn new() -> Self {
+        Self {
+            has_superclass: false,
+        }
+    }
+}
+
+/// Main compiler struct that turns tokens into bytecode.
 pub struct Compiler<'scanner, 'heap> {
+    /// The VM heap. Already present here to store compiled functions.
+    /// and cache strings.
     heap: &'heap mut Heap,
 
+    /// Rules used for parsing expressions by precedence climbing.
     rules: Rules<'scanner, 'heap>,
 
+    /// The scanner that provides tokens to the compiler.
     scanner: Scanner<'scanner>,
     previous: Option<Token<'scanner>>,
     current: Option<Token<'scanner>>,
@@ -138,6 +184,9 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         }
     }
 
+    /// Compile the tokens provided by the scanner into a function.
+    ///
+    /// This is the main compilation loop of generic.
     pub(super) fn compile(mut self) -> Option<Function> {
         self.advance();
 
@@ -153,6 +202,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         }
     }
 
+    // Nesting related function are here to not have to export the `NestableState` struct.
     fn start_nesting<S>(&mut self, function_name: &S, function_type: FunctionType)
     where
         S: ToString,
@@ -185,6 +235,9 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         self.nestable_state.len() > 1
     }
 
+    /// Call a function from within the enclosing scope.
+    ///
+    /// Mainly used for recursively resolving upvalues.
     fn in_enclosing<F, R>(&mut self, f: F) -> R
     where
         F: Fn(&mut Self) -> R,

@@ -1,3 +1,5 @@
+//! Backend of the compiler. This module is responsible for emitting bytecode.
+
 use crate::{
     chunk::{CodeOffset, OpCode},
     scanner::{Token, TokenKind},

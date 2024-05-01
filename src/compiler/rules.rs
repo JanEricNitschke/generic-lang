@@ -1,3 +1,7 @@
+//! Parser to expressions while respecting operator precedence.
+//!
+//! Uses Vaughan Pratt's "top-down operator precedence parsing".
+
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use crate::chunk::OpCode;
@@ -5,6 +9,7 @@ use crate::scanner::TokenKind as TK;
 
 use super::Compiler;
 
+// The precedence of the different operators in the language
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
 pub(super) enum Precedence {
@@ -26,8 +31,11 @@ pub(super) enum Precedence {
     Primary,
 }
 
+// Typedef for the functions that parse the different types of expressions
 type ParseFn<'scanner, 'arena> = fn(&mut Compiler<'scanner, 'arena>, bool) -> ();
 
+// This the functions that handle the parsing of an operator as a prefix or infix
+// as well as its precedence. There will be one such struct for each Token.
 #[derive(Clone)]
 pub(super) struct Rule<'scanner, 'arena> {
     prefix: Option<ParseFn<'scanner, 'arena>>,
@@ -154,6 +162,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         &self.rules[operator as usize]
     }
 
+    /// The actual precedence parsing function.
+    ///
+    /// Based on Vaughan Pratt's "top-down operator precedence parsing".
+    /// See: [Crafting Interpreters](https://craftinginterpreters.com/compiling-expressions.html)
     pub(super) fn parse_precedence(&mut self, precedence: Precedence) {
         self.advance();
         if let Some(prefix_rule) = self.get_rule(self.previous.as_ref().unwrap().kind).prefix {
@@ -190,6 +202,8 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Parse the expression which will leave its value on the stack.
+    /// Then emit the bytecode for the respective operation which will act on the value on the stack.
     fn unary(&mut self, _can_assign: bool) {
         let operator = self.previous.as_ref().unwrap().kind;
         let line = self.line();
@@ -203,6 +217,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// For a binary operator, we need to parse the right operand and then emit the correct bytecode.
+    /// The left operand is already on the stack.
+    /// The final order on the stack will be that the right operand is on top of the left one.
+    /// This is then handled correctly in the VM when the bytecode of a binary operator is encountered.
     fn binary(&mut self, _can_assign: bool) {
         // First operand is already on the stack
         let operator = self.previous.as_ref().unwrap().kind;
@@ -239,22 +257,25 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Parse `X in Y`
+    /// Order on the stack is element -- container
+    /// To call a method container.contains(element)
+    // We need container -- element
+    /// Then call `OP_INVOKE` with "contains" and `1`
     fn in_(&mut self) {
-        // Order on the stack is element -- container
-        // To call a method container.contains(element)
-        // We need container -- element
-        // Then call OP_INVOKE with "contains" and `1`
         let line = self.line();
         // Swap the order
         self.emit_byte(OpCode::Swap, line);
         self.invoke_fixed(&"contains", 1, "Too many constants created for OP_IN.");
     }
 
+    /// Parsing any call just means parsing the arguments and then emitting the correct bytecode.
     fn call(&mut self, _can_assign: bool) {
         let arg_count = self.argument_list();
         self.emit_bytes(OpCode::Call, arg_count, self.line());
     }
 
+    /// Parse property access.
     fn dot(&mut self, can_assign: bool) {
         self.consume(TK::Identifier, "Expect property name after '.'.");
         let name_constant =

@@ -1,3 +1,7 @@
+/// The vm module contains the main struct for the virtual machine and heart of the interpreter.
+///
+/// The VM orchestrates the scanning to tokens, parsing of the tokens and creation of bytecode,
+/// as well as the actual execution of the bytecode.
 use path_slash::PathBufExt;
 use rustc_hash::FxHashMap as HashMap;
 use std::collections::VecDeque;
