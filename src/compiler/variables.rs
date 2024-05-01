@@ -269,7 +269,9 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Declare a variable in a local scope.
     ///
     /// If called from the top level, no action is taken.
-    /// Otherwise
+    /// Otherwise it is checked if there already is an exiting local
+    /// with that name. If so, an error is reported.
+    /// Otherwise, the variable is added to the list of locals.
     pub(super) fn declare_variable(&mut self, mutable: bool) {
         if *self.scope_depth() == 0 {
             return;
@@ -290,6 +292,8 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         self.add_local(name, mutable);
     }
 
+    /// Parse a variable. If it is local, it gets declared normally.
+    /// Otherwise, it is added as a global.
     pub(super) fn parse_variable(&mut self, msg: &str, mutable: bool) -> Option<ConstantLongIndex> {
         self.consume(TK::Identifier, msg);
 
@@ -301,6 +305,11 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Mark the local as initialized.
+    /// Normally on creation the depth of a local is set
+    /// to `-1` to indicate that it has been declared but not initialized.
+    /// Once properly initialized its depth is set to the scope depth
+    /// of its defining scope.
     pub(super) fn mark_initialized(&mut self) {
         let scope_depth = self.scope_depth();
         if *scope_depth == 0 {
@@ -311,6 +320,11 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Emit bytecode for defining a variable..
+    ///
+    /// If it is local it just gets marked as initialized.
+    /// Otherwise, the `OpCode` matching the mutability and index size of the global index
+    /// is emitted.
     pub(super) fn define_variable(&mut self, global: Option<ConstantLongIndex>, mutable: bool) {
         if *self.scope_depth() > 0 {
             self.mark_initialized();
@@ -338,6 +352,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Parse a list of arguments to a call.
+    ///
+    /// This means all comma separated expressions until a closing `)` is found.
+    /// Does NOT permit trailing commas.
     pub(super) fn argument_list(&mut self) -> u8 {
         let mut arg_count = 0;
         if !self.check(TK::RightParen) {
