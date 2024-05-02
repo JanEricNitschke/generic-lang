@@ -1,3 +1,5 @@
+//! Runtime representation of generic runtime values.
+
 use crate::{
     chunk::Chunk,
     heap::{
@@ -11,6 +13,8 @@ use derive_more::{From, Neg};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
+
+/// Central enum for the types of runtime values that exist in generic.
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub enum Value {
     Bool(bool),
@@ -58,6 +62,7 @@ impl Hash for Value {
 }
 
 impl std::fmt::Display for Value {
+    /// Displaying of `Value` mostly delegates to the underlying types being pointed to.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Bool(bool) => f.pad(&format!("{bool}")),
@@ -79,6 +84,8 @@ impl std::fmt::Display for Value {
     }
 }
 
+// These could probably be individual entries in the enum tbh.
+/// Enum summarizing all of the generic number types.
 #[derive(Debug, Copy, PartialEq, PartialOrd, Clone, From, Neg)]
 pub enum Number {
     Float(f64),
@@ -147,9 +154,12 @@ impl std::fmt::Display for Number {
 }
 
 impl Number {
+    /// Expressions `a**b` on numbers produce integers, only if
+    /// both are already integers and `b`is not negative.
+    /// Everything else produces a float result.
     pub(super) fn pow(self, exp: Self) -> Self {
         match (self, exp) {
-            (Self::Integer(a), Self::Integer(b)) if b > 0 => Self::Integer(a.pow(
+            (Self::Integer(a), Self::Integer(b)) if b >= 0 => Self::Integer(a.pow(
                 u32::try_from(b).unwrap_or_else(|_| panic!("Could not convert i64 `{b}` to u32.")),
             )),
             (Self::Float(a), Self::Integer(b)) => Self::Float(a.powi(ias_i32(b))),
@@ -159,6 +169,8 @@ impl Number {
         }
     }
 
+    /// Floor division only produces integers if both operands are themselves integers.
+    /// Otherwise the result is a floored float.
     pub(super) fn floor_div(self, exp: Self) -> Self {
         match (self, exp) {
             (Self::Integer(a), Self::Integer(b)) => Self::Integer(a / b),
@@ -171,6 +183,8 @@ impl Number {
 
 impl ::core::ops::Div for Number {
     type Output = Self;
+    /// Standard division ALWAYS produces floats, even for two integer arguments and even
+    /// if the result could be represented as an integer.
     fn div(self, rhs: Self) -> Self {
         match (self, rhs) {
             (Self::Integer(a), Self::Integer(b)) => Self::Float(ias_f64(a) / ias_f64(b)),
@@ -259,6 +273,8 @@ impl ::core::ops::Rem for Number {
     }
 }
 
+/// Uncaptured (open) upvalues point to the stack index of the value,
+/// while captured upvalues point to the value in the heap.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub enum Upvalue {
     Open(usize),
@@ -266,6 +282,8 @@ pub enum Upvalue {
 }
 
 impl std::fmt::Display for Upvalue {
+    /// Upvalues are implementation details and should never be seen by the user.
+    /// So this is only used for debugging.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.pad("upvalue")
     }
@@ -280,6 +298,17 @@ impl Upvalue {
     }
 }
 
+/// Closure are wrappers around runable code.
+///
+/// They contain a reference to the actual function they wrap,
+/// the captured upvalues and their count.
+///
+/// They also additionally store whether the wrapped code
+/// is a general function or a module.
+///
+/// For the correct resolution of global variables referenced from function
+/// in imported modules, it is also necessary that the module that contains
+/// that function is also available for that resolution.
 #[derive(Debug, PartialOrd, Clone)]
 pub struct Closure {
     pub(super) function: FunctionId,
@@ -367,6 +396,12 @@ impl BoundMethod {
     }
 }
 
+/// Object for actual function implementations
+///
+/// Contains the name, number of expected arguments and number of
+/// captured upvalues.
+///
+/// Additionally hold the chunk of compiled bytecode.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub struct Function {
     pub(super) arity: usize,
