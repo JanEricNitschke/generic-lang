@@ -1,5 +1,9 @@
+//! Methods of the native `Dict` class.
+
 use crate::{value::Value, vm::VM};
 
+/// Get an item via `dict[a]`, where `a` is a hashable value type.
+/// Currently only `nil`, `StopIteration`, bools, integers and strings are hashable.
 pub(super) fn dict_get_native(
     _vm: &mut VM,
     receiver: &mut Value,
@@ -15,6 +19,8 @@ pub(super) fn dict_get_native(
     )
 }
 
+/// Set an item via `dict[a] = b`, where `a` is a hashable value type.
+/// Currently only `nil`, `StopIteration`, bools, integers and strings are hashable.
 pub(super) fn dict_set_native(
     _vm: &mut VM,
     receiver: &mut Value,

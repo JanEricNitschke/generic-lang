@@ -1,8 +1,12 @@
+//! Methods of the native `List` class.
+
 use crate::{
     value::{Instance, ListIterator, Number, Value},
     vm::VM,
 };
 
+/// Append an item to the end of the list.
+/// `list.append(a)`.
 pub(super) fn list_append_native(
     _vm: &mut VM,
     receiver: &mut Value,
@@ -13,6 +17,9 @@ pub(super) fn list_append_native(
     Ok(Value::Nil)
 }
 
+/// Pop an item off the end of the list via `list.pop()`
+/// or from a specified index `list.pop(index)`.
+/// Returns the removed element.
 pub(super) fn list_pop_native(
     _vm: &mut VM,
     receiver: &mut Value,
@@ -57,6 +64,7 @@ pub(super) fn list_pop_native(
     }
 }
 
+/// Get an item at a specified index `list[a]`.
 pub(super) fn list_get_native(
     _vm: &mut VM,
     receiver: &mut Value,
@@ -89,6 +97,7 @@ pub(super) fn list_get_native(
     )
 }
 
+/// Set the item at the specified index `list[a] = b`.
 pub(super) fn list_set_native(
     _vm: &mut VM,
     receiver: &mut Value,
@@ -122,6 +131,8 @@ pub(super) fn list_set_native(
     }
 }
 
+/// Insert an item into the list at the specified index.
+/// `list.insert(index, value)`, such that afterwards `list[index] = value`.
 pub(super) fn list_insert_native(
     _vm: &mut VM,
     receiver: &mut Value,
@@ -154,6 +165,8 @@ pub(super) fn list_insert_native(
     }
 }
 
+/// Check if the list contains a value `list.contains(a)`.
+/// This also powers `a in list`.
 pub(super) fn list_contains_native(
     _vm: &mut VM,
     receiver: &mut Value,
@@ -163,6 +176,8 @@ pub(super) fn list_contains_native(
     Ok(my_list.items.contains(args[0]).into())
 }
 
+/// Produce an iterator over the list `var iter = list.__iter__()`.
+/// Used by `foreach (var a in list)`.
 pub(super) fn list_iter_native(
     vm: &mut VM,
     receiver: &mut Value,
@@ -175,6 +190,8 @@ pub(super) fn list_iter_native(
     Ok(vm.heap.add_instance(my_instance))
 }
 
+/// Get the next element from a listiterator `var next = listiter.__next__()`.
+/// Powers `foreach (var a in list)`
 pub(super) fn list_iter_next_native(
     _vm: &mut VM,
     receiver: &mut Value,

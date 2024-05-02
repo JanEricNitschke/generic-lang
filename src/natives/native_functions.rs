@@ -1,3 +1,5 @@
+//! Module containing free standing rust native functions.
+
 use rand::Rng;
 use std::io;
 use std::thread;
@@ -10,6 +12,8 @@ use crate::{
     vm::VM,
 };
 
+/// Get the time since the `UNIX_EPOCH` in seconds.
+/// Useful for timing durations by calling this twice and subtracting the results.
 pub(super) fn clock_native(_vm: &mut VM, _args: &mut [&mut Value]) -> Result<Value, String> {
     Ok(Value::Number(
         SystemTime::now()
@@ -20,6 +24,7 @@ pub(super) fn clock_native(_vm: &mut VM, _args: &mut [&mut Value]) -> Result<Val
     ))
 }
 
+/// Sleep for a non-negative number of seconds.
 pub(super) fn sleep_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
         Value::Number(Number::Integer(i)) if i >= &0 => {
@@ -35,6 +40,7 @@ pub(super) fn sleep_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Valu
     Ok(Value::Nil)
 }
 
+/// Error if the argument is falsey.
 pub(super) fn assert_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     let value = &args[0];
     if value.is_falsey() {
@@ -44,6 +50,8 @@ pub(super) fn assert_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Val
     }
 }
 
+// Could also make a zero arg version of this if a prompt is not desired..
+/// Read input from the command line after providing a prompt.
 pub(super) fn input_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
         Value::String(prompt) => {
@@ -61,6 +69,8 @@ pub(super) fn input_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
     }
 }
 
+/// Turn a value into a float.
+/// Works on numbers, bools or sensible strings.
 #[allow(clippy::option_if_let_else)]
 pub(super) fn to_float_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
@@ -82,6 +92,8 @@ pub(super) fn to_float_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Va
     }
 }
 
+/// Convert a value into an integer.
+/// Works on numbers, bools or sensible strings.
 #[allow(clippy::option_if_let_else)]
 pub(super) fn to_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
@@ -103,6 +115,7 @@ pub(super) fn to_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Valu
     }
 }
 
+/// Check if the provided value can be turned into an integer.
 #[allow(clippy::option_if_let_else)]
 pub(super) fn is_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
@@ -119,6 +132,8 @@ pub(super) fn is_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Valu
     }
 }
 
+/// Turn the value into a string.
+/// Fixed implementations for basic types, instances use the `__str__` method if present.
 pub(super) fn to_string_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     let value = &args[0];
     match value {
@@ -135,6 +150,7 @@ pub(super) fn to_string_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<V
     }
 }
 
+/// Return the type of the value as a string.
 pub(super) fn type_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     let string = match &args[0] {
         Value::Bool(_) => Value::String(vm.heap.string_id(&"<type bool>")),
@@ -161,6 +177,9 @@ pub(super) fn type_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value,
     Ok(string)
 }
 
+/// Print the value to stdout.
+/// Optionally supply a string to be printed at the end of the value.
+/// Defaults to `\n`.
 pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     let end = if args.len() == 2 {
         match &args[1] {
@@ -191,6 +210,8 @@ pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
     Ok(Value::Nil)
 }
 
+/// Return a random integer between the two arguments.
+/// Lower value is inclusive, upper value is exclusive.
 pub(super) fn rng_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match (&args[0], &args[1]) {
         (Value::Number(Number::Integer(min)), Value::Number(Number::Integer(max))) => Ok(
@@ -201,6 +222,8 @@ pub(super) fn rng_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value,
         )),
     }
 }
+
+/// Get an attribute from a value by name.
 pub(super) fn getattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match (&args[0], &args[1]) {
         (Value::Instance(instance), Value::String(string_id)) => {
@@ -219,6 +242,7 @@ pub(super) fn getattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Val
     }
 }
 
+/// Set an attribute of a value by name.
 pub(super) fn setattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     let field = if let Value::String(ref string_id) = args[1] {
         vm.heap.strings[string_id].clone()
@@ -240,6 +264,8 @@ pub(super) fn setattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Val
     }
 }
 
+/// Check if the given attribute exists as a property on the instance.
+/// Does NOT check for methods.
 pub(super) fn hasattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match (&args[0], &args[1]) {
         (Value::Instance(instance), Value::String(string_id)) => Ok(Value::Bool(
@@ -254,6 +280,8 @@ pub(super) fn hasattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Val
     }
 }
 
+/// Delete an attribute on an instance by name.
+/// Does NOT work on methods. Errors if the attribute does not exist in the first place.
 pub(super) fn delattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     if let Value::String(ref string_id) = args[1] {
         let field = &vm.heap.strings[string_id];
@@ -276,6 +304,7 @@ pub(super) fn delattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Val
     }
 }
 
+/// Return the length of a list.
 #[allow(clippy::cast_possible_wrap)]
 pub(super) fn len_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
