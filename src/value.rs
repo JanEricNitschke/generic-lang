@@ -680,13 +680,6 @@ impl Value {
         }
     }
 
-    pub fn as_instance_mut(&mut self) -> &mut InstanceId {
-        match self {
-            Self::Instance(i) => i,
-            _ => unreachable!("Expected Instance, found `{}`", self),
-        }
-    }
-
     pub fn as_class_mut(&mut self) -> &mut ClassId {
         match self {
             Self::Class(c) => c,
