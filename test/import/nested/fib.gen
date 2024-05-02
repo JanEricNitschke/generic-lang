@@ -2,6 +2,7 @@ import "../foo.gen";
 
 var X = "Right X";
 var Y = 2;
+const Z = 1;
 
 fun printX() {
   print(X);

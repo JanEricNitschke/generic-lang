@@ -9,6 +9,12 @@ fib.foo.Foo().hello(); # expect: Hello
 
 fib.printX(); # expect: Right X
 
+fib.X = "New X";
+print(fib.X); # expect: New X
+fib.printX(); # expect: New X
+
 if __name__ == "<script>" {
     print("good"); # expect: good
 }
+
+fib.Z = 3; # expect runtime error: Reassignment to global 'const'.

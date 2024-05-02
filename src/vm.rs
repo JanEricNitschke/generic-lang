@@ -403,8 +403,21 @@ macro_rules! run_instruction {
             OpCode::SetProperty => {
                 let field_string_id = $self.read_string("SET_PROPERTY");
                 let field = &$self.heap.strings[&field_string_id];
-                match &$self.peek(1).expect("Stack underflow in SET_PROPERTY") {
-                    Value::Instance(instance) => instance,
+                let value = $self.stack.pop().expect("Stack underflow in SET_PROPERTY");
+                let mut receiver = $self.stack.pop().expect("Stack underflow in SET_PROPERTY");
+                match &mut receiver {
+                    Value::Instance(instance) => {
+                        instance.fields.insert(field.to_string(), value);
+                    }
+                    Value::Module(module) => {
+                        if let Some(global) = module.globals.get_mut(&field_string_id) {
+                            if !global.mutable {
+                                runtime_error!($self, "Reassignment to global 'const'.");
+                                return InterpretResult::RuntimeError;
+                            }
+                            global.value = value;
+                        }
+                    }
                     x => {
                         runtime_error!(
                             $self,
@@ -415,12 +428,6 @@ macro_rules! run_instruction {
                         return InterpretResult::RuntimeError;
                     }
                 };
-                let value = $self.stack.pop().expect("Stack underflow in SET_PROPERTY");
-                let mut instance = $self.stack.pop().expect("Stack underflow in SET_PROPERTY");
-                instance
-                    .as_instance_mut()
-                    .fields
-                    .insert(field.to_string(), value);
                 $self.stack_push(value);
             }
             OpCode::Method => {
