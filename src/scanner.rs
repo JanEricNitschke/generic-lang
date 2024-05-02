@@ -1,3 +1,5 @@
+//! Defines the tokens and scanner that handles the transforming or the source to tokens.
+
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use shrinkwraprs::Shrinkwrap;
 
@@ -6,6 +8,7 @@ use crate::types::Line;
 #[derive(Shrinkwrap, PartialEq, Eq, Clone, Copy)]
 pub struct TokenLength(pub(super) usize);
 
+/// `Token` types that exist in the generic language.
 #[derive(IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Clone, Copy, Debug)]
 #[repr(u8)]
 pub enum TokenKind {
@@ -105,6 +108,11 @@ impl std::fmt::Display for TokenKind {
     }
 }
 
+/// Actual tokens emitted by the scanner.
+///
+/// Contains the `TokenKind` that it represents
+/// together with the raw characters that comprise it
+/// and the line that it originates from.
 #[derive(Clone, Debug)]
 pub struct Token<'a> {
     pub(super) kind: TokenKind,
@@ -118,10 +126,12 @@ impl<'a> Token<'a> {
     }
 }
 
+/// Main struct for parsing the source characters to tokens.
 #[derive(Debug, Clone)]
 pub struct Scanner<'a> {
     source: &'a [u8],
     start: usize,
+    /// Always points at the next character to be consumed.
     current: usize,
     line: Line,
 }
@@ -137,6 +147,12 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    /// Main scan that turns raw characters to tokens.
+    ///
+    /// Every call to this function parses enough of the source file
+    /// to return exactly one token.
+    ///
+    /// Uses a trie strategy to identify tokens.
     #[allow(clippy::too_many_lines)]
     pub(super) fn scan(&mut self) -> Token<'a> {
         use TokenKind as TK;
@@ -291,6 +307,8 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    /// Strings are sequences of any characters starting and ending
+    /// with `"`. Strings can span multiple lines.
     fn string(&mut self) -> Token<'a> {
         while self.peek().map_or(false, |c| c != &b'"') {
             if self.peek() == Some(&b'\n') {
@@ -306,6 +324,9 @@ impl<'a> Scanner<'a> {
         self.make_token(TokenKind::String)
     }
 
+    /// Numbers are any sequence of ascii digits with an optional decimal point in the middle.
+    ///
+    /// Decimal points at the end are not supported and neither is scientific notation.
     fn number(&mut self) -> Token<'a> {
         while self.peek().map_or(false, u8::is_ascii_digit) {
             self.advance();
@@ -324,6 +345,9 @@ impl<'a> Scanner<'a> {
         self.make_token(TokenKind::Float)
     }
 
+    /// Identifiers can contain alphanumeric characters and underscores.
+    ///
+    /// Although they have to start with an underscore or alphabetic character.
     #[allow(clippy::trivially_copy_pass_by_ref)]
     fn is_identifier_char(c: &u8) -> bool {
         c.is_ascii_alphanumeric() || c == &b'_'
@@ -337,6 +361,7 @@ impl<'a> Scanner<'a> {
         self.make_token(token_kind)
     }
 
+    /// Parse identifiers using a `trie` strategy.
     fn identifier_type(&mut self) -> TokenKind {
         match self.source[self.start] {
             b'a' => match self.source.get(self.start + 1) {
