@@ -1,3 +1,5 @@
+//! Module for registering rust native stdlib modules.
+
 mod math;
 
 use crate::vm::VM;

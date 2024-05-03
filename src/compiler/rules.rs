@@ -1,3 +1,7 @@
+//! Parser to expressions while respecting operator precedence.
+//!
+//! Uses Vaughan Pratt's "top-down operator precedence parsing".
+
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use crate::chunk::OpCode;
@@ -5,6 +9,7 @@ use crate::scanner::TokenKind as TK;
 
 use super::Compiler;
 
+// The precedence of the different operators in the language
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
 pub(super) enum Precedence {
@@ -26,8 +31,11 @@ pub(super) enum Precedence {
     Primary,
 }
 
+// Typedef for the functions that parse the different types of expressions
 type ParseFn<'scanner, 'arena> = fn(&mut Compiler<'scanner, 'arena>, bool) -> ();
 
+// This  specifies the functions that handle the parsing of an operator as prefix or infix,
+// as well as its precedence. There will be one such struct for each Token.
 #[derive(Clone)]
 pub(super) struct Rule<'scanner, 'arena> {
     prefix: Option<ParseFn<'scanner, 'arena>>,
@@ -112,7 +120,7 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Identifier    = [variable,        None,      None      ],
         In            = [None,            binary,    In        ],
         String        = [string,          None,      None      ],
-        Float         = [number,          None,      None      ],
+        Float         = [float,           None,      None      ],
         Integer       = [integer,         None,      None      ],
         And           = [None,            and,       And       ],
         Case          = [None,            None,      None      ],
@@ -154,6 +162,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         &self.rules[operator as usize]
     }
 
+    /// The actual precedence parsing function.
+    ///
+    /// Based on Vaughan Pratt's "top-down operator precedence parsing".
+    /// See: [Crafting Interpreters](https://craftinginterpreters.com/compiling-expressions.html)
     pub(super) fn parse_precedence(&mut self, precedence: Precedence) {
         self.advance();
         if let Some(prefix_rule) = self.get_rule(self.previous.as_ref().unwrap().kind).prefix {
@@ -190,6 +202,8 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Parse the expression which will leave its value on the stack.
+    /// Then emit the bytecode for the respective operation which will act on the value on the stack.
     fn unary(&mut self, _can_assign: bool) {
         let operator = self.previous.as_ref().unwrap().kind;
         let line = self.line();
@@ -203,6 +217,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// For a binary operator, we need to parse the right operand and then emit the correct bytecode.
+    /// The left operand is already on the stack.
+    /// The final order on the stack will be that the right operand is on top of the left one.
+    /// This is then handled correctly in the VM when the bytecode of a binary operator is encountered.
     fn binary(&mut self, _can_assign: bool) {
         // First operand is already on the stack
         let operator = self.previous.as_ref().unwrap().kind;
@@ -239,22 +257,31 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Parse `X in Y`
+    ///
+    /// Work by invoking `Y.contains(X)`.
+    ///
+    /// Order on the stack is element -- container
+    /// To call a method container.contains(element)
+    // We need container -- element
+    /// Then call `OP_INVOKE` with "contains" and `1`
     fn in_(&mut self) {
-        // Order on the stack is element -- container
-        // To call a method container.contains(element)
-        // We need container -- element
-        // Then call OP_INVOKE with "contains" and `1`
         let line = self.line();
         // Swap the order
         self.emit_byte(OpCode::Swap, line);
         self.invoke_fixed(&"contains", 1, "Too many constants created for OP_IN.");
     }
 
+    /// Parsing any call just means parsing the arguments and then emitting the correct bytecode.
     fn call(&mut self, _can_assign: bool) {
         let arg_count = self.argument_list();
         self.emit_bytes(OpCode::Call, arg_count, self.line());
     }
 
+    /// Parse property access.
+    ///
+    /// This is actually fairly complicated, as cases like
+    /// `a.b;`, `a.b = c;`, `a.b();` and `a.b() = c;` all have to be handled correctly here.
     fn dot(&mut self, can_assign: bool) {
         self.consume(TK::Identifier, "Expect property name after '.'.");
         let name_constant =
@@ -312,6 +339,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Handles the four tokens that directly corresponds to values.
     fn literal(&mut self, _can_assign: bool) {
         let literal = self.previous.as_ref().unwrap().kind;
         match literal {
@@ -323,22 +351,39 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
-    // TODO: Make this also create sets?
+    // TODO: Make this also create tuples?
+    /// Used for grouping expressions to overwrite default precedence.
+    ///
+    /// The full expression within the grouping will be parsed as one.
     fn grouping(&mut self, _can_assign: bool) {
         self.expression();
         self.consume(TK::RightParen, "Expect ')' after expression.");
     }
 
-    fn number(&mut self, _can_assign: bool) {
+    /// Emit a float literal constant.
+    ///
+    /// The value is token from the last token, extracts the characters
+    /// and parses them to a float.
+    /// The constant gets loaded into the current chunks constant table
+    /// and the index is pushed after the corresponding `OpCode`.
+    /// The VM then loads the constant from the constant table using that index.
+    fn float(&mut self, _can_assign: bool) {
         let value: f64 = self.previous.as_ref().unwrap().as_str().parse().unwrap();
         self.emit_constant(value);
     }
 
+    /// Emit an integer literal.
+    ///
+    /// Works equivalent to [`Compiler::float`].
     fn integer(&mut self, _can_assign: bool) {
         let value: i64 = self.previous.as_ref().unwrap().as_str().parse().unwrap();
         self.emit_constant(value);
     }
 
+    /// Emit a string constant.
+    ///
+    /// Here, the string is taken from the lexeme of the token with the last and first
+    /// character (`"`) stripped. Rest works like for [`Compiler::float`].
     fn string(&mut self, _can_assign: bool) {
         let lexeme = self.previous.as_ref().unwrap().as_str();
         let value = lexeme[1..lexeme.len() - 1].to_string();
@@ -346,6 +391,9 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         self.emit_constant(string_id);
     }
 
+    /// Parse a list literal ([a, b, c(,)])
+    ///
+    /// Handles optional trailing commas.
     fn list(&mut self, _can_assign: bool) {
         let mut item_count = 0;
         // Handle trailing comma
@@ -365,15 +413,15 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         self.emit_bytes(OpCode::BuildList, item_count, self.line());
     }
 
-    fn parse_dict_entry(&mut self) {
-        self.parse_precedence(Precedence::Or);
-        self.consume(TK::Colon, "Expect ':' after key.");
-        self.parse_precedence(Precedence::Or);
-    }
-
-    // TODO: Extend to also handles dicts.
-    // Empty {} should be dict. Otherwise dict is {a:b, c:d,...}
-    // and set is {a, b, c, ...}
+    /// Handle the hashed collection `set`and `dict``.`
+    ///
+    /// Sets effectively work equivalent to [`Compiler::list`], except
+    /// that curly braces are used instead of square ones.
+    /// Dicts work similar, instead that each entry is of the form:
+    /// `key: value`. Whether the code is parsed as set or dict is determined
+    /// by the presence of a colon after the first token.
+    ///
+    /// Another noteworthy point is that empty braces are parsed as a dict.
     fn hash_collection(&mut self, _can_assign: bool) {
         let mut item_count = 0;
         let mut is_dict = true;
@@ -424,6 +472,19 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         );
     }
 
+    fn parse_dict_entry(&mut self) {
+        self.parse_precedence(Precedence::Or);
+        self.consume(TK::Colon, "Expect ':' after key.");
+        self.parse_precedence(Precedence::Or);
+    }
+
+    /// Parse subscript (`a[b]`) expressions.
+    ///
+    /// Implemented similar to [`Compiler::dot`] to handle getting
+    /// and setting.
+    ///
+    /// Also works by invoking `__getitem__` or `__setitem__`
+    /// on the value to allow classes to overload how this operation works.
     fn subscript(&mut self, can_assign: bool) {
         self.parse_precedence(Precedence::Or);
         self.consume(TK::RightBracket, "Expect ']' after index.");
@@ -476,6 +537,11 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Short circuiting `and`.
+    ///
+    /// The result of such an expression is the first operand that evaluates
+    /// falsey or the last operand if all are truthy.
+    /// The second expression is not evaluated if the first is already false.
     fn and(&mut self, _can_assign: bool) {
         let end_jump = self.emit_jump(OpCode::JumpIfFalse);
         self.emit_byte(OpCode::Pop, self.line());
@@ -483,6 +549,9 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         self.patch_jump(end_jump);
     }
 
+    /// Short circuiting `or`.
+    ///
+    /// Work equivalently to [`Compiler::and`].
     fn or(&mut self, _can_assign: bool) {
         let end_jump = self.emit_jump(OpCode::JumpIfTrue);
         self.emit_byte(OpCode::Pop, self.line());
@@ -490,6 +559,12 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         self.patch_jump(end_jump);
     }
 
+    /// Handle `this`.
+    ///
+    /// If inside a class this simply works on the local variable
+    /// `this`which is initialized to the specific instance.
+    ///
+    /// Outside of a class context this is a syntax error.
     fn this(&mut self, _can_assign: bool) {
         if self.current_class().is_none() {
             self.error("Can't use 'this' outside of a class.");
@@ -498,6 +573,14 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         self.variable(false);
     }
 
+    /// Handle `super` expressions that interact with the superlcass.
+    ///
+    /// Like `this`, `super` also only work when used inside class.
+    /// Additionally, the class is required to have a superclass.
+    /// Both are checked statically at compile time.
+    ///
+    /// Unlike `this`, only method access either in the form of a call
+    /// or to create a bound method is possible.
     fn super_(&mut self, _can_assign: bool) {
         match self.current_class() {
             None => {
@@ -532,6 +615,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
+    /// Helper function to deal with operators that delegate to overloaded methods.
     fn invoke_fixed<S: ToString>(&mut self, name: &S, arg_count: u8, error_message: &str) {
         let name_constant = self.identifier_constant(name);
         let line = self.line();

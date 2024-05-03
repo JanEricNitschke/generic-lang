@@ -1,3 +1,21 @@
+//! Handles the allocation of most complex types.
+//!
+//! While booleans, `nil` and `StopIteration` are stored directly on the stack,
+//! all other objects only have references stored there.
+//! The actual objects leave in the heap.
+//!
+//! The heap is managed via arenas for each type of `Value`.
+//!
+//! Currently, for ease of use, each value holds an `Id` that wraps
+//! the key of the object in its respective arena as well as a pointer to the arena.
+//! This makes for short syntax via `deref` and allows the retrieval of the objects
+//! without direct access to the heap instance.
+//!
+//! However it requires the use of unsafe and `Pin` and also has a memory
+//! overhead as each `Id` has to store the key AND the pointer.
+//!
+//! Garbage collection occurs via `mark and sweep`.
+
 use rustc_hash::FxHashMap as HashMap;
 use std::collections::hash_map::Entry;
 use std::{
@@ -18,8 +36,9 @@ use crate::value::{
 pub trait ArenaValue: Debug + Display + PartialEq {}
 impl<T> ArenaValue for T where T: Debug + Display + PartialEq {}
 
+// Define separate key types for each `Value` variant to ensure
+// that no misuse occurs.
 new_key_type! {
-    pub struct ValueKey;
     pub struct FunctionKey;
     pub struct StringKey;
     pub struct UpvalueKey;
@@ -32,6 +51,7 @@ new_key_type! {
     pub struct ModuleKey;
 }
 
+/// Wrapper for the key of the object as well as the arena that contains it.
 #[derive(Clone, PartialOrd, Debug, Derivative)]
 #[derivative(Hash)]
 pub struct ArenaId<K: Key, T: ArenaValue> {
@@ -40,8 +60,8 @@ pub struct ArenaId<K: Key, T: ArenaValue> {
     // These could be but then i would have to put `clones` everywhere.
     // use std::cell::RefCell;
     // use std::rc::Rc;
-    // pub arena: Rc<RefCell<Arena<K, T>>>,
-    pub arena: NonNull<Arena<K, T>>,
+    // arena: Rc<RefCell<Arena<K, T>>>,
+    arena: NonNull<Arena<K, T>>,
 }
 
 impl<K: Key, T: ArenaValue> PartialEq for ArenaId<K, T> {
@@ -69,11 +89,14 @@ impl<K: Key, T: ArenaValue> DerefMut for ArenaId<K, T> {
 }
 
 impl<K: Key, T: ArenaValue> ArenaId<K, T> {
-    pub fn marked(&self, black_value: bool) -> bool {
+    pub(super) fn marked(&self, black_value: bool) -> bool {
         unsafe { self.arena.as_ref().is_marked(self.id, black_value) }
     }
 }
 
+/// Wrapper attaching a flag indicating whether an object
+/// has been marked during the mark phase of mark and sweep
+/// garbage collection.
 #[derive(Clone, Debug, PartialEq)]
 struct Item<T> {
     marked: bool,
@@ -86,6 +109,7 @@ impl<T> Item<T> {
     }
 }
 
+// Separate Id types for each `Value` variant.
 pub type StringId = ArenaId<StringKey, String>;
 pub type UpvalueId = ArenaId<UpvalueKey, Upvalue>;
 pub type FunctionId = ArenaId<FunctionKey, Function>;
@@ -97,6 +121,12 @@ pub type InstanceId = ArenaId<InstanceKey, Instance>;
 pub type BoundMethodId = ArenaId<BoundMethodKey, BoundMethod>;
 pub type ModuleId = ArenaId<ModuleKey, Module>;
 
+/// Arenas storing each `Value` variant.
+///
+/// Each arena has a name when logging the garbage collector.
+/// The main core of the arenas is a `HopSlotMap` storing the actual values.
+/// Additionally, they store their overall number of allocated bytes as well
+/// as a vector of items to process for `mark and sweep`.
 #[derive(Clone, Debug)]
 pub struct Arena<K: Key, V: ArenaValue> {
     #[cfg(feature = "log_gc")]
@@ -120,6 +150,9 @@ impl<K: Key, V: ArenaValue> Arena<K, V> {
         }
     }
 
+    /// Add a value to the arena and return a corresponding Id.
+    ///
+    /// Also update the total number of bytes allocated in this arena.
     fn add(&mut self, value: V, black_value: bool) -> ArenaId<K, V> {
         let id = self.data.insert(Item::new(value, !black_value));
         self.bytes_allocated += std::mem::size_of::<V>();
@@ -145,11 +178,15 @@ impl<K: Key, V: ArenaValue> Arena<K, V> {
         self.data[index].marked == black_value
     }
 
+    /// Clear the gray values and return them for processing.
     fn flush_gray(&mut self) -> Vec<K> {
         let capacity = self.gray.capacity();
         std::mem::replace(&mut self.gray, Vec::with_capacity(capacity))
     }
 
+    /// Remove all non-marked values from the arena.
+    ///
+    /// Also update the total number of allocated bytes.
     fn sweep(&mut self, black_value: bool) {
         self.data.retain(|_key, value| {
             #[cfg(feature = "log_gc")]
@@ -196,15 +233,20 @@ impl<K: Key, V: ArenaValue> std::ops::IndexMut<K> for Arena<K, V> {
     }
 }
 
+/// Collection of all builtin constants that are needed in different parts
+/// of the heap or VM.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BuiltinConstants {
-    pub init_string: StringId,
-    pub script_name: StringId,
+    /// Name of the initializer, currently `__init__`
+    pub(super) init_string: StringId,
+    /// Identifier that contains the name of the current module.
+    /// Currently `__name__`.
+    pub(super) script_name: StringId,
 }
 
 impl BuiltinConstants {
     #[must_use]
-    pub fn new(heap: &mut Heap) -> Self {
+    fn new(heap: &mut Heap) -> Self {
         Self {
             init_string: heap.string_id(&"__init__".to_string()),
             script_name: heap.string_id(&"__name__".to_string()),
@@ -212,7 +254,10 @@ impl BuiltinConstants {
     }
 }
 
-// Has to be a macro because of mutable borrow of self
+/// Switch to add a `Value` to the gray vector of the correct arena.
+///
+/// Needs to be a macro because it is used in multiple places and a function
+/// runs into issues with the borrow checker.
 macro_rules! gray_value {
     ($self:expr, $value:expr) => {
         match $value {
@@ -291,29 +336,32 @@ macro_rules! gray_value {
     };
 }
 
+/// Main representation of the heap in generic.
+///
+/// Heart is multiple arenas, one for each variant of `Value.`
 #[derive(Clone, Debug)]
 pub struct Heap {
     builtin_constants: Option<BuiltinConstants>,
-    pub strings_by_name: HashMap<String, StringId>,
-    pub native_classes: HashMap<String, Value>,
+    pub(super) strings_by_name: HashMap<String, StringId>,
+    pub(super) native_classes: HashMap<String, Value>,
 
-    pub strings: Arena<StringKey, String>,
-    pub functions: Arena<FunctionKey, Function>,
-    pub bound_methods: Arena<BoundMethodKey, BoundMethod>,
-    pub closures: Arena<ClosureKey, Closure>,
-    pub native_functions: Arena<NativeFunctionKey, NativeFunction>,
-    pub native_methods: Arena<NativeMethodKey, NativeMethod>,
-    pub classes: Arena<ClassKey, Class>,
-    pub instances: Arena<InstanceKey, Instance>,
-    pub upvalues: Arena<UpvalueKey, Upvalue>,
-    pub modules: Arena<ModuleKey, Module>,
+    pub(super) strings: Arena<StringKey, String>,
+    functions: Arena<FunctionKey, Function>,
+    bound_methods: Arena<BoundMethodKey, BoundMethod>,
+    closures: Arena<ClosureKey, Closure>,
+    native_functions: Arena<NativeFunctionKey, NativeFunction>,
+    native_methods: Arena<NativeMethodKey, NativeMethod>,
+    classes: Arena<ClassKey, Class>,
+    instances: Arena<InstanceKey, Instance>,
+    upvalues: Arena<UpvalueKey, Upvalue>,
+    modules: Arena<ModuleKey, Module>,
 
     next_gc: usize,
-    pub black_value: bool,
+    pub(super) black_value: bool,
 }
 
 impl Heap {
-    pub fn new() -> Pin<Box<Self>> {
+    pub(super) fn new() -> Pin<Box<Self>> {
         let strings_by_name: HashMap<String, StringId> = HashMap::default();
 
         let mut heap = Box::pin(Self {
@@ -375,11 +423,12 @@ impl Heap {
         heap
     }
 
-    pub fn builtin_constants(&self) -> &BuiltinConstants {
+    pub(super) fn builtin_constants(&self) -> &BuiltinConstants {
         self.builtin_constants.as_ref().unwrap()
     }
 
-    pub fn string_id<S>(&mut self, s: &S) -> StringId
+    /// Uniquefy string Ids so that each actual string is mapped to the same Id.
+    pub(super) fn string_id<S>(&mut self, s: &S) -> StringId
     where
         S: ToString,
     {
@@ -406,11 +455,16 @@ impl Heap {
     }
 
     #[cfg(not(feature = "stress_gc"))]
-    pub const fn needs_gc(&self) -> bool {
+    pub(super) const fn needs_gc(&self) -> bool {
         self.bytes_allocated() > self.next_gc
     }
 
-    pub fn gc_start(&mut self) {
+    /// Prepare the garbage collection by marking all
+    /// values used by the heap itself.
+    ///
+    /// These include the builtin constant as well
+    /// as native classes.
+    pub(super) fn gc_start(&mut self) {
         #[cfg(feature = "log_gc")]
         {
             eprintln!("-- gc begin");
@@ -428,7 +482,11 @@ impl Heap {
         }
     }
 
-    pub fn trace(&mut self) {
+    /// Trace through all reachable values.
+    ///
+    /// For that repeatedly iterate over all marked values
+    /// and mark everything that can be reached by them.
+    pub(super) fn trace(&mut self) {
         #[cfg(feature = "log_gc")]
         {
             eprintln!("-- trace start");
@@ -477,23 +535,22 @@ impl Heap {
         }
     }
 
-    pub fn mark_value(&mut self, id: &Value) {
+    pub(super) fn mark_value(&mut self, id: &Value) {
         self.blacken_value(id);
     }
 
-    pub fn mark_function(&mut self, id: &FunctionId) {
+    pub(super) fn mark_function(&mut self, id: &FunctionId) {
         self.blacken_function(id.id);
     }
 
-    pub fn mark_upvalue(&mut self, id: &UpvalueId) {
+    pub(super) fn mark_upvalue(&mut self, id: &UpvalueId) {
         self.blacken_upvalue(id.id);
     }
 
-    pub fn mark_module(&mut self, id: &ModuleId) {
+    pub(super) fn mark_module(&mut self, id: &ModuleId) {
         self.blacken_module(id.id);
     }
 
-    #[allow(clippy::too_many_lines)]
     fn blacken_value(&mut self, index: &Value) {
         match index {
             Value::Bool(_) | Value::Nil | Value::StopIteration | Value::Number(_) => {}
@@ -510,6 +567,9 @@ impl Heap {
         }
     }
 
+    /// Closed upvalues refer to a separate value that has to be marked.
+    ///
+    /// Open ones do not contain any data that is stored on the heap.
     fn blacken_upvalue(&mut self, index: UpvalueKey) {
         let item = &mut self.upvalues.data[index];
         if item.marked == self.black_value {
@@ -533,6 +593,8 @@ impl Heap {
         }
     }
 
+    /// Modules need to mark their heap stored name as well as all
+    /// the keys and values stored in their globals.
     fn blacken_module(&mut self, index: ModuleKey) {
         let item = &mut self.modules.data[index];
         if item.marked == self.black_value {
@@ -552,6 +614,8 @@ impl Heap {
         }
     }
 
+    /// Native functions only have their name on the heap.
+    /// The implementation is directly in rust.
     fn blacken_native_function(&mut self, index: NativeFunctionKey) {
         let item = &mut self.native_functions.data[index];
         if item.marked == self.black_value {
@@ -572,6 +636,7 @@ impl Heap {
         }
     }
 
+    /// Native methods store their name as well as the class they belong to.
     fn blacken_native_method(&mut self, index: NativeMethodKey) {
         let item = &mut self.native_methods.data[index];
         if item.marked == self.black_value {
@@ -593,6 +658,7 @@ impl Heap {
         }
     }
 
+    /// Closures store their wrapped function ad well as the captured upvalues.
     fn blacken_closure(&mut self, index: ClosureKey) {
         let item = &mut self.closures.data[index];
         if item.marked == self.black_value {
@@ -616,6 +682,7 @@ impl Heap {
         }
     }
 
+    /// Classes store their name as well as their methods with their names.
     fn blacken_class(&mut self, index: ClassKey) {
         let item = &mut self.classes.data[index];
         if item.marked == self.black_value {
@@ -641,6 +708,10 @@ impl Heap {
     }
 
     // I feel this is still within reason.
+    /// Instances store the name of the class they belong to as well as their fields.
+    ///
+    /// If they represent an instance of a native class, then the data structure
+    /// that handles the native functionality may itself reference more heap allocated data.
     #[allow(clippy::cognitive_complexity)]
     fn blacken_instance(&mut self, index: InstanceKey) {
         let item = &mut self.instances.data[index];
@@ -693,7 +764,8 @@ impl Heap {
         }
     }
 
-    // I guess this has issues with the macro?
+    /// Bound methods store the instance they are bound to
+    /// as well as the method they are binding.
     #[allow(clippy::cognitive_complexity)]
     fn blacken_bound_method(&mut self, index: BoundMethodKey) {
         let item = &mut self.bound_methods.data[index];
@@ -716,6 +788,7 @@ impl Heap {
         }
     }
 
+    /// Strings dont actually contain anything else.
     fn blacken_string(&mut self, index: StringKey) {
         let item = &mut self.strings.data[index];
         if item.marked == self.black_value {
@@ -733,6 +806,8 @@ impl Heap {
         }
     }
 
+    /// Function contain their own name as well as a list of constants,
+    /// although none of these should currently be heap allocated.
     fn blacken_function(&mut self, index: FunctionKey) {
         let item = &mut self.functions.data[index];
         if item.marked == self.black_value {
@@ -756,7 +831,7 @@ impl Heap {
         }
     }
 
-    pub fn sweep(&mut self) {
+    pub(super) fn sweep(&mut self) {
         #[cfg(feature = "log_gc")]
         eprintln!("-- sweep start");
         #[cfg(feature = "log_gc")]
@@ -789,43 +864,43 @@ impl Heap {
         }
     }
 
-    pub fn add_string(&mut self, value: String) -> Value {
+    fn add_string(&mut self, value: String) -> Value {
         self.strings.add(value, self.black_value).into()
     }
 
-    pub fn add_function(&mut self, value: Function) -> Value {
+    pub(super) fn add_function(&mut self, value: Function) -> Value {
         self.functions.add(value, self.black_value).into()
     }
 
-    pub fn add_bound_method(&mut self, value: BoundMethod) -> Value {
+    pub(super) fn add_bound_method(&mut self, value: BoundMethod) -> Value {
         self.bound_methods.add(value, self.black_value).into()
     }
 
-    pub fn add_closure(&mut self, value: Closure) -> Value {
+    pub(super) fn add_closure(&mut self, value: Closure) -> Value {
         self.closures.add(value, self.black_value).into()
     }
 
-    pub fn add_native_function(&mut self, value: NativeFunction) -> Value {
+    pub(super) fn add_native_function(&mut self, value: NativeFunction) -> Value {
         self.native_functions.add(value, self.black_value).into()
     }
 
-    pub fn add_native_method(&mut self, value: NativeMethod) -> Value {
+    pub(super) fn add_native_method(&mut self, value: NativeMethod) -> Value {
         self.native_methods.add(value, self.black_value).into()
     }
 
-    pub fn add_class(&mut self, value: Class) -> Value {
+    pub(super) fn add_class(&mut self, value: Class) -> Value {
         self.classes.add(value, self.black_value).into()
     }
 
-    pub fn add_instance(&mut self, value: Instance) -> Value {
+    pub(super) fn add_instance(&mut self, value: Instance) -> Value {
         self.instances.add(value, self.black_value).into()
     }
 
-    pub fn add_upvalue(&mut self, value: Upvalue) -> Value {
+    pub(super) fn add_upvalue(&mut self, value: Upvalue) -> Value {
         self.upvalues.add(value, self.black_value).into()
     }
 
-    pub fn add_module(&mut self, value: Module) -> Value {
+    pub(super) fn add_module(&mut self, value: Module) -> Value {
         self.modules.add(value, self.black_value).into()
     }
 }

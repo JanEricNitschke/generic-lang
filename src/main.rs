@@ -1,3 +1,9 @@
+//! # Main entry point for the generic interpreter
+//!
+//! Uses the `clap` crate to parse command line arguments and then calls the appropriate function to either run the REPL or run a file.
+//! Not specifying a file will run the REPL, otherwise it will run the file.
+//! There are currently no other command line options.
+
 use std::{io::Write, path::PathBuf};
 
 use clap::Parser;
@@ -25,13 +31,22 @@ struct Args {
     file: Option<PathBuf>,
 }
 
-fn main() {
+/// Main entry point for the generic interpreter
+pub fn main() {
     let args = Args::parse();
 
     args.file.map_or_else(repl, run_file);
 }
 
-fn repl() {
+/// Run the REPL.
+///
+/// This function will loop, reading a line from stdin and passing it to the VM for interpretation.
+/// Each line has to be fully valid by itself. Splitting statements across lines is not supported.
+///
+/// # Panics
+///
+/// If stdout can not be flushed or if `read_line` returns an error.
+pub fn repl() {
     let mut vm = VM::new(PathBuf::from(""));
     loop {
         print!("> ");
@@ -46,7 +61,12 @@ fn repl() {
     }
 }
 
-fn run_file(file: PathBuf) {
+/// Run a file.
+///
+/// Will read the whole file into memory and pass it to the VM for interpretation.
+/// The VM will compile and then interpret the code.
+/// Compile or Runtime errors will cause the program to exit with the appropriate error code.
+pub fn run_file(file: PathBuf) {
     match std::fs::read(&file) {
         Err(e) => {
             eprintln!("{e}");

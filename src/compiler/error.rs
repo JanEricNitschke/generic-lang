@@ -1,3 +1,9 @@
+//! Error handling for the compiler.
+//!
+//! Print nice error messages to the console when something goes wrong.
+//! Also handles synchronization after an error to prevent cascading errors and
+//! allow for multiple errors to be reported in a single run.
+
 use super::Compiler;
 use crate::scanner::{Token, TokenKind as TK};
 

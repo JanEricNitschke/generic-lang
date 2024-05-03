@@ -1,3 +1,5 @@
+//! Runtime representation of generic runtime values.
+
 use crate::{
     chunk::Chunk,
     heap::{
@@ -11,6 +13,8 @@ use derive_more::{From, Neg};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
+
+/// Central enum for the types of runtime values that exist in generic.
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub enum Value {
     Bool(bool),
@@ -58,6 +62,7 @@ impl Hash for Value {
 }
 
 impl std::fmt::Display for Value {
+    /// Displaying of `Value` mostly delegates to the underlying types being pointed to.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Bool(bool) => f.pad(&format!("{bool}")),
@@ -79,6 +84,8 @@ impl std::fmt::Display for Value {
     }
 }
 
+// These could probably be individual entries in the enum tbh.
+/// Enum summarizing all of the generic number types.
 #[derive(Debug, Copy, PartialEq, PartialOrd, Clone, From, Neg)]
 pub enum Number {
     Float(f64),
@@ -147,9 +154,12 @@ impl std::fmt::Display for Number {
 }
 
 impl Number {
-    pub fn pow(self, exp: Self) -> Self {
+    /// Expressions `a**b` on numbers produce integers, only if
+    /// both are already integers and `b`is not negative.
+    /// Everything else produces a float result.
+    pub(super) fn pow(self, exp: Self) -> Self {
         match (self, exp) {
-            (Self::Integer(a), Self::Integer(b)) if b > 0 => Self::Integer(a.pow(
+            (Self::Integer(a), Self::Integer(b)) if b >= 0 => Self::Integer(a.pow(
                 u32::try_from(b).unwrap_or_else(|_| panic!("Could not convert i64 `{b}` to u32.")),
             )),
             (Self::Float(a), Self::Integer(b)) => Self::Float(a.powi(ias_i32(b))),
@@ -159,7 +169,9 @@ impl Number {
         }
     }
 
-    pub fn floor_div(self, exp: Self) -> Self {
+    /// Floor division only produces integers if both operands are themselves integers.
+    /// Otherwise the result is a floored float.
+    pub(super) fn floor_div(self, exp: Self) -> Self {
         match (self, exp) {
             (Self::Integer(a), Self::Integer(b)) => Self::Integer(a / b),
             (Self::Float(a), Self::Integer(b)) => Self::Float((a / (ias_f64(b))).floor()),
@@ -171,6 +183,8 @@ impl Number {
 
 impl ::core::ops::Div for Number {
     type Output = Self;
+    /// Standard division ALWAYS produces floats, even for two integer arguments and even
+    /// if the result could be represented as an integer.
     fn div(self, rhs: Self) -> Self {
         match (self, rhs) {
             (Self::Integer(a), Self::Integer(b)) => Self::Float(ias_f64(a) / ias_f64(b)),
@@ -259,6 +273,8 @@ impl ::core::ops::Rem for Number {
     }
 }
 
+/// Uncaptured (open) upvalues point to the stack index of the value,
+/// while captured upvalues point to the value in the heap.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub enum Upvalue {
     Open(usize),
@@ -266,13 +282,15 @@ pub enum Upvalue {
 }
 
 impl std::fmt::Display for Upvalue {
+    /// Upvalues are implementation details and should never be seen by the user.
+    /// So this is only used for debugging.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.pad("upvalue")
     }
 }
 
 impl Upvalue {
-    pub fn as_open(&self) -> usize {
+    pub(super) fn as_open(&self) -> usize {
         match self {
             Self::Open(n) => *n,
             Self::Closed(_) => unreachable!("Only call as_open on a known open upvalue!"),
@@ -280,13 +298,24 @@ impl Upvalue {
     }
 }
 
+/// Closure are wrappers around runable code.
+///
+/// They contain a reference to the actual function they wrap,
+/// the captured upvalues and their count.
+///
+/// They also additionally store whether the wrapped code
+/// is a general function or a module.
+///
+/// For the correct resolution of global variables referenced from function
+/// in imported modules, it is also necessary that the module that contains
+/// that function is also available for that resolution.
 #[derive(Debug, PartialOrd, Clone)]
 pub struct Closure {
-    pub function: FunctionId,
-    pub upvalues: Vec<UpvalueId>,
-    pub upvalue_count: usize,
-    pub is_module: bool,
-    pub containing_module: Option<ModuleId>,
+    pub(super) function: FunctionId,
+    pub(super) upvalues: Vec<UpvalueId>,
+    pub(super) upvalue_count: usize,
+    pub(super) is_module: bool,
+    pub(super) containing_module: Option<ModuleId>,
 }
 
 impl std::fmt::Display for Closure {
@@ -303,7 +332,11 @@ impl PartialEq for Closure {
 }
 
 impl Closure {
-    pub fn new(function: FunctionId, is_module: bool, containing_module: Option<ModuleId>) -> Self {
+    pub(super) fn new(
+        function: FunctionId,
+        is_module: bool,
+        containing_module: Option<ModuleId>,
+    ) -> Self {
         let upvalue_count = function.upvalue_count;
         Self {
             function,
@@ -316,17 +349,17 @@ impl Closure {
 }
 
 impl Value {
-    pub fn bound_method(receiver: Self, method: Self, heap: &mut Heap) -> Self {
+    pub(super) fn bound_method(receiver: Self, method: Self, heap: &mut Heap) -> Self {
         heap.add_bound_method(BoundMethod { receiver, method })
     }
 }
 
 #[derive(Debug, PartialOrd, Clone)]
 pub struct BoundMethod {
-    // Has to be a general Value because it can be an Instance or List
-    pub receiver: Value,
+    // Probably could be an InstanceId now
+    pub(super) receiver: Value,
     // Has to be a general Value because it can be a NativeMethod or Closure
-    pub method: Value,
+    pub(super) method: Value,
 }
 
 impl std::fmt::Display for BoundMethod {
@@ -363,12 +396,18 @@ impl BoundMethod {
     }
 }
 
+/// Object for actual function implementations
+///
+/// Contains the name, number of expected arguments and number of
+/// captured upvalues.
+///
+/// Additionally hold the chunk of compiled bytecode.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub struct Function {
-    pub arity: usize,
-    pub chunk: Chunk,
-    pub name: StringId,
-    pub upvalue_count: usize,
+    pub(super) arity: usize,
+    pub(super) chunk: Chunk,
+    pub(super) name: StringId,
+    pub(super) upvalue_count: usize,
 }
 
 impl std::fmt::Display for Function {
@@ -379,7 +418,7 @@ impl std::fmt::Display for Function {
 
 impl Function {
     #[must_use]
-    pub fn new(arity: usize, name: StringId) -> Self {
+    pub(super) fn new(arity: usize, name: StringId) -> Self {
         Self {
             arity,
             name,
@@ -392,8 +431,8 @@ impl Function {
 #[derive(Derivative)]
 #[derivative(Debug, PartialEq, PartialOrd, Clone)]
 pub struct NativeFunction {
-    pub name: StringId,
-    pub arity: &'static [u8],
+    pub(super) name: StringId,
+    pub(super) arity: &'static [u8],
 
     #[derivative(
             Debug = "ignore",
@@ -401,7 +440,7 @@ pub struct NativeFunction {
             PartialEq(compare_with = "always_equals"),
             PartialOrd = "ignore"
         )]
-    pub fun: NativeFunctionImpl,
+    pub(super) fun: NativeFunctionImpl,
 }
 
 impl std::fmt::Display for NativeFunction {
@@ -413,9 +452,9 @@ impl std::fmt::Display for NativeFunction {
 #[derive(Derivative)]
 #[derivative(Debug, PartialEq, PartialOrd, Clone)]
 pub struct NativeMethod {
-    pub class: StringId,
-    pub name: StringId,
-    pub arity: &'static [u8],
+    pub(super) class: StringId,
+    pub(super) name: StringId,
+    pub(super) arity: &'static [u8],
 
     #[derivative(
             Debug = "ignore",
@@ -423,7 +462,7 @@ pub struct NativeMethod {
             PartialEq(compare_with = "always_equals"),
             PartialOrd = "ignore"
         )]
-    pub fun: NativeMethodImpl,
+    pub(super) fun: NativeMethodImpl,
 }
 
 impl std::fmt::Display for NativeMethod {
@@ -446,16 +485,16 @@ const fn always_equals<T>(_: &T, _: &T) -> bool {
 #[derive(Debug, PartialEq, Eq, Clone, Derivative)]
 #[derivative(PartialOrd)]
 pub struct Class {
-    pub name: StringId,
+    pub(super) name: StringId,
     #[derivative(PartialOrd = "ignore")]
     // Have to be general Value because it can be a nativemethod(how?) or a closure
-    pub methods: HashMap<StringId, Value>,
-    pub is_native: bool,
+    pub(super) methods: HashMap<StringId, Value>,
+    pub(super) is_native: bool,
 }
 
 impl Class {
     #[must_use]
-    pub fn new(name: StringId, is_native: bool) -> Self {
+    pub(super) fn new(name: StringId, is_native: bool) -> Self {
         Self {
             name,
             methods: HashMap::default(),
@@ -473,16 +512,16 @@ impl std::fmt::Display for Class {
 #[derive(Derivative)]
 #[derivative(Debug, PartialEq, PartialOrd, Clone)]
 pub struct Instance {
-    pub class: ClassId,
+    pub(super) class: ClassId,
     #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
-    pub fields: HashMap<String, Value>,
+    pub(super) fields: HashMap<String, Value>,
     #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
-    pub backing: Option<NativeClass>,
+    pub(super) backing: Option<NativeClass>,
 }
 
 impl Instance {
     #[must_use]
-    pub fn new(class: Value, backing: Option<NativeClass>) -> Self {
+    pub(super) fn new(class: Value, backing: Option<NativeClass>) -> Self {
         let id = *class.as_class();
         Self {
             class: id,
@@ -511,16 +550,16 @@ impl PartialEq for BoundMethod {
 #[derive(Debug, PartialEq, Eq, Clone, Derivative)]
 #[derivative(PartialOrd)]
 pub struct Module {
-    pub name: StringId,
-    pub path: PathBuf,
+    pub(super) name: StringId,
+    pub(super) path: PathBuf,
     #[derivative(PartialOrd = "ignore")]
-    pub globals: HashMap<StringId, Global>,
-    pub names_to_import: Option<Vec<StringId>>,
-    pub alias: StringId,
+    pub(super) globals: HashMap<StringId, Global>,
+    pub(super) names_to_import: Option<Vec<StringId>>,
+    pub(super) alias: StringId,
 }
 
 impl Module {
-    pub fn new(
+    pub(super) fn new(
         name: StringId,
         path: PathBuf,
         names_to_import: Option<Vec<StringId>>,
@@ -627,88 +666,88 @@ impl From<ModuleId> for Value {
 }
 
 impl Value {
-    pub const fn is_falsey(&self) -> bool {
+    pub(super) const fn is_falsey(&self) -> bool {
         matches!(self, Self::Bool(false) | Self::Nil)
     }
 
-    pub const fn is_hasheable(&self) -> bool {
+    pub(super) const fn is_hasheable(&self) -> bool {
         matches!(
             self,
             Self::Bool(_) | Self::Nil | Self::Number(Number::Integer(_)) | Self::String(_)
         )
     }
 
-    pub fn as_closure(&self) -> &ClosureId {
+    pub(super) fn as_closure(&self) -> &ClosureId {
         match self {
             Self::Closure(c) => c,
             _ => unreachable!("Expected Closure, found `{}`", self),
         }
     }
 
-    pub fn as_string(&self) -> &StringId {
+    pub(super) fn as_string(&self) -> &StringId {
         match self {
             Self::String(s) => s,
             _ => unreachable!("Expected String, found `{}`", self),
         }
     }
 
-    pub fn as_native_method(&self) -> &NativeMethodId {
+    pub(super) fn as_native_method(&self) -> &NativeMethodId {
         match self {
             Self::NativeMethod(n) => n,
             _ => unreachable!("Expected Native, found `{}`", self),
         }
     }
 
-    pub fn as_function(&self) -> &FunctionId {
+    pub(super) fn as_function(&self) -> &FunctionId {
         match self {
             Self::Function(f) => f,
             _ => unreachable!("Expected Function, found `{}`", self),
         }
     }
 
-    pub fn as_class(&self) -> &ClassId {
+    pub(super) fn as_class(&self) -> &ClassId {
         match self {
             Self::Class(c) => c,
             _ => unreachable!("Expected Class, found `{}`", self),
         }
     }
 
-    pub fn as_instance(&mut self) -> &InstanceId {
+    pub(super) fn as_instance(&mut self) -> &InstanceId {
         match self {
             Self::Instance(i) => i,
             _ => unreachable!("Expected Instance, found `{}`", self),
         }
     }
 
-    pub fn as_class_mut(&mut self) -> &mut ClassId {
+    pub(super) fn as_class_mut(&mut self) -> &mut ClassId {
         match self {
             Self::Class(c) => c,
             _ => unreachable!("Expected Class, found `{}`", self),
         }
     }
 
-    pub fn upvalue_location(&self) -> &UpvalueId {
+    pub(super) fn upvalue_location(&self) -> &UpvalueId {
         match self {
             Self::Upvalue(v) => v,
             _ => unreachable!("Expected upvalue, found `{}`", self),
         }
     }
 
-    pub fn class_name(&self) -> StringId {
+    pub(super) fn class_name(&self) -> StringId {
         match &self {
             Self::Instance(instance) => instance.class.name,
             x => unreachable!("Only instances have classes. Got `{}`", x),
         }
     }
 
-    pub fn as_module(&self) -> &ModuleId {
+    pub(super) fn as_module(&self) -> &ModuleId {
         match self {
             Self::Module(m) => m,
             _ => unreachable!("Expected Module, found `{}`", self),
         }
     }
 
-    pub fn as_list(&self) -> &List {
+    pub(super) fn as_list(&self) -> &List {
         match self {
             Self::Instance(inst) => match &inst.backing {
                 Some(NativeClass::List(list)) => list,
@@ -718,7 +757,7 @@ impl Value {
         }
     }
 
-    pub fn as_list_mut(&mut self) -> &mut List {
+    pub(super) fn as_list_mut(&mut self) -> &mut List {
         match self {
             Self::Instance(inst) => match &mut inst.backing {
                 Some(NativeClass::List(list)) => list,
@@ -728,7 +767,7 @@ impl Value {
         }
     }
 
-    pub fn as_list_iter_mut(&mut self) -> &mut ListIterator {
+    pub(super) fn as_list_iter_mut(&mut self) -> &mut ListIterator {
         match self {
             Self::Instance(inst) => match &mut inst.backing {
                 Some(NativeClass::ListIterator(list_iter)) => list_iter,
@@ -738,7 +777,7 @@ impl Value {
         }
     }
 
-    pub fn as_set(&self) -> &Set {
+    pub(super) fn as_set(&self) -> &Set {
         match self {
             Self::Instance(inst) => match &inst.backing {
                 Some(NativeClass::Set(set)) => set,
@@ -748,7 +787,7 @@ impl Value {
         }
     }
 
-    pub fn as_set_mut(&mut self) -> &mut Set {
+    pub(super) fn as_set_mut(&mut self) -> &mut Set {
         match self {
             Self::Instance(inst) => match &mut inst.backing {
                 Some(NativeClass::Set(set)) => set,
@@ -758,7 +797,7 @@ impl Value {
         }
     }
 
-    pub fn as_dict(&self) -> &Dict {
+    pub(super) fn as_dict(&self) -> &Dict {
         match self {
             Self::Instance(inst) => match &inst.backing {
                 Some(NativeClass::Dict(dict)) => dict,
@@ -768,7 +807,7 @@ impl Value {
         }
     }
 
-    pub fn as_dict_mut(&mut self) -> &mut Dict {
+    pub(super) fn as_dict_mut(&mut self) -> &mut Dict {
         match self {
             Self::Instance(inst) => match &mut inst.backing {
                 Some(NativeClass::Dict(dict)) => dict,
@@ -788,7 +827,7 @@ pub enum NativeClass {
 }
 
 impl NativeClass {
-    pub fn new(kind: &str) -> Self {
+    pub(super) fn new(kind: &str) -> Self {
         match kind {
             "List" => Self::List(List::new()),
             "ListIterator" => Self::ListIterator(ListIterator::new(None)),
@@ -812,12 +851,12 @@ impl std::fmt::Display for NativeClass {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub struct List {
-    pub items: Vec<Value>,
+    pub(super) items: Vec<Value>,
 }
 
 impl List {
     #[must_use]
-    pub const fn new() -> Self {
+    pub(super) const fn new() -> Self {
         Self { items: Vec::new() }
     }
 }
@@ -842,16 +881,16 @@ impl std::fmt::Display for List {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub struct ListIterator {
-    pub list: Option<InstanceId>,
-    pub index: usize,
+    pub(super) list: Option<InstanceId>,
+    pub(super) index: usize,
 }
 
 impl ListIterator {
-    pub const fn new(list: Option<InstanceId>) -> Self {
+    pub(super) const fn new(list: Option<InstanceId>) -> Self {
         Self { list, index: 0 }
     }
 
-    pub fn get_list(&self) -> Option<&List> {
+    pub(super) fn get_list(&self) -> Option<&List> {
         self.list.as_ref().and_then(|item| match &item.backing {
             Some(NativeClass::List(list)) => Some(list),
             _ => None,
@@ -870,12 +909,12 @@ impl std::fmt::Display for ListIterator {
 
 #[derive(Debug, Clone)]
 pub struct Set {
-    pub items: HashSet<Value>,
+    pub(super) items: HashSet<Value>,
 }
 
 impl Set {
     #[must_use]
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             items: HashSet::default(),
         }
@@ -903,12 +942,12 @@ impl std::fmt::Display for Set {
 
 #[derive(Debug, Clone)]
 pub struct Dict {
-    pub items: HashMap<Value, Value>,
+    pub(super) items: HashMap<Value, Value>,
 }
 
 impl Dict {
     #[must_use]
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             items: HashMap::default(),
         }

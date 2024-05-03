@@ -1,3 +1,5 @@
+//! Module for defining and registering rust native functions, classes and methods.
+
 #![allow(clippy::unnecessary_wraps)]
 
 mod dict;

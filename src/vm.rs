@@ -1,3 +1,8 @@
+//! The vm module contains the main struct for the virtual machine and heart of the interpreter.
+//!
+//! The VM orchestrates the scanning to tokens, parsing of the tokens and creation of bytecode,
+//! as well as the actual execution of the bytecode.
+
 use path_slash::PathBufExt;
 use rustc_hash::FxHashMap as HashMap;
 use std::collections::VecDeque;
@@ -28,6 +33,9 @@ pub enum InterpretResult {
     RuntimeError,
 }
 
+/// Report runtime errors with the correct line number and function name.
+///
+/// Macro for borrow checking reasons.
 macro_rules! runtime_error {
     ($self:ident, $($arg:expr),* $(,)?) => {
         eprintln!($($arg),*);
@@ -38,6 +46,7 @@ macro_rules! runtime_error {
     };
 }
 
+/// Handle binary operations between numbers.
 macro_rules! binary_op {
     ($self:ident, $op:tt, $intonly:tt) => {
         if !$self.binary_op(|a, b| a $op b, $intonly) {
@@ -48,9 +57,10 @@ macro_rules! binary_op {
 
 type BinaryOp<T> = fn(Number, Number) -> T;
 
+/// Wrapper around a global value to store whether it is mutable or not.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Copy)]
 pub struct Global {
-    pub value: Value,
+    pub(super) value: Value,
     mutable: bool,
 }
 
@@ -60,8 +70,16 @@ impl std::fmt::Display for Global {
     }
 }
 
+/// A call frame for the call stack.
+///
+/// Contains the closure corresponding to the relevant function,
+/// the instruction pointer within the function, as well as the `stack_base`
+/// of the function in the global stack.
+///
+/// Additionally, it contains a boolean indicating whether the closure is a module,
+/// in order to handle transferring globals one module end.
 #[derive(Debug)]
-pub struct CallFrame {
+struct CallFrame {
     closure: ClosureId,
     ip: usize,
     stack_base: usize,
@@ -69,14 +87,19 @@ pub struct CallFrame {
 }
 
 impl CallFrame {
-    pub fn closure(&self) -> &Closure {
+    fn closure(&self) -> &Closure {
         &self.closure
     }
 }
 
+/// Actual call stack of the VM.
+///
+/// Contains stored references for the current closure and function,
+/// to not have to grab them from the vector every time.
 #[derive(Debug)]
-pub struct CallStack {
+struct CallStack {
     frames: Vec<CallFrame>,
+    // Maybe this could either be a straight pointer or at least not an Option.
     current_closure: Option<ClosureId>,
     current_function: Option<FunctionId>,
 }
@@ -139,14 +162,19 @@ impl CallStack {
         self.current_function.unwrap()
     }
 
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         self.frames.len()
     }
 }
 
-// Macro for performance reasons
-// with macro/inlined it takes ~300ms to run fib.gen
-// with function and wrapping return value in option takes ~450ms
+/// Main switch for the `OpCode` execution.
+///
+/// This is a macro for performance reasons.
+/// with macro/inlined it takes ~300ms to run fib.gen
+/// with function and wrapping return value in option takes ~450ms
+///
+/// Directly inlining does not work in order to handle dynamic execution
+/// from native functions which need direct access to this.
 macro_rules! run_instruction {
     ($self:ident) => {
         #[cfg(feature = "trace_execution")]
@@ -175,7 +203,7 @@ macro_rules! run_instruction {
                 $self.stack.pop().expect("Stack underflow in OP_POP.");
             }
             OpCode::Dup => {
-                $self.stack_push_value(*$self.peek(0).expect("stack underflow in OP_DUP"));
+                $self.stack_push_value(*$self.peek(0).expect("Stack underflow in OP_DUP"));
             }
             OpCode::DupN => {
                 // -1 because Dup1 should peek at the top most element
@@ -188,7 +216,7 @@ macro_rules! run_instruction {
                     // 1 2 3 4 3 (again depth = 1) -> grab 4
                     // 1 2 3 4 3 4
                     $self.stack_push_value(
-                        *$self.peek(depth).expect("stack underflow in OP_DUP"),
+                        *$self.peek(depth).expect("Stack underflow in OP_DUP"),
                     );
                 }
             }
@@ -214,34 +242,44 @@ macro_rules! run_instruction {
             OpCode::LoadOnef => {
                 $self.stack.push((1.0).into());
             }
+            // Grabs index (into the stack) as the operand (next bytecode)
             op @ (OpCode::GetLocal | OpCode::GetLocalLong) => $self.get_local(op),
+            // Index is the operand again, value to set is on the stack
             op @ (OpCode::SetLocal | OpCode::SetLocalLong) => $self.set_local(op),
+            // Global to get passed as operand
             op @ (OpCode::GetGlobal | OpCode::GetGlobalLong) => {
                 if let Some(value) = $self.get_global(op) {
                     return value;
                 }
             }
+            // Global whose value to set is operand, value to use is on the stack
             op @ (OpCode::SetGlobal | OpCode::SetGlobalLong) => {
                 if let Some(value) = $self.set_global(op) {
                     return value;
                 }
             }
+            // Name of the global to define comes from the operand, value
             op @ (OpCode::DefineGlobal
             | OpCode::DefineGlobalLong
             | OpCode::DefineGlobalConst
             | OpCode::DefineGlobalConstLong) => $self.define_global(op),
             OpCode::JumpIfFalse => $self.jump_conditional(false),
             OpCode::JumpIfTrue => $self.jump_conditional(true),
+            // Arg count is passed as the operand
+            // The function to call is on the stack followed by all arguments
+            // in order from left to right.
             OpCode::Call => {
                 if let Some(value) = $self.call() {
                     return value;
                 }
             }
+            // Value to return is on the stack
             OpCode::Return => {
                 if let Some(value) = $self.return_() {
                     return value;
                 }
             }
+            // Index of the constant is the operand, value is in the constants table
             OpCode::Constant => {
                 let value = $self.read_constant(false);
                 $self.stack_push(value);
@@ -250,6 +288,7 @@ macro_rules! run_instruction {
                 let value = $self.read_constant(true);
                 $self.stack_push(value);
             }
+            // `Negate` and `Not` work on the stack value
             OpCode::Negate => {
                 if let Some(value) = $self.negate() {
                     return value;
@@ -261,6 +300,8 @@ macro_rules! run_instruction {
             OpCode::False => $self.stack_push(Value::Bool(false)),
             OpCode::StopIteration => $self.stack.push(Value::StopIteration),
             OpCode::Equal => $self.equal(false),
+            // All of these work on the top two stack values.
+            // Top most is right operand, second is left.
             OpCode::Add => {
                 if let Some(value) = $self.add() {
                     return value;
@@ -292,10 +333,13 @@ macro_rules! run_instruction {
                 let offset = $self.read_16bit_number();
                 $self.callstack.current_mut().ip += offset;
             }
+            // Offset to jump backwards is the operand(s)
             OpCode::Loop => {
                 let offset = $self.read_16bit_number();
                 $self.callstack.current_mut().ip -= offset;
             }
+            // Get the function with the actual bytecode as a value from the operand
+            // Capture the upvalues and push the closure onto the stack
             OpCode::Closure => {
                 let value = $self.read_constant(false);
                 let function = value.as_function();
@@ -321,6 +365,8 @@ macro_rules! run_instruction {
                 let closure_id = $self.heap.add_closure(closure);
                 $self.stack_push(closure_id);
             }
+            // Upvalue index is the operand
+            // Closure is the one on the callstack
             OpCode::GetUpvalue => {
                 let upvalue_index = usize::from($self.read_byte());
                 let closure = $self.callstack.closure();
@@ -332,6 +378,8 @@ macro_rules! run_instruction {
                     Upvalue::Closed(value) => $self.stack_push(value),
                 }
             }
+            // Upvalue index is the operand, closure is one the callstack,
+            // value to set is on the stack
             OpCode::SetUpvalue => {
                 let upvalue_index = usize::from($self.read_byte());
                 let closure = $self.callstack.closure();
@@ -350,25 +398,30 @@ macro_rules! run_instruction {
                     }
                 }
             }
+            // CLose the upvalue on top of the stack
             OpCode::CloseUpvalue => {
                 $self.close_upvalue($self.stack.len() - 1);
                 $self.stack.pop();
             }
+            // Classname is the operand, create a new class and push it onto the stack
             OpCode::Class => {
                 let class_name = $self.read_string("OP_CLASS");
                 let class = $self.heap.add_class(Class::new(class_name, false));
                 $self.stack_push_value(class);
             }
+            // Property to get is the operand, instance/module is on the stack
             OpCode::GetProperty => {
                 let field = $self.read_string("GET_PROPERTY");
                 let value = *$self.peek(0).expect("Stack underflow in GET_PROPERTY");
-                // Probably better to just grab the class and ask if it is native
                 match value {
                     Value::Instance(instance) => {
+                        // Can either be a normal property
                         if let Some(value) = instance.fields.get(&*field) {
                             $self.stack.pop(); // instance
                             $self.stack_push(*value);
                         } else if $self.bind_method(instance.class.into(), field) {
+                            // Or could be a method that has to be bound to the
+                            // instance so that it can later be called separately.
                             // Just using the side effects
                         } else {
                             runtime_error!($self, "Undefined property '{}'.", *field);
@@ -377,7 +430,7 @@ macro_rules! run_instruction {
                     }
                     Value::Module(module) => {
                         if let Some(value) = module.globals.get(&field) {
-                            $self.stack.pop(); // instance
+                            $self.stack.pop(); // module
                             $self.stack_push(value.value);
                         } else {
                             runtime_error!(
@@ -400,6 +453,8 @@ macro_rules! run_instruction {
                     }
                 };
             }
+            // Property to set is the operand, instance is on the stack
+            // as is the value to set.
             OpCode::SetProperty => {
                 let field_string_id = $self.read_string("SET_PROPERTY");
                 let field = &$self.heap.strings[&field_string_id];
@@ -430,10 +485,15 @@ macro_rules! run_instruction {
                 };
                 $self.stack_push(value);
             }
+            // Name of the method is the operand, actual method to is on the stack
+            // together with the class (... --- Class --- Method)
             OpCode::Method => {
                 let method_name = $self.read_string("OP_METHOD");
                 $self.define_method(method_name);
             }
+            // Operands are method name to invoke as well as the number of arguments
+            // Stack contains the instance followed by the arguments.
+            // (... --- Instance --- arg1 --- arg2 --- ... --- argN)
             OpCode::Invoke => {
                 let method_name = $self.read_string("OP_INVOKE");
                 let arg_count = $self.read_byte();
@@ -441,6 +501,7 @@ macro_rules! run_instruction {
                     return InterpretResult::RuntimeError;
                 }
             }
+            // Stack has (... --- Superclass --- Class)
             OpCode::Inherit => {
                 let superclass_id = $self.peek(1).expect("Stack underflow in OP_INHERIT");
                 let superclass = if let Value::Class(superclass) = &superclass_id {
@@ -457,6 +518,8 @@ macro_rules! run_instruction {
                 let mut subclass = $self.stack.pop().expect("Stack underflow in OP_INHERIT");
                 subclass.as_class_mut().methods.extend(methods);
             }
+            // Grab and bind a method from the superclass
+            // Operand is the name of the method to get and the stack has the superclass
             OpCode::GetSuper => {
                 let method_name = $self.read_string("OP_GET_SUPER");
                 let superclass = $self.stack.pop().expect("Stack underflow in OP_GET_SUPER");
@@ -464,6 +527,9 @@ macro_rules! run_instruction {
                     return InterpretResult::RuntimeError;
                 }
             }
+            // Invoke a method from the superclass
+            // Operands are the name of the method and number of arguments
+            // Stack has the superclass followed by the arguments
             OpCode::SuperInvoke => {
                 let method_name = $self.read_string("OP_SUPER_INVOKE");
                 let arg_count = $self.read_byte();
@@ -475,6 +541,9 @@ macro_rules! run_instruction {
                     return InterpretResult::RuntimeError;
                 }
             }
+            // Build a list. The number of items is the operand.
+            // Items are on the stack in order from left to right
+            // (... --- item1 --- item2 --- ... --- itemN)
             OpCode::BuildList => {
                 let mut list = List::new();
 
@@ -489,6 +558,9 @@ macro_rules! run_instruction {
                 let instance_value = $self.heap.add_instance(instance);
                 $self.stack_push_value(instance_value);
             }
+            // Build a set. The number of items is the operand.
+            // Items are on the stack in order from left to right
+            // (... --- item1 --- item2 --- ... --- itemN)
             OpCode::BuildSet => {
                 let mut set = Set::new();
 
@@ -508,6 +580,9 @@ macro_rules! run_instruction {
                 let instance_value = $self.heap.add_instance(instance);
                 $self.stack_push_value(instance_value);
             }
+            // Build a dict. The number of key-value-pairs is the operand.
+            // Items are on the stack in order from left to right
+            // (... --- key1 --- value1 --- key2 --- value2 --- ... --- keyN --- valueN)
             OpCode::BuildDict => {
                 let mut dict = Dict::new();
                 // Number of key, value pairs.
@@ -526,12 +601,17 @@ macro_rules! run_instruction {
                 let instance_value = $self.heap.add_instance(instance);
                 $self.stack_push_value(instance_value);
             }
+            // Import a module by filepath without qualifiers.
+            // Expects either the path to the module or or the name of
+            // a stdlib module as a string on the stack.
             OpCode::Import => {
                 let file_path = $self.stack.pop().expect("Stack underflow in OP_IMPORT");
                 if let Some(value) = $self.import_file(file_path, None, None) {
                     return value;
                 }
             }
+            // Import a module by filepath with an alias.
+            // Name of the module to import is on the stack, alias is the operand.
             OpCode::ImportAs => {
                 let alias = $self.read_string("OP_IMPORT_AS");
                 let file_path = $self.stack.pop().expect("Stack underflow in OP_IMPORT_AS");
@@ -539,6 +619,10 @@ macro_rules! run_instruction {
                     return value;
                 }
             }
+            // Import a set of names from a module.
+            // Number of names to import are the operand.
+            // Module to import them from and the names are on the stack.
+            // (... --- modulename --- name1 --- name2 --- ... --- nameN)
             OpCode::ImportFrom => {
                 let n_names_to_import = $self.read_byte();
                 let names_to_import = if n_names_to_import > 0 {
@@ -570,13 +654,17 @@ macro_rules! run_instruction {
     };
 }
 
+/// The main struct for the virtual machine and heart of the interpreter.
+///
+/// Contains the heap, stack, callstack, open upvalues, modules, builtins, and stdlib.
 pub struct VM {
-    pub heap: Pin<Box<Heap>>,
-    pub callstack: CallStack,
-    pub stack: Vec<Value>,
+    pub(super) heap: Pin<Box<Heap>>,
+    pub(super) stack: Vec<Value>,
+    callstack: CallStack,
     open_upvalues: VecDeque<UpvalueId>,
     // Could also keep a cache of the last module or its globals for performance
     modules: Vec<ModuleId>,
+    // This could also just be passed to the interperet function.
     path: PathBuf,
     builtins: HashMap<StringId, Global>,
     stdlib: HashMap<StringId, ModuleContents>,
@@ -584,7 +672,7 @@ pub struct VM {
 
 impl VM {
     #[must_use]
-    pub fn new(path: PathBuf) -> Self {
+    pub(super) fn new(path: PathBuf) -> Self {
         Self {
             heap: Heap::new(),
             callstack: CallStack::new(),
@@ -597,29 +685,11 @@ impl VM {
         }
     }
 
-    pub fn globals(&mut self) -> &mut HashMap<StringId, Global> {
-        &mut self.modules.last_mut().unwrap().globals
-    }
-
-    pub fn current_module(&mut self) -> ModuleId {
-        *self.modules.last().unwrap()
-    }
-
-    pub fn defining_module(&mut self) -> ModuleId {
-        let current_closure = self.callstack.current().closure;
-        match current_closure.containing_module {
-            Some(module) if !current_closure.is_module => module,
-            _ => self.current_module(),
-        }
-    }
-
-    fn compile(&mut self, source: &[u8], name: &str) -> Option<Function> {
-        let scanner = Scanner::new(source);
-        let compiler = Compiler::new(scanner, &mut self.heap, name);
-        compiler.compile()
-    }
-
-    pub fn interpret(&mut self, source: &[u8]) -> InterpretResult {
+    /// Main interpret step for an input of bytes.
+    ///
+    /// Works by compiling the source to bytecode and then running it.
+    /// Even the main script is compiled as a function.
+    pub(super) fn interpret(&mut self, source: &[u8]) -> InterpretResult {
         let result = if let Some(function) = self.compile(source, "<script>") {
             let function_id = self.heap.add_function(function);
 
@@ -632,6 +702,8 @@ impl VM {
             self.execute_call(value_id, 0);
 
             // Need to have the first module loaded before defining natives
+            // Probably not actually needed in that order anymore as they are
+            // now defined in the builtins.
             natives::define(self);
             stdlib::register(self);
 
@@ -646,6 +718,15 @@ impl VM {
         result
     }
 
+    fn compile(&mut self, source: &[u8], name: &str) -> Option<Function> {
+        let scanner = Scanner::new(source);
+        let compiler = Compiler::new(scanner, &mut self.heap, name);
+        compiler.compile()
+    }
+
+    /// Infinite loop over the bytecode.
+    ///
+    /// Returns when a return instruction is hit at the top level.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn run(&mut self) -> InterpretResult {
         loop {
@@ -653,14 +734,57 @@ impl VM {
         }
     }
 
-    pub fn execute_and_run_function(&mut self, closure: Value, arg_count: u8) -> InterpretResult {
+    fn globals(&mut self) -> &mut HashMap<StringId, Global> {
+        &mut self.modules.last_mut().unwrap().globals
+    }
+
+    fn current_module(&mut self) -> ModuleId {
+        *self.modules.last().unwrap()
+    }
+
+    /// Get the module present when the current closure was defined.
+    ///
+    /// Needed to properly handle captured globals in modules.
+    /// Module closures have to be handles specially as while they are being defined
+    /// they are not yet in the module list.
+    ///
+    /// Normally a module is compiled to bytecode. Then it is scheduled to be
+    /// executed in the main loop. Its `containing_module` is the one that imports it.
+    /// However, when it is actually executed it is on top of the module list
+    /// and this is where the globals have to come from. Not from its `containing_module`.
+    ///
+    /// This is different for normal function closures. They are created once the `fun`
+    /// statement is executed at runtime. At this point the module is already on the
+    /// module list and correctly becomes their `containing_module`. Then, whenever they
+    /// are actually called, they refer to the correct globals.
+    fn defining_module(&mut self) -> ModuleId {
+        let current_closure = self.callstack.current().closure;
+        match current_closure.containing_module {
+            Some(module) if !current_closure.is_module => module,
+            _ => self.current_module(),
+        }
+    }
+
+    /// Execute and immediately run a function.
+    ///
+    /// This is used when (runtime) class specific information is needed
+    /// in native functions like `print` or `str`.
+    ///
+    /// Pushes the closure onto the stack and callstack. Then directly
+    /// executes all of the bytecode for it before returning to the main loop.
+    pub(super) fn execute_and_run_function(
+        &mut self,
+        closure: Value,
+        arg_count: u8,
+    ) -> InterpretResult {
         self.stack_push(closure);
         self.execute_call(closure, arg_count);
         self.run_function()
     }
 
+    /// Run the closure currently on top of the callstack.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    pub fn run_function(&mut self) -> InterpretResult {
+    pub(super) fn run_function(&mut self) -> InterpretResult {
         let call_depth = self.callstack.len();
         while self.callstack.len() >= call_depth {
             run_instruction!(self);
@@ -668,7 +792,7 @@ impl VM {
         InterpretResult::Ok
     }
 
-    pub fn peek(&self, n: usize) -> Option<&Value> {
+    fn peek(&self, n: usize) -> Option<&Value> {
         let len = self.stack.len();
         if n >= len {
             None
@@ -696,6 +820,9 @@ impl VM {
         }
     }
 
+    /// Add the given closure as a module and set the currently active scriptname.
+    ///
+    /// The module is added to the top of the module stack.
     fn add_closure_to_modules(
         &mut self,
         closure: &Closure,
@@ -722,6 +849,12 @@ impl VM {
         }
     }
 
+    /// Functionality for importing a file as a module.
+    ///
+    /// Optionally a set of names can be given to import instead of the whole module
+    /// or an alias can be given to import the module under a different name.
+    ///
+    /// Can either import a user defined module by relative filepath or a stdlib module by name.
     #[allow(clippy::option_if_let_else)]
     fn import_file(
         &mut self,
@@ -804,6 +937,7 @@ impl VM {
         None
     }
 
+    /// Import a rust native stdlib module.
     fn import_rust_stdlib(
         &mut self,
         string_id: StringId,
@@ -837,7 +971,7 @@ impl VM {
             );
         }
         // Stdlib rust module
-        //  Add all the functions to the modules globals
+        // Add all the functions to the modules globals
         // If we only want to import some functions then we just move them
         // from the new module to the current globals, the module then gets dropped.
         if let Some(names_to_import) = names_to_import {
@@ -863,6 +997,10 @@ impl VM {
         None
     }
 
+    /// Import a generic module.
+    ///
+    /// This can either be a user defined module or a stdlib module.
+    /// Creates the module, adds it to the module list, and schedules the closure to be run.
     fn import_generic_module(
         &mut self,
         contents: &[u8],
@@ -1111,7 +1249,7 @@ impl VM {
         let stack_top_value = *self
             .stack
             .last()
-            .unwrap_or_else(|| panic!("stack underflow in {op:?}"));
+            .unwrap_or_else(|| panic!("Stack underflow in {op:?}"));
         if let Some(global) = self.defining_module().globals.get_mut(&name) {
             if !global.mutable {
                 runtime_error!(self, "Reassignment to global 'const'.");
@@ -1200,22 +1338,35 @@ impl VM {
         self.stack.pop();
     }
 
+    /// Return from the current module or function.
+    ///
+    /// If the current frame is a module then the module is imported into the
+    /// current module. If the current module is the main script that we return
+    /// from the main loop.
+    ///
+    /// If the current frame is a function, we return the value and close the upvalues.
     fn return_(&mut self) -> Option<InterpretResult> {
+        // Pop the return value. If none was specified (empty return, missing return, module)
+        // then the value is nil. This is handled by the compiler.
         let result = self.stack.pop();
         let frame = self
             .callstack
             .pop()
             .expect("Call stack underflow in OP_RETURN");
+        // We just popped the main script
         if self.callstack.is_empty() {
             self.stack.pop();
             return Some(InterpretResult::Ok);
         }
         if frame.is_module {
+            // Pop the module itself from the stack
             self.stack.pop();
             let mut last_module = self.modules.pop().expect("Module underflow in OP_RETURN");
             let last_module_alias = last_module.alias;
             let names_to_import = std::mem::take(&mut last_module.names_to_import);
 
+            // This has to be modified to put imports into the correct scope.
+            // Currently they are just put into the global scope.
             if let Some(names) = names_to_import {
                 for name in names {
                     let value = last_module
@@ -1250,13 +1401,19 @@ impl VM {
             );
             return None;
         }
-
+        // Normal function return
         self.close_upvalue(frame.stack_base);
+        // Pop all of the arguments and locals as well as the function itself.
         self.stack.truncate(frame.stack_base);
         self.stack_push(result.expect("Stack underflow in OP_RETURN"));
         None
     }
 
+    /// Negate the top value on the stack.
+    ///
+    /// # Panics
+    ///
+    /// If the stack is empty. This is an internal error and should never happen.
     fn negate(&mut self) -> Option<InterpretResult> {
         let value_id = *self.peek(0).expect("stack underflow in OP_NEGATE");
         let value = &value_id;
@@ -1270,6 +1427,13 @@ impl VM {
         None
     }
 
+    // Logical not the top value on the stack.
+    ///
+    /// Treats `nil` and `false` as falsey and everything else as truthy.
+    ///
+    /// # Panics
+    ///
+    /// If the stack is empty. This is an internal error and should never happen.
     fn not_(&mut self) {
         let value = self
             .stack
@@ -1279,6 +1443,13 @@ impl VM {
         self.stack_push(value.into());
     }
 
+    /// Check if the top two values on the stack are equal.
+    ///
+    /// If `negate` is true then the result is negated.
+    ///
+    /// # Panics
+    ///
+    /// If the stack does not have two values. This is an internal error and should never happen.
     fn equal(&mut self, negate: bool) {
         let left_id = self
             .stack
@@ -1296,70 +1467,84 @@ impl VM {
         self.stack_push(result.into());
     }
 
-    fn read_byte(&mut self) -> u8 {
-        let frame = self.callstack.current_mut();
-        let index = frame.ip;
-        frame.ip += 1;
-        self.callstack.code_byte(index)
-    }
-
-    fn read_24bit_number(&mut self) -> usize {
-        (usize::from(self.read_byte()) << 16)
-            + (usize::from(self.read_byte()) << 8)
-            + (usize::from(self.read_byte()))
-    }
-
-    fn read_16bit_number(&mut self) -> usize {
-        (usize::from(self.read_byte()) << 8) + (usize::from(self.read_byte()))
-    }
-
-    fn read_constant_index(&mut self, long: bool) -> usize {
-        if long {
-            self.read_24bit_number()
-        } else {
-            usize::from(self.read_byte())
+    /// Invoke a value retrieved from an instance or module.
+    ///
+    /// If it is an instance and the attribute is not a property of the instance
+    /// then a method is looked up in the class.
+    fn invoke(&mut self, method_name: StringId, arg_count: u8) -> bool {
+        let receiver = *self
+            .peek(arg_count.into())
+            .expect("Stack underflow in OP_INVOKE");
+        match receiver {
+            Value::Instance(instance) => {
+                if let Some(value) = instance.fields.get(&*method_name) {
+                    let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;
+                    self.stack[new_stack_base] = *value;
+                    self.call_value(*value, arg_count)
+                } else {
+                    self.invoke_from_class(instance.class.into(), method_name, arg_count)
+                }
+            }
+            Value::Module(module) => {
+                if let Some(value) = module.globals.get(&method_name) {
+                    let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;
+                    self.stack[new_stack_base] = value.value;
+                    self.call_value(value.value, arg_count)
+                } else {
+                    runtime_error!(
+                        self,
+                        "Function '{}' not defined in module {}.",
+                        &*method_name,
+                        *module.name
+                    );
+                    false
+                }
+            }
+            _ => {
+                runtime_error!(self, "Only instances have methods.");
+                false
+            }
         }
     }
 
-    fn read_constant_value(&self, index: usize) -> Value {
-        *self.callstack.function().chunk.get_constant(index)
-    }
-
-    fn read_constant(&mut self, long: bool) -> Value {
-        let index = self.read_constant_index(long);
-        self.read_constant_value(index)
-    }
-
-    #[inline]
-    fn stack_push(&mut self, value_id: Value) {
-        self.stack.push(value_id);
-        // This check has a pretty big performance overhead; disabled for now
-        // TODO find a better way: keep the check and minimize overhead
-        /*
-        if self.stack.len() > STACK_MAX {
-            runtime_error!(self, "Stack overflow");
+    /// Invoke a method on an instance directly from its class.
+    fn invoke_from_class(&mut self, class: Value, method_name: StringId, arg_count: u8) -> bool {
+        let Some(method) = class.as_class().methods.get(&method_name) else {
+            runtime_error!(
+                self,
+                "Undefined property '{}'.",
+                self.heap.strings[&method_name]
+            );
+            return false;
+        };
+        match method {
+            Value::Closure(_) => self.execute_call(*method, arg_count),
+            Value::NativeMethod(native) => {
+                let mut receiver = *self.peek(arg_count as usize).unwrap();
+                self.execute_native_method_call(native, &mut receiver, arg_count)
+            }
+            x => unreachable!(
+                "Can only invoke closure or native methods. Got `{}` instead.",
+                x
+            ),
         }
-        */
     }
 
-    #[inline]
-    fn stack_push_value(&mut self, value: Value) {
-        self.stack.push(value);
-    }
-
-    fn stack_get(&self, slot: usize) -> &Value {
-        &self.stack[self.stack_base() + slot]
-    }
-
-    fn stack_get_mut(&mut self, slot: usize) -> &mut Value {
-        let offset = self.stack_base();
-        &mut self.stack[offset + slot]
-    }
-
-    fn stack_base(&self) -> usize {
-        self.callstack.current().stack_base
-    }
-
+    /// Call the passed value with the passed number of arguments.
+    ///
+    /// The arguments should reside on top of the stack with the first (leftmost) argument
+    /// being the deepest on the stack directly ontop of where the `callee` was taken from.
+    ///
+    /// Callable values are:
+    /// - Closures:
+    ///    - Are scheduled directly to be executed.
+    /// - Native functions:
+    ///   - Are executed directly.
+    /// - Classes:
+    ///     - Are instantiated and the initializer is called.
+    /// - Bound methods:
+    ///    - If the bound method is a standard one, it is scheduled for execution.
+    ///    - If the bound method is a native one, it is executed directly.
     fn call_value(&mut self, callee: Value, arg_count: u8) -> bool {
         match callee {
             Value::NativeMethod(_) => {
@@ -1424,6 +1609,11 @@ impl VM {
         }
     }
 
+    /// Execute a call to a native method.
+    ///
+    /// Checks that the number of arguments matches to the arity of the method.
+    /// After the call the stack is truncated to remove the arguments and the receiver
+    /// and the result is pushed onto the stack.
     #[allow(clippy::branches_sharing_code)]
     fn execute_native_method_call(
         &mut self,
@@ -1480,6 +1670,11 @@ impl VM {
         }
     }
 
+    /// Execute a call to a native function.
+    ///
+    /// Checks that the number of arguments matches to the arity of the function.
+    /// After the call the stack is truncated to remove the arguments and the function
+    /// and the result is pushed onto the stack.
     #[allow(clippy::branches_sharing_code)]
     fn execute_native_function_call(&mut self, f: &NativeFunction, arg_count: u8) -> bool {
         let arity = f.arity;
@@ -1529,79 +1724,30 @@ impl VM {
         }
     }
 
-    fn invoke_from_class(&mut self, class: Value, method_name: StringId, arg_count: u8) -> bool {
-        let Some(method) = class.as_class().methods.get(&method_name) else {
-            runtime_error!(
-                self,
-                "Undefined property '{}'.",
-                self.heap.strings[&method_name]
-            );
-            return false;
-        };
-        match method {
-            Value::Closure(_) => self.execute_call(*method, arg_count),
-            Value::NativeMethod(native) => {
-                let mut receiver = *self.peek(arg_count as usize).unwrap();
-                self.execute_native_method_call(native, &mut receiver, arg_count)
-            }
-            x => unreachable!(
-                "Can only invoke closure or native methods. Got `{}` instead.",
-                x
-            ),
-        }
-    }
-
-    fn invoke(&mut self, method_name: StringId, arg_count: u8) -> bool {
-        let receiver = *self
-            .peek(arg_count.into())
-            .expect("Stack underflow in OP_INVOKE");
-        match receiver {
-            Value::Instance(instance) => {
-                if let Some(value) = instance.fields.get(&*method_name) {
-                    let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;
-                    self.stack[new_stack_base] = *value;
-                    self.call_value(*value, arg_count)
-                } else {
-                    self.invoke_from_class(instance.class.into(), method_name, arg_count)
-                }
-            }
-            Value::Module(module) => {
-                if let Some(value) = module.globals.get(&method_name) {
-                    let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;
-                    self.stack[new_stack_base] = value.value;
-                    self.call_value(value.value, arg_count)
-                } else {
-                    runtime_error!(
-                        self,
-                        "Function '{}' not defined in module {}.",
-                        &*method_name,
-                        *module.name
-                    );
-                    false
-                }
-            }
-            _ => {
-                runtime_error!(self, "Only instances have methods.");
-                false
-            }
-        }
-    }
-
+    /// Bind a method to an instance.
+    ///
+    /// The instance is still on top of the stack.
     fn bind_method(&mut self, class: Value, name: StringId) -> bool {
         let class = class.as_class();
         let Some(method) = class.methods.get(&name) else {
             return false;
         };
         let bound_method = Value::bound_method(
+            // the instance
             *self.peek(0).expect("Buffer underflow in OP_METHOD"),
             *method,
             &mut self.heap,
         );
-        self.stack.pop();
+        self.stack.pop(); // instance
         self.stack_push_value(bound_method);
         true
     }
 
+    /// Capture upvalues from the surrounding scope.
+    ///
+    /// Iterate over all open upvalues up to the desired index.
+    /// If the the requested value has already been captured then reuse that.
+    /// Otherwise create a new upvalue and insert it into the list of open upvalues.
     fn capture_upvalue(&mut self, local: usize) -> UpvalueId {
         let local = self.callstack.current().stack_base + local;
         let mut upvalue_index = 0;
@@ -1627,6 +1773,10 @@ impl VM {
         *upvalue_id
     }
 
+    /// Close the upvalue from the specified position.
+    ///
+    /// This is used to close upvalues when a their defining scope ends
+    /// and they are still captured by a closure.
     fn close_upvalue(&mut self, last: usize) {
         while self
             .open_upvalues
@@ -1640,7 +1790,11 @@ impl VM {
         }
     }
 
-    pub fn execute_call(&mut self, closure_id: Value, arg_count: u8) -> bool {
+    /// Execute a normal closure call.
+    ///
+    /// The arity of the closure is checked against the provided number of arguments.
+    /// Then the closure is pushed onto the callstack.
+    fn execute_call(&mut self, closure_id: Value, arg_count: u8) -> bool {
         let closure = closure_id.as_closure();
         let arity = closure.function.arity;
         let arg_count = usize::from(arg_count);
@@ -1666,17 +1820,13 @@ impl VM {
             return false;
         }
 
-        debug_assert!(
-            matches!(closure_id, Value::Closure(_)),
-            "`execute_call` must be called with a `Closure`, got: {closure_id}"
-        );
-
         self.callstack
             .push(*closure_id.as_closure(), self.stack.len() - arg_count - 1);
         true
     }
 
-    pub fn define_native_function<T: ToString>(
+    /// Define a native function by adding it to the heap and the VM builtins.
+    pub(super) fn define_native_function<T: ToString>(
         &mut self,
         name: &T,
         arity: &'static [u8],
@@ -1698,17 +1848,8 @@ impl VM {
         );
     }
 
-    pub fn register_stdlib_module<T: ToString>(
-        &mut self,
-        name: &T,
-        functions: Vec<(&'static str, &'static [u8], NativeFunctionImpl)>,
-    ) {
-        let name_id = self.heap.string_id(name);
-        self.heap.strings_by_name.insert(name.to_string(), name_id);
-        self.stdlib.insert(name_id, functions);
-    }
-
-    pub fn define_native_class<T: ToString>(&mut self, name: &T, add_to_builtins: bool) {
+    /// Define a native class by adding it to the heap and optionally the VM builtins.
+    pub(super) fn define_native_class<T: ToString>(&mut self, name: &T, add_to_builtins: bool) {
         let name_id = self.heap.string_id(name);
         self.heap.strings_by_name.insert(name.to_string(), name_id);
         let value = self.heap.add_class(Class::new(name_id, true));
@@ -1724,7 +1865,8 @@ impl VM {
         self.heap.native_classes.insert(name_id.to_string(), value);
     }
 
-    pub fn define_native_method<C: ToString, N: ToString>(
+    /// Define a native method by adding it to the heap and the class.
+    pub(super) fn define_native_method<C: ToString, N: ToString>(
         &mut self,
         class: &C,
         name: &N,
@@ -1752,6 +1894,32 @@ impl VM {
         target_class.methods.insert(name_id, value_id);
     }
 
+    /// Register a rust native stdlib module by its name and exported functions.
+    ///
+    /// Add the name of the module to the heap and add the exported functions
+    /// to the stdlib map so that they can be loaded into the globals when the module is imported.
+    pub(super) fn register_stdlib_module<T: ToString>(
+        &mut self,
+        name: &T,
+        functions: Vec<(&'static str, &'static [u8], NativeFunctionImpl)>,
+    ) {
+        let name_id = self.heap.string_id(name);
+        self.heap.strings_by_name.insert(name.to_string(), name_id);
+        self.stdlib.insert(name_id, functions);
+    }
+
+    /// Call the heap garbage collector.
+    ///
+    /// Return early if not gc is needed because the heap is still small.
+    /// Mark all the roots that can be reached from the VM.
+    /// - The stack
+    /// - The callstack
+    /// - The open upvalues
+    /// - The modules
+    /// - The builtins
+    /// Trace all the references from the roots.
+    /// Remove all the unmarked strings from the globals, builtins and heap strings.
+    /// Lastly, delete all the unmarked values from the heap.
     fn collect_garbage(&mut self) {
         #[cfg(not(feature = "stress_gc"))]
         if !self.heap.needs_gc() {
@@ -1820,5 +1988,83 @@ impl VM {
 
         // Finally, sweep
         self.heap.sweep();
+    }
+
+    /// Read the value of the constant specified by the next byte.
+    ///
+    /// First reads the index of the constant from the bytecode.
+    /// Then grabs the value corresponding to that index from the current function's constants.
+    fn read_constant(&mut self, long: bool) -> Value {
+        let index = self.read_constant_index(long);
+        self.read_constant_value(index)
+    }
+
+    /// Read a constant index from the current frame's bytecode.
+    ///
+    /// If `long` is true then a 24 bit number is read, otherwise a single byte.
+    fn read_constant_index(&mut self, long: bool) -> usize {
+        if long {
+            self.read_24bit_number()
+        } else {
+            usize::from(self.read_byte())
+        }
+    }
+
+    fn read_constant_value(&self, index: usize) -> Value {
+        *self.callstack.function().chunk.get_constant(index)
+    }
+
+    /// Read the next byte from the current frame's bytecode.
+    fn read_byte(&mut self) -> u8 {
+        let frame = self.callstack.current_mut();
+        let index = frame.ip;
+        frame.ip += 1;
+        self.callstack.code_byte(index)
+    }
+
+    /// Read a 24 bit number from the current frame's bytecode.
+    ///
+    /// Reads three bytes and builds a 24 bit number from them.
+    fn read_24bit_number(&mut self) -> usize {
+        (usize::from(self.read_byte()) << 16)
+            + (usize::from(self.read_byte()) << 8)
+            + (usize::from(self.read_byte()))
+    }
+
+    /// Read a 16 bit number from the current frame's bytecode.
+    ///
+    /// Reads two bytes and builds a 16 bit number from them.
+    fn read_16bit_number(&mut self) -> usize {
+        (usize::from(self.read_byte()) << 8) + (usize::from(self.read_byte()))
+    }
+
+    #[inline]
+    fn stack_push(&mut self, value_id: Value) {
+        self.stack.push(value_id);
+        // This check has a pretty big performance overhead; disabled for now
+        // TODO find a better way: keep the check and minimize overhead
+        /*
+        if self.stack.len() > STACK_MAX {
+            runtime_error!(self, "Stack overflow");
+        }
+        */
+    }
+
+    #[inline]
+    fn stack_push_value(&mut self, value: Value) {
+        self.stack.push(value);
+    }
+
+    fn stack_get(&self, slot: usize) -> &Value {
+        &self.stack[self.stack_base() + slot]
+    }
+
+    fn stack_get_mut(&mut self, slot: usize) -> &mut Value {
+        let offset = self.stack_base();
+        &mut self.stack[offset + slot]
+    }
+
+    fn stack_base(&self) -> usize {
+        self.callstack.current().stack_base
     }
 }

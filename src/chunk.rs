@@ -1,3 +1,5 @@
+//! Contains the `OpCode` enum as well as the chunks containing the bytecode to be interpreted.
+
 use crate::{heap::StringId, types::Line, value::Value};
 use convert_case::{Case, Casing};
 use derivative::Derivative;
@@ -32,6 +34,7 @@ impl TryFrom<ConstantLongIndex> for ConstantIndex {
     }
 }
 
+/// The set of `OpCodes` emitted by the compiler to be interpreted/executed by the VM.
 #[derive(
     IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Debug, Clone, Copy, EnumIter, AsRefStr,
 )]
@@ -128,7 +131,7 @@ pub enum OpCode {
 }
 
 impl OpCode {
-    pub const fn to_long(self) -> Self {
+    pub(super) const fn to_long(self) -> Self {
         match self {
             Self::GetLocal => Self::GetLocalLong,
             Self::GetGlobal => Self::GetGlobalLong,
@@ -140,6 +143,9 @@ impl OpCode {
         }
     }
 
+    /// Get the length of the longest `OpCode` when turned into snake case.
+    ///
+    /// Used for aligning debugging output.
     fn max_name_length() -> usize {
         Self::iter()
             .map(|v| v.as_ref().to_case(Case::ScreamingSnake).len())
@@ -148,18 +154,26 @@ impl OpCode {
     }
 }
 
+/// Wraps block of bytecode used for interpretation.
+///
+/// Each main script, module and function has its own `Chunk`.
+/// Each chunk has a name, mainly for debugging purposes, its code,
+/// line information for each entry in the code array as well as a constant
+/// table for literal constants that appear in the chunk.
 #[derive(PartialEq, Eq, Derivative, Clone)]
 #[derivative(PartialOrd)]
 pub struct Chunk {
     name: StringId,
-    pub code: Vec<u8>,
+    code: Vec<u8>,
     #[derivative(PartialOrd = "ignore")]
+    /// Lines are runlength encoded as there are usually
+    /// multiple bytes that originate from the same line.
     lines: Vec<(usize, Line)>,
     constants: Vec<Value>,
 }
 
 impl Chunk {
-    pub fn new(name: StringId) -> Self {
+    pub(super) fn new(name: StringId) -> Self {
         Self {
             name,
             code: Vec::default(),
@@ -168,22 +182,25 @@ impl Chunk {
         }
     }
 
-    pub fn constants(&self) -> &[Value] {
+    pub(super) fn constants(&self) -> &[Value] {
         &self.constants
     }
 
-    pub fn code(&self) -> &[u8] {
+    pub(super) fn code(&self) -> &[u8] {
         &self.code
     }
 
-    pub fn get_constant<T>(&self, index: T) -> &Value
+    /// Retrieve a constant by index.
+    pub(super) fn get_constant<T>(&self, index: T) -> &Value
     where
         T: Into<usize>,
     {
         &self.constants[index.into()]
     }
 
-    pub fn write<T>(&mut self, what: T, line: Line)
+    /// Write a byte (`OpCode` or operand) into the chunk.
+    /// Also update the line information accordingly.
+    pub(super) fn write<T>(&mut self, what: T, line: Line)
     where
         T: Into<u8>,
     {
@@ -196,19 +213,27 @@ impl Chunk {
         }
     }
 
-    pub fn patch<T>(&mut self, offset: CodeOffset, what: T)
+    /// Patch an existing entry in the code.
+    ///
+    /// Mainly used for patching forward jumps in conditions
+    /// where the size of the code to jump over is not yet known.
+    pub(super) fn patch<T>(&mut self, offset: CodeOffset, what: T)
     where
         T: Into<u8>,
     {
         self.code[*offset] = what.into();
     }
 
-    pub fn make_constant(&mut self, what: Value) -> ConstantLongIndex {
+    /// Add a constant to the constant table and return its index.
+    pub(super) fn make_constant(&mut self, what: Value) -> ConstantLongIndex {
         self.constants.push(what);
         ConstantLongIndex(self.constants.len() - 1)
     }
 
-    pub fn write_constant(&mut self, what: Value, line: Line) -> bool {
+    /// Write a constant into the code.
+    /// Create it in the constant table and write the index preceded by
+    /// the corresponding `OpCode`.
+    pub(super) fn write_constant(&mut self, what: Value, line: Line) -> bool {
         let long_index = self.make_constant(what);
         if let Ok(short_index) = u8::try_from(*long_index) {
             self.write(OpCode::Constant, line);
@@ -220,7 +245,7 @@ impl Chunk {
         }
     }
 
-    pub fn write_24bit_number(&mut self, what: usize, line: Line) -> bool {
+    pub(super) fn write_24bit_number(&mut self, what: usize, line: Line) -> bool {
         let (a, b, c, d) = crate::bitwise::get_4_bytes(what);
         if a > 0 {
             return false;
@@ -229,6 +254,18 @@ impl Chunk {
         self.write(c, line);
         self.write(d, line);
         true
+    }
+
+    /// Decode the runlength encoded lines for a specific offset.
+    pub(super) fn get_line(&self, offset: CodeOffset) -> Line {
+        let mut iter = self.lines.iter();
+        let (mut consumed, mut line) = iter.next().unwrap();
+        while consumed <= *offset.as_ref() {
+            let entry = iter.next().unwrap();
+            consumed += entry.0;
+            line = entry.1;
+        }
+        line
     }
 }
 
@@ -244,17 +281,18 @@ impl std::fmt::Debug for Chunk {
     }
 }
 
-// Debug helpers
+/// Debug helper for disassembling a chunks code into
+/// a human readable format.
 pub struct InstructionDisassembler<'chunk> {
     chunk: &'chunk Chunk,
-    pub offset: CodeOffset,
+    pub(super) offset: CodeOffset,
     operand_alignment: usize,
     opcode_name_alignment: usize,
 }
 
 impl<'chunk> InstructionDisassembler<'chunk> {
     #[must_use]
-    pub fn new(chunk: &'chunk Chunk) -> Self {
+    pub(super) fn new(chunk: &'chunk Chunk) -> Self {
         Self {
             chunk,
             offset: CodeOffset(0),
@@ -265,7 +303,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
     }
 
     #[allow(clippy::enum_glob_use)]
-    pub fn instruction_len(&self, offset: usize) -> usize {
+    fn instruction_len(&self, offset: usize) -> usize {
         use OpCode::*;
         let opcode = OpCode::try_from_primitive(self.chunk.code[offset]).unwrap();
         std::mem::size_of::<OpCode>()
@@ -592,19 +630,6 @@ impl<'chunk> std::fmt::Debug for InstructionDisassembler<'chunk> {
             ),
         )?;
         Ok(())
-    }
-}
-
-impl Chunk {
-    pub fn get_line(&self, offset: CodeOffset) -> Line {
-        let mut iter = self.lines.iter();
-        let (mut consumed, mut line) = iter.next().unwrap();
-        while consumed <= *offset.as_ref() {
-            let entry = iter.next().unwrap();
-            consumed += entry.0;
-            line = entry.1;
-        }
-        line
     }
 }
 

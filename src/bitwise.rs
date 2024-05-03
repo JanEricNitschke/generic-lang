@@ -1,3 +1,8 @@
+//! This module contains functionality for splitting and combining bytes.
+
+/// Split a 4 byte value into its individual bytes.
+///
+/// More precisely, extract the four bottom bytes from a `usize`.
 #[allow(clippy::cast_possible_truncation)]
 pub const fn get_4_bytes(v: usize) -> (u8, u8, u8, u8) {
     (

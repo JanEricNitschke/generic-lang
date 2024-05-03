@@ -62,3 +62,5 @@ fibo(); # expect: 1
         # expect: 3
         # expect: 5
 
+foreach (var val in []) {}
+
