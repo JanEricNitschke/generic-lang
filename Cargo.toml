@@ -10,7 +10,6 @@ license     = "MIT"
 keywords    = ["programming-language", "generic"]
 categories  = ["parser-implementations", "compilers"]
 exclude     = ["/reference", "tool", ".*"]
-publish     = false
 
 
 [[bin]]
