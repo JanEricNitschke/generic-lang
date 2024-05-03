@@ -458,6 +458,7 @@ void _defineTestSuites() {
     "test/import/circular/circ2.gen": "skip",
     "test/import/circular/circ3.gen": "skip",
     "test/import/nested/nested_rust_stdlib.gen": "skip",
+    "test/import/gc_bug/gc_bug.gen": "skip",
   };
 
   // JVM doesn't correctly implement IEEE equality on boxed doubles.

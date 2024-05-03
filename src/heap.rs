@@ -608,8 +608,7 @@ impl Heap {
         item.marked = self.black_value;
         let module = &item.item;
         self.strings.gray.push(module.name.id);
-        for (key, value) in &module.globals {
-            self.strings.gray.push(key.id);
+        for value in module.globals.values() {
             gray_value!(self, &value.value);
         }
     }
@@ -675,6 +674,9 @@ impl Heap {
         self.functions.gray.push(closure.function.id);
         for upvalue in &closure.upvalues {
             self.upvalues.gray.push(upvalue.id);
+        }
+        if let Some(module) = closure.containing_module {
+            self.modules.gray.push(module.id);
         }
         #[cfg(feature = "log_gc")]
         {
@@ -837,16 +839,20 @@ impl Heap {
         #[cfg(feature = "log_gc")]
         let before = self.bytes_allocated();
 
+        // Need to sweep closures before functions as
+        // the former prints the latter on `log_gc`.
+        // Also have to sweep strings last as modules and
+        // functions use their name on their debug display.
+        self.modules.sweep(self.black_value);
+        self.closures.sweep(self.black_value);
         self.functions.sweep(self.black_value);
         self.bound_methods.sweep(self.black_value);
-        self.closures.sweep(self.black_value);
-        self.strings.sweep(self.black_value);
         self.upvalues.sweep(self.black_value);
         self.native_functions.sweep(self.black_value);
         self.native_methods.sweep(self.black_value);
         self.classes.sweep(self.black_value);
         self.instances.sweep(self.black_value);
-        self.modules.sweep(self.black_value);
+        self.strings.sweep(self.black_value);
 
         self.black_value = !self.black_value;
 
