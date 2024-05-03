@@ -1930,18 +1930,28 @@ impl VM {
         self.heap.gc_start();
 
         // Mark roots
+        #[cfg(feature = "log_gc")]
+        eprintln!("Marking stack values.");
         for value in &self.stack {
             self.heap.mark_value(value);
         }
+        #[cfg(feature = "log_gc")]
+        eprintln!("Callstack functions.");
         for frame in self.callstack.iter() {
             self.heap.mark_function(&frame.closure().function);
         }
+        #[cfg(feature = "log_gc")]
+        eprintln!("Marking open upvalues.");
         for upvalue in &self.open_upvalues {
             self.heap.mark_upvalue(upvalue);
         }
+        #[cfg(feature = "log_gc")]
+        eprintln!("Marking modules.");
         for module in &self.modules {
             self.heap.mark_module(module);
         }
+        #[cfg(feature = "log_gc")]
+        eprintln!("Marking builtins.");
         for builtin in self.builtins.values() {
             self.heap.mark_value(&builtin.value);
         }
@@ -1962,7 +1972,7 @@ impl VM {
             for id in globals_to_remove {
                 #[cfg(feature = "log_gc")]
                 {
-                    eprintln!("String/{:?} free {}", id, *id);
+                    eprintln!("String/{:?} free from module globals {}", id, *id);
                 }
                 module.globals.remove(&id);
             }
@@ -1975,13 +1985,34 @@ impl VM {
             .copied()
             .collect::<Vec<_>>();
         for id in builtins_to_remove {
+            #[cfg(feature = "log_gc")]
+            {
+                eprintln!("String/{:?} free from builtins {}", id, *id);
+            }
             self.builtins.remove(&id);
+        }
+
+        let stdlibs_to_remove = self
+            .stdlib
+            .keys()
+            .filter(|string_id| !string_id.marked(black_value))
+            .copied()
+            .collect::<Vec<_>>();
+        for id in stdlibs_to_remove {
+            #[cfg(feature = "log_gc")]
+            {
+                eprintln!("String/{:?} free from stdlib {}", id, *id);
+            }
+            self.stdlib.remove(&id);
         }
 
         self.heap.strings_by_name.retain(|_, string_id| {
             #[cfg(feature = "log_gc")]
             if !string_id.marked(black_value) {
-                eprintln!("String/{:?} free {}", string_id, **string_id);
+                eprintln!(
+                    "String/{:?} free from strings by name {}",
+                    string_id, **string_id
+                );
             }
             string_id.marked(black_value)
         });
