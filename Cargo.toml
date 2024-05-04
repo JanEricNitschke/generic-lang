@@ -1,6 +1,6 @@
 [package]
 name        = "generic-lang"
-version     = "0.1.0"
+version     = "0.1.1"
 edition     = "2021"
 authors     = ["Jan-Eric <janericnitschke@gmail.com"]
 description = "A Lox based programming language"
