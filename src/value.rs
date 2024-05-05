@@ -863,18 +863,14 @@ impl List {
 
 impl std::fmt::Display for List {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let items = &self.items;
-        let mut comma_separated = String::new();
-        comma_separated.push('[');
-        if !items.is_empty() {
-            for num in &items[0..items.len() - 1] {
-                comma_separated.push_str(&num.to_string());
-                comma_separated.push_str(", ");
-            }
-
-            comma_separated.push_str(&items[items.len() - 1].to_string());
-        }
-        comma_separated.push(']');
+        let comma_separated = format!(
+            "[{}]",
+            self.items
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         f.pad(&comma_separated)
     }
 }
@@ -923,19 +919,14 @@ impl Set {
 
 impl std::fmt::Display for Set {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let items = &self.items;
-        let mut comma_separated = String::new();
-        comma_separated.push('{');
-        if !items.is_empty() {
-            for num in items {
-                comma_separated.push_str(&num.to_string());
-                comma_separated.push_str(", ");
-            }
-            // Remove the last ", "
-            comma_separated.pop();
-            comma_separated.pop();
-        }
-        comma_separated.push('}');
+        let comma_separated = format!(
+            "{{{}}}",
+            self.items
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         f.pad(&comma_separated)
     }
 }
@@ -956,21 +947,14 @@ impl Dict {
 
 impl std::fmt::Display for Dict {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let items = &self.items;
-        let mut comma_separated = String::new();
-        comma_separated.push('{');
-        if !items.is_empty() {
-            for (key, value) in items {
-                comma_separated.push_str(&key.to_string());
-                comma_separated.push_str(": ");
-                comma_separated.push_str(&value.to_string());
-                comma_separated.push_str(", ");
-            }
-            // Remove the last ", "
-            comma_separated.pop();
-            comma_separated.pop();
-        }
-        comma_separated.push('}');
+        let comma_separated = format!(
+            "{{{}}}",
+            self.items
+                .iter()
+                .map(|(key, value)| format!("{key}: {value}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         f.pad(&comma_separated)
     }
 }
