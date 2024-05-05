@@ -2,5 +2,5 @@ var my_set = {1, 2, 3};
 print(my_set.remove(3)); # expect: true
 print(my_set.remove(4)); # expect: false
 print(my_set); # expect: {1, 2}
-
-my_set.remove(1.0); # expect runtime error: Value `1.0` is not hashable.
+class A {}
+my_set.remove(A()); # expect runtime error: Value `<A instance>` is not hashable.
