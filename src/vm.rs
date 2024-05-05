@@ -16,7 +16,7 @@ use crate::value::NativeClass;
 use crate::{
     chunk::{CodeOffset, OpCode},
     compiler::Compiler,
-    heap::{ClosureId, FunctionId, Heap, ModuleId, StringId, UpvalueId},
+    heap::{ArenaId, ArenaValue, ClosureId, FunctionId, Heap, ModuleId, StringId, UpvalueId},
     scanner::Scanner,
     stdlib,
     value::{
@@ -24,6 +24,7 @@ use crate::{
         NativeFunctionImpl, NativeMethod, NativeMethodImpl, Number, Set, Upvalue, Value,
     },
 };
+use slotmap::Key;
 
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -979,7 +980,7 @@ impl VM {
                 if let Some(global) = module.globals.remove(&name) {
                     self.globals().insert(name, global);
                 } else {
-                    runtime_error!(self, "Could not find name to import.");
+                    runtime_error!(self, "Could not find name to import `{}`.", &*name);
                     return Some(InterpretResult::RuntimeError);
                 }
             }
@@ -1369,10 +1370,10 @@ impl VM {
             // Currently they are just put into the global scope.
             if let Some(names) = names_to_import {
                 for name in names {
-                    let value = last_module
-                        .globals
-                        .get(&name)
-                        .expect("Imported name not found.");
+                    let Some(value) = last_module.globals.get(&name) else {
+                        runtime_error!(self, "Could not find name to import `{}`.", { &*name });
+                        return Some(InterpretResult::RuntimeError);
+                    };
                     self.globals().insert(name, *value);
                 }
             } else {
@@ -1962,49 +1963,27 @@ impl VM {
         // Remove references to unmarked strings in `globals` and `heap.strings_by_name`
         // and `builtins`
         for module in &mut self.modules {
-            let globals_to_remove = module
-                .globals
-                .keys()
-                .filter(|string_id| !string_id.marked(black_value))
-                .copied()
-                .collect::<Vec<_>>();
-
-            for id in globals_to_remove {
+            clear_garbage(
+                &mut module.globals,
+                black_value,
                 #[cfg(feature = "log_gc")]
-                {
-                    eprintln!("String/{:?} free from module globals {}", id, *id);
-                }
-                module.globals.remove(&id);
-            }
+                "module globals",
+            );
         }
 
-        let builtins_to_remove = self
-            .builtins
-            .keys()
-            .filter(|string_id| !string_id.marked(black_value))
-            .copied()
-            .collect::<Vec<_>>();
-        for id in builtins_to_remove {
+        clear_garbage(
+            &mut self.builtins,
+            black_value,
             #[cfg(feature = "log_gc")]
-            {
-                eprintln!("String/{:?} free from builtins {}", id, *id);
-            }
-            self.builtins.remove(&id);
-        }
+            "builtins",
+        );
 
-        let stdlibs_to_remove = self
-            .stdlib
-            .keys()
-            .filter(|string_id| !string_id.marked(black_value))
-            .copied()
-            .collect::<Vec<_>>();
-        for id in stdlibs_to_remove {
+        clear_garbage(
+            &mut self.stdlib,
+            black_value,
             #[cfg(feature = "log_gc")]
-            {
-                eprintln!("String/{:?} free from stdlib {}", id, *id);
-            }
-            self.stdlib.remove(&id);
-        }
+            "stdlib",
+        );
 
         self.heap.strings_by_name.retain(|_, string_id| {
             #[cfg(feature = "log_gc")]
@@ -2098,4 +2077,21 @@ impl VM {
     fn stack_base(&self) -> usize {
         self.callstack.current().stack_base
     }
+}
+
+fn clear_garbage<K: Key, T: ArenaValue, V>(
+    collection: &mut HashMap<ArenaId<K, T>, V>,
+    black_value: bool,
+    #[cfg(feature = "log_gc")] collection_name: &str,
+) {
+    collection.retain(|string_id, _| {
+        #[cfg(feature = "log_gc")]
+        if !string_id.marked(black_value) {
+            eprintln!(
+                "String/{:?} free from {} {}",
+                string_id, collection_name, **string_id
+            );
+        }
+        string_id.marked(black_value)
+    });
 }

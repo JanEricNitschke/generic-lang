@@ -490,6 +490,8 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
                 let line = self.line();
                 self.consume(TK::Semicolon, "Expect ';' after 'continue'.");
 
+                // Need the two steps because `for_each` would need to borrow a second time.
+                // This is also duplicated in `break` and could be moved into a function
                 let locals_to_drop = self
                     .locals()
                     .iter()
