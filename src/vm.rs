@@ -2089,7 +2089,7 @@ fn clear_garbage<K: Key, T: ArenaValue, V>(
         if !string_id.marked(black_value) {
             eprintln!(
                 "String/{:?} free from {} {}",
-                string_id, collection_name, *string_id
+                string_id, collection_name, **string_id
             );
         }
         string_id.marked(black_value)
