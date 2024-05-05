@@ -48,9 +48,10 @@ impl Hash for Value {
             Self::Nil => state.write_u8(0),
             Self::StopIteration => state.write_u8(1),
             Self::Number(n) => match n {
-                Number::Float(_) => unreachable!(
-                    "Only hashable types are Bool, Nil, Integer, and String, got {self}."
-                ),
+                Number::Float(f) => {
+                    let f = if *f == 0.0 { 0.0 } else { *f };
+                    f.to_bits().hash(state);
+                }
                 Number::Integer(i) => i.hash(state),
             },
             Self::String(s) => s.hash(state),
@@ -673,7 +674,7 @@ impl Value {
     pub(super) const fn is_hasheable(&self) -> bool {
         matches!(
             self,
-            Self::Bool(_) | Self::Nil | Self::Number(Number::Integer(_)) | Self::String(_)
+            Self::Bool(_) | Self::Nil | Self::Number(_) | Self::String(_) | Self::StopIteration
         )
     }
 
