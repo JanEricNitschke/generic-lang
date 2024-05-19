@@ -41,7 +41,6 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         self.emit_byte(OpCode::Return, line);
     }
 
-    #[allow(illegal_floating_point_literal_pattern)]
     pub(super) fn emit_constant<T>(&mut self, value: T)
     where
         T: Into<Value>,
