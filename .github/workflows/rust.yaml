@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repo
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     - name: Build
       run: |
         cargo build --features "log_gc trace_execution_verbose print_code stress_gc"
@@ -35,7 +35,7 @@ jobs:
       with:
         sdk: stable
     - name: Checkout book repo
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: munificent/craftinginterpreters
         path: reference/craftinginterpreters
@@ -51,7 +51,7 @@ jobs:
         wget https://github.com/sharkdp/hyperfine/releases/download/v1.16.1/hyperfine_1.16.1_amd64.deb
         sudo dpkg -i hyperfine_1.16.1_amd64.deb
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
     - name: Set up Ruby
