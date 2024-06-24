@@ -4,4 +4,6 @@ var my_dict = {
     "city": "New York"
 };
 my_dict["age"] = 28;
-print(my_dict); # expect: {age: 28, name: John, city: New York}
+print(my_dict["name"]); # expect: John
+print(my_dict["city"]); # expect: New York
+print(my_dict["age"]); # expect: 28
