@@ -1918,6 +1918,7 @@ impl VM {
     /// - The open upvalues
     /// - The modules
     /// - The builtins
+    ///
     /// Trace all the references from the roots.
     /// Remove all the unmarked strings from the globals, builtins and heap strings.
     /// Lastly, delete all the unmarked values from the heap.

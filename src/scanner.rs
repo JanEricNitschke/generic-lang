@@ -1,12 +1,8 @@
 //! Defines the tokens and scanner that handles the transforming or the source to tokens.
 
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use shrinkwraprs::Shrinkwrap;
 
 use crate::types::Line;
-
-#[derive(Shrinkwrap, PartialEq, Eq, Clone, Copy)]
-pub struct TokenLength(pub(super) usize);
 
 /// `Token` types that exist in the generic language.
 #[derive(IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Clone, Copy, Debug)]
