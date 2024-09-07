@@ -43,7 +43,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_function(&"len", &[1], len_native);
 
     // The add to builtins is a bit of a workaround for how native instances
-    // are instatiated. Currently we either need a way to instantiate them
+    // are instantiated. Currently we either need a way to instantiate them
     // without giving any data or we have to make it so they are not accessible in
     // user land.
     vm.define_native_class(&"List", true);

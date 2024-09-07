@@ -6,3 +6,5 @@ extend-ignore-identifiers-re = []
 [default.extend-words]
 # Don't correct the end 'true' when matching tokens.
 ue = "ue"
+LoadOnef = "LoadOnef"
+Onef = "Onef"
