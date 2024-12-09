@@ -538,7 +538,7 @@ macro_rules! disassemble {
     }}
 }
 
-impl<'chunk> std::fmt::Debug for InstructionDisassembler<'chunk> {
+impl std::fmt::Debug for InstructionDisassembler<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let code = self.chunk.code();
         let offset = self.offset;

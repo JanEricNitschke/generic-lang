@@ -7,7 +7,7 @@ use crate::chunk::{ConstantLongIndex, OpCode};
 use super::{Compiler, Local, ScopeDepth, Upvalue};
 use crate::scanner::{Token, TokenKind as TK};
 
-impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
+impl<'scanner> Compiler<'scanner, '_> {
     /// Start a new scope.
     pub(super) fn begin_scope(&mut self) {
         **self.scope_depth_mut() += 1;

@@ -43,7 +43,7 @@ pub(super) struct Rule<'scanner, 'arena> {
     precedence: Precedence,
 }
 
-impl<'scanner, 'arena> Default for Rule<'scanner, 'arena> {
+impl Default for Rule<'_, '_> {
     fn default() -> Self {
         Self {
             prefix: Option::default(),
