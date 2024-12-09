@@ -9,7 +9,7 @@ use crate::{
 
 use super::{Compiler, FunctionType};
 
-impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
+impl<'scanner> Compiler<'scanner, '_> {
     pub(super) fn emit_byte<T>(&mut self, byte: T, line: Line)
     where
         T: Into<u8>,

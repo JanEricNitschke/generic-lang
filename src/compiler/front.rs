@@ -11,7 +11,7 @@ use crate::{
     types::Line,
 };
 
-impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
+impl Compiler<'_, '_> {
     pub(super) fn advance(&mut self) {
         self.previous = std::mem::take(&mut self.current);
         loop {

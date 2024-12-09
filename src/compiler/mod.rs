@@ -98,7 +98,7 @@ struct NestableState<'scanner> {
     loop_state: Option<LoopState>,
 }
 
-impl<'scanner> NestableState<'scanner> {
+impl NestableState<'_> {
     #[must_use]
     fn new(function_name: StringId, function_type: FunctionType) -> Self {
         NestableState {
