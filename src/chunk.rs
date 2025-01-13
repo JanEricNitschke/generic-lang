@@ -148,7 +148,7 @@ impl OpCode {
     /// Used for aligning debugging output.
     fn max_name_length() -> usize {
         Self::iter()
-            .map(|v| v.as_ref().to_case(Case::ScreamingSnake).len())
+            .map(|v| v.as_ref().to_case(Case::UpperSnake).len())
             .max()
             .unwrap_or(0)
     }
