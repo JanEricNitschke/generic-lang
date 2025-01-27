@@ -44,7 +44,7 @@ impl Compiler<'_, '_> {
     }
 
     pub(super) fn check(&self, kind: TK) -> bool {
-        self.current_token_kind().map_or(false, |k| k == kind)
+        self.current_token_kind() == Some(kind)
     }
 
     pub(super) fn expression(&mut self) {
@@ -736,6 +736,6 @@ impl Compiler<'_, '_> {
     }
 
     pub(super) fn check_previous(&self, kind: TK) -> bool {
-        self.previous.as_ref().map_or(false, |t| t.kind == kind)
+        self.previous.as_ref().is_some_and(|t| t.kind == kind)
     }
 }

@@ -306,7 +306,7 @@ impl<'a> Scanner<'a> {
     /// Strings are sequences of any characters starting and ending
     /// with `"`. Strings can span multiple lines.
     fn string(&mut self) -> Token<'a> {
-        while self.peek().map_or(false, |c| c != &b'"') {
+        while self.peek().is_some_and(|c| c != &b'"') {
             if self.peek() == Some(&b'\n') {
                 *self.line += 1;
             }
@@ -324,14 +324,14 @@ impl<'a> Scanner<'a> {
     ///
     /// Decimal points at the end are not supported and neither is scientific notation.
     fn number(&mut self) -> Token<'a> {
-        while self.peek().map_or(false, u8::is_ascii_digit) {
+        while self.peek().is_some_and(u8::is_ascii_digit) {
             self.advance();
         }
 
         // Fractions
-        if self.peek() == Some(&b'.') && self.peek_next().map_or(false, u8::is_ascii_digit) {
+        if self.peek() == Some(&b'.') && self.peek_next().is_some_and(u8::is_ascii_digit) {
             self.advance();
-            while self.peek().map_or(false, u8::is_ascii_digit) {
+            while self.peek().is_some_and(u8::is_ascii_digit) {
                 self.advance();
             }
         } else {
@@ -350,7 +350,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn identifier(&mut self) -> Token<'a> {
-        while self.peek().map_or(false, Self::is_identifier_char) {
+        while self.peek().is_some_and(Self::is_identifier_char) {
             self.advance();
         }
         let token_kind = self.identifier_type();
@@ -358,7 +358,7 @@ impl<'a> Scanner<'a> {
     }
 
     /// Parse identifiers using a `trie` strategy.
-    fn identifier_type(&mut self) -> TokenKind {
+    fn identifier_type(&self) -> TokenKind {
         match self.source[self.start] {
             b'a' => match self.source.get(self.start + 1) {
                 Some(b'n') => self.check_keyword(2, "d", TokenKind::And),
@@ -439,7 +439,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn check_keyword(&mut self, start: usize, rest: &str, kind: TokenKind) -> TokenKind {
+    fn check_keyword(&self, start: usize, rest: &str, kind: TokenKind) -> TokenKind {
         let from = self.source.len().min(self.start + start);
         let to = self.source.len().min(from + rest.len());
         if &self.source[from..to] == rest.as_bytes()

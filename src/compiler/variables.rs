@@ -25,10 +25,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         let line = self.line();
         {
             let locals = self.locals_mut();
-            while locals
-                .last()
-                .map_or(false, |local| local.depth > scope_depth)
-            {
+            while locals.last().is_some_and(|local| local.depth > scope_depth) {
                 instructions.push(if locals.last().unwrap().is_captured {
                     OpCode::CloseUpvalue
                 } else {

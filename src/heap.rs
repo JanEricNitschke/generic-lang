@@ -423,7 +423,7 @@ impl Heap {
         heap
     }
 
-    pub(super) fn builtin_constants(&self) -> &BuiltinConstants {
+    pub(super) const fn builtin_constants(&self) -> &BuiltinConstants {
         self.builtin_constants.as_ref().unwrap()
     }
 

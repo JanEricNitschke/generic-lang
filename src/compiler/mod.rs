@@ -266,8 +266,8 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         &mut self.nestable_state.last_mut().unwrap().current_function
     }
 
-    fn loop_state(&mut self) -> &Option<LoopState> {
-        &self.nestable_state.last().unwrap().loop_state
+    fn loop_state(&self) -> Option<&LoopState> {
+        self.nestable_state.last().unwrap().loop_state.as_ref()
     }
 
     fn loop_state_mut(&mut self) -> &mut Option<LoopState> {

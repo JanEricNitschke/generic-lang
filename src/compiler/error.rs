@@ -9,14 +9,14 @@ use crate::scanner::{Token, TokenKind as TK};
 
 impl Compiler<'_, '_> {
     pub(super) fn error_at_current(&mut self, msg: &str) {
-        self.error_at(&self.current.clone(), msg);
+        self.error_at(self.current.clone().as_ref(), msg);
     }
 
     pub(super) fn error(&mut self, msg: &str) {
-        self.error_at(&self.previous.clone(), msg);
+        self.error_at(self.previous.clone().as_ref(), msg);
     }
 
-    fn error_at(&mut self, token: &Option<Token>, msg: &str) {
+    fn error_at(&mut self, token: Option<&Token>, msg: &str) {
         if self.panic_mode {
             return;
         }
