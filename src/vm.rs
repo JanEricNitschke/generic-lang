@@ -155,11 +155,11 @@ impl CallStack {
         self.current_function.unwrap().chunk.code()[index]
     }
 
-    fn closure(&self) -> ClosureId {
+    const fn closure(&self) -> ClosureId {
         self.current_closure.unwrap()
     }
 
-    fn function(&self) -> FunctionId {
+    const fn function(&self) -> FunctionId {
         self.current_function.unwrap()
     }
 
@@ -739,7 +739,7 @@ impl VM {
         &mut self.modules.last_mut().unwrap().globals
     }
 
-    fn current_module(&mut self) -> ModuleId {
+    fn current_module(&self) -> ModuleId {
         *self.modules.last().unwrap()
     }
 
@@ -758,7 +758,7 @@ impl VM {
     /// statement is executed at runtime. At this point the module is already on the
     /// module list and correctly becomes their `containing_module`. Then, whenever they
     /// are actually called, they refer to the correct globals.
-    fn defining_module(&mut self) -> ModuleId {
+    fn defining_module(&self) -> ModuleId {
         let current_closure = self.callstack.current().closure;
         match current_closure.containing_module {
             Some(module) if !current_closure.is_module => module,
@@ -1027,7 +1027,7 @@ impl VM {
     }
 
     #[allow(clippy::option_if_let_else)]
-    fn clean_filepath(&mut self, string_id: StringId) -> PathBuf {
+    fn clean_filepath(&self, string_id: StringId) -> PathBuf {
         let file_path = self.modules.last().map_or_else(
             || PathBuf::from(&*string_id),
             |module| {
@@ -1782,7 +1782,7 @@ impl VM {
         while self
             .open_upvalues
             .front()
-            .map_or(false, |v| v.as_open() >= last)
+            .is_some_and(|v| v.as_open() >= last)
         {
             let mut upvalue = self.open_upvalues.pop_front().unwrap();
 
