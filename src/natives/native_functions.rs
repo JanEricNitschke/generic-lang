@@ -214,9 +214,9 @@ pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
 /// Lower value is inclusive, upper value is exclusive.
 pub(super) fn rng_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match (&args[0], &args[1]) {
-        (Value::Number(Number::Integer(min)), Value::Number(Number::Integer(max))) => Ok(
-            Value::Number(rand::thread_rng().gen_range(*min..*max).into()),
-        ),
+        (Value::Number(Number::Integer(min)), Value::Number(Number::Integer(max))) => {
+            Ok(Value::Number(rand::rng().random_range(*min..*max).into()))
+        }
         (other_1, other_2) => Err(format!(
             "'rng' expected two integers as arguments, got: `{other_1}` and `{other_2}` instead."
         )),
