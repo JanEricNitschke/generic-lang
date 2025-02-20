@@ -185,9 +185,7 @@ impl<'a> Scanner<'a> {
                     if self.match_(b'=') {
                         TK::SlashEqual
                     } else if self.match_(b'/') {
-                        {
-                            TK::SlashSlash
-                        }
+                        TK::SlashSlash
                     } else {
                         TK::Slash
                     }
@@ -196,9 +194,7 @@ impl<'a> Scanner<'a> {
                     if self.match_(b'=') {
                         TK::StarEqual
                     } else if self.match_(b'*') {
-                        {
-                            TK::StarStar
-                        }
+                        TK::StarStar
                     } else {
                         TK::Star
                     }
@@ -446,7 +442,7 @@ impl<'a> Scanner<'a> {
             && self
                 .source
                 .get(to)
-                .map_or(true, |c| !Self::is_identifier_char(c))
+                .is_none_or(|c| !Self::is_identifier_char(c))
         {
             kind
         } else {

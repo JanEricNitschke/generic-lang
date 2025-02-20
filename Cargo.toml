@@ -1,7 +1,7 @@
 [package]
 name        = "generic-lang"
 version     = "0.1.1"
-edition     = "2021"
+edition     = "2024"
 authors     = ["Jan-Eric <janericnitschke@gmail.com"]
 description = "A Lox based programming language"
 readme      = "README.md"

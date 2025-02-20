@@ -14,7 +14,7 @@ use shrinkwraprs::Shrinkwrap;
 
 use crate::{
     chunk::{Chunk, CodeOffset, ConstantLongIndex},
-    compiler::rules::{make_rules, Rules},
+    compiler::rules::{Rules, make_rules},
     heap::{Heap, StringId},
     scanner::{Scanner, Token, TokenKind},
     types::Line,

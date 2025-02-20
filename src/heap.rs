@@ -25,7 +25,7 @@ use std::{
 };
 
 use derivative::Derivative;
-use slotmap::{new_key_type, HopSlotMap as SlotMap, Key};
+use slotmap::{HopSlotMap as SlotMap, Key, new_key_type};
 use std::fmt::{Debug, Display};
 
 use crate::value::{

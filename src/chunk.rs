@@ -259,7 +259,7 @@ impl Chunk {
     /// Decode the runlength encoded lines for a specific offset.
     pub(super) fn get_line(&self, offset: CodeOffset) -> Line {
         let mut iter = self.lines.iter();
-        let (mut consumed, mut line) = iter.next().unwrap();
+        let &(mut consumed, mut line) = iter.next().unwrap();
         while consumed <= *offset.as_ref() {
             let entry = iter.next().unwrap();
             consumed += entry.0;
@@ -513,7 +513,8 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         writeln!(
             f,
             "{formatted_name:-OPCODE_NAME_ALIGNMENT$} {constant:>OPERAND_ALIGNMENT$} '{constant_value}'",
-            OPCODE_NAME_ALIGNMENT =self.opcode_name_alignment, OPERAND_ALIGNMENT = self.operand_alignment
+            OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
+            OPERAND_ALIGNMENT = self.operand_alignment
         )
     }
 }

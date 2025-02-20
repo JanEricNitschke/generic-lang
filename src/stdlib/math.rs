@@ -1,6 +1,6 @@
 //! Example module exporting math functionality.
 
-use crate::value::{ias_f64, ModuleContents, Number, Value};
+use crate::value::{ModuleContents, Number, Value, ias_f64};
 use crate::vm::VM;
 
 /// Calculate the square root of the number. Always return a float.
