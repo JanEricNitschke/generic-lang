@@ -1631,13 +1631,7 @@ impl VM {
                     *f.name,
                     *receiver.class_name(),
                     arity[0],
-                    {
-                        if arity[0] == 1 {
-                            ""
-                        } else {
-                            "s"
-                        }
-                    },
+                    { if arity[0] == 1 { "" } else { "s" } },
                     arg_count
                 );
             } else {
@@ -1686,13 +1680,7 @@ impl VM {
                     "Native function '{}' expected {} argument{}, got {}.",
                     *f.name,
                     arity[0],
-                    {
-                        if arity[0] == 1 {
-                            ""
-                        } else {
-                            "s"
-                        }
-                    },
+                    { if arity[0] == 1 { "" } else { "s" } },
                     arg_count
                 );
             } else {
@@ -1804,13 +1792,7 @@ impl VM {
                 self,
                 "Expected {} argument{} but got {}.",
                 arity,
-                {
-                    if arity == 1 {
-                        ""
-                    } else {
-                        "s"
-                    }
-                },
+                { if arity == 1 { "" } else { "s" } },
                 arg_count
             );
             return false;

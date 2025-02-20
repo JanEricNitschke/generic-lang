@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::value::NativeClass;
 use crate::{
-    value::{ias_u64, Number, Value},
+    value::{Number, Value, ias_u64},
     vm::VM,
 };
 
@@ -187,7 +187,7 @@ pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
             x => {
                 return Err(format!(
                     "Optional second argument to 'print' has to be a string, got: {x}"
-                ))
+                ));
             }
         }
     } else {
@@ -244,7 +244,7 @@ pub(super) fn getattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Val
 
 /// Set an attribute of a value by name.
 pub(super) fn setattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
-    let field = if let Value::String(ref string_id) = args[1] {
+    let field = if let &mut Value::String(ref string_id) = args[1] {
         vm.heap.strings[string_id].clone()
     } else {
         return Err(format!(
@@ -283,7 +283,7 @@ pub(super) fn hasattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Val
 /// Delete an attribute on an instance by name.
 /// Does NOT work on methods. Errors if the attribute does not exist in the first place.
 pub(super) fn delattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
-    if let Value::String(ref string_id) = args[1] {
+    if let &mut Value::String(ref string_id) = args[1] {
         let field = &vm.heap.strings[string_id];
         if let Value::Instance(instance) = args[0] {
             match instance.fields.remove(field) {

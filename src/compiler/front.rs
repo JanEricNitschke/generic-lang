@@ -3,7 +3,7 @@
 //! Parses the tokens from the scanner to emit the correct bytecode for
 //! declarations, statements and expressions.
 
-use super::{rules::Precedence, ClassState, Compiler, FunctionType, LoopState};
+use super::{ClassState, Compiler, FunctionType, LoopState, rules::Precedence};
 
 use crate::{
     chunk::{CodeOffset, ConstantIndex, OpCode},
