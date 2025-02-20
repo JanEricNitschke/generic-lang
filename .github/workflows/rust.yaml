@@ -17,6 +17,8 @@ jobs:
     steps:
     - name: Checkout repo
       uses: actions/checkout@v4
+    - name: Set up Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
     - name: Build
       run: |
         cargo build --features "log_gc trace_execution_verbose print_code stress_gc"
