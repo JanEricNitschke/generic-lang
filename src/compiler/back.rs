@@ -4,7 +4,7 @@ use crate::{
     chunk::{CodeOffset, OpCode},
     scanner::{Token, TokenKind},
     types::Line,
-    value::{Number, Value},
+    value::{GenericInt, Number, Value},
 };
 
 use super::{Compiler, FunctionType};
@@ -48,10 +48,18 @@ impl<'scanner> Compiler<'scanner, '_> {
         let line = self.line();
         let value = value.into();
         match value {
-            Value::Number(Number::Integer(1)) => self.emit_byte(OpCode::LoadOne, line),
-            Value::Number(Number::Integer(2)) => self.emit_byte(OpCode::LoadTwo, line),
-            Value::Number(Number::Integer(-1)) => self.emit_byte(OpCode::LoadMinusOne, line),
-            Value::Number(Number::Integer(0)) => self.emit_byte(OpCode::LoadZero, line),
+            Value::Number(Number::Integer(GenericInt::Small(1))) => {
+                self.emit_byte(OpCode::LoadOne, line);
+            }
+            Value::Number(Number::Integer(GenericInt::Small(2))) => {
+                self.emit_byte(OpCode::LoadTwo, line);
+            }
+            Value::Number(Number::Integer(GenericInt::Small(-1))) => {
+                self.emit_byte(OpCode::LoadMinusOne, line);
+            }
+            Value::Number(Number::Integer(GenericInt::Small(0))) => {
+                self.emit_byte(OpCode::LoadZero, line);
+            }
             Value::Number(Number::Float(0.0)) => self.emit_byte(OpCode::LoadZerof, line),
             Value::Number(Number::Float(1.0)) => self.emit_byte(OpCode::LoadOnef, line),
             _ => {

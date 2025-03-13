@@ -1,16 +1,16 @@
 //! Module containing free standing rust native functions.
 
+use crate::value::GenericInt;
+use crate::value::NativeClass;
+use crate::{
+    value::{Number, Value},
+    vm::VM,
+};
 use rand::Rng;
 use std::io;
 use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-use crate::value::NativeClass;
-use crate::{
-    value::{Number, Value, ias_u64},
-    vm::VM,
-};
 
 /// Get the time since the `UNIX_EPOCH` in seconds.
 /// Useful for timing durations by calling this twice and subtracting the results.
@@ -27,9 +27,10 @@ pub(super) fn clock_native(_vm: &mut VM, _args: &mut [&mut Value]) -> Result<Val
 /// Sleep for a non-negative number of seconds.
 pub(super) fn sleep_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
-        Value::Number(Number::Integer(i)) if i >= &0 => {
-            thread::sleep(Duration::from_secs(ias_u64(*i)));
-        }
+        Value::Number(Number::Integer(i)) if i >= &0 => match u64::try_from(*i) {
+            Ok(u) => thread::sleep(Duration::from_secs(u)),
+            Err(_) => return Err(format!("'sleep' argument too large: `{}`", *i)),
+        },
         x => {
             return Err(format!(
                 "'sleep' expected positive integer argument, got: `{}`",
@@ -107,7 +108,15 @@ pub(super) fn to_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Valu
                 )),
             }
         }
-        Value::Number(n) => Ok(Value::Number(i64::from(*n).into())),
+        Value::Number(n) => match n {
+            Number::Float(f) => match GenericInt::try_from_f64(*f, &mut vm.heap) {
+                Ok(i) => Ok(Value::Number(i.into())),
+                Err(_) => Err(format!(
+                    "'int' could not convert float '{f}' to an integer."
+                )),
+            },
+            Number::Integer(_) => Ok(Value::Number(*n)),
+        },
         Value::Bool(value) => Ok(Value::Number(i64::from(*value).into())),
         x => Err(format!(
             "'int' expected string, number or bool argument, got: {x}"
@@ -215,7 +224,14 @@ pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
 pub(super) fn rng_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match (&args[0], &args[1]) {
         (Value::Number(Number::Integer(min)), Value::Number(Number::Integer(max))) => {
-            Ok(Value::Number(rand::rng().random_range(*min..*max).into()))
+            match (min, max) {
+                (GenericInt::Small(min), GenericInt::Small(max)) => {
+                    Ok(Value::Number(rand::rng().random_range(*min..*max).into()))
+                }
+                _ => Err(format!(
+                    "'rng' expected small integers (i64) as arguments, got: `{min}` and `{max}` instead."
+                )),
+            }
         }
         (other_1, other_2) => Err(format!(
             "'rng' expected two integers as arguments, got: `{other_1}` and `{other_2}` instead."

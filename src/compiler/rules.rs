@@ -2,6 +2,7 @@
 //!
 //! Uses Vaughan Pratt's "top-down operator precedence parsing".
 
+use num_bigint::BigInt;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use crate::chunk::OpCode;
@@ -376,8 +377,15 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ///
     /// Works equivalent to [`Compiler::float`].
     fn integer(&mut self, _can_assign: bool) {
-        let value: i64 = self.previous.as_ref().unwrap().as_str().parse().unwrap();
-        self.emit_constant(value);
+        let integer_str = self.previous.as_ref().unwrap().as_str();
+        if let Ok(value) = integer_str.parse::<i64>() {
+            self.emit_constant(value);
+        } else {
+            let bigint_id = self
+                .heap
+                .add_big_int(integer_str.parse::<BigInt>().unwrap());
+            self.emit_constant(bigint_id);
+        };
     }
 
     /// Emit a string constant.
