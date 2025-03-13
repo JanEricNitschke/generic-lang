@@ -3,15 +3,20 @@
 use crate::{
     chunk::Chunk,
     heap::{
-        BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ModuleId,
+        BigIntId, BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ModuleId,
         NativeFunctionId, NativeMethodId, StringId, UpvalueId,
     },
     vm::{Global, VM},
 };
+
 use derivative::Derivative;
-use derive_more::{From, Neg};
+use derive_more::From;
+use num_bigint::BigInt;
+use num_traits::Pow;
+use num_traits::identities::Zero;
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::hash::{Hash, Hasher};
+use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Rem, Sub};
 use std::path::PathBuf;
 
 /// Central enum for the types of runtime values that exist in generic.
@@ -87,60 +92,328 @@ impl std::fmt::Display for Value {
 
 // These could probably be individual entries in the enum tbh.
 /// Enum summarizing all of the generic number types.
-#[derive(Debug, Copy, PartialEq, PartialOrd, Clone, From, Neg)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, From, Copy)]
 pub enum Number {
     Float(f64),
-    Integer(i64),
+    Integer(GenericInt),
 }
 
-#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-pub fn ias_f64(i: i64) -> f64 {
-    let result = i as f64;
-    assert!(
-        (result as i64 == i),
-        "Could not losslessly convert i64 `{i}` to f64."
-    );
-    result
-}
-
-#[allow(clippy::cast_possible_truncation)]
-pub fn ias_i32(i: i64) -> i32 {
-    assert!(
-        (i <= i64::from(i32::MAX)),
-        "Could not losslessly convert i64 `{i}` to i32."
-    );
-    i as i32
-}
-
-#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
-pub fn ias_u64(i: i64) -> u64 {
-    let result = i as u64;
-    assert!(
-        (result as i64 == i),
-        "Could not losslessly convert i64 `{i}` to u64."
-    );
-    result
-}
-
-#[allow(clippy::cast_possible_truncation)]
-pub const fn fas_i64(f: f64) -> i64 {
-    f as i64
-}
-
-impl From<Number> for f64 {
+impl From<Number> for Result<Number, String> {
     fn from(n: Number) -> Self {
-        match n {
-            Number::Float(n) => n,
-            Number::Integer(n) => ias_f64(n),
+        Ok(n)
+    }
+}
+
+// These could probably be individual entries in the enum tbh.
+/// Enum summarizing all of the generic number types.
+#[derive(Debug, Clone, From, Copy)]
+pub enum GenericInt {
+    Small(i64),
+    Big(BigIntId),
+}
+
+impl std::fmt::Display for GenericInt {
+    /// Upvalues are implementation details and should never be seen by the user.
+    /// So this is only used for debugging.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Small(n) => f.pad(&format!("{n}")),
+            Self::Big(n) => f.pad(&format!("{}", **n)),
         }
     }
 }
 
-impl From<Number> for i64 {
-    fn from(n: Number) -> Self {
+impl From<BigIntId> for BigInt {
+    fn from(id: BigIntId) -> Self {
+        (*id).clone()
+    }
+}
+
+impl GenericInt {
+    pub const fn new(value: i64) -> Self {
+        Self::Small(value)
+    }
+
+    #[allow(clippy::wrong_self_convention)]
+    pub fn to_bigint(&self) -> BigInt {
+        match self {
+            Self::Small(n) => BigInt::from(*n),
+            Self::Big(n) => (*n).into(),
+        }
+    }
+
+    fn promote(lhs: &Self, rhs: &Self) -> (BigInt, BigInt) {
+        (lhs.to_bigint(), rhs.to_bigint())
+    }
+
+    pub fn is_zero(&self) -> bool {
+        match self {
+            Self::Small(n) => *n == 0,
+            Self::Big(n) => n.is_zero(),
+        }
+    }
+}
+
+macro_rules! impl_op {
+    ($method:ident, $checked_method:ident) => {
+        impl GenericInt {
+            pub(crate) fn $method(self, rhs: Self, heap: &mut Heap) -> GenericInt {
+                match (self, rhs) {
+                    (GenericInt::Small(a), GenericInt::Small(b)) => match a.$checked_method(b) {
+                        Some(res) => GenericInt::Small(res).into(),
+                        None => {
+                            let (big_a, big_b) =
+                                Self::promote(&GenericInt::Small(a), &GenericInt::Small(b));
+                            *heap.add_big_int(big_a.$method(big_b)).as_generic_int()
+                        }
+                    },
+                    (lhs, rhs) => {
+                        let (big_lhs, big_rhs) = Self::promote(&lhs, &rhs);
+                        *heap.add_big_int(big_lhs.$method(big_rhs)).as_generic_int()
+                    }
+                }
+            }
+        }
+    };
+}
+
+impl_op!(add, checked_add);
+impl_op!(sub, checked_sub);
+impl_op!(mul, checked_mul);
+
+// Implementing division and modulus with error handling
+macro_rules! impl_div_rem {
+    ($method:ident, $checked_method:ident) => {
+        impl GenericInt {
+            pub(crate) fn $method(self, rhs: Self, heap: &mut Heap) -> Result<GenericInt, String> {
+                if rhs.is_zero() {
+                    return Err("Division by zero".to_string());
+                }
+
+                match (self, rhs) {
+                    (GenericInt::Small(a), GenericInt::Small(b)) => match a.$checked_method(b) {
+                        Some(res) => Ok(GenericInt::Small(res)),
+                        None => {
+                            let (big_a, big_b) =
+                                Self::promote(&GenericInt::Small(a), &GenericInt::Small(b));
+                            Ok(*heap.add_big_int(big_a.$method(big_b)).as_generic_int())
+                        }
+                    },
+                    (lhs, rhs) => {
+                        let (big_lhs, big_rhs) = Self::promote(&lhs, &rhs);
+                        { Ok(*heap.add_big_int(big_lhs.$method(big_rhs)).as_generic_int()) }
+                    }
+                }
+            }
+        }
+    };
+}
+
+// Implementing div and rem
+impl_div_rem!(div, checked_div);
+impl_div_rem!(rem, checked_rem);
+
+// Implementing bitwise operations
+macro_rules! impl_bitwise_op {
+    ($trait:ident, $method:ident) => {
+        impl GenericInt {
+            pub(crate) fn $method(self, rhs: Self, heap: &mut Heap) -> GenericInt {
+                match (self, rhs) {
+                    (GenericInt::Small(a), GenericInt::Small(b)) => GenericInt::Small(a.$method(b)),
+                    (lhs, rhs) => {
+                        let (big_lhs, big_rhs) = Self::promote(&lhs, &rhs);
+                        *heap.add_big_int(big_lhs.$method(big_rhs)).as_generic_int()
+                    }
+                }
+            }
+        }
+    };
+}
+
+// Implementing bitwise AND, OR, XOR
+impl_bitwise_op!(BitAnd, bitand);
+impl_bitwise_op!(BitOr, bitor);
+impl_bitwise_op!(BitXor, bitxor);
+
+// Comparisons for GenericInt against other GenericInt
+impl PartialEq for GenericInt {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Small(a), Self::Small(b)) => a == b,
+            (Self::Big(a), Self::Big(b)) => **a == **b,
+            (Self::Small(a), Self::Big(b)) => BigInt::from(*a) == **b,
+            (Self::Big(a), Self::Small(b)) => **a == BigInt::from(*b),
+        }
+    }
+}
+
+impl Hash for GenericInt {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Small(n) => BigInt::from(*n).hash(state),
+            Self::Big(n) => (**n).hash(state),
+        }
+    }
+}
+
+impl PartialOrd for GenericInt {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (Self::Small(a), Self::Small(b)) => a.partial_cmp(b),
+            (Self::Big(a), Self::Big(b)) => a.partial_cmp(b),
+            (Self::Small(a), Self::Big(b)) => BigInt::from(*a).partial_cmp(b),
+            (Self::Big(a), Self::Small(b)) => (**a).partial_cmp(&BigInt::from(*b)),
+        }
+    }
+}
+
+// Comparisons against integers (i64)
+impl PartialEq<i64> for GenericInt {
+    fn eq(&self, other: &i64) -> bool {
+        match self {
+            Self::Small(a) => a == other,
+            Self::Big(a) => **a == BigInt::from(*other),
+        }
+    }
+}
+
+impl PartialOrd<i64> for GenericInt {
+    fn partial_cmp(&self, other: &i64) -> Option<std::cmp::Ordering> {
+        match self {
+            Self::Small(a) => a.partial_cmp(other),
+            Self::Big(a) => (**a).partial_cmp(&BigInt::from(*other)),
+        }
+    }
+}
+
+impl GenericInt {
+    #[allow(clippy::option_if_let_else)]
+    fn pow(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
+        if rhs < 0 {
+            return Err("Negative exponent".to_string());
+        }
+        match (self, rhs) {
+            (Self::Small(a), Self::Small(b)) => {
+                if let Ok(b_u32) = u32::try_from(b) {
+                    Ok(Self::Small(a.pow(b_u32)))
+                } else {
+                    // Fallback to `BigInt` exponentiation for large exponents
+                    Ok(*heap
+                        .add_big_int(BigInt::from(a).pow(
+                            u64::try_from(b).expect("Previously checked that rhs is positive"),
+                        ))
+                        .as_generic_int())
+                }
+            }
+            (Self::Big(a), Self::Big(b)) => Ok(*heap
+                .add_big_int((*a).clone().pow(
+                    u64::try_from((*b).clone()).expect("Previously checked that rhs is positive"),
+                ))
+                .as_generic_int()),
+            (Self::Small(a), Self::Big(b)) => Ok(*heap
+                .add_big_int(BigInt::from(a).pow(
+                    u64::try_from((*b).clone()).expect("Previously checked that rhs is positive"),
+                ))
+                .as_generic_int()),
+            (Self::Big(a), Self::Small(b)) => Ok(*heap
+                .add_big_int(
+                    (*a).clone()
+                        .pow(u64::try_from(b).expect("Previously checked that rhs is positive")),
+                )
+                .as_generic_int()),
+        }
+    }
+
+    fn neg(self, heap: &mut Heap) -> Self {
+        match self {
+            Self::Small(n) => Self::Small(n.neg()),
+            Self::Big(n) => *heap.add_big_int((*n).clone().neg()).as_generic_int(),
+        }
+    }
+}
+
+impl From<GenericInt> for f64 {
+    #[allow(clippy::option_if_let_else)]
+    #[allow(clippy::cast_precision_loss)]
+    fn from(n: GenericInt) -> Self {
         match n {
-            Number::Float(f) => fas_i64(f),
-            Number::Integer(i) => i,
+            GenericInt::Small(n) => n as Self,
+            GenericInt::Big(n) => match i64::try_from((*n).clone()) {
+                Ok(n) => n as Self,
+                Err(_) => Self::INFINITY, // Or f64::MAX?
+            },
+        }
+    }
+}
+
+impl TryFrom<GenericInt> for i32 {
+    type Error = String;
+    #[allow(clippy::option_if_let_else)]
+    fn try_from(n: GenericInt) -> Result<Self, Self::Error> {
+        match n {
+            GenericInt::Small(n) => match Self::try_from(n) {
+                Ok(n) => Ok(n),
+                Err(_) => Err("Number too large to fit in i32".to_string()),
+            },
+            GenericInt::Big(n) => match Self::try_from((*n).clone()) {
+                Ok(n) => Ok(n),
+                Err(_) => Err("Number too large to fit in i32".to_string()),
+            },
+        }
+    }
+}
+
+impl TryFrom<GenericInt> for u64 {
+    type Error = String;
+    #[allow(clippy::option_if_let_else)]
+    fn try_from(n: GenericInt) -> Result<Self, Self::Error> {
+        match n {
+            GenericInt::Small(n) => match Self::try_from(n) {
+                Ok(n) => Ok(n),
+                Err(_) => Err("Number loses sign.".to_string()),
+            },
+            GenericInt::Big(n) => match Self::try_from((*n).clone()) {
+                Ok(n) => Ok(n),
+                Err(_) => Err("Number too large to fit in u64 or signed".to_string()),
+            },
+        }
+    }
+}
+
+impl GenericInt {
+    #[allow(clippy::option_if_let_else)]
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_possible_truncation)]
+    pub(crate) fn try_from_f64(f: f64, heap: &mut Heap) -> Result<Self, String> {
+        if !f.is_finite() {
+            return Err("f64 is not finite".to_string());
+        }
+        let truncated = f.trunc();
+        if truncated >= i64::MIN as f64 && truncated <= i64::MAX as f64 {
+            Ok(Self::Small(truncated as i64))
+        } else {
+            let s = format!("{truncated:.0}");
+            match s.parse::<BigInt>() {
+                Ok(big) => Ok(*heap.add_big_int(big).as_generic_int()),
+                Err(_) => Err(format!("Could not convert {f} to integer")),
+            }
+        }
+    }
+}
+
+impl TryFrom<GenericInt> for usize {
+    type Error = String;
+    #[allow(clippy::option_if_let_else)]
+    fn try_from(n: GenericInt) -> Result<Self, Self::Error> {
+        match n {
+            GenericInt::Small(n) => match Self::try_from(n) {
+                Ok(n) => Ok(n),
+                Err(_) => Err("Number too large to fit in usize".to_string()),
+            },
+            GenericInt::Big(n) => match Self::try_from((*n).clone()) {
+                Ok(n) => Ok(n),
+                Err(_) => Err("Number too large to fit in usize".to_string()),
+            },
         }
     }
 }
@@ -154,122 +427,129 @@ impl std::fmt::Display for Number {
     }
 }
 
+impl From<Number> for f64 {
+    fn from(n: Number) -> Self {
+        match n {
+            Number::Float(f) => f,
+            Number::Integer(i) => Self::from(i),
+        }
+    }
+}
+
+impl From<i64> for Number {
+    fn from(n: i64) -> Self {
+        Self::Integer(n.into())
+    }
+}
+
 impl Number {
     /// Expressions `a**b` on numbers produce integers, only if
     /// both are already integers and `b`is not negative.
     /// Everything else produces a float result.
-    pub(super) fn pow(self, exp: Self) -> Self {
+    #[allow(clippy::option_if_let_else)]
+    pub(super) fn pow(self, exp: Self, heap: &mut Heap) -> Self {
         match (self, exp) {
-            (Self::Integer(a), Self::Integer(b)) if b >= 0 => Self::Integer(a.pow(
-                u32::try_from(b).unwrap_or_else(|_| panic!("Could not convert i64 `{b}` to u32.")),
-            )),
-            (Self::Float(a), Self::Integer(b)) => Self::Float(a.powi(ias_i32(b))),
-            (Self::Integer(a), Self::Float(b)) => Self::Float((ias_f64(a)).powf(b)),
+            (Self::Integer(a), Self::Integer(b)) if b >= 0 => Self::Integer(
+                a.pow(b, heap)
+                    .expect("Only calling integer pow for exp >= 0"),
+            ),
+            (Self::Float(a), Self::Integer(b)) => match i32::try_from(b) {
+                Ok(b) => Self::Float(a.powi(b)),
+                Err(_) => Self::Float(f64::INFINITY), // Or f64::MAX?
+            },
+            (Self::Integer(a), Self::Float(b)) => Self::Float(f64::from(a).powf(b)),
             (Self::Float(a), Self::Float(b)) => Self::Float(a.powf(b)),
-            (Self::Integer(a), Self::Integer(b)) => Self::Float(ias_f64(a).powi(ias_i32(b))),
+            (Self::Integer(a), Self::Integer(b)) => match i32::try_from(b) {
+                Ok(b) => Self::Float(f64::from(a).powi(b)),
+                Err(_) => Self::Float(f64::INFINITY), // Or f64::MAX?
+            },
         }
     }
 
     /// Floor division only produces integers if both operands are themselves integers.
     /// Otherwise the result is a floored float.
-    pub(super) fn floor_div(self, exp: Self) -> Self {
-        match (self, exp) {
-            (Self::Integer(a), Self::Integer(b)) => Self::Integer(a / b),
-            (Self::Float(a), Self::Integer(b)) => Self::Float((a / (ias_f64(b))).floor()),
-            (Self::Integer(a), Self::Float(b)) => Self::Float(((ias_f64(a)) / b).floor()),
-            (Self::Float(a), Self::Float(b)) => Self::Float((a / b).floor()),
+    pub(super) fn floor_div(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
+        match (self, rhs) {
+            (Self::Integer(a), Self::Integer(b)) => Ok(Self::Integer((a.div(b, heap))?)),
+            (Self::Float(a), Self::Integer(b)) => Ok(Self::Float((a / f64::from(b)).floor())),
+            (Self::Integer(a), Self::Float(b)) => Ok(Self::Float((f64::from(a) / b).floor())),
+            (Self::Float(a), Self::Float(b)) => Ok(Self::Float((a / b).floor())),
+        }
+    }
+
+    pub(super) fn neg(self, heap: &mut Heap) -> Self {
+        match self {
+            Self::Integer(n) => Self::Integer(n.neg(heap)),
+            Self::Float(f) => Self::Float(-f),
         }
     }
 }
 
-impl ::core::ops::Div for Number {
-    type Output = Self;
+impl Number {
     /// Standard division ALWAYS produces floats, even for two integer arguments and even
     /// if the result could be represented as an integer.
-    fn div(self, rhs: Self) -> Self {
+    pub(crate) fn div(self, rhs: Self, _heap: &mut Heap) -> Self {
         match (self, rhs) {
-            (Self::Integer(a), Self::Integer(b)) => Self::Float(ias_f64(a) / ias_f64(b)),
-            (Self::Float(a), Self::Integer(b)) => Self::Float(a / ias_f64(b)),
-            (Self::Integer(a), Self::Float(b)) => Self::Float(ias_f64(a) / b),
+            (Self::Integer(a), Self::Integer(b)) => Self::Float(f64::from(a) / f64::from(b)),
+            (Self::Float(a), Self::Integer(b)) => Self::Float(a / f64::from(b)),
+            (Self::Integer(a), Self::Float(b)) => Self::Float(f64::from(a) / b),
             (Self::Float(a), Self::Float(b)) => Self::Float(a / b),
         }
     }
-}
-
-impl ::core::ops::Add for Number {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self {
+    pub(crate) fn add(self, rhs: Self, heap: &mut Heap) -> Self {
         match (self, rhs) {
-            (Self::Integer(a), Self::Integer(b)) => Self::Integer(a + b),
-            (Self::Float(a), Self::Integer(b)) => Self::Float(a + ias_f64(b)),
-            (Self::Integer(a), Self::Float(b)) => Self::Float(ias_f64(a) + b),
+            (Self::Integer(a), Self::Integer(b)) => Self::Integer(a.add(b, heap)),
+            (Self::Float(a), Self::Integer(b)) => Self::Float(a + f64::from(b)),
+            (Self::Integer(a), Self::Float(b)) => Self::Float(f64::from(a) + b),
             (Self::Float(a), Self::Float(b)) => Self::Float(a + b),
         }
     }
-}
 
-impl ::core::ops::Sub for Number {
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self {
+    pub(crate) fn sub(self, rhs: Self, heap: &mut Heap) -> Self {
         match (self, rhs) {
-            (Self::Integer(a), Self::Integer(b)) => Self::Integer(a - b),
-            (Self::Float(a), Self::Integer(b)) => Self::Float(a - ias_f64(b)),
-            (Self::Integer(a), Self::Float(b)) => Self::Float(ias_f64(a) - b),
+            (Self::Integer(a), Self::Integer(b)) => Self::Integer(a.sub(b, heap)),
+            (Self::Float(a), Self::Integer(b)) => Self::Float(a - f64::from(b)),
+            (Self::Integer(a), Self::Float(b)) => Self::Float(f64::from(a) - b),
             (Self::Float(a), Self::Float(b)) => Self::Float(a - b),
         }
     }
-}
 
-impl ::core::ops::Mul for Number {
-    type Output = Self;
-    fn mul(self, rhs: Self) -> Self {
+    pub(crate) fn mul(self, rhs: Self, heap: &mut Heap) -> Self {
         match (self, rhs) {
-            (Self::Integer(a), Self::Integer(b)) => Self::Integer(a * b),
-            (Self::Float(a), Self::Integer(b)) => Self::Float(a * ias_f64(b)),
-            (Self::Integer(a), Self::Float(b)) => Self::Float(ias_f64(a) * b),
+            (Self::Integer(a), Self::Integer(b)) => Self::Integer(a.mul(b, heap)),
+            (Self::Float(a), Self::Integer(b)) => Self::Float(a * f64::from(b)),
+            (Self::Integer(a), Self::Float(b)) => Self::Float(f64::from(a) * b),
             (Self::Float(a), Self::Float(b)) => Self::Float(a * b),
         }
     }
-}
 
-impl ::core::ops::BitAnd for Number {
-    type Output = Self;
-    fn bitand(self, rhs: Self) -> Self {
+    pub(crate) fn bitand(self, rhs: Self, heap: &mut Heap) -> Self {
         match (self, rhs) {
-            (Self::Integer(a), Self::Integer(b)) => Self::Integer(a & b),
+            (Self::Integer(a), Self::Integer(b)) => Self::Integer(a.bitand(b, heap)),
             _ => unreachable!("Did not get two integers for bitwise and."),
         }
     }
-}
 
-impl ::core::ops::BitOr for Number {
-    type Output = Self;
-    fn bitor(self, rhs: Self) -> Self {
+    pub(crate) fn bitor(self, rhs: Self, heap: &mut Heap) -> Self {
         match (self, rhs) {
-            (Self::Integer(a), Self::Integer(b)) => Self::Integer(a | b),
+            (Self::Integer(a), Self::Integer(b)) => Self::Integer(a.bitor(b, heap)),
             _ => unreachable!("Did not get two integers for bitwise or."),
         }
     }
-}
 
-impl ::core::ops::BitXor for Number {
-    type Output = Self;
-    fn bitxor(self, rhs: Self) -> Self {
+    pub(crate) fn bitxor(self, rhs: Self, heap: &mut Heap) -> Self {
         match (self, rhs) {
-            (Self::Integer(a), Self::Integer(b)) => Self::Integer(a ^ b),
+            (Self::Integer(a), Self::Integer(b)) => Self::Integer(a.bitxor(b, heap)),
             _ => unreachable!("Did not get two integers for bitwise xor."),
         }
     }
-}
 
-impl ::core::ops::Rem for Number {
-    type Output = Self;
-    fn rem(self, rhs: Self) -> Self {
+    pub(crate) fn rem(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
         match (self, rhs) {
-            (Self::Integer(a), Self::Integer(b)) => Self::Integer(a % b),
-            (Self::Float(a), Self::Integer(b)) => Self::Float(a % ias_f64(b)),
-            (Self::Integer(a), Self::Float(b)) => Self::Float(ias_f64(a) % b),
-            (Self::Float(a), Self::Float(b)) => Self::Float(a % b),
+            (Self::Integer(a), Self::Integer(b)) => Ok(Self::Integer((a.rem(b, heap))?)),
+            (Self::Float(a), Self::Integer(b)) => Ok(Self::Float(a % f64::from(b))),
+            (Self::Integer(a), Self::Float(b)) => Ok(Self::Float(f64::from(a) % b)),
+            (Self::Float(a), Self::Float(b)) => Ok(Self::Float(a % b)),
         }
     }
 }
@@ -596,7 +876,13 @@ impl From<f64> for Value {
 
 impl From<i64> for Value {
     fn from(f: i64) -> Self {
-        Self::Number(f.into())
+        Self::Number(Number::Integer(f.into()))
+    }
+}
+
+impl From<GenericInt> for Value {
+    fn from(i: GenericInt) -> Self {
+        Self::Number(Number::Integer(i))
     }
 }
 
@@ -609,6 +895,12 @@ impl From<Number> for Value {
 impl From<StringId> for Value {
     fn from(s: StringId) -> Self {
         Self::String(s)
+    }
+}
+
+impl From<BigIntId> for Value {
+    fn from(b: BigIntId) -> Self {
+        Self::Number(Number::Integer(GenericInt::Big(b)))
     }
 }
 
@@ -676,6 +968,13 @@ impl Value {
             self,
             Self::Bool(_) | Self::Nil | Self::Number(_) | Self::String(_) | Self::StopIteration
         )
+    }
+
+    pub(super) fn as_generic_int(&self) -> &GenericInt {
+        match self {
+            Self::Number(Number::Integer(n)) => n,
+            _ => unreachable!("Expected Number, found `{}`", self),
+        }
     }
 
     pub(super) fn as_closure(&self) -> &ClosureId {

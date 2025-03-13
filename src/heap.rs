@@ -16,21 +16,21 @@
 //!
 //! Garbage collection occurs via `mark and sweep`.
 
+use derivative::Derivative;
+use num_bigint::BigInt;
 use rustc_hash::FxHashMap as HashMap;
+use slotmap::{HopSlotMap as SlotMap, Key, new_key_type};
 use std::collections::hash_map::Entry;
+use std::fmt::{Debug, Display};
 use std::{
     ops::{Deref, DerefMut},
     pin::Pin,
     ptr::NonNull,
 };
 
-use derivative::Derivative;
-use slotmap::{HopSlotMap as SlotMap, Key, new_key_type};
-use std::fmt::{Debug, Display};
-
 use crate::value::{
-    BoundMethod, Class, Closure, Function, Instance, Module, NativeClass, NativeFunction,
-    NativeMethod, Upvalue, Value,
+    BoundMethod, Class, Closure, Function, GenericInt, Instance, Module, NativeClass,
+    NativeFunction, NativeMethod, Number, Upvalue, Value,
 };
 
 pub trait ArenaValue: Debug + Display + PartialEq {}
@@ -41,6 +41,7 @@ impl<T> ArenaValue for T where T: Debug + Display + PartialEq {}
 new_key_type! {
     pub struct FunctionKey;
     pub struct StringKey;
+    pub struct BigIntKey;
     pub struct UpvalueKey;
     pub struct ClosureKey;
     pub struct NativeFunctionKey;
@@ -111,6 +112,7 @@ impl<T> Item<T> {
 
 // Separate Id types for each `Value` variant.
 pub type StringId = ArenaId<StringKey, String>;
+pub type BigIntId = ArenaId<BigIntKey, BigInt>;
 pub type UpvalueId = ArenaId<UpvalueKey, Upvalue>;
 pub type FunctionId = ArenaId<FunctionKey, Function>;
 pub type ClosureId = ArenaId<ClosureKey, Closure>;
@@ -261,7 +263,6 @@ impl BuiltinConstants {
 macro_rules! gray_value {
     ($self:expr, $value:expr) => {
         match $value {
-            Value::Bool(_) | Value::Nil | Value::StopIteration | Value::Number(_) => {}
             Value::Upvalue(id) => {
                 #[cfg(feature = "log_gc")]
                 {
@@ -275,6 +276,13 @@ macro_rules! gray_value {
                     eprintln!("String/{:?} gray {}", id.id, **id);
                 }
                 $self.strings.gray.push(id.id);
+            }
+            Value::Number(Number::Integer(GenericInt::Big(id))) => {
+                #[cfg(feature = "log_gc")]
+                {
+                    eprintln!("BigInt/{:?} gray {}", id.id, **id);
+                }
+                $self.big_ints.gray.push(id.id);
             }
             Value::Function(id) => {
                 #[cfg(feature = "log_gc")]
@@ -332,6 +340,7 @@ macro_rules! gray_value {
                 }
                 $self.modules.gray.push(id.id);
             }
+            Value::Bool(_) | Value::Nil | Value::StopIteration | Value::Number(_) => {}
         }
     };
 }
@@ -346,6 +355,7 @@ pub struct Heap {
     pub(super) native_classes: HashMap<String, Value>,
 
     pub(super) strings: Arena<StringKey, String>,
+    big_ints: Arena<BigIntKey, BigInt>,
     functions: Arena<FunctionKey, Function>,
     bound_methods: Arena<BoundMethodKey, BoundMethod>,
     closures: Arena<ClosureKey, Closure>,
@@ -372,6 +382,10 @@ impl Heap {
             strings: Arena::new(
                 #[cfg(feature = "log_gc")]
                 "String",
+            ),
+            big_ints: Arena::new(
+                #[cfg(feature = "log_gc")]
+                "BigInt",
             ),
             functions: Arena::new(
                 #[cfg(feature = "log_gc")]
@@ -443,6 +457,7 @@ impl Heap {
 
     const fn bytes_allocated(&self) -> usize {
         self.strings.bytes_allocated()
+            + self.big_ints.bytes_allocated()
             + self.functions.bytes_allocated()
             + self.bound_methods.bytes_allocated()
             + self.closures.bytes_allocated()
@@ -492,6 +507,7 @@ impl Heap {
             eprintln!("-- trace start");
         }
         while !self.functions.gray.is_empty()
+            || !self.big_ints.gray.is_empty()
             || !self.strings.gray.is_empty()
             || !self.upvalues.gray.is_empty()
             || !self.native_functions.gray.is_empty()
@@ -504,6 +520,9 @@ impl Heap {
         {
             for index in self.strings.flush_gray() {
                 self.blacken_string(index);
+            }
+            for index in self.big_ints.flush_gray() {
+                self.blacken_big_int(index);
             }
             for index in self.functions.flush_gray() {
                 self.blacken_function(index);
@@ -553,9 +572,9 @@ impl Heap {
 
     fn blacken_value(&mut self, index: &Value) {
         match index {
-            Value::Bool(_) | Value::Nil | Value::StopIteration | Value::Number(_) => {}
             Value::Upvalue(id) => self.blacken_upvalue(id.id),
             Value::String(id) => self.blacken_string(id.id),
+            Value::Number(Number::Integer(GenericInt::Big(id))) => self.blacken_big_int(id.id),
             Value::Function(id) => self.blacken_function(id.id),
             Value::NativeFunction(id) => self.blacken_native_function(id.id),
             Value::NativeMethod(id) => self.blacken_native_method(id.id),
@@ -564,6 +583,7 @@ impl Heap {
             Value::Instance(id) => self.blacken_instance(id.id),
             Value::BoundMethod(id) => self.blacken_bound_method(id.id),
             Value::Module(id) => self.blacken_module(id.id),
+            Value::Bool(_) | Value::Nil | Value::StopIteration | Value::Number(_) => {}
         }
     }
 
@@ -808,6 +828,24 @@ impl Heap {
         }
     }
 
+    /// `BigInts` only contain the actual number.
+    fn blacken_big_int(&mut self, index: BigIntKey) {
+        let item = &mut self.big_ints.data[index];
+        if item.marked == self.black_value {
+            return;
+        }
+        #[cfg(feature = "log_gc")]
+        {
+            eprintln!("BigInt/{:?} blacken {} start", index, item.item);
+            eprintln!("BigInt/{index:?} mark {}", item.item);
+        }
+        item.marked = self.black_value;
+        #[cfg(feature = "log_gc")]
+        {
+            eprintln!("BigInt/{:?} blacken {} end", index, item.item);
+        }
+    }
+
     /// Function contain their own name as well as a list of constants,
     /// although none of these should currently be heap allocated.
     fn blacken_function(&mut self, index: FunctionKey) {
@@ -852,6 +890,7 @@ impl Heap {
         self.native_methods.sweep(self.black_value);
         self.classes.sweep(self.black_value);
         self.instances.sweep(self.black_value);
+        self.big_ints.sweep(self.black_value);
         self.strings.sweep(self.black_value);
 
         self.black_value = !self.black_value;
@@ -872,6 +911,10 @@ impl Heap {
 
     fn add_string(&mut self, value: String) -> Value {
         self.strings.add(value, self.black_value).into()
+    }
+
+    pub(super) fn add_big_int(&mut self, value: BigInt) -> Value {
+        self.big_ints.add(value, self.black_value).into()
     }
 
     pub(super) fn add_function(&mut self, value: Function) -> Value {

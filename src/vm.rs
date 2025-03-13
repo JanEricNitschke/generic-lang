@@ -47,16 +47,96 @@ macro_rules! runtime_error {
     };
 }
 
+macro_rules! binary_op_invoke {
+    ($self:ident, $a:ident, $b:ident, $method:ident, with_heap) => {
+        $a.$method(*$b, &mut $self.heap)
+    };
+    ($self:ident, $a:ident, $b:ident, $method:ident, no_heap) => {
+        $a.$method($b)
+    };
+}
+
 /// Handle binary operations between numbers.
 macro_rules! binary_op {
-    ($self:ident, $op:tt, $intonly:tt) => {
-        if !$self.binary_op(|a, b| a $op b, $intonly) {
+    ($self:ident, $method:ident, $int_only:tt, $heap_toggle:ident) => {{
+        let slice_start = $self.stack.len() - 2;
+
+        let status = match &$self.stack[slice_start..] {
+            [left, right] => {
+                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
+                    if $int_only
+                        & (!matches!(a, Number::Integer(_)) | !matches!(b, Number::Integer(_)))
+                    {
+                        BinaryOpResult::InvalidOperands
+                    } else {
+                        match binary_op_invoke!($self, a, b, $method, $heap_toggle)
+                            .into_result_value()
+                        {
+                            Ok(value) => {
+                                $self.stack.pop();
+                                $self.stack.pop();
+                                $self.stack_push_value(value);
+                                BinaryOpResult::Success
+                            }
+                            Err(error) => {
+                                runtime_error!($self, "{error}");
+                                BinaryOpResult::OperationError
+                            }
+                        }
+                    }
+                } else {
+                    BinaryOpResult::InvalidOperands
+                }
+            }
+            _ => BinaryOpResult::InvalidOperands,
+        };
+
+        if status == BinaryOpResult::InvalidOperands {
+            runtime_error!(
+                $self,
+                "Operands must be {}. Got: [{}]",
+                if $int_only { "integers" } else { "numbers" },
+                $self.stack[slice_start..]
+                    .iter()
+                    .map(|v| format!("{v}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        if status != BinaryOpResult::Success {
             return InterpretResult::RuntimeError;
         }
+    }};
+}
+
+#[derive(PartialEq, Eq)]
+enum BinaryOpResult {
+    Success,
+    InvalidOperands,
+    OperationError,
+}
+
+trait IntoResultValue {
+    fn into_result_value(self) -> Result<Value, String>;
+}
+
+impl<T> IntoResultValue for T
+where
+    T: Into<Value>,
+{
+    fn into_result_value(self) -> Result<Value, String> {
+        Ok(self.into())
     }
 }
 
-type BinaryOp<T> = fn(Number, Number) -> T;
+impl<T> IntoResultValue for Result<T, String>
+where
+    T: Into<Value>,
+{
+    fn into_result_value(self) -> Result<Value, String> {
+        self.map(Into::into)
+    }
+}
 
 /// Wrapper around a global value to store whether it is mutable or not.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Copy)]
@@ -187,14 +267,23 @@ macro_rules! run_instruction {
             {
                 println!(
                     "Current module: {} at module depth {} and total call depth {}.",
-                    *$self.modules.last().expect("Module underflow in disassembler").name,
+                    *$self
+                        .modules
+                        .last()
+                        .expect("Module underflow in disassembler")
+                        .name,
                     $self.modules.len(),
                     $self.callstack.len()
                 );
             }
             println!(
                 "          [ { } ]",
-                $self.stack.iter().map(|v| format!("{v}")).collect::<Vec<_>>().join(" ][ ")
+                $self
+                    .stack
+                    .iter()
+                    .map(|v| format!("{v}"))
+                    .collect::<Vec<_>>()
+                    .join(" ][ ")
             );
             print!("{disassembler:?}");
         }
@@ -216,14 +305,12 @@ macro_rules! run_instruction {
                     // 1 2 3 4 (depth = 1) -> grab 3
                     // 1 2 3 4 3 (again depth = 1) -> grab 4
                     // 1 2 3 4 3 4
-                    $self.stack_push_value(
-                        *$self.peek(depth).expect("Stack underflow in OP_DUP"),
-                    );
+                    $self.stack_push_value(*$self.peek(depth).expect("Stack underflow in OP_DUP"));
                 }
             }
             OpCode::Swap => {
                 let len = $self.stack.len();
-                $self.stack.swap(len-1, len-2);
+                $self.stack.swap(len - 1, len - 2);
             }
             OpCode::LoadOne => {
                 $self.stack.push(1.into());
@@ -308,27 +395,19 @@ macro_rules! run_instruction {
                     return value;
                 }
             }
-            OpCode::Subtract => binary_op!($self, -, false),
-            OpCode::Multiply => binary_op!($self, *, false),
-            OpCode::Divide => binary_op!($self, /, false),
-            OpCode::BitXor => binary_op!($self, ^, true),
-            OpCode::BitAnd => binary_op!($self, &, true),
-            OpCode::BitOr => binary_op!($self, |, true),
-            OpCode::Exp => {
-                if let Some(value) = $self.exponatiate() {
-                    return value;
-                }
-            }
-            OpCode::Mod => binary_op!($self, %, false),
-            OpCode::FloorDiv => {
-                if let Some(value) = $self.floor_div() {
-                    return value;
-                }
-            }
-            OpCode::Greater => binary_op!($self, >, false),
-            OpCode::Less => binary_op!($self, <, false),
-            OpCode::GreaterEqual => binary_op!($self, >=, false),
-            OpCode::LessEqual => binary_op!($self, <=, false),
+            OpCode::Subtract => binary_op!($self, sub, false, with_heap),
+            OpCode::Multiply => binary_op!($self, mul, false, with_heap),
+            OpCode::Divide => binary_op!($self, div, false, with_heap),
+            OpCode::BitXor => binary_op!($self, bitxor, true, with_heap),
+            OpCode::BitAnd => binary_op!($self, bitand, true, with_heap),
+            OpCode::BitOr => binary_op!($self, bitor, true, with_heap),
+            OpCode::Exp => binary_op!($self, pow, false, with_heap),
+            OpCode::Mod => binary_op!($self, rem, false, with_heap),
+            OpCode::FloorDiv => binary_op!($self, floor_div, false, with_heap),
+            OpCode::Greater => binary_op!($self, gt, false, no_heap),
+            OpCode::Less => binary_op!($self, lt, false, no_heap),
+            OpCode::GreaterEqual => binary_op!($self, ge, false, no_heap),
+            OpCode::LessEqual => binary_op!($self, le, false, no_heap),
             OpCode::NotEqual => $self.equal(true),
             OpCode::Jump => {
                 let offset = $self.read_16bit_number();
@@ -555,7 +634,10 @@ macro_rules! run_instruction {
                 for _ in 0..arg_count {
                     $self.stack.pop();
                 }
-                let instance = Instance::new(*$self.heap.native_classes.get("List").unwrap(), Some(list.into()));
+                let instance = Instance::new(
+                    *$self.heap.native_classes.get("List").unwrap(),
+                    Some(list.into()),
+                );
                 let instance_value = $self.heap.add_instance(instance);
                 $self.stack_push_value(instance_value);
             }
@@ -569,7 +651,11 @@ macro_rules! run_instruction {
                 for index in (0..arg_count).rev() {
                     let value = $self.peek(index as usize).unwrap();
                     if !value.is_hasheable() {
-                        runtime_error!($self, "Value `{}` is not hashable when this is required for items in a set.", value);
+                        runtime_error!(
+                            $self,
+                            "Value `{}` is not hashable when this is required for items in a set.",
+                            value
+                        );
                         return InterpretResult::RuntimeError;
                     }
                     set.items.insert(*$self.peek(index as usize).unwrap());
@@ -577,7 +663,10 @@ macro_rules! run_instruction {
                 for _ in 0..arg_count {
                     $self.stack.pop();
                 }
-                let instance = Instance::new(*$self.heap.native_classes.get("Set").unwrap(), Some(set.into()));
+                let instance = Instance::new(
+                    *$self.heap.native_classes.get("Set").unwrap(),
+                    Some(set.into()),
+                );
                 let instance_value = $self.heap.add_instance(instance);
                 $self.stack_push_value(instance_value);
             }
@@ -589,8 +678,8 @@ macro_rules! run_instruction {
                 // Number of key, value pairs.
                 let arg_count = $self.read_byte();
                 for index in (0..arg_count).rev() {
-                    let key = $self.peek((2*index+1) as usize).unwrap();
-                    let value = $self.peek((2*index) as usize).unwrap();
+                    let key = $self.peek((2 * index + 1) as usize).unwrap();
+                    let value = $self.peek((2 * index) as usize).unwrap();
                     dict.items.insert(*key, *value);
                 }
                 for _ in 0..arg_count {
@@ -598,7 +687,10 @@ macro_rules! run_instruction {
                     $self.stack.pop();
                     $self.stack.pop();
                 }
-                let instance = Instance::new(*$self.heap.native_classes.get("Dict").unwrap(), Some(dict.into()));
+                let instance = Instance::new(
+                    *$self.heap.native_classes.get("Dict").unwrap(),
+                    Some(dict.into()),
+                );
                 let instance_value = $self.heap.add_instance(instance);
                 $self.stack_push_value(instance_value);
             }
@@ -629,7 +721,10 @@ macro_rules! run_instruction {
                 let names_to_import = if n_names_to_import > 0 {
                     let mut names = Vec::with_capacity(n_names_to_import as usize);
                     for _ in 0..n_names_to_import {
-                        let name = $self.stack.pop().expect("Stack underflow in OP_IMPORT_FROM");
+                        let name = $self
+                            .stack
+                            .pop()
+                            .expect("Stack underflow in OP_IMPORT_FROM");
                         if let Value::String(name) = name {
                             names.push(name);
                         } else {
@@ -646,7 +741,10 @@ macro_rules! run_instruction {
                     None
                 };
 
-                let file_path = $self.stack.pop().expect("Stack underflow in OP_IMPORT_FROM");
+                let file_path = $self
+                    .stack
+                    .pop()
+                    .expect("Stack underflow in OP_IMPORT_FROM");
                 if let Some(value) = $self.import_file(file_path, names_to_import, None) {
                     return value;
                 }
@@ -1048,51 +1146,12 @@ impl VM {
         }
     }
 
-    fn binary_op<T: Into<Value>>(&mut self, op: BinaryOp<T>, int_only: bool) -> bool {
-        let slice_start = self.stack.len() - 2;
-
-        let ok = match &self.stack[slice_start..] {
-            [left, right] => {
-                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
-                    if int_only
-                        & (!matches!(a, Number::Integer(_)) | !matches!(b, Number::Integer(_)))
-                    {
-                        false
-                    } else {
-                        let value = op(*a, *b).into();
-                        self.stack.pop();
-                        self.stack.pop();
-                        self.stack_push_value(value);
-                        true
-                    }
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        };
-
-        if !ok {
-            runtime_error!(
-                self,
-                "Operands must be {}. Got: [{}]",
-                if int_only { "integers" } else { "numbers" },
-                self.stack[slice_start..]
-                    .iter()
-                    .map(|v| format!("{v}"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
-        ok
-    }
-
     fn add(&mut self) -> Option<InterpretResult> {
         let slice_start = self.stack.len() - 2;
         let ok = match &self.stack[slice_start..] {
             [left, right] => match (&left, &right) {
                 (Value::Number(a), Value::Number(b)) => {
-                    let value = (*a + *b).into();
+                    let value = (a.add(*b, &mut self.heap)).into();
                     self.stack.pop();
                     self.stack.pop();
                     self.stack_push_value(value);
@@ -1123,72 +1182,6 @@ impl VM {
                     .join(", ")
             );
 
-            return Some(InterpretResult::RuntimeError);
-        }
-        None
-    }
-
-    fn exponatiate(&mut self) -> Option<InterpretResult> {
-        let slice_start = self.stack.len() - 2;
-
-        let ok = match &self.stack[slice_start..] {
-            [left, right] => {
-                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
-                    let value = a.pow(*b).into();
-                    self.stack.pop();
-                    self.stack.pop();
-                    self.stack_push_value(value);
-                    true
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        };
-
-        if !ok {
-            runtime_error!(
-                self,
-                "Operands must be numbers. Got: [{}]",
-                self.stack[slice_start..]
-                    .iter()
-                    .map(|v| format!("{v}"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-            return Some(InterpretResult::RuntimeError);
-        }
-        None
-    }
-
-    fn floor_div(&mut self) -> Option<InterpretResult> {
-        let slice_start = self.stack.len() - 2;
-
-        let ok = match &self.stack[slice_start..] {
-            [left, right] => {
-                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
-                    let value = a.floor_div(*b).into();
-                    self.stack.pop();
-                    self.stack.pop();
-                    self.stack_push_value(value);
-                    true
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        };
-
-        if !ok {
-            runtime_error!(
-                self,
-                "Operands must be numbers. Got: [{}]",
-                self.stack[slice_start..]
-                    .iter()
-                    .map(|v| format!("{v}"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
             return Some(InterpretResult::RuntimeError);
         }
         None
@@ -1420,7 +1413,8 @@ impl VM {
         let value = &value_id;
         if let Value::Number(n) = value {
             self.stack.pop();
-            self.stack_push_value((-*n).into());
+            let negated = n.neg(&mut self.heap);
+            self.stack_push_value(negated.into());
         } else {
             runtime_error!(self, "Operand must be a number.");
             return Some(InterpretResult::RuntimeError);
