@@ -7,8 +7,9 @@ use super::{ClassState, Compiler, FunctionType, LoopState, rules::Precedence};
 
 use crate::{
     chunk::{CodeOffset, ConstantIndex, OpCode},
-    scanner::TokenKind as TK,
+    scanner::{Token, TokenKind as TK},
     types::Line,
+    utils::get_file_stem,
 };
 
 impl Compiler<'_, '_> {
@@ -47,6 +48,9 @@ impl Compiler<'_, '_> {
         self.current_token_kind() == Some(kind)
     }
 
+    /// Produce bytecode for parsing an expression.
+    ///
+    /// After that bytecode runs the resulting value will be on top of the stack.
     pub(super) fn expression(&mut self) {
         self.parse_precedence(Precedence::Assignment);
     }
@@ -181,8 +185,11 @@ impl Compiler<'_, '_> {
         self.scoped_block();
 
         let else_jump = self.emit_jump(OpCode::Jump);
+
         self.patch_jump(then_jump);
+
         self.emit_byte(OpCode::Pop, line);
+
         if self.match_(TK::Else) {
             self.consume(TK::LeftBrace, "Expect '{' after else");
             self.scoped_block();
@@ -593,70 +600,106 @@ impl Compiler<'_, '_> {
         self.consume(TK::RightBrace, "Expect '}' after 'switch' body.");
     }
 
+    #[allow(clippy::option_if_let_else)]
     fn import_statement(&mut self) {
-        if self.function_type() != FunctionType::Script {
-            self.error("Can only import source files from top-level code.");
-        };
+        self.consume(TK::String, "Expect import path as a string.");
+        let is_local = *self.scope_depth() > 0;
+        let path_token = self.previous.clone().unwrap();
 
-        self.expression(); // File path to the module
+        let path_str = path_token.as_str();
+        // Remove the quotation marks at the start and end
+        let path = &path_str[1..path_str.len() - 1].to_string();
+        let path_constant: crate::chunk::ConstantLongIndex = self.identifier_constant(&path);
 
         if self.match_(TK::As) {
             self.consume(TK::Identifier, "Expect name to import as.");
-            let name = self.previous.as_ref().unwrap().as_str().to_string();
+            let name_token = self.previous.clone().unwrap();
+            let name = name_token.as_str().to_string();
             let name_constant = self.identifier_constant(&name);
-
+            if is_local {
+                self.add_local(name_token.clone(), true);
+                self.mark_initialized();
+            }
             self.consume(TK::Semicolon, "Expect ';' after import alias");
             self.emit_byte(OpCode::ImportAs, self.line());
-
+            if !self.emit_number(path_constant.0, false) {
+                self.error("Too many constants created for OP_IMPORT_AS.");
+            }
             if !self.emit_number(name_constant.0, false) {
-                self.error("Too many constants created for OP_IMPORT_FROM.");
+                self.error("Too many constants created for OP_IMPORT_AS.");
             }
         } else {
+            if is_local {
+                let name = if let Some(stem) =
+                    get_file_stem(&path_token.lexeme[1..path_token.lexeme.len() - 1])
+                {
+                    stem
+                } else {
+                    self.error(&format!("Could not extract file stem from path: {path}"));
+                    b"unknown"
+                };
+                self.add_local(
+                    Token {
+                        kind: path_token.kind,
+                        lexeme: name,
+                        line: path_token.line,
+                    },
+                    true,
+                );
+
+                self.mark_initialized();
+            }
             self.consume(TK::Semicolon, "Expect ';' after imported file path.");
             self.emit_byte(OpCode::Import, self.line());
+            if !self.emit_number(path_constant.0, false) {
+                self.error("Too many constants created for OP_IMPORT.");
+            }
         }
+        self.emit_byte(is_local, self.line());
     }
 
     fn import_from_statement(&mut self) {
-        if self.function_type() != FunctionType::Script {
-            self.error("Can only import source files from top-level code.");
-        };
-
-        self.expression(); // This is the filepath to the module
+        self.consume(TK::String, "Expect import path as a string.");
+        let is_local = *self.scope_depth() > 0;
+        let path_str = self.previous.as_ref().unwrap().as_str();
+        // Remove the quotation marks at the start and end
+        let path = &path_str[1..path_str.len() - 1].to_string();
+        let path_constant = self.identifier_constant(&path);
         self.consume(TK::Import, "Expect 'import' after imported file path.");
 
-        let mut import_count = 0;
+        let mut import_tokens = vec![];
         loop {
             // Best way would be to have these as variable length opcodes
             // with the indices pointing to the constants.
             // But i am not sure how to get that working with the disassembly,
             // or more generally where to put the length of the opcode.
-            // self.consume(TK::Identifier, "Expect name to import.");
-            // let long_index = self.identifier_constant(&self.previous.as_ref().unwrap().as_str().to_string());
-            // if let Ok(short) = u8::try_from(*long_index) {
-            //     self.emit_byte(short, self.line());
-            // } else {
-            //     self.error("Too many names to import from module.");
-            // }
-
-            // So instead they get stored directly on the stack.
             self.consume(TK::Identifier, "Expect name to import.");
-            let global_id = self
-                .heap
-                .string_id(&self.previous.as_ref().unwrap().as_str());
-            self.emit_constant(global_id);
-
-            if import_count == 255 {
-                self.error("Too many names to import from module.");
-            }
-
-            import_count += 1;
+            import_tokens.push(self.previous.as_ref().unwrap().clone());
             if !self.match_(TK::Comma) {
                 break;
             }
         }
         self.consume(TK::Semicolon, "Expect ';' after names to import name.");
-        self.emit_bytes(OpCode::ImportFrom, import_count, self.line());
+        self.emit_byte(OpCode::ImportFrom, self.line());
+        if !self.emit_number(path_constant.0, false) {
+            self.error("Too many constants created for OP_IMPORT_FROM.");
+        }
+        self.emit_byte(is_local, self.line());
+        if !self.emit_number(import_tokens.len(), false) {
+            self.error("Too many constants created for OP_IMPORT_FROM.");
+        }
+        for constant in import_tokens {
+            let long_index = self.identifier_constant(&constant.as_str().to_string());
+            if let Ok(short) = u8::try_from(*long_index) {
+                self.emit_byte(short, self.line());
+            } else {
+                self.error("Too many names to import from module.");
+            }
+            if is_local {
+                self.add_local(constant, true);
+                self.mark_initialized();
+            }
+        }
     }
 
     fn expression_statement(&mut self) {

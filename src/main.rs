@@ -21,6 +21,7 @@ mod natives;
 mod scanner;
 mod stdlib;
 mod types;
+mod utils;
 mod value;
 mod vm;
 

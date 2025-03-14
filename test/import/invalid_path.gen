@@ -1,1 +1,1 @@
-import "nope.gen"; # expect runtime error: Could not find the file to be imported. Attempted path "test/import/nope.gen" and stdlib.
+import "nope.gen"; # expect runtime error: Could not find the file to be imported. Attempted path `"test/import/nope.gen"` and stdlib.

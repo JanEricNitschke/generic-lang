@@ -51,7 +51,7 @@ impl<'scanner> Compiler<'scanner, '_> {
     /// Handle a named variable with the given name.
     ///
     /// First checks of the name belongs to a local variable.
-    /// If none is found, upvalues are search, before finally it is assumed to
+    /// If none is found, upvalues are searched, before finally it is assumed to
     /// belong to a global variable.
     ///
     /// Also handles whether the variable is to be gotten or set.

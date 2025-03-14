@@ -1,0 +1,9 @@
+fun test_math() {
+    import "math";
+
+    print(math); # expect: <module math>
+}
+
+test_math();
+
+print(math); # expect runtime error: Undefined variable 'math'.
