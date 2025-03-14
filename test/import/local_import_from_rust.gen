@@ -1,0 +1,9 @@
+fun test_math() {
+    from "math" import sqrt;
+
+    print(sqrt); # expect: <native fn sqrt>
+}
+
+test_math();
+
+print(math); # expect runtime error: Undefined variable 'math'.

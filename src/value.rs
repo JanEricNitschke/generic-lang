@@ -837,6 +837,7 @@ pub struct Module {
     pub(super) globals: HashMap<StringId, Global>,
     pub(super) names_to_import: Option<Vec<StringId>>,
     pub(super) alias: StringId,
+    pub(super) local_import: bool,
 }
 
 impl Module {
@@ -845,6 +846,7 @@ impl Module {
         path: PathBuf,
         names_to_import: Option<Vec<StringId>>,
         alias: StringId,
+        local_import: bool,
     ) -> Self {
         Self {
             name,
@@ -852,6 +854,7 @@ impl Module {
             globals: HashMap::default(),
             names_to_import,
             alias,
+            local_import,
         }
     }
 }

@@ -695,20 +695,22 @@ macro_rules! run_instruction {
                 $self.stack_push_value(instance_value);
             }
             // Import a module by filepath without qualifiers.
-            // Expects either the path to the module or or the name of
-            // a stdlib module as a string on the stack.
+            // Expects either the path to the module or the name of
+            // a stdlib module as a string as an operand.
             OpCode::Import => {
-                let file_path = $self.stack.pop().expect("Stack underflow in OP_IMPORT");
-                if let Some(value) = $self.import_file(file_path, None, None) {
+                let file_path = $self.read_string("OP_IMPORT_AS");
+                let local_import = $self.read_byte() == 1;
+                if let Some(value) = $self.import_file(file_path, None, None, local_import) {
                     return value;
                 }
             }
             // Import a module by filepath with an alias.
             // Name of the module to import is on the stack, alias is the operand.
             OpCode::ImportAs => {
+                let file_path = $self.read_string("OP_IMPORT_AS");
                 let alias = $self.read_string("OP_IMPORT_AS");
-                let file_path = $self.stack.pop().expect("Stack underflow in OP_IMPORT_AS");
-                if let Some(value) = $self.import_file(file_path, None, Some(alias)) {
+                let local_import = $self.read_byte() == 1;
+                if let Some(value) = $self.import_file(file_path, None, Some(alias), local_import) {
                     return value;
                 }
             }
@@ -717,35 +719,22 @@ macro_rules! run_instruction {
             // Module to import them from and the names are on the stack.
             // (... --- modulename --- name1 --- name2 --- ... --- nameN)
             OpCode::ImportFrom => {
+                let file_path = $self.read_string("OP_IMPORT_AS");
+                let local_import = $self.read_byte() == 1;
                 let n_names_to_import = $self.read_byte();
                 let names_to_import = if n_names_to_import > 0 {
-                    let mut names = Vec::with_capacity(n_names_to_import as usize);
-                    for _ in 0..n_names_to_import {
-                        let name = $self
-                            .stack
-                            .pop()
-                            .expect("Stack underflow in OP_IMPORT_FROM");
-                        if let Value::String(name) = name {
-                            names.push(name);
-                        } else {
-                            runtime_error!(
-                                $self,
-                                "Imported names must be strings, got `{}` instead.",
-                                name
-                            );
-                            return InterpretResult::RuntimeError;
-                        }
-                    }
-                    Some(names)
+                    Some(
+                        (0..n_names_to_import)
+                            .map(|_| $self.read_string("OP_IMPORT_FROM"))
+                            .collect::<Vec<_>>(),
+                    )
                 } else {
                     None
                 };
 
-                let file_path = $self
-                    .stack
-                    .pop()
-                    .expect("Stack underflow in OP_IMPORT_FROM");
-                if let Some(value) = $self.import_file(file_path, names_to_import, None) {
+                if let Some(value) =
+                    $self.import_file(file_path, names_to_import, None, local_import)
+                {
                     return value;
                 }
             }
@@ -794,7 +783,7 @@ impl VM {
 
             let closure = Closure::new(*function_id.as_function(), true, None);
 
-            self.add_closure_to_modules(&closure, self.path.clone(), None, None);
+            self.add_closure_to_modules(&closure, self.path.clone(), None, None, false);
 
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
@@ -928,14 +917,19 @@ impl VM {
         file_path: PathBuf,
         names_to_import: Option<Vec<StringId>>,
         alias: Option<StringId>,
+        local_import: bool,
     ) {
         if closure.is_module {
             let value_id = closure.function.name;
             let script_name = self.heap.builtin_constants().script_name;
             let alias = alias.map_or(value_id, |alias| alias);
-            let module_id =
-                self.heap
-                    .add_module(Module::new(value_id, file_path, names_to_import, alias));
+            let module_id = self.heap.add_module(Module::new(
+                value_id,
+                file_path,
+                names_to_import,
+                alias,
+                local_import,
+            ));
             self.modules.push(*module_id.as_module());
             // Scriptname has to be set in the globals of the new module.
             self.globals().insert(
@@ -957,23 +951,12 @@ impl VM {
     #[allow(clippy::option_if_let_else)]
     fn import_file(
         &mut self,
-        file_path_value: Value,
+        file_path_string_id: StringId,
         names_to_import: Option<Vec<StringId>>,
         alias: Option<StringId>,
+        local_import: bool,
     ) -> Option<InterpretResult> {
-        let string_id = match file_path_value {
-            Value::String(string_id) => string_id,
-            x => {
-                runtime_error!(
-                    self,
-                    "Imported file path must be a string, got `{}` instead.",
-                    x
-                );
-                return Some(InterpretResult::RuntimeError);
-            }
-        };
-
-        let file_path = self.clean_filepath(string_id);
+        let file_path = self.clean_filepath(file_path_string_id);
 
         let name = if let Some(stem) = file_path.file_stem() {
             stem.to_str().unwrap().to_string()
@@ -1001,34 +984,45 @@ impl VM {
 
         // User defined generic module
         if let Ok(contents) = std::fs::read(&file_path) {
-            if let Some(value) =
-                self.import_generic_module(&contents, &name, file_path, names_to_import, alias)
-            {
+            if let Some(value) = self.import_generic_module(
+                &contents,
+                &name,
+                file_path,
+                names_to_import,
+                alias,
+                local_import,
+            ) {
                 return Some(value);
             }
         } else if let Ok(contents) = std::fs::read(generic_stdlib_path) {
             // stdlib generic module
-            if let Some(value) =
-                self.import_generic_module(&contents, &name, file_path, names_to_import, alias)
-            {
+            if let Some(value) = self.import_generic_module(
+                &contents,
+                &name,
+                file_path,
+                names_to_import,
+                alias,
+                local_import,
+            ) {
                 return Some(value);
             }
-        } else if let Some(stdlib_functions) = self.stdlib.get(&string_id).cloned() {
+        } else if let Some(stdlib_functions) = self.stdlib.get(&file_path_string_id).cloned() {
             // These clones are only necessary because this is extracted into a function.
             // If they cause performance issues this can be inlined or turned into a macro.
             if let Some(value) = self.import_rust_stdlib(
-                string_id,
+                file_path_string_id,
                 file_path,
                 alias,
                 &stdlib_functions,
                 names_to_import,
+                local_import,
             ) {
                 return Some(value);
             }
         } else {
             runtime_error!(
                 self,
-                "Could not find the file to be imported. Attempted path {:?} and stdlib.",
+                "Could not find the file to be imported. Attempted path `{:?}` and stdlib.",
                 file_path.to_slash_lossy()
             );
             return Some(InterpretResult::RuntimeError);
@@ -1044,12 +1038,14 @@ impl VM {
         alias: Option<StringId>,
         stdlib_functions: &ModuleContents,
         names_to_import: Option<Vec<StringId>>,
+        local_import: bool,
     ) -> Option<InterpretResult> {
         let mut module = Module::new(
             string_id,
             file_path,
             None,
             alias.map_or(string_id, |alias| alias),
+            local_import,
         );
         for (name, arity, fun) in stdlib_functions {
             let name_id = self.heap.string_id(name);
@@ -1076,7 +1072,11 @@ impl VM {
         if let Some(names_to_import) = names_to_import {
             for name in names_to_import {
                 if let Some(global) = module.globals.remove(&name) {
-                    self.globals().insert(name, global);
+                    if local_import {
+                        self.stack_push(global.value);
+                    } else {
+                        self.globals().insert(name, global);
+                    }
                 } else {
                     runtime_error!(self, "Could not find name to import `{}`.", &*name);
                     return Some(InterpretResult::RuntimeError);
@@ -1085,13 +1085,17 @@ impl VM {
         } else {
             // Otherwise we add the whole module to the current globals.
             let module_id = self.heap.add_module(module);
-            self.globals().insert(
-                string_id,
-                Global {
-                    value: module_id,
-                    mutable: false,
-                },
-            );
+            if local_import {
+                self.stack_push(module_id);
+            } else {
+                self.globals().insert(
+                    string_id,
+                    Global {
+                        value: module_id,
+                        mutable: true,
+                    },
+                );
+            }
         }
         None
     }
@@ -1107,13 +1111,14 @@ impl VM {
         file_path: PathBuf,
         names_to_import: Option<Vec<StringId>>,
         alias: Option<StringId>,
+        local_import: bool,
     ) -> Option<InterpretResult> {
         if let Some(function) = self.compile(contents, name) {
             let function = self.heap.add_function(function);
             let function_id = function.as_function();
             let closure = Closure::new(*function_id, true, self.modules.last().copied());
 
-            self.add_closure_to_modules(&closure, file_path, names_to_import, alias);
+            self.add_closure_to_modules(&closure, file_path, names_to_import, alias, local_import);
 
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
@@ -1358,6 +1363,7 @@ impl VM {
             let mut last_module = self.modules.pop().expect("Module underflow in OP_RETURN");
             let last_module_alias = last_module.alias;
             let names_to_import = std::mem::take(&mut last_module.names_to_import);
+            let was_local_import = last_module.local_import;
 
             // This has to be modified to put imports into the correct scope.
             // Currently they are just put into the global scope.
@@ -1367,8 +1373,14 @@ impl VM {
                         runtime_error!(self, "Could not find name to import `{}`.", { &*name });
                         return Some(InterpretResult::RuntimeError);
                     };
-                    self.globals().insert(name, *value);
+                    if was_local_import {
+                        self.stack_push(value.value);
+                    } else {
+                        self.globals().insert(name, *value);
+                    }
                 }
+            } else if was_local_import {
+                self.stack_push(last_module.into());
             } else {
                 self.globals().insert(
                     last_module_alias,

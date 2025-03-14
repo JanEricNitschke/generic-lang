@@ -1,1 +1,2 @@
-import 5; # expect runtime error: Imported file path must be a string, got `5` instead.
+# [line 2] Error at '5': Expect import path as a string.
+import 5;

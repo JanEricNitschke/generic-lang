@@ -311,21 +311,22 @@ impl<'chunk> InstructionDisassembler<'chunk> {
                 Negate | Add | Subtract | Multiply | Divide | Mod | Exp | FloorDiv | BitAnd
                 | BitOr | BitXor | Nil | True | False | StopIteration | Not | Equal | Greater
                 | Less | LessEqual | GreaterEqual | NotEqual | Pop | Dup | CloseUpvalue
-                | Inherit | Import | LoadOne | LoadTwo | LoadZero | LoadMinusOne | LoadOnef
+                | Inherit | Return | LoadOne | LoadTwo | LoadZero | LoadMinusOne | LoadOnef
                 | LoadZerof | Swap => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
-                | DefineGlobalConst | Call | Return | GetUpvalue | SetUpvalue | Class
-                | GetProperty | SetProperty | Method | GetSuper | BuildList | BuildSet
-                | BuildDict | DupN | ImportFrom | ImportAs => 1,
-                Jump | JumpIfFalse | JumpIfTrue | Loop | Invoke | SuperInvoke => 2,
+                | DefineGlobalConst | Call | GetUpvalue | SetUpvalue | Class | GetProperty
+                | SetProperty | Method | GetSuper | BuildList | BuildSet | BuildDict | DupN => 1,
+                Jump | JumpIfFalse | JumpIfTrue | Loop | Invoke | Import | SuperInvoke => 2,
                 ConstantLong
                 | GetGlobalLong
                 | SetGlobalLong
                 | DefineGlobalLong
                 | DefineGlobalConstLong
                 | GetLocalLong
-                | SetLocalLong => 3,
+                | SetLocalLong
+                | ImportAs => 3,
                 Closure => 1 + self.upvalue_code_len(offset),
+                ImportFrom => 2 + self.import_from_len(offset),
             }
     }
 
@@ -336,6 +337,12 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         value.as_function().upvalue_count * 2
     }
 
+    fn import_from_len(&self, import_from_offset: usize) -> usize {
+        let code = self.chunk.code();
+        let n_op = code[import_from_offset + 3];
+        1 + n_op as usize
+    }
+
     fn debug_constant_opcode(
         &self,
         f: &mut std::fmt::Formatter,
@@ -343,6 +350,11 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         offset: CodeOffset,
     ) -> std::fmt::Result {
         let constant_index = ConstantIndex(self.chunk.code()[offset.as_ref() + 1]);
+        let constant_value = if (*constant_index.as_ref() as usize) < self.chunk.constants.len() {
+            *self.chunk.get_constant(*constant_index.as_ref())
+        } else {
+            Value::Nil // self.chunk.name.into()
+        };
         write!(
             f,
             "{:-OPCODE_NAME_ALIGNMENT$} {:>OPERAND_ALIGNMENT$}",
@@ -351,11 +363,92 @@ impl<'chunk> InstructionDisassembler<'chunk> {
             OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
             OPERAND_ALIGNMENT = self.operand_alignment
         )?;
+        writeln!(f, " '{constant_value}'  ",)
+    }
+
+    fn debug_import_standard_opcode(
+        &self,
+        f: &mut std::fmt::Formatter,
+        name: &str,
+        offset: CodeOffset,
+    ) -> std::fmt::Result {
+        let import_path_index = ConstantIndex(self.chunk.code()[offset.as_ref() + 1]);
+        let is_local = self.chunk.code()[offset.as_ref() + 2] == 1;
+        write!(
+            f,
+            "{:-OPCODE_NAME_ALIGNMENT$} {:>OPERAND_ALIGNMENT$}",
+            name,
+            *import_path_index,
+            OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
+            OPERAND_ALIGNMENT = self.operand_alignment
+        )?;
         writeln!(
             f,
-            " '{}'",
-            *self.chunk.get_constant(*constant_index.as_ref())
+            " '{}' | '{}'",
+            *self.chunk.get_constant(*import_path_index.as_ref()),
+            if is_local { "local" } else { "global" }
         )
+    }
+
+    fn debug_import_as_opcode(
+        &self,
+        f: &mut std::fmt::Formatter,
+        name: &str,
+        offset: CodeOffset,
+    ) -> std::fmt::Result {
+        let import_path_index = ConstantIndex(self.chunk.code()[offset.as_ref() + 1]);
+        let alias_index = ConstantIndex(self.chunk.code()[offset.as_ref() + 2]);
+        let is_local = self.chunk.code()[offset.as_ref() + 3] == 1;
+        write!(
+            f,
+            "{:-OPCODE_NAME_ALIGNMENT$} {:>OPERAND_ALIGNMENT$}",
+            name,
+            *import_path_index,
+            OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
+            OPERAND_ALIGNMENT = self.operand_alignment
+        )?;
+        writeln!(
+            f,
+            " '{}' | {} '{}'  |  '{}'",
+            *self.chunk.get_constant(*import_path_index.as_ref()),
+            *alias_index,
+            *self.chunk.get_constant(*alias_index.as_ref()),
+            if is_local { "local" } else { "global" }
+        )
+    }
+
+    fn debug_import_from_opcode(
+        &self,
+        f: &mut std::fmt::Formatter,
+        name: &str,
+        offset: CodeOffset,
+    ) -> std::fmt::Result {
+        let code = self.chunk.code();
+        let import_path_index = ConstantIndex(code[offset.as_ref() + 1]);
+        let is_local = code[offset.as_ref() + 2] == 1;
+        let n_operands = code[offset.as_ref() + 3];
+        write!(
+            f,
+            "{:-OPCODE_NAME_ALIGNMENT$} {:>OPERAND_ALIGNMENT$}",
+            name,
+            *import_path_index,
+            OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
+            OPERAND_ALIGNMENT = self.operand_alignment
+        )?;
+        write!(
+            f,
+            " '{}' | '{}'",
+            *self.chunk.get_constant(*import_path_index.as_ref()),
+            if is_local { "local" } else { "global" }
+        )?;
+        for op_idx in 0..n_operands {
+            let name_index = ConstantIndex(code[offset.as_ref() + op_idx as usize + 4]);
+            let name = *self.chunk.get_constant(*name_index.as_ref());
+
+            write!(f, " | {} '{}'", *name_index, name)?;
+        }
+        writeln!(f)?;
+        Ok(())
     }
 
     fn debug_constant_long_opcode(
@@ -584,10 +677,13 @@ impl std::fmt::Debug for InstructionDisassembler<'_> {
                 GetGlobalLong,
                 SetGlobalLong,
             ),
+            import_standard(Import),
+            import_as(ImportAs),
+            import_from(ImportFrom),
             closure(Closure),
             byte(
                 Call, GetUpvalue, SetUpvalue, Class, GetLocal, SetLocal, BuildList, BuildSet,
-                BuildDict, DupN, ImportFrom, ImportAs,
+                BuildDict, DupN,
             ),
             byte_long(GetLocalLong, SetLocalLong),
             jump(Jump, JumpIfFalse, JumpIfTrue, Loop),
@@ -620,7 +716,6 @@ impl std::fmt::Debug for InstructionDisassembler<'_> {
                 Return,
                 Subtract,
                 True,
-                Import,
                 LoadOne,
                 LoadTwo,
                 LoadZero,
