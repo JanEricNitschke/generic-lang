@@ -7,7 +7,6 @@ use path_slash::PathBufExt;
 use rustc_hash::FxHashMap as HashMap;
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::pin::Pin;
 
 #[cfg(feature = "trace_execution")]
 use crate::chunk::InstructionDisassembler;
@@ -16,7 +15,10 @@ use crate::value::NativeClass;
 use crate::{
     chunk::{CodeOffset, OpCode},
     compiler::Compiler,
-    heap::{ArenaId, ArenaValue, ClosureId, FunctionId, Heap, ModuleId, StringId, UpvalueId},
+    heap::{
+        ClosureId, FunctionId, Heap, ModuleId, NativeFunctionId, NativeMethodId, StringId,
+        UpvalueId,
+    },
     scanner::Scanner,
     stdlib,
     value::{
@@ -24,7 +26,6 @@ use crate::{
         NativeFunctionImpl, NativeMethod, NativeMethodImpl, Number, Set, Upvalue, Value,
     },
 };
-use slotmap::Key;
 
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -41,18 +42,18 @@ macro_rules! runtime_error {
     ($self:ident, $($arg:expr),* $(,)?) => {
         eprintln!($($arg),*);
         for frame in $self.callstack.iter().rev() {
-            let line = frame.closure().function.chunk.get_line(CodeOffset(frame.ip - 1));
-            eprintln!("[line {}] in {}", *line, *frame.closure().function.name);
+            let line = frame.closure(&$self.heap).function.to_value(&$self.heap).chunk.get_line(CodeOffset(frame.ip - 1));
+            eprintln!("[line {}] in {}", *line, frame.closure(&$self.heap).function.to_value(&$self.heap).name.to_value(&$self.heap));
         }
     };
 }
 
 macro_rules! binary_op_invoke {
-    ($self:ident, $a:ident, $b:ident, $method:ident, with_heap) => {
+    ($self:ident, $a:ident, $b:ident, $method:ident, mut_heap) => {
         $a.$method(*$b, &mut $self.heap)
     };
-    ($self:ident, $a:ident, $b:ident, $method:ident, no_heap) => {
-        $a.$method($b)
+    ($self:ident, $a:ident, $b:ident, $method:ident, non_mut_heap) => {
+        $a.$method($b, &$self.heap)
     };
 }
 
@@ -98,7 +99,7 @@ macro_rules! binary_op {
                 if $int_only { "integers" } else { "numbers" },
                 $self.stack[slice_start..]
                     .iter()
-                    .map(|v| format!("{v}"))
+                    .map(|v| format!("{}", v.to_string(&$self.heap)))
                     .collect::<Vec<_>>()
                     .join(", ")
             );
@@ -139,17 +140,28 @@ where
 }
 
 /// Wrapper around a global value to store whether it is mutable or not.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Copy)]
+#[derive(Debug, Clone, Copy)] // , PartialEq, Eq, PartialOrd
 pub struct Global {
     pub(super) value: Value,
     mutable: bool,
 }
 
-impl std::fmt::Display for Global {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Value: {}, mutable: {}", self.value, self.mutable)
+impl Global {
+    #[allow(dead_code)]
+    fn to_string(&self, heap: &Heap) -> String {
+        format!(
+            "Value: {}, mutable: {}",
+            self.value.to_string(heap),
+            self.mutable
+        )
     }
 }
+
+// impl std::fmt::Display for Global {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "Value: {}, mutable: {}", self.value, self.mutable)
+//     }
+// }
 
 /// A call frame for the call stack.
 ///
@@ -168,8 +180,8 @@ struct CallFrame {
 }
 
 impl CallFrame {
-    fn closure(&self) -> &Closure {
-        &self.closure
+    fn closure<'a>(&self, heap: &'a Heap) -> &'a Closure {
+        self.closure.to_value(heap)
     }
 }
 
@@ -203,22 +215,22 @@ impl CallStack {
         self.frames.is_empty()
     }
 
-    fn pop(&mut self) -> Option<CallFrame> {
+    fn pop(&mut self, heap: &Heap) -> Option<CallFrame> {
         let retval = self.frames.pop();
         self.current_closure = self.frames.last().map(|f| f.closure);
-        self.current_function = self.current_closure.map(|c| c.function);
+        self.current_function = self.current_closure.map(|c| c.to_value(heap).function);
         retval
     }
 
-    fn push(&mut self, closure: ClosureId, stack_base: usize) {
+    fn push(&mut self, closure: ClosureId, stack_base: usize, heap: &Heap) {
         self.frames.push(CallFrame {
             closure,
             ip: 0,
             stack_base,
-            is_module: closure.is_module,
+            is_module: closure.to_value(heap).is_module,
         });
         self.current_closure = Some(closure);
-        self.current_function = Some(closure.function);
+        self.current_function = Some(closure.to_value(heap).function);
     }
 
     fn current_mut(&mut self) -> &mut CallFrame {
@@ -231,8 +243,8 @@ impl CallStack {
         &self.frames[i]
     }
 
-    fn code_byte(&self, index: usize) -> u8 {
-        self.current_function.unwrap().chunk.code()[index]
+    fn code_byte(&self, index: usize, heap: &Heap) -> u8 {
+        self.current_function.unwrap().to_value(heap).chunk.code()[index]
     }
 
     const fn closure(&self) -> ClosureId {
@@ -395,19 +407,19 @@ macro_rules! run_instruction {
                     return value;
                 }
             }
-            OpCode::Subtract => binary_op!($self, sub, false, with_heap),
-            OpCode::Multiply => binary_op!($self, mul, false, with_heap),
-            OpCode::Divide => binary_op!($self, div, false, with_heap),
-            OpCode::BitXor => binary_op!($self, bitxor, true, with_heap),
-            OpCode::BitAnd => binary_op!($self, bitand, true, with_heap),
-            OpCode::BitOr => binary_op!($self, bitor, true, with_heap),
-            OpCode::Exp => binary_op!($self, pow, false, with_heap),
-            OpCode::Mod => binary_op!($self, rem, false, with_heap),
-            OpCode::FloorDiv => binary_op!($self, floor_div, false, with_heap),
-            OpCode::Greater => binary_op!($self, gt, false, no_heap),
-            OpCode::Less => binary_op!($self, lt, false, no_heap),
-            OpCode::GreaterEqual => binary_op!($self, ge, false, no_heap),
-            OpCode::LessEqual => binary_op!($self, le, false, no_heap),
+            OpCode::Subtract => binary_op!($self, sub, false, mut_heap),
+            OpCode::Multiply => binary_op!($self, mul, false, mut_heap),
+            OpCode::Divide => binary_op!($self, div, false, mut_heap),
+            OpCode::BitXor => binary_op!($self, bitxor, true, mut_heap),
+            OpCode::BitAnd => binary_op!($self, bitand, true, mut_heap),
+            OpCode::BitOr => binary_op!($self, bitor, true, mut_heap),
+            OpCode::Exp => binary_op!($self, pow, false, mut_heap),
+            OpCode::Mod => binary_op!($self, rem, false, mut_heap),
+            OpCode::FloorDiv => binary_op!($self, floor_div, false, mut_heap),
+            OpCode::Greater => binary_op!($self, gt, false, non_mut_heap),
+            OpCode::Less => binary_op!($self, lt, false, non_mut_heap),
+            OpCode::GreaterEqual => binary_op!($self, ge, false, non_mut_heap),
+            OpCode::LessEqual => binary_op!($self, le, false, non_mut_heap),
             OpCode::NotEqual => $self.equal(true),
             OpCode::Jump => {
                 let offset = $self.read_16bit_number();
@@ -423,7 +435,8 @@ macro_rules! run_instruction {
             OpCode::Closure => {
                 let value = $self.read_constant(false);
                 let function = value.as_function();
-                let mut closure = Closure::new(*function, false, $self.modules.last().copied());
+                let mut closure =
+                    Closure::new(*function, false, $self.modules.last().copied(), &$self.heap);
 
                 for _ in 0..closure.upvalue_count {
                     let is_local = $self.read_byte();
@@ -439,7 +452,7 @@ macro_rules! run_instruction {
                     } else {
                         closure
                             .upvalues
-                            .push($self.callstack.closure().upvalues[index]);
+                            .push($self.callstack.closure().to_value(&$self.heap).upvalues[index]);
                     }
                 }
                 let closure_id = $self.heap.add_closure(closure);
@@ -450,7 +463,8 @@ macro_rules! run_instruction {
             OpCode::GetUpvalue => {
                 let upvalue_index = usize::from($self.read_byte());
                 let closure = $self.callstack.closure();
-                let upvalue_location = closure.upvalues[upvalue_index];
+                let upvalue_location =
+                    closure.to_value(&$self.heap).upvalues[upvalue_index].to_value(&$self.heap);
                 match *upvalue_location {
                     Upvalue::Open(absolute_local_index) => {
                         $self.stack_push($self.stack[absolute_local_index]);
@@ -463,7 +477,9 @@ macro_rules! run_instruction {
             OpCode::SetUpvalue => {
                 let upvalue_index = usize::from($self.read_byte());
                 let closure = $self.callstack.closure();
-                let mut upvalue_location = closure.upvalues[upvalue_index];
+                let upvalue_location = closure.to_value(&$self.heap).upvalues[upvalue_index]
+                    .clone()
+                    .to_value_mut(&mut $self.heap);
                 let new_value = $self
                     .stack
                     .last()
@@ -496,28 +512,38 @@ macro_rules! run_instruction {
                 match value {
                     Value::Instance(instance) => {
                         // Can either be a normal property
-                        if let Some(value) = instance.fields.get(&*field) {
+                        if let Some(value) = instance
+                            .to_value(&$self.heap)
+                            .fields
+                            .get(field.to_value(&$self.heap))
+                        {
                             $self.stack.pop(); // instance
                             $self.stack_push(*value);
-                        } else if $self.bind_method(instance.class.into(), field) {
+                        } else if $self
+                            .bind_method(instance.to_value(&$self.heap).class.into(), field)
+                        {
                             // Or could be a method that has to be bound to the
                             // instance so that it can later be called separately.
                             // Just using the side effects
                         } else {
-                            runtime_error!($self, "Undefined property '{}'.", *field);
+                            runtime_error!(
+                                $self,
+                                "Undefined property '{}'.",
+                                field.to_value(&$self.heap)
+                            );
                             return InterpretResult::RuntimeError;
                         }
                     }
                     Value::Module(module) => {
-                        if let Some(value) = module.globals.get(&field) {
+                        if let Some(value) = module.to_value(&$self.heap).globals.get(&field) {
                             $self.stack.pop(); // module
                             $self.stack_push(value.value);
                         } else {
                             runtime_error!(
                                 $self,
                                 "Undefined name '{}' in module {}.",
-                                *field,
-                                *module.name
+                                field.to_value(&$self.heap),
+                                module.to_value(&$self.heap).name.to_value(&$self.heap)
                             );
                             return InterpretResult::RuntimeError;
                         }
@@ -526,8 +552,8 @@ macro_rules! run_instruction {
                         runtime_error!(
                             $self,
                             "Tried to get property '{}' of non-instance `{}`.",
-                            *field,
-                            x
+                            field.to_value(&$self.heap),
+                            x.to_string(&$self.heap)
                         );
                         return InterpretResult::RuntimeError;
                     }
@@ -537,15 +563,22 @@ macro_rules! run_instruction {
             // as is the value to set.
             OpCode::SetProperty => {
                 let field_string_id = $self.read_string("SET_PROPERTY");
-                let field = &$self.heap.strings[&field_string_id];
+                let field = field_string_id.to_value(&$self.heap).clone();
                 let value = $self.stack.pop().expect("Stack underflow in SET_PROPERTY");
                 let mut receiver = $self.stack.pop().expect("Stack underflow in SET_PROPERTY");
                 match &mut receiver {
                     Value::Instance(instance) => {
-                        instance.fields.insert(field.to_string(), value);
+                        instance
+                            .to_value_mut(&mut $self.heap)
+                            .fields
+                            .insert(field, value);
                     }
                     Value::Module(module) => {
-                        if let Some(global) = module.globals.get_mut(&field_string_id) {
+                        if let Some(global) = module
+                            .to_value_mut(&mut $self.heap)
+                            .globals
+                            .get_mut(&field_string_id)
+                        {
                             if !global.mutable {
                                 runtime_error!($self, "Reassignment to global 'const'.");
                                 return InterpretResult::RuntimeError;
@@ -558,7 +591,7 @@ macro_rules! run_instruction {
                             $self,
                             "Tried to set property '{}' of non-instance `{}`",
                             field,
-                            x
+                            x.to_string(&$self.heap)
                         );
                         return InterpretResult::RuntimeError;
                     }
@@ -585,7 +618,7 @@ macro_rules! run_instruction {
             OpCode::Inherit => {
                 let superclass_id = $self.peek(1).expect("Stack underflow in OP_INHERIT");
                 let superclass = if let Value::Class(superclass) = &superclass_id {
-                    if superclass.is_native {
+                    if superclass.to_value(&$self.heap).is_native {
                         runtime_error!($self, "Can not inherit from native classes yet.");
                         return InterpretResult::RuntimeError;
                     }
@@ -594,9 +627,13 @@ macro_rules! run_instruction {
                     runtime_error!($self, "Superclass must be a class.");
                     return InterpretResult::RuntimeError;
                 };
-                let methods = superclass.methods.clone();
+                let methods = superclass.to_value(&$self.heap).methods.clone();
                 let mut subclass = $self.stack.pop().expect("Stack underflow in OP_INHERIT");
-                subclass.as_class_mut().methods.extend(methods);
+                subclass
+                    .as_class_mut()
+                    .to_value_mut(&mut $self.heap)
+                    .methods
+                    .extend(methods);
             }
             // Grab and bind a method from the superclass
             // Operand is the name of the method to get and the stack has the superclass
@@ -654,11 +691,11 @@ macro_rules! run_instruction {
                         runtime_error!(
                             $self,
                             "Value `{}` is not hashable when this is required for items in a set.",
-                            value
+                            value.to_string(&$self.heap)
                         );
                         return InterpretResult::RuntimeError;
                     }
-                    set.items.insert(*$self.peek(index as usize).unwrap());
+                    set.add(*value, &$self.heap);
                 }
                 for _ in 0..arg_count {
                     $self.stack.pop();
@@ -680,7 +717,7 @@ macro_rules! run_instruction {
                 for index in (0..arg_count).rev() {
                     let key = $self.peek((2 * index + 1) as usize).unwrap();
                     let value = $self.peek((2 * index) as usize).unwrap();
-                    dict.items.insert(*key, *value);
+                    dict.add(*key, *value, &$self.heap);
                 }
                 for _ in 0..arg_count {
                     // Pop key AND value
@@ -746,7 +783,7 @@ macro_rules! run_instruction {
 ///
 /// Contains the heap, stack, callstack, open upvalues, modules, builtins, and stdlib.
 pub struct VM {
-    pub(super) heap: Pin<Box<Heap>>,
+    pub(super) heap: Heap,
     pub(super) stack: Vec<Value>,
     callstack: CallStack,
     open_upvalues: VecDeque<UpvalueId>,
@@ -781,7 +818,7 @@ impl VM {
         let result = if let Some(function) = self.compile(source, "<script>") {
             let function_id = self.heap.add_function(function);
 
-            let closure = Closure::new(*function_id.as_function(), true, None);
+            let closure = Closure::new(*function_id.as_function(), true, None, &self.heap);
 
             self.add_closure_to_modules(&closure, self.path.clone(), None, None, false);
 
@@ -823,7 +860,12 @@ impl VM {
     }
 
     fn globals(&mut self) -> &mut HashMap<StringId, Global> {
-        &mut self.modules.last_mut().unwrap().globals
+        &mut self
+            .modules
+            .last_mut()
+            .unwrap()
+            .to_value_mut(&mut self.heap)
+            .globals
     }
 
     fn current_module(&self) -> ModuleId {
@@ -846,7 +888,7 @@ impl VM {
     /// module list and correctly becomes their `containing_module`. Then, whenever they
     /// are actually called, they refer to the correct globals.
     fn defining_module(&self) -> ModuleId {
-        let current_closure = self.callstack.current().closure;
+        let current_closure = self.callstack.current().closure.to_value(&self.heap);
         match current_closure.containing_module {
             Some(module) if !current_closure.is_module => module,
             _ => self.current_module(),
@@ -903,7 +945,10 @@ impl VM {
         match &constant {
             Value::String(string_id) => *string_id,
             x => {
-                panic!("Non-string method name to {opcode_name}: `{x}`");
+                panic!(
+                    "Non-string method name to {opcode_name}: `{}`",
+                    x.to_string(&self.heap)
+                );
             }
         }
     }
@@ -920,7 +965,7 @@ impl VM {
         local_import: bool,
     ) {
         if closure.is_module {
-            let value_id = closure.function.name;
+            let value_id = closure.function.to_value(&self.heap).name;
             let script_name = self.heap.builtin_constants().script_name;
             let alias = alias.map_or(value_id, |alias| alias);
             let module_id = self.heap.add_module(Module::new(
@@ -967,8 +1012,12 @@ impl VM {
         let name_id = self.heap.string_id(&name);
 
         for module in &self.modules {
-            if module.path.canonicalize().unwrap() == file_path {
-                runtime_error!(self, "Circular import of module `{}` detected.", *name_id);
+            if module.to_value(&self.heap).path.canonicalize().unwrap() == file_path {
+                runtime_error!(
+                    self,
+                    "Circular import of module `{}` detected.",
+                    name_id.to_value(&self.heap)
+                );
                 return Some(InterpretResult::RuntimeError);
             }
         }
@@ -1078,7 +1127,11 @@ impl VM {
                         self.globals().insert(name, global);
                     }
                 } else {
-                    runtime_error!(self, "Could not find name to import `{}`.", &*name);
+                    runtime_error!(
+                        self,
+                        "Could not find name to import `{}`.",
+                        name.to_value(&self.heap)
+                    );
                     return Some(InterpretResult::RuntimeError);
                 }
             }
@@ -1116,7 +1169,8 @@ impl VM {
         if let Some(function) = self.compile(contents, name) {
             let function = self.heap.add_function(function);
             let function_id = function.as_function();
-            let closure = Closure::new(*function_id, true, self.modules.last().copied());
+            let closure =
+                Closure::new(*function_id, true, self.modules.last().copied(), &self.heap);
 
             self.add_closure_to_modules(&closure, file_path, names_to_import, alias, local_import);
 
@@ -1132,11 +1186,11 @@ impl VM {
     #[allow(clippy::option_if_let_else)]
     fn clean_filepath(&self, string_id: StringId) -> PathBuf {
         let file_path = self.modules.last().map_or_else(
-            || PathBuf::from(&*string_id),
+            || PathBuf::from(string_id.to_value(&self.heap)),
             |module| {
-                let mut path = module.path.clone();
+                let mut path = module.to_value(&self.heap).path.clone();
                 path.pop();
-                path.push(&*string_id);
+                path.push(string_id.to_value(&self.heap));
                 path
             },
         );
@@ -1164,7 +1218,7 @@ impl VM {
                 }
                 (Value::String(a), Value::String(b)) => {
                     // This could be optimized by allowing mutations via the heap
-                    let new_string = format!("{}{}", self.heap.strings[a], self.heap.strings[b]);
+                    let new_string = format!("{}{}", self.heap.strings[*a], self.heap.strings[*b]);
                     let new_string_id = self.heap.string_id(&new_string);
                     self.stack.pop();
                     self.stack.pop();
@@ -1182,7 +1236,7 @@ impl VM {
                 "Operands must be two numbers or two strings. Got: [{}]",
                 self.stack[slice_start..]
                     .iter()
-                    .map(|v| format!("{v}"))
+                    .map(|v| v.to_string(&self.heap))
                     .collect::<Vec<_>>()
                     .join(", ")
             );
@@ -1217,6 +1271,7 @@ impl VM {
             Value::String(name) => {
                 let maybe_value = self
                     .defining_module()
+                    .to_value(&self.heap)
                     .globals
                     .get(name)
                     .map(|global| global.value);
@@ -1227,7 +1282,7 @@ impl VM {
                     if let Some(value) = maybe_builtin {
                         self.stack_push(value);
                     } else {
-                        runtime_error!(self, "Undefined variable '{}'.", self.heap.strings[name]);
+                        runtime_error!(self, "Undefined variable '{}'.", self.heap.strings[*name]);
                         return Some(InterpretResult::RuntimeError);
                     }
                 }
@@ -1249,7 +1304,12 @@ impl VM {
             .stack
             .last()
             .unwrap_or_else(|| panic!("Stack underflow in {op:?}"));
-        if let Some(global) = self.defining_module().globals.get_mut(&name) {
+        if let Some(global) = self
+            .defining_module()
+            .to_value_mut(&mut self.heap)
+            .globals
+            .get_mut(&name)
+        {
             if !global.mutable {
                 runtime_error!(self, "Reassignment to global 'const'.");
                 return Some(InterpretResult::RuntimeError);
@@ -1264,7 +1324,7 @@ impl VM {
                 }
                 global.value = stack_top_value;
             } else {
-                runtime_error!(self, "Undefined variable '{}'.", *name);
+                runtime_error!(self, "Undefined variable '{}'.", name.to_value(&self.heap));
                 return Some(InterpretResult::RuntimeError);
             }
         }
@@ -1329,11 +1389,14 @@ impl VM {
 
     fn define_method(&mut self, method_name: StringId) {
         let method = *self.peek(0).expect("Stack underflow in OP_METHOD");
-        let class = self
+        let class = *self
             .peek_mut(1)
             .expect("Stack underflow in OP_METHOD")
             .as_class_mut();
-        class.methods.insert(method_name, method);
+        class
+            .to_value_mut(&mut self.heap)
+            .methods
+            .insert(method_name, method);
         self.stack.pop();
     }
 
@@ -1350,7 +1413,7 @@ impl VM {
         let result = self.stack.pop();
         let frame = self
             .callstack
-            .pop()
+            .pop(&self.heap)
             .expect("Call stack underflow in OP_RETURN");
         // We just popped the main script
         if self.callstack.is_empty() {
@@ -1360,23 +1423,29 @@ impl VM {
         if frame.is_module {
             // Pop the module itself from the stack
             self.stack.pop();
-            let mut last_module = self.modules.pop().expect("Module underflow in OP_RETURN");
-            let last_module_alias = last_module.alias;
-            let names_to_import = std::mem::take(&mut last_module.names_to_import);
-            let was_local_import = last_module.local_import;
+            let last_module = self.modules.pop().expect("Module underflow in OP_RETURN");
+            let last_module_alias = last_module.to_value(&self.heap).alias;
+            let names_to_import =
+                std::mem::take(&mut last_module.to_value_mut(&mut self.heap).names_to_import);
+            let was_local_import = last_module.to_value(&self.heap).local_import;
 
             // This has to be modified to put imports into the correct scope.
             // Currently they are just put into the global scope.
             if let Some(names) = names_to_import {
                 for name in names {
-                    let Some(value) = last_module.globals.get(&name) else {
-                        runtime_error!(self, "Could not find name to import `{}`.", { &*name });
+                    let Some(value) = last_module.to_value(&self.heap).globals.get(&name).copied()
+                    else {
+                        runtime_error!(
+                            self,
+                            "Could not find name to import `{}`.",
+                            name.to_value(&self.heap)
+                        );
                         return Some(InterpretResult::RuntimeError);
                     };
                     if was_local_import {
                         self.stack_push(value.value);
                     } else {
-                        self.globals().insert(name, *value);
+                        self.globals().insert(name, value);
                     }
                 }
             } else if was_local_import {
@@ -1396,6 +1465,7 @@ impl VM {
                 .modules
                 .last()
                 .expect("Module underflow in OP_RETURN")
+                .to_value(&self.heap)
                 .name
                 .into();
             self.globals().insert(
@@ -1466,11 +1536,7 @@ impl VM {
             .stack
             .pop()
             .expect("stack underflow in OP_EQUAL (second)");
-        let result = if negate {
-            left_id != right_id
-        } else {
-            left_id == right_id
-        };
+        let result = left_id.eq(&right_id, &self.heap) != negate;
         self.stack_push(result.into());
     }
 
@@ -1484,16 +1550,24 @@ impl VM {
             .expect("Stack underflow in OP_INVOKE");
         match receiver {
             Value::Instance(instance) => {
-                if let Some(value) = instance.fields.get(&*method_name) {
+                if let Some(value) = instance
+                    .to_value(&self.heap)
+                    .fields
+                    .get(method_name.to_value(&self.heap))
+                {
                     let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;
                     self.stack[new_stack_base] = *value;
                     self.call_value(*value, arg_count)
                 } else {
-                    self.invoke_from_class(instance.class.into(), method_name, arg_count)
+                    self.invoke_from_class(
+                        instance.to_value(&self.heap).class.into(),
+                        method_name,
+                        arg_count,
+                    )
                 }
             }
             Value::Module(module) => {
-                if let Some(value) = module.globals.get(&method_name) {
+                if let Some(value) = module.to_value(&self.heap).globals.get(&method_name) {
                     let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;
                     self.stack[new_stack_base] = value.value;
                     self.call_value(value.value, arg_count)
@@ -1501,8 +1575,8 @@ impl VM {
                     runtime_error!(
                         self,
                         "Function '{}' not defined in module {}.",
-                        &*method_name,
-                        *module.name
+                        method_name.to_value(&self.heap),
+                        module.to_value(&self.heap).name.to_value(&self.heap)
                     );
                     false
                 }
@@ -1516,11 +1590,16 @@ impl VM {
 
     /// Invoke a method on an instance directly from its class.
     fn invoke_from_class(&mut self, class: Value, method_name: StringId, arg_count: u8) -> bool {
-        let Some(method) = class.as_class().methods.get(&method_name) else {
+        let Some(method) = class
+            .as_class()
+            .to_value(&self.heap)
+            .methods
+            .get(&method_name)
+        else {
             runtime_error!(
                 self,
                 "Undefined property '{}'.",
-                self.heap.strings[&method_name]
+                self.heap.strings[method_name]
             );
             return false;
         };
@@ -1528,11 +1607,11 @@ impl VM {
             Value::Closure(_) => self.execute_call(*method, arg_count),
             Value::NativeMethod(native) => {
                 let mut receiver = *self.peek(arg_count as usize).unwrap();
-                self.execute_native_method_call(native, &mut receiver, arg_count)
+                self.execute_native_method_call(*native, &mut receiver, arg_count)
             }
             x => unreachable!(
                 "Can only invoke closure or native methods. Got `{}` instead.",
-                x
+                x.to_string(&self.heap)
             ),
         }
     }
@@ -1559,14 +1638,18 @@ impl VM {
                 false
             }
             Value::Closure(_) => self.execute_call(callee, arg_count),
-            Value::NativeFunction(f) => self.execute_native_function_call(&f, arg_count),
+            Value::NativeFunction(f) => self.execute_native_function_call(f, arg_count),
             Value::Class(class) => {
-                let is_native = class.is_native;
+                let is_native = class.to_value(&self.heap).is_native;
                 let maybe_initializer = class
+                    .to_value(&self.heap)
                     .methods
-                    .get(&self.heap.builtin_constants().init_string);
+                    .get(&self.heap.builtin_constants().init_string)
+                    .copied();
                 let backing = if is_native {
-                    Some(NativeClass::new(&class.name))
+                    Some(NativeClass::new(
+                        class.to_value(&self.heap).name.to_value(&self.heap),
+                    ))
                 } else {
                     None
                 };
@@ -1576,12 +1659,12 @@ impl VM {
                 if let Some(initializer) = maybe_initializer {
                     if is_native {
                         self.execute_native_method_call(
-                            initializer.as_native_method(),
+                            *initializer.as_native_method(),
                             &mut instance_id,
                             arg_count,
                         )
                     } else {
-                        self.execute_call(*initializer, arg_count)
+                        self.execute_call(initializer, arg_count)
                     }
                 } else if arg_count != 0 {
                     runtime_error!(self, "Expected 0 arguments but got {arg_count}.");
@@ -1590,15 +1673,16 @@ impl VM {
                     true
                 }
             }
-            Value::BoundMethod(mut bound_method) => match bound_method.method {
+            Value::BoundMethod(bound_method) => match bound_method.to_value(&self.heap).method {
                 Value::Closure(_) => {
+                    let bound_method = bound_method.to_value(&self.heap);
                     let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;
                     self.stack[new_stack_base] = bound_method.receiver;
                     self.execute_call(bound_method.method, arg_count)
                 }
                 Value::NativeMethod(native_method) => self.execute_native_method_call(
-                    &native_method,
-                    &mut bound_method.receiver,
+                    native_method,
+                    &mut bound_method.to_value(&self.heap).receiver.clone(),
                     arg_count,
                 ),
                 _ => {
@@ -1624,18 +1708,19 @@ impl VM {
     #[allow(clippy::branches_sharing_code)]
     fn execute_native_method_call(
         &mut self,
-        f: &NativeMethod,
+        f: NativeMethodId,
         receiver: &mut Value,
         arg_count: u8,
     ) -> bool {
+        let f = f.to_value(&self.heap);
         let arity = f.arity;
         if !arity.contains(&arg_count) {
             if arity.len() == 1 {
                 runtime_error!(
                     self,
                     "Native method '{}' of class {} expected {} argument{}, got {}.",
-                    *f.name,
-                    *receiver.class_name(),
+                    f.name.to_value(&self.heap),
+                    *receiver.class_name(&self.heap).to_value(&self.heap),
                     arity[0],
                     { if arity[0] == 1 { "" } else { "s" } },
                     arg_count
@@ -1644,8 +1729,8 @@ impl VM {
                 runtime_error!(
                     self,
                     "Native method '{}' of class {} expected any of {:?} arguments, got {}.",
-                    *f.name,
-                    *receiver.class_name(),
+                    *f.name.to_value(&self.heap),
+                    *receiver.class_name(&self.heap).to_value(&self.heap),
                     arity,
                     arg_count
                 );
@@ -1677,14 +1762,15 @@ impl VM {
     /// After the call the stack is truncated to remove the arguments and the function
     /// and the result is pushed onto the stack.
     #[allow(clippy::branches_sharing_code)]
-    fn execute_native_function_call(&mut self, f: &NativeFunction, arg_count: u8) -> bool {
+    fn execute_native_function_call(&mut self, f: NativeFunctionId, arg_count: u8) -> bool {
+        let f = f.to_value(&self.heap);
         let arity = f.arity;
         if !arity.contains(&arg_count) {
             if arity.len() == 1 {
                 runtime_error!(
                     self,
                     "Native function '{}' expected {} argument{}, got {}.",
-                    *f.name,
+                    f.name.to_value(&self.heap),
                     arity[0],
                     { if arity[0] == 1 { "" } else { "s" } },
                     arg_count
@@ -1693,7 +1779,7 @@ impl VM {
                 runtime_error!(
                     self,
                     "Native function '{}' expected any of {:?} arguments, got {}.",
-                    *f.name,
+                    f.name.to_value(&self.heap),
                     arity,
                     arg_count
                 );
@@ -1724,7 +1810,7 @@ impl VM {
     /// The instance is still on top of the stack.
     fn bind_method(&mut self, class: Value, name: StringId) -> bool {
         let class = class.as_class();
-        let Some(method) = class.methods.get(&name) else {
+        let Some(method) = class.to_value(&self.heap).methods.get(&name) else {
             return false;
         };
         let bound_method = Value::bound_method(
@@ -1751,13 +1837,13 @@ impl VM {
         for (i, this) in self.open_upvalues.iter().enumerate() {
             upvalue = Some(this);
             upvalue_index = i;
-            if this.as_open() <= local {
+            if this.to_value(&self.heap).as_open() <= local {
                 break;
             }
         }
 
         if let Some(upvalue) = upvalue {
-            if upvalue.as_open() == local {
+            if upvalue.to_value(&self.heap).as_open() == local {
                 return *upvalue;
             }
         }
@@ -1776,9 +1862,13 @@ impl VM {
         while self
             .open_upvalues
             .front()
-            .is_some_and(|v| v.as_open() >= last)
+            .is_some_and(|v| v.to_value(&self.heap).as_open() >= last)
         {
-            let mut upvalue = self.open_upvalues.pop_front().unwrap();
+            let upvalue = self
+                .open_upvalues
+                .pop_front()
+                .unwrap()
+                .to_value_mut(&mut self.heap);
 
             let pointed_value = self.stack[upvalue.as_open()];
             *upvalue = Upvalue::Closed(pointed_value);
@@ -1791,7 +1881,11 @@ impl VM {
     /// Then the closure is pushed onto the callstack.
     fn execute_call(&mut self, closure_id: Value, arg_count: u8) -> bool {
         let closure = closure_id.as_closure();
-        let arity = closure.function.arity;
+        let arity = closure
+            .to_value(&self.heap)
+            .function
+            .to_value(&self.heap)
+            .arity;
         let arg_count = usize::from(arg_count);
         if arg_count != arity {
             runtime_error!(
@@ -1809,8 +1903,11 @@ impl VM {
             return false;
         }
 
-        self.callstack
-            .push(*closure_id.as_closure(), self.stack.len() - arg_count - 1);
+        self.callstack.push(
+            *closure_id.as_closure(),
+            self.stack.len() - arg_count - 1,
+            &self.heap,
+        );
         true
     }
 
@@ -1851,7 +1948,9 @@ impl VM {
                 },
             );
         }
-        self.heap.native_classes.insert(name_id.to_string(), value);
+        self.heap
+            .native_classes
+            .insert(name_id.to_value(&self.heap).clone(), value);
     }
 
     /// Define a native method by adding it to the heap and the class.
@@ -1877,9 +1976,11 @@ impl VM {
         let target_class = self
             .heap
             .native_classes
-            .get_mut(&*class_id)
+            .get_mut(&class_id.to_value(&self.heap).clone())
             .unwrap()
-            .as_class_mut();
+            .as_class_mut()
+            .clone()
+            .to_value_mut(&mut self.heap);
         target_class.methods.insert(name_id, value_id);
     }
 
@@ -1896,7 +1997,26 @@ impl VM {
         self.heap.strings_by_name.insert(name.to_string(), name_id);
         self.stdlib.insert(name_id, functions);
     }
+}
 
+macro_rules! clear_garbage {
+    ($collection:expr, $heap:expr, $collection_name:expr $(,)?) => {
+        $collection.retain(|string_id, _| {
+            #[cfg(feature = "log_gc")]
+            if !string_id.marked($heap) {
+                eprintln!(
+                    "String/{:?} free from {} {}",
+                    string_id,
+                    $collection_name,
+                    string_id.to_value($heap)
+                );
+            }
+            string_id.marked($heap)
+        });
+    };
+}
+
+impl VM {
     /// Call the heap garbage collector.
     ///
     /// Return early if not gc is needed because the heap is still small.
@@ -1915,7 +2035,6 @@ impl VM {
         if !self.heap.needs_gc() {
             return;
         }
-        let black_value = self.heap.black_value;
 
         self.heap.gc_start();
 
@@ -1928,17 +2047,17 @@ impl VM {
         #[cfg(feature = "log_gc")]
         eprintln!("Callstack functions.");
         for frame in self.callstack.iter() {
-            self.heap.mark_function(&frame.closure().function);
+            self.heap.mark_function(frame.closure(&self.heap).function);
         }
         #[cfg(feature = "log_gc")]
         eprintln!("Marking open upvalues.");
         for upvalue in &self.open_upvalues {
-            self.heap.mark_upvalue(upvalue);
+            self.heap.mark_upvalue(*upvalue);
         }
         #[cfg(feature = "log_gc")]
         eprintln!("Marking modules.");
         for module in &self.modules {
-            self.heap.mark_module(module);
+            self.heap.mark_module(*module);
         }
         #[cfg(feature = "log_gc")]
         eprintln!("Marking builtins.");
@@ -1951,44 +2070,37 @@ impl VM {
 
         // Remove references to unmarked strings in `globals` and `heap.strings_by_name`
         // and `builtins`
-        for module in &mut self.modules {
-            clear_garbage(
-                &mut module.globals,
-                black_value,
-                #[cfg(feature = "log_gc")]
-                "module globals",
-            );
+        for module_id in &mut self.modules.iter().copied() {
+            let module = module_id.to_value_mut(&mut self.heap);
+            let mut globals = std::mem::take(&mut module.globals);
+            clear_garbage!(&mut globals, &self.heap, "module globals");
+            module_id.to_value_mut(&mut self.heap).globals = globals;
         }
 
-        clear_garbage(
-            &mut self.builtins,
-            black_value,
-            #[cfg(feature = "log_gc")]
-            "builtins",
-        );
+        clear_garbage!(&mut self.builtins, &self.heap, "builtins");
 
-        clear_garbage(
-            &mut self.stdlib,
-            black_value,
-            #[cfg(feature = "log_gc")]
-            "stdlib",
-        );
+        clear_garbage!(&mut self.stdlib, &self.heap, "stdlib");
 
-        self.heap.strings_by_name.retain(|_, string_id| {
+        let mut strings_by_name = std::mem::take(&mut self.heap.strings_by_name);
+        strings_by_name.retain(|_, string_id| {
             #[cfg(feature = "log_gc")]
-            if !string_id.marked(black_value) {
+            if !string_id.marked(&self.heap) {
                 eprintln!(
                     "String/{:?} free from strings by name {}",
-                    string_id, **string_id
+                    string_id,
+                    string_id.to_value(&self.heap)
                 );
             }
-            string_id.marked(black_value)
+            string_id.marked(&self.heap)
         });
+        self.heap.strings_by_name = strings_by_name;
 
         // Finally, sweep
         self.heap.sweep();
     }
+}
 
+impl VM {
     /// Read the value of the constant specified by the next byte.
     ///
     /// First reads the index of the constant from the bytecode.
@@ -2010,7 +2122,12 @@ impl VM {
     }
 
     fn read_constant_value(&self, index: usize) -> Value {
-        *self.callstack.function().chunk.get_constant(index)
+        *self
+            .callstack
+            .function()
+            .to_value(&self.heap)
+            .chunk
+            .get_constant(index)
     }
 
     /// Read the next byte from the current frame's bytecode.
@@ -2018,7 +2135,7 @@ impl VM {
         let frame = self.callstack.current_mut();
         let index = frame.ip;
         frame.ip += 1;
-        self.callstack.code_byte(index)
+        self.callstack.code_byte(index, &self.heap)
     }
 
     /// Read a 24 bit number from the current frame's bytecode.
@@ -2066,21 +2183,4 @@ impl VM {
     fn stack_base(&self) -> usize {
         self.callstack.current().stack_base
     }
-}
-
-fn clear_garbage<K: Key, T: ArenaValue, V>(
-    collection: &mut HashMap<ArenaId<K, T>, V>,
-    black_value: bool,
-    #[cfg(feature = "log_gc")] collection_name: &str,
-) {
-    collection.retain(|string_id, _| {
-        #[cfg(feature = "log_gc")]
-        if !string_id.marked(black_value) {
-            eprintln!(
-                "String/{:?} free from {} {}",
-                string_id, collection_name, **string_id
-            );
-        }
-        string_id.marked(black_value)
-    });
 }

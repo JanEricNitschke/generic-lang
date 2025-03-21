@@ -16,17 +16,12 @@
 //!
 //! Garbage collection occurs via `mark and sweep`.
 
-use derivative::Derivative;
 use num_bigint::BigInt;
+use paste::paste;
 use rustc_hash::FxHashMap as HashMap;
 use slotmap::{HopSlotMap as SlotMap, Key, new_key_type};
 use std::collections::hash_map::Entry;
 use std::fmt::{Debug, Display};
-use std::{
-    ops::{Deref, DerefMut},
-    pin::Pin,
-    ptr::NonNull,
-};
 
 use crate::value::{
     BoundMethod, Class, Closure, Function, GenericInt, Instance, Module, NativeClass,
@@ -39,61 +34,57 @@ impl<T> ArenaValue for T where T: Debug + Display + PartialEq {}
 // Define separate key types for each `Value` variant to ensure
 // that no misuse occurs.
 new_key_type! {
-    pub struct FunctionKey;
-    pub struct StringKey;
-    pub struct BigIntKey;
-    pub struct UpvalueKey;
-    pub struct ClosureKey;
-    pub struct NativeFunctionKey;
-    pub struct NativeMethodKey;
-    pub struct ClassKey;
-    pub struct InstanceKey;
-    pub struct BoundMethodKey;
-    pub struct ModuleKey;
+    pub struct FunctionId;
+    pub struct StringId;
+    pub struct BigIntId;
+    pub struct UpvalueId;
+    pub struct ClosureId;
+    pub struct NativeFunctionId;
+    pub struct NativeMethodId;
+    pub struct ClassId;
+    pub struct InstanceId;
+    pub struct BoundMethodId;
+    pub struct ModuleId;
 }
 
-/// Wrapper for the key of the object as well as the arena that contains it.
-#[derive(Clone, PartialOrd, Debug, Derivative)]
-#[derivative(Hash)]
-pub struct ArenaId<K: Key, T: ArenaValue> {
-    id: K,
-    // Yes this is terrible, yes I'm OK with it for this project
-    // These could be but then i would have to put `clones` everywhere.
-    // use std::cell::RefCell;
-    // use std::rc::Rc;
-    // arena: Rc<RefCell<Arena<K, T>>>,
-    arena: NonNull<Arena<K, T>>,
+macro_rules! impl_to_value {
+    ($($id:ident => {$slot_name:ident, $value_ty:ty}),*) => {
+        paste! {
+            $(
+                impl $id {
+                    pub fn to_value<'a>(&self, heap: &'a Heap) -> &'a $value_ty {
+                        heap.[<get_$slot_name>](*self)
+                    }
+
+                    #[allow(dead_code)]
+                    pub fn to_value_mut<'a>(&self, heap: &'a mut Heap) -> &'a mut $value_ty {
+                        heap.[<get_mut_$slot_name>](*self)
+                    }
+
+                    #[allow(dead_code)]
+                    pub fn marked(&self, heap: &Heap) -> bool {
+                        heap.[< $slot_name _marked>](*self)
+                    }
+                }
+            )*
+        }
+    };
 }
 
-impl<K: Key, T: ArenaValue> PartialEq for ArenaId<K, T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id || **self == **other
-    }
-}
-
-impl<K: Key, T: ArenaValue> Eq for ArenaId<K, T> {}
-
-impl<K: Key, T: ArenaValue + Clone> Copy for ArenaId<K, T> {}
-
-impl<K: Key, T: ArenaValue> Deref for ArenaId<K, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &self.arena.as_ref()[self] }
-    }
-}
-
-impl<K: Key, T: ArenaValue> DerefMut for ArenaId<K, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut self.arena.as_mut()[self as &Self] }
-    }
-}
-
-impl<K: Key, T: ArenaValue> ArenaId<K, T> {
-    pub(super) fn marked(&self, black_value: bool) -> bool {
-        unsafe { self.arena.as_ref().is_marked(self.id, black_value) }
-    }
-}
+// Implement `to_value` and `to_value_mut` for all the given structs
+impl_to_value!(
+    FunctionId => {function, Function},
+    StringId => {string, String},
+    BigIntId => {big_int, BigInt},
+    UpvalueId => {upvalue, Upvalue},
+    ClosureId => {closure, Closure},
+    NativeFunctionId => {native_function, NativeFunction},
+    NativeMethodId => {native_method, NativeMethod},
+    ClassId => {class, Class},
+    InstanceId => {instance, Instance},
+    BoundMethodId => {bound_method, BoundMethod},
+    ModuleId => {module, Module}
+);
 
 /// Wrapper attaching a flag indicating whether an object
 /// has been marked during the mark phase of mark and sweep
@@ -110,19 +101,6 @@ impl<T> Item<T> {
     }
 }
 
-// Separate Id types for each `Value` variant.
-pub type StringId = ArenaId<StringKey, String>;
-pub type BigIntId = ArenaId<BigIntKey, BigInt>;
-pub type UpvalueId = ArenaId<UpvalueKey, Upvalue>;
-pub type FunctionId = ArenaId<FunctionKey, Function>;
-pub type ClosureId = ArenaId<ClosureKey, Closure>;
-pub type NativeFunctionId = ArenaId<NativeFunctionKey, NativeFunction>;
-pub type NativeMethodId = ArenaId<NativeMethodKey, NativeMethod>;
-pub type ClassId = ArenaId<ClassKey, Class>;
-pub type InstanceId = ArenaId<InstanceKey, Instance>;
-pub type BoundMethodId = ArenaId<BoundMethodKey, BoundMethod>;
-pub type ModuleId = ArenaId<ModuleKey, Module>;
-
 /// Arenas storing each `Value` variant.
 ///
 /// Each arena has a name when logging the garbage collector.
@@ -131,7 +109,7 @@ pub type ModuleId = ArenaId<ModuleKey, Module>;
 /// as a vector of items to process for `mark and sweep`.
 #[derive(Clone, Debug)]
 pub struct Arena<K: Key, V: ArenaValue> {
-    #[cfg(feature = "log_gc")]
+    #[allow(dead_code)]
     name: &'static str,
 
     data: SlotMap<K, Item<V>>,
@@ -142,9 +120,8 @@ pub struct Arena<K: Key, V: ArenaValue> {
 
 impl<K: Key, V: ArenaValue> Arena<K, V> {
     #[must_use]
-    fn new(#[cfg(feature = "log_gc")] name: &'static str) -> Self {
+    fn new(name: &'static str) -> Self {
         Self {
-            #[cfg(feature = "log_gc")]
             name,
             data: SlotMap::with_key(),
             bytes_allocated: 0,
@@ -155,7 +132,7 @@ impl<K: Key, V: ArenaValue> Arena<K, V> {
     /// Add a value to the arena and return a corresponding Id.
     ///
     /// Also update the total number of bytes allocated in this arena.
-    fn add(&mut self, value: V, black_value: bool) -> ArenaId<K, V> {
+    fn add(&mut self, value: V, black_value: bool) -> K {
         let id = self.data.insert(Item::new(value, !black_value));
         self.bytes_allocated += std::mem::size_of::<V>();
 
@@ -170,10 +147,15 @@ impl<K: Key, V: ArenaValue> Arena<K, V> {
             );
         }
 
-        ArenaId {
-            id,
-            arena: (&mut *self).into(),
-        }
+        id
+    }
+
+    fn get(&self, index: K) -> &V {
+        &self.data[index].item
+    }
+
+    fn get_mut(&mut self, index: K) -> &mut V {
+        &mut self.data[index].item
     }
 
     fn is_marked(&self, index: K, black_value: bool) -> bool {
@@ -205,27 +187,11 @@ impl<K: Key, V: ArenaValue> Arena<K, V> {
     }
 }
 
-impl<K: Key, V: ArenaValue> std::ops::Index<&ArenaId<K, V>> for Arena<K, V> {
-    type Output = V;
-
-    fn index(&self, index: &ArenaId<K, V>) -> &Self::Output {
-        debug_assert_eq!(index.arena.as_ptr().cast_const(), self);
-        &self[index.id]
-    }
-}
-
 impl<K: Key, V: ArenaValue> std::ops::Index<K> for Arena<K, V> {
     type Output = V;
 
     fn index(&self, index: K) -> &Self::Output {
         &self.data[index].item
-    }
-}
-
-impl<K: Key, V: ArenaValue> std::ops::IndexMut<&ArenaId<K, V>> for Arena<K, V> {
-    fn index_mut(&mut self, index: &ArenaId<K, V>) -> &mut Self::Output {
-        debug_assert_eq!(index.arena.as_ptr().cast_const(), self);
-        &mut self[index.id]
     }
 }
 
@@ -266,79 +232,82 @@ macro_rules! gray_value {
             Value::Upvalue(id) => {
                 #[cfg(feature = "log_gc")]
                 {
-                    eprintln!("Upvalue/{:?} gray {}", id.id, **id);
+                    eprintln!("Upvalue/{:?} gray {}", id, $self.upvalues[*id]);
                 }
-                $self.upvalues.gray.push(id.id);
+                $self.upvalues.gray.push(*id);
             }
             Value::String(id) => {
                 #[cfg(feature = "log_gc")]
                 {
-                    eprintln!("String/{:?} gray {}", id.id, **id);
+                    eprintln!("String/{:?} gray {}", id, $self.strings[*id]);
                 }
-                $self.strings.gray.push(id.id);
+                $self.strings.gray.push(*id);
             }
             Value::Number(Number::Integer(GenericInt::Big(id))) => {
                 #[cfg(feature = "log_gc")]
                 {
-                    eprintln!("BigInt/{:?} gray {}", id.id, **id);
+                    eprintln!("BigInt/{:?} gray {}", id, $self.big_ints[*id]);
                 }
-                $self.big_ints.gray.push(id.id);
+                $self.big_ints.gray.push(*id);
             }
             Value::Function(id) => {
                 #[cfg(feature = "log_gc")]
                 {
-                    eprintln!("Function/{:?} gray {}", id.id, **id);
+                    eprintln!("Function/{:?} gray {}", id, $self.functions[*id]);
                 }
-                $self.functions.gray.push(id.id);
+                $self.functions.gray.push(*id);
             }
             Value::NativeFunction(id) => {
                 #[cfg(feature = "log_gc")]
                 {
-                    eprintln!("NativeFunction/{:?} gray {}", id.id, **id);
+                    eprintln!(
+                        "NativeFunction/{:?} gray {}",
+                        id, $self.native_functions[*id]
+                    );
                 }
-                $self.native_functions.gray.push(id.id);
+                $self.native_functions.gray.push(*id);
             }
             Value::NativeMethod(id) => {
                 #[cfg(feature = "log_gc")]
                 {
-                    eprintln!("NativeMethod/{:?} gray {}", id.id, **id);
+                    eprintln!("NativeMethod/{:?} gray {}", id, $self.native_methods[*id]);
                 }
-                $self.native_methods.gray.push(id.id);
+                $self.native_methods.gray.push(*id);
             }
             Value::Closure(id) => {
                 #[cfg(feature = "log_gc")]
                 {
-                    eprintln!("Closure/{:?} gray {}", id.id, **id);
+                    eprintln!("Closure/{:?} gray {}", id, $self.closures[*id]);
                 }
-                $self.closures.gray.push(id.id);
+                $self.closures.gray.push(*id);
             }
             Value::Class(id) => {
                 #[cfg(feature = "log_gc")]
                 {
-                    eprintln!("Class/{:?} gray {}", id.id, **id);
+                    eprintln!("Class/{:?} gray {}", id, $self.classes[*id]);
                 }
-                $self.classes.gray.push(id.id);
+                $self.classes.gray.push(*id);
             }
             Value::Instance(id) => {
                 #[cfg(feature = "log_gc")]
                 {
-                    eprintln!("Instance/{:?} gray {}", id.id, **id);
+                    eprintln!("Instance/{:?} gray {}", *id, $self.instances[*id]);
                 }
-                $self.instances.gray.push(id.id);
+                $self.instances.gray.push(*id);
             }
             Value::BoundMethod(id) => {
                 #[cfg(feature = "log_gc")]
                 {
-                    eprintln!("BoundMethod/{:?} gray {}", id.id, **id);
+                    eprintln!("BoundMethod/{:?} gray {}", id, $self.bound_methods[*id]);
                 }
-                $self.bound_methods.gray.push(id.id);
+                $self.bound_methods.gray.push(*id);
             }
             Value::Module(id) => {
                 #[cfg(feature = "log_gc")]
                 {
-                    eprintln!("Module/{:?} gray {}", id.id, **id);
+                    eprintln!("Module/{:?} gray {}", id, $self.modules[*id]);
                 }
-                $self.modules.gray.push(id.id);
+                $self.modules.gray.push(*id);
             }
             Value::Bool(_) | Value::Nil | Value::StopIteration | Value::Number(_) => {}
         }
@@ -354,85 +323,52 @@ pub struct Heap {
     pub(super) strings_by_name: HashMap<String, StringId>,
     pub(super) native_classes: HashMap<String, Value>,
 
-    pub(super) strings: Arena<StringKey, String>,
-    big_ints: Arena<BigIntKey, BigInt>,
-    functions: Arena<FunctionKey, Function>,
-    bound_methods: Arena<BoundMethodKey, BoundMethod>,
-    closures: Arena<ClosureKey, Closure>,
-    native_functions: Arena<NativeFunctionKey, NativeFunction>,
-    native_methods: Arena<NativeMethodKey, NativeMethod>,
-    classes: Arena<ClassKey, Class>,
-    instances: Arena<InstanceKey, Instance>,
-    upvalues: Arena<UpvalueKey, Upvalue>,
-    modules: Arena<ModuleKey, Module>,
+    pub(super) strings: Arena<StringId, String>,
+    big_ints: Arena<BigIntId, BigInt>,
+    functions: Arena<FunctionId, Function>,
+    bound_methods: Arena<BoundMethodId, BoundMethod>,
+    closures: Arena<ClosureId, Closure>,
+    native_functions: Arena<NativeFunctionId, NativeFunction>,
+    native_methods: Arena<NativeMethodId, NativeMethod>,
+    classes: Arena<ClassId, Class>,
+    instances: Arena<InstanceId, Instance>,
+    upvalues: Arena<UpvalueId, Upvalue>,
+    modules: Arena<ModuleId, Module>,
 
     next_gc: usize,
     pub(super) black_value: bool,
 }
 
 impl Heap {
-    pub(super) fn new() -> Pin<Box<Self>> {
+    pub(super) fn new() -> Self {
         let strings_by_name: HashMap<String, StringId> = HashMap::default();
 
-        let mut heap = Box::pin(Self {
+        let mut heap = Self {
             builtin_constants: None,
             strings_by_name,
             native_classes: HashMap::default(),
 
-            strings: Arena::new(
-                #[cfg(feature = "log_gc")]
-                "String",
-            ),
-            big_ints: Arena::new(
-                #[cfg(feature = "log_gc")]
-                "BigInt",
-            ),
-            functions: Arena::new(
-                #[cfg(feature = "log_gc")]
-                "Function",
-            ),
-            bound_methods: Arena::new(
-                #[cfg(feature = "log_gc")]
-                "BoundMethod",
-            ),
-            closures: Arena::new(
-                #[cfg(feature = "log_gc")]
-                "Closure",
-            ),
-            native_functions: Arena::new(
-                #[cfg(feature = "log_gc")]
-                "NativeFunction",
-            ),
-            native_methods: Arena::new(
-                #[cfg(feature = "log_gc")]
-                "NativeMethod",
-            ),
-            classes: Arena::new(
-                #[cfg(feature = "log_gc")]
-                "Class",
-            ),
-            instances: Arena::new(
-                #[cfg(feature = "log_gc")]
-                "Instance",
-            ),
-            upvalues: Arena::new(
-                #[cfg(feature = "log_gc")]
-                "Upvalue",
-            ),
-            modules: Arena::new(
-                #[cfg(feature = "log_gc")]
-                "Module",
-            ),
+            strings: Arena::new("String"),
+            big_ints: Arena::new("BigInt"),
+            functions: Arena::new("Function"),
+            bound_methods: Arena::new("BoundMethod"),
+            closures: Arena::new("Closure"),
+            native_functions: Arena::new("NativeFunction"),
+            native_methods: Arena::new("NativeMethod"),
+            classes: Arena::new("Class"),
+            instances: Arena::new("Instance"),
+            upvalues: Arena::new("Upvalue"),
+            modules: Arena::new("Module"),
 
             next_gc: 1024 * 1024,
             black_value: true,
-        });
+        };
         // Very important: first pin, *then* initialize the constants, as the `ArenaId`s generated
         // here will carry a raw pointer that needs to remain valid
         heap.builtin_constants = Some(BuiltinConstants::new(&mut heap));
-        let init_string = heap.builtin_constants().init_string;
-        heap.strings_by_name
-            .insert(init_string.to_string(), init_string);
+        let init_string_id = heap.builtin_constants().init_string;
+        let init_string = heap.strings[init_string_id].clone();
+        heap.strings_by_name.insert(init_string, init_string_id);
 
         heap
     }
@@ -485,12 +421,8 @@ impl Heap {
             eprintln!("-- gc begin");
         }
 
-        self.strings
-            .gray
-            .push(self.builtin_constants().init_string.id);
-        self.strings
-            .gray
-            .push(self.builtin_constants().script_name.id);
+        self.strings.gray.push(self.builtin_constants().init_string);
+        self.strings.gray.push(self.builtin_constants().script_name);
 
         for value in self.native_classes.values() {
             gray_value!(self, value);
@@ -558,31 +490,31 @@ impl Heap {
         self.blacken_value(id);
     }
 
-    pub(super) fn mark_function(&mut self, id: &FunctionId) {
-        self.blacken_function(id.id);
+    pub(super) fn mark_function(&mut self, id: FunctionId) {
+        self.blacken_function(id);
     }
 
-    pub(super) fn mark_upvalue(&mut self, id: &UpvalueId) {
-        self.blacken_upvalue(id.id);
+    pub(super) fn mark_upvalue(&mut self, id: UpvalueId) {
+        self.blacken_upvalue(id);
     }
 
-    pub(super) fn mark_module(&mut self, id: &ModuleId) {
-        self.blacken_module(id.id);
+    pub(super) fn mark_module(&mut self, id: ModuleId) {
+        self.blacken_module(id);
     }
 
     fn blacken_value(&mut self, index: &Value) {
         match index {
-            Value::Upvalue(id) => self.blacken_upvalue(id.id),
-            Value::String(id) => self.blacken_string(id.id),
-            Value::Number(Number::Integer(GenericInt::Big(id))) => self.blacken_big_int(id.id),
-            Value::Function(id) => self.blacken_function(id.id),
-            Value::NativeFunction(id) => self.blacken_native_function(id.id),
-            Value::NativeMethod(id) => self.blacken_native_method(id.id),
-            Value::Closure(id) => self.blacken_closure(id.id),
-            Value::Class(id) => self.blacken_class(id.id),
-            Value::Instance(id) => self.blacken_instance(id.id),
-            Value::BoundMethod(id) => self.blacken_bound_method(id.id),
-            Value::Module(id) => self.blacken_module(id.id),
+            Value::Upvalue(id) => self.blacken_upvalue(*id),
+            Value::String(id) => self.blacken_string(*id),
+            Value::Number(Number::Integer(GenericInt::Big(id))) => self.blacken_big_int(*id),
+            Value::Function(id) => self.blacken_function(*id),
+            Value::NativeFunction(id) => self.blacken_native_function(*id),
+            Value::NativeMethod(id) => self.blacken_native_method(*id),
+            Value::Closure(id) => self.blacken_closure(*id),
+            Value::Class(id) => self.blacken_class(*id),
+            Value::Instance(id) => self.blacken_instance(*id),
+            Value::BoundMethod(id) => self.blacken_bound_method(*id),
+            Value::Module(id) => self.blacken_module(*id),
             Value::Bool(_) | Value::Nil | Value::StopIteration | Value::Number(_) => {}
         }
     }
@@ -590,7 +522,7 @@ impl Heap {
     /// Closed upvalues refer to a separate value that has to be marked.
     ///
     /// Open ones do not contain any data that is stored on the heap.
-    fn blacken_upvalue(&mut self, index: UpvalueKey) {
+    fn blacken_upvalue(&mut self, index: UpvalueId) {
         let item = &mut self.upvalues.data[index];
         if item.marked == self.black_value {
             return;
@@ -601,6 +533,8 @@ impl Heap {
             eprintln!("Upvalue{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
+        #[cfg(feature = "log_gc")]
+        let item = item.clone();
         match &item.item {
             Upvalue::Open(_) => {}
             Upvalue::Closed(value) => {
@@ -615,7 +549,7 @@ impl Heap {
 
     /// Modules need to mark their heap stored name as well as all
     /// the keys and values stored in their globals.
-    fn blacken_module(&mut self, index: ModuleKey) {
+    fn blacken_module(&mut self, index: ModuleId) {
         let item = &mut self.modules.data[index];
         if item.marked == self.black_value {
             return;
@@ -626,8 +560,10 @@ impl Heap {
             eprintln!("Module/{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
+        #[cfg(feature = "log_gc")]
+        let item = item.clone();
         let module = &item.item;
-        self.strings.gray.push(module.name.id);
+        self.strings.gray.push(module.name);
         for value in module.globals.values() {
             gray_value!(self, &value.value);
         }
@@ -635,7 +571,7 @@ impl Heap {
 
     /// Native functions only have their name on the heap.
     /// The implementation is directly in rust.
-    fn blacken_native_function(&mut self, index: NativeFunctionKey) {
+    fn blacken_native_function(&mut self, index: NativeFunctionId) {
         let item = &mut self.native_functions.data[index];
         if item.marked == self.black_value {
             return;
@@ -648,7 +584,7 @@ impl Heap {
         item.marked = self.black_value;
 
         let function = &item.item;
-        self.strings.gray.push(function.name.id);
+        self.strings.gray.push(function.name);
         #[cfg(feature = "log_gc")]
         {
             eprintln!("NativeFunction/{:?} blacken {} end", index, item.item);
@@ -656,7 +592,7 @@ impl Heap {
     }
 
     /// Native methods store their name as well as the class they belong to.
-    fn blacken_native_method(&mut self, index: NativeMethodKey) {
+    fn blacken_native_method(&mut self, index: NativeMethodId) {
         let item = &mut self.native_methods.data[index];
         if item.marked == self.black_value {
             return;
@@ -669,8 +605,8 @@ impl Heap {
         item.marked = self.black_value;
 
         let function = &item.item;
-        self.strings.gray.push(function.name.id);
-        self.strings.gray.push(function.class.id);
+        self.strings.gray.push(function.name);
+        self.strings.gray.push(function.class);
         #[cfg(feature = "log_gc")]
         {
             eprintln!("NativeMethod/{:?} blacken {} end", index, item.item);
@@ -678,7 +614,7 @@ impl Heap {
     }
 
     /// Closures store their wrapped function ad well as the captured upvalues.
-    fn blacken_closure(&mut self, index: ClosureKey) {
+    fn blacken_closure(&mut self, index: ClosureId) {
         let item = &mut self.closures.data[index];
         if item.marked == self.black_value {
             return;
@@ -691,12 +627,12 @@ impl Heap {
         item.marked = self.black_value;
 
         let closure = &item.item;
-        self.functions.gray.push(closure.function.id);
+        self.functions.gray.push(closure.function);
         for upvalue in &closure.upvalues {
-            self.upvalues.gray.push(upvalue.id);
+            self.upvalues.gray.push(*upvalue);
         }
         if let Some(module) = closure.containing_module {
-            self.modules.gray.push(module.id);
+            self.modules.gray.push(module);
         }
         #[cfg(feature = "log_gc")]
         {
@@ -705,7 +641,7 @@ impl Heap {
     }
 
     /// Classes store their name as well as their methods with their names.
-    fn blacken_class(&mut self, index: ClassKey) {
+    fn blacken_class(&mut self, index: ClassId) {
         let item = &mut self.classes.data[index];
         if item.marked == self.black_value {
             return;
@@ -716,11 +652,12 @@ impl Heap {
             eprintln!("Class/{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
-
+        #[cfg(feature = "log_gc")]
+        let item = item.clone();
         let class = &item.item;
-        self.strings.gray.push(class.name.id);
+        self.strings.gray.push(class.name);
         for (method_name, method) in &class.methods {
-            self.strings.gray.push(method_name.id);
+            self.strings.gray.push(*method_name);
             gray_value!(self, method);
         }
         #[cfg(feature = "log_gc")]
@@ -735,7 +672,7 @@ impl Heap {
     /// If they represent an instance of a native class, then the data structure
     /// that handles the native functionality may itself reference more heap allocated data.
     #[allow(clippy::cognitive_complexity)]
-    fn blacken_instance(&mut self, index: InstanceKey) {
+    fn blacken_instance(&mut self, index: InstanceId) {
         let item = &mut self.instances.data[index];
         if item.marked == self.black_value {
             return;
@@ -747,9 +684,11 @@ impl Heap {
         }
 
         item.marked = self.black_value;
-
+        #[cfg(feature = "log_gc")]
+        let item = item.clone();
         let instance = &item.item;
-        self.strings.gray.push(instance.class.name.id);
+        let class = &self.classes[instance.class];
+        self.strings.gray.push(class.name);
         for field in instance.fields.values() {
             gray_value!(self, field);
         }
@@ -764,7 +703,7 @@ impl Heap {
                 }
                 NativeClass::ListIterator(list_iter) => {
                     if let Some(list) = &list_iter.list {
-                        self.instances.gray.push(list.id);
+                        self.instances.gray.push(*list);
                     }
                 }
                 NativeClass::Set(set) => {
@@ -789,7 +728,7 @@ impl Heap {
     /// Bound methods store the instance they are bound to
     /// as well as the method they are binding.
     #[allow(clippy::cognitive_complexity)]
-    fn blacken_bound_method(&mut self, index: BoundMethodKey) {
+    fn blacken_bound_method(&mut self, index: BoundMethodId) {
         let item = &mut self.bound_methods.data[index];
         if item.marked == self.black_value {
             return;
@@ -800,7 +739,8 @@ impl Heap {
             eprintln!("BoundMethod/{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
-
+        #[cfg(feature = "log_gc")]
+        let item = item.clone();
         let bound_method = &item.item;
         gray_value!(self, &bound_method.receiver);
         gray_value!(self, &bound_method.method);
@@ -811,7 +751,7 @@ impl Heap {
     }
 
     /// Strings dont actually contain anything else.
-    fn blacken_string(&mut self, index: StringKey) {
+    fn blacken_string(&mut self, index: StringId) {
         let item = &mut self.strings.data[index];
         if item.marked == self.black_value {
             return;
@@ -829,7 +769,7 @@ impl Heap {
     }
 
     /// `BigInts` only contain the actual number.
-    fn blacken_big_int(&mut self, index: BigIntKey) {
+    fn blacken_big_int(&mut self, index: BigIntId) {
         let item = &mut self.big_ints.data[index];
         if item.marked == self.black_value {
             return;
@@ -848,7 +788,7 @@ impl Heap {
 
     /// Function contain their own name as well as a list of constants,
     /// although none of these should currently be heap allocated.
-    fn blacken_function(&mut self, index: FunctionKey) {
+    fn blacken_function(&mut self, index: FunctionId) {
         let item = &mut self.functions.data[index];
         if item.marked == self.black_value {
             return;
@@ -859,9 +799,11 @@ impl Heap {
             eprintln!("Function/{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
+        #[cfg(feature = "log_gc")]
+        let item = item.clone();
         self.functions.gray.push(index);
         let function = &item.item;
-        self.strings.gray.push(function.name.id);
+        self.strings.gray.push(function.name);
         for constant in function.chunk.constants() {
             gray_value!(self, constant);
         }
@@ -908,48 +850,97 @@ impl Heap {
             );
         }
     }
+}
 
-    fn add_string(&mut self, value: String) -> Value {
-        self.strings.add(value, self.black_value).into()
-    }
+macro_rules! define_value_methods {
+    ($(
+        $slot_name:ident => {
+            field: $field_name:ident,
+            ty: $ty:ty,
+            id_ty: $id_ty:ty
+        }
+    ),* $(,)?) => {
+        paste! {
+        $(
+            // e.g. pub(super) fn add_string(&mut self, value: String) -> Value
+            pub(super) fn [<add_$slot_name>](&mut self, value: $ty) -> Value {
+                self.$field_name.add(value, self.black_value).into()
+            }
 
-    pub(super) fn add_big_int(&mut self, value: BigInt) -> Value {
-        self.big_ints.add(value, self.black_value).into()
-    }
+            // e.g. pub(super) get_string(&self, index: StringId) -> &String
+            pub(super) fn [<get_$slot_name>](&self, index: $id_ty) -> &$ty {
+                self.$field_name.get(index)
+            }
 
-    pub(super) fn add_function(&mut self, value: Function) -> Value {
-        self.functions.add(value, self.black_value).into()
-    }
+            // e.g. pub(super) get_mut_string(&mut self, index: StringId) -> &mut String
+            pub(super) fn [<get_mut_$slot_name>](&mut self, index: $id_ty) -> &mut $ty {
+                self.$field_name.get_mut(index)
+            }
 
-    pub(super) fn add_bound_method(&mut self, value: BoundMethod) -> Value {
-        self.bound_methods.add(value, self.black_value).into()
+            // e.g. pub(super) string_marked(&self, index: StringId) -> bool
+            pub(super) fn [< $slot_name _marked>](&self, index: $id_ty) -> bool {
+                self.$field_name.is_marked(index, self.black_value)
+            }
+        )*
     }
+}}
 
-    pub(super) fn add_closure(&mut self, value: Closure) -> Value {
-        self.closures.add(value, self.black_value).into()
-    }
-
-    pub(super) fn add_native_function(&mut self, value: NativeFunction) -> Value {
-        self.native_functions.add(value, self.black_value).into()
-    }
-
-    pub(super) fn add_native_method(&mut self, value: NativeMethod) -> Value {
-        self.native_methods.add(value, self.black_value).into()
-    }
-
-    pub(super) fn add_class(&mut self, value: Class) -> Value {
-        self.classes.add(value, self.black_value).into()
-    }
-
-    pub(super) fn add_instance(&mut self, value: Instance) -> Value {
-        self.instances.add(value, self.black_value).into()
-    }
-
-    pub(super) fn add_upvalue(&mut self, value: Upvalue) -> Value {
-        self.upvalues.add(value, self.black_value).into()
-    }
-
-    pub(super) fn add_module(&mut self, value: Module) -> Value {
-        self.modules.add(value, self.black_value).into()
-    }
+impl Heap {
+    define_value_methods!(
+        string => {
+            field: strings,
+            ty: String,
+            id_ty: StringId
+        },
+        big_int => {
+            field: big_ints,
+            ty: BigInt,
+            id_ty: BigIntId
+        },
+        function => {
+            field: functions,
+            ty: Function,
+            id_ty: FunctionId
+        },
+        bound_method => {
+            field: bound_methods,
+            ty: BoundMethod,
+            id_ty: BoundMethodId
+        },
+        closure => {
+            field: closures,
+            ty: Closure,
+            id_ty: ClosureId
+        },
+        native_function => {
+            field: native_functions,
+            ty: NativeFunction,
+            id_ty: NativeFunctionId
+        },
+        native_method => {
+            field: native_methods,
+            ty: NativeMethod,
+            id_ty: NativeMethodId
+        },
+        class => {
+            field: classes,
+            ty: Class,
+            id_ty: ClassId
+        },
+        instance => {
+            field: instances,
+            ty: Instance,
+            id_ty: InstanceId
+        },
+        upvalue => {
+            field: upvalues,
+            ty: Upvalue,
+            id_ty: UpvalueId
+        },
+        module => {
+            field: modules,
+            ty: Module,
+            id_ty: ModuleId
+        },
+    );
 }
