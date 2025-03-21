@@ -273,17 +273,20 @@ macro_rules! run_instruction {
         #[cfg(feature = "trace_execution")]
         {
             let function = &$self.callstack.function();
-            let mut disassembler = InstructionDisassembler::new(&function.chunk);
+            let mut disassembler =
+                InstructionDisassembler::new(&function.to_value(&$self.heap).chunk, &$self.heap);
             *disassembler.offset = $self.callstack.current().ip;
             #[cfg(feature = "trace_execution_verbose")]
             {
                 println!(
                     "Current module: {} at module depth {} and total call depth {}.",
-                    *$self
+                    $self
                         .modules
                         .last()
                         .expect("Module underflow in disassembler")
-                        .name,
+                        .to_value(&$self.heap)
+                        .name
+                        .to_value(&$self.heap),
                     $self.modules.len(),
                     $self.callstack.len()
                 );
@@ -293,7 +296,7 @@ macro_rules! run_instruction {
                 $self
                     .stack
                     .iter()
-                    .map(|v| format!("{v}"))
+                    .map(|v| format!("{}", v.to_string(&$self.heap)))
                     .collect::<Vec<_>>()
                     .join(" ][ ")
             );

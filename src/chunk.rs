@@ -9,6 +9,7 @@ use derivative::Derivative;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use paste::paste;
 use shrinkwraprs::Shrinkwrap;
+use std::fmt::Debug;
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
 
@@ -275,36 +276,40 @@ impl Chunk {
 }
 
 impl Chunk {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>, heap: &Heap) -> std::fmt::Result {
-        writeln!(f, "== {} ==", self.name.to_value(heap)).unwrap(); // Handle unwrap for simplicity in this context
-        let mut disassembler = InstructionDisassembler::new(self);
+    pub(crate) fn to_string(&self, heap: &Heap) -> String {
+        let mut result = format!("== {} ==\n", self.name.to_value(heap));
+
+        let mut disassembler = InstructionDisassembler::new(self, heap);
         while disassembler.offset.as_ref() < &self.code.len() {
-            disassembler.fmt(f, heap)?;
+            let disasm_output = format!("{disassembler:?}");
+            result.push_str(&disasm_output);
             *disassembler.offset += disassembler.instruction_len(*disassembler.offset, heap);
         }
 
-        Ok(())
+        result
     }
 }
 
 /// Debug helper for disassembling a chunks code into
 /// a human readable format.
-pub struct InstructionDisassembler<'chunk> {
+pub struct InstructionDisassembler<'chunk, 'heap> {
     chunk: &'chunk Chunk,
     pub(super) offset: CodeOffset,
     operand_alignment: usize,
     opcode_name_alignment: usize,
+    heap: &'heap Heap,
 }
 
-impl<'chunk> InstructionDisassembler<'chunk> {
+impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
     #[must_use]
-    pub(super) fn new(chunk: &'chunk Chunk) -> Self {
+    pub(super) fn new(chunk: &'chunk Chunk, heap: &'heap Heap) -> Self {
         Self {
             chunk,
             offset: CodeOffset(0),
             operand_alignment: 4,
             // +3 because we add "OP_" to the start.
             opcode_name_alignment: OpCode::max_name_length() + 3,
+            heap,
         }
     }
 
@@ -666,8 +671,8 @@ macro_rules! disassemble {
     }}
 }
 
-impl InstructionDisassembler<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>, heap: &Heap) -> std::fmt::Result {
+impl Debug for InstructionDisassembler<'_, '_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let code = self.chunk.code();
         let offset = self.offset;
 
@@ -688,6 +693,7 @@ impl InstructionDisassembler<'_> {
         let opcode = OpCode::try_from_primitive(code[*offset.as_ref()])
             .unwrap_or_else(|_| panic!("Unknown opcode: {}", code[*offset.as_ref()]));
 
+        let heap = &self.heap;
         disassemble!(
             self,
             f,

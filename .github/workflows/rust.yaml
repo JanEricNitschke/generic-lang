@@ -42,6 +42,12 @@ jobs:
     - name: Run an example with MIRI
       run: |
         MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri run -- test/overloading/overloading_for_in.gen
+    - name: Check print_code
+      run: |
+        cargo run --features "print_code" test/number/equality.gen
+    - name: Check trace_execution_verbose
+      run: |
+        cargo run --features "trace_execution_verbose" test/number/equality.gen
     - name: Setup dart
       uses: dart-lang/setup-dart@v1
       with:
@@ -57,7 +63,9 @@ jobs:
         make clox
         make jlox
     - name: Run custom dart tests
-      run: make test
+      run: |
+        cargo build
+        make test
     - name: Install hyperfine
       run: |
         cargo install --locked hyperfine
