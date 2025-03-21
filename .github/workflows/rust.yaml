@@ -40,7 +40,6 @@ jobs:
       run: |
         cargo +nightly miri test --verbose
     - name: Run an example with MIRI
-      continue-on-error: true
       run: |
         MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri run -- test/overloading/overloading_for_in.gen
     - name: Setup dart

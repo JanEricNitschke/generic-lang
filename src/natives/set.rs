@@ -5,15 +5,19 @@ use crate::{value::Value, vm::VM};
 /// Insert an item into the set `set.insert(item)`.
 /// Only works on hasheable values.
 pub(super) fn set_insert_native(
-    _vm: &mut VM,
+    vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    let set = receiver.as_set_mut();
+    let mut set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
     if !args[0].is_hasheable() {
-        return Err(format!("Value `{}` is not hashable.", args[0]));
+        return Err(format!(
+            "Value `{}` is not hashable.",
+            args[0].to_string(&vm.heap)
+        ));
     }
-    set.items.insert(*args[0]);
+    set.add(*args[0], &vm.heap);
+    *receiver.as_set_mut(&mut vm.heap) = set;
     Ok(Value::Nil)
 }
 
@@ -22,27 +26,35 @@ pub(super) fn set_insert_native(
 /// has to be hasheable.
 /// Returns whether the value was originally in the set.
 pub(super) fn set_remove_native(
-    _vm: &mut VM,
+    vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    let my_set = receiver.as_set_mut();
+    let mut my_set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
     if !args[0].is_hasheable() {
-        return Err(format!("Value `{}` is not hashable.", args[0]));
+        return Err(format!(
+            "Value `{}` is not hashable.",
+            args[0].to_string(&vm.heap)
+        ));
     };
-    Ok(my_set.items.remove(args[0]).into())
+    let result = my_set.remove(args[0], &vm.heap).into();
+    *receiver.as_set_mut(&mut vm.heap) = my_set;
+    Ok(result)
 }
 
 /// Check if a hasheable value is in the set `set.contains(val)`.
 /// Also powers `val in set`.
 pub(super) fn set_contains_native(
-    _vm: &mut VM,
+    vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    let my_set = receiver.as_set();
+    let my_set = receiver.as_set(&vm.heap);
     if !args[0].is_hasheable() {
-        return Err(format!("Value `{}` is not hashable.", args[0]));
+        return Err(format!(
+            "Value `{}` is not hashable.",
+            args[0].to_string(&vm.heap)
+        ));
     };
-    Ok(my_set.items.contains(args[0]).into())
+    Ok(my_set.contains(args[0], &vm.heap).into())
 }

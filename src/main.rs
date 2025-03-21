@@ -4,6 +4,8 @@
 //! Not specifying a file will run the REPL, otherwise it will run the file.
 //! There are currently no other command line options.
 
+#![allow(clippy::wrong_self_convention)]
+
 use std::{io::Write, path::PathBuf};
 
 use clap::Parser;

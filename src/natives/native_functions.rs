@@ -25,16 +25,23 @@ pub(super) fn clock_native(_vm: &mut VM, _args: &mut [&mut Value]) -> Result<Val
 }
 
 /// Sleep for a non-negative number of seconds.
-pub(super) fn sleep_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+pub(super) fn sleep_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
-        Value::Number(Number::Integer(i)) if i >= &0 => match u64::try_from(*i) {
-            Ok(u) => thread::sleep(Duration::from_secs(u)),
-            Err(_) => return Err(format!("'sleep' argument too large: `{}`", *i)),
-        },
+        Value::Number(Number::Integer(i)) if i.ge_i64(0, &vm.heap) => {
+            match i.try_to_u64(&vm.heap) {
+                Ok(u) => thread::sleep(Duration::from_secs(u)),
+                Err(_) => {
+                    return Err(format!(
+                        "'sleep' argument too large: `{}`",
+                        Value::from(*i).to_string(&vm.heap)
+                    ));
+                }
+            }
+        }
         x => {
             return Err(format!(
                 "'sleep' expected positive integer argument, got: `{}`",
-                *x
+                x.to_string(&vm.heap)
             ));
         }
     };
@@ -42,10 +49,13 @@ pub(super) fn sleep_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Valu
 }
 
 /// Error if the argument is falsey.
-pub(super) fn assert_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+pub(super) fn assert_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     let value = &args[0];
     if value.is_falsey() {
-        Err(format!("Assertion on `{value}` failed!"))
+        Err(format!(
+            "Assertion on `{}` failed!",
+            value.to_string(&vm.heap)
+        ))
     } else {
         Ok(Value::Nil)
     }
@@ -56,7 +66,7 @@ pub(super) fn assert_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Val
 pub(super) fn input_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
         Value::String(prompt) => {
-            println!("{}", &vm.heap.strings[prompt]);
+            println!("{}", &vm.heap.strings[*prompt]);
             let mut choice = String::new();
             match io::stdin().read_line(&mut choice) {
                 Ok(_) => {
@@ -66,7 +76,10 @@ pub(super) fn input_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
                 Err(e) => Err(format!("'input' could not read line: {e}")),
             }
         }
-        x => Err(format!("'input' expected string argument, got: {x}")),
+        x => Err(format!(
+            "'input' expected string argument, got: {}",
+            x.to_string(&vm.heap)
+        )),
     }
 }
 
@@ -76,7 +89,7 @@ pub(super) fn input_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
 pub(super) fn to_float_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
         Value::String(string_id) => {
-            let string = &vm.heap.strings[string_id];
+            let string = &vm.heap.strings[*string_id];
             let converted: Result<f64, _> = string.parse();
             match converted {
                 Ok(result) => Ok(Value::Number(result.into())),
@@ -85,10 +98,11 @@ pub(super) fn to_float_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Va
                 )),
             }
         }
-        Value::Number(n) => Ok(Value::Number(f64::from(*n).into())),
+        Value::Number(n) => Ok(Value::Number(n.to_f64(&vm.heap).into())),
         Value::Bool(value) => Ok(Value::Number(f64::from(*value).into())),
         x => Err(format!(
-            "'float' expected string, number or bool argument, got: {x}"
+            "'float' expected string, number or bool argument, got: {}",
+            x.to_string(&vm.heap)
         )),
     }
 }
@@ -99,7 +113,7 @@ pub(super) fn to_float_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Va
 pub(super) fn to_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
         Value::String(string_id) => {
-            let string = &vm.heap.strings[string_id];
+            let string = &vm.heap.strings[*string_id];
             let converted: Result<i64, _> = string.parse();
             match converted {
                 Ok(result) => Ok(Value::Number(result.into())),
@@ -119,7 +133,8 @@ pub(super) fn to_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Valu
         },
         Value::Bool(value) => Ok(Value::Number(i64::from(*value).into())),
         x => Err(format!(
-            "'int' expected string, number or bool argument, got: {x}"
+            "'int' expected string, number or bool argument, got: {}",
+            x.to_string(&vm.heap)
         )),
     }
 }
@@ -129,7 +144,7 @@ pub(super) fn to_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Valu
 pub(super) fn is_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
         Value::String(string_id) => {
-            let string = &vm.heap.strings[string_id];
+            let string = &vm.heap.strings[*string_id];
             let converted: Result<i64, _> = string.parse();
             match converted {
                 Ok(_) => Ok(Value::Bool(true)),
@@ -147,15 +162,22 @@ pub(super) fn to_string_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<V
     let value = &args[0];
     match value {
         Value::Instance(instance) => {
-            if let Some(closure) = instance.class.methods.get(&vm.heap.string_id(&"__str__")) {
+            let str_id = &vm.heap.string_id(&"__str__").clone();
+            if let Some(closure) = instance
+                .to_value(&vm.heap)
+                .class
+                .to_value(&vm.heap)
+                .methods
+                .get(str_id)
+            {
                 vm.execute_and_run_function(*closure, 0);
                 let returned_value = vm.stack.pop().expect("Stack underflow in print_native");
                 Ok(returned_value)
             } else {
-                Ok(Value::String(vm.heap.string_id(&value.to_string())))
+                Ok(Value::String(vm.heap.string_id(&value.to_string(&vm.heap))))
             }
         }
-        _ => Ok(Value::String(vm.heap.string_id(&value.to_string()))),
+        _ => Ok(Value::String(vm.heap.string_id(&value.to_string(&vm.heap)))),
     }
 }
 
@@ -168,8 +190,16 @@ pub(super) fn type_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value,
         Value::Closure(_) => Value::String(vm.heap.string_id(&"<type closure>")),
         Value::Function(_) => Value::String(vm.heap.string_id(&"<type function>")),
         Value::Instance(instance) => Value::String(
-            vm.heap
-                .string_id(&("<type ".to_string() + instance.class.name.as_str() + ">")),
+            vm.heap.string_id(
+                &("<type ".to_string()
+                    + instance
+                        .to_value(&vm.heap)
+                        .class
+                        .to_value(&vm.heap)
+                        .name
+                        .to_value(&vm.heap)
+                    + ">"),
+            ),
         ),
         Value::NativeFunction(_) => Value::String(vm.heap.string_id(&"<type native function>")),
         Value::NativeMethod(_) => Value::String(vm.heap.string_id(&"<type native method>")),
@@ -190,12 +220,14 @@ pub(super) fn type_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value,
 /// Optionally supply a string to be printed at the end of the value.
 /// Defaults to `\n`.
 pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+    let str_id = &vm.heap.string_id(&"__str__").clone();
     let end = if args.len() == 2 {
         match &args[1] {
-            Value::String(string_id) => string_id,
+            Value::String(string_id) => &string_id.to_value(&vm.heap).clone(),
             x => {
                 return Err(format!(
-                    "Optional second argument to 'print' has to be a string, got: {x}"
+                    "Optional second argument to 'print' has to be a string, got: {}",
+                    x.to_string(&vm.heap)
                 ));
             }
         }
@@ -205,15 +237,22 @@ pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
     let value = &args[0];
     match **value {
         Value::Instance(instance) => {
-            if let Some(closure) = instance.class.methods.get(&vm.heap.string_id(&"__str__")) {
-                vm.execute_and_run_function(*closure, 0);
+            if let Some(closure) = instance
+                .to_value(&vm.heap)
+                .class
+                .to_value(&vm.heap)
+                .methods
+                .get(str_id)
+                .copied()
+            {
+                vm.execute_and_run_function(closure, 0);
                 let returned_value = vm.stack.pop().expect("Stack underflow in print_native");
-                print!("{returned_value}{end}");
+                print!("{}{end}", returned_value.to_string(&vm.heap));
             } else {
-                print!("{value}{end}");
+                print!("{}{end}", value.to_string(&vm.heap));
             }
         }
-        _ => print!("{value}{end}"),
+        _ => print!("{}{end}", value.to_string(&vm.heap)),
     }
 
     Ok(Value::Nil)
@@ -221,7 +260,7 @@ pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
 
 /// Return a random integer between the two arguments.
 /// Lower value is inclusive, upper value is exclusive.
-pub(super) fn rng_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+pub(super) fn rng_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match (&args[0], &args[1]) {
         (Value::Number(Number::Integer(min)), Value::Number(Number::Integer(max))) => {
             match (min, max) {
@@ -229,12 +268,16 @@ pub(super) fn rng_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value,
                     Ok(Value::Number(rand::rng().random_range(*min..*max).into()))
                 }
                 _ => Err(format!(
-                    "'rng' expected small integers (i64) as arguments, got: `{min}` and `{max}` instead."
+                    "'rng' expected small integers (i64) as arguments, got: `{}` and `{}` instead.",
+                    min.to_string(&vm.heap),
+                    max.to_string(&vm.heap)
                 )),
             }
         }
         (other_1, other_2) => Err(format!(
-            "'rng' expected two integers as arguments, got: `{other_1}` and `{other_2}` instead."
+            "'rng' expected two integers as arguments, got: `{}` and `{}` instead.",
+            other_1.to_string(&vm.heap),
+            other_2.to_string(&vm.heap)
         )),
     }
 }
@@ -243,17 +286,20 @@ pub(super) fn rng_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value,
 pub(super) fn getattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match (&args[0], &args[1]) {
         (Value::Instance(instance), Value::String(string_id)) => {
-            let field = &vm.heap.strings[string_id];
-            instance.fields.get(field).map_or_else(
+            let field = &vm.heap.strings[*string_id];
+            instance.to_value(&vm.heap).fields.get(field).map_or_else(
                 || Err(format!("Undefined property '{}'.", *field)),
                 |value_id| Ok(*value_id),
             )
         }
         (instance @ Value::Instance(_), x) => Err(format!(
-            "`getattr` can only index with string indexes, got: `{x}` (instance: `{instance}`)"
+            "`getattr` can only index with string indexes, got: `{}` (instance: `{}`)",
+            x.to_string(&vm.heap),
+            instance.to_string(&vm.heap)
         )),
         (not_instance, _) => Err(format!(
-            "`getattr` only works on instances, got `{not_instance}`"
+            "`getattr` only works on instances, got `{}`",
+            not_instance.to_string(&vm.heap)
         )),
     }
 }
@@ -261,21 +307,25 @@ pub(super) fn getattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Val
 /// Set an attribute of a value by name.
 pub(super) fn setattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     let field = if let &mut Value::String(ref string_id) = args[1] {
-        vm.heap.strings[string_id].clone()
+        vm.heap.strings[*string_id].clone()
     } else {
         return Err(format!(
             "`setattr` can only index with string indexes, got: `{}` (instance: `{}`)",
-            args[1], args[0]
+            args[1].to_string(&vm.heap),
+            args[0].to_string(&vm.heap)
         ));
     };
     let value = *args[2];
     if let Value::Instance(instance) = args[0] {
-        instance.fields.insert(field, value);
+        instance
+            .to_value_mut(&mut vm.heap)
+            .fields
+            .insert(field, value);
         Ok(Value::Nil)
     } else {
         Err(format!(
             "`setattr` only works on instances, got `{}`",
-            args[0]
+            args[0].to_string(&vm.heap)
         ))
     }
 }
@@ -285,13 +335,19 @@ pub(super) fn setattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Val
 pub(super) fn hasattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match (&args[0], &args[1]) {
         (Value::Instance(instance), Value::String(string_id)) => Ok(Value::Bool(
-            instance.fields.contains_key(&vm.heap.strings[string_id]),
+            instance
+                .to_value(&vm.heap)
+                .fields
+                .contains_key(&vm.heap.strings[*string_id]),
         )),
         (instance @ Value::Instance(_), x) => Err(format!(
-            "`hasattr` can only index with string indexes, got: `{x}` (instance: `{instance}`)"
+            "`hasattr` can only index with string indexes, got: `{}` (instance: `{}`)",
+            x.to_string(&vm.heap),
+            instance.to_string(&vm.heap)
         )),
         (not_instance, _) => Err(format!(
-            "`hasattr` only works on instances, got `{not_instance}`"
+            "`hasattr` only works on instances, got `{}`",
+            not_instance.to_string(&vm.heap)
         )),
     }
 }
@@ -300,40 +356,42 @@ pub(super) fn hasattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Val
 /// Does NOT work on methods. Errors if the attribute does not exist in the first place.
 pub(super) fn delattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     if let &mut Value::String(ref string_id) = args[1] {
-        let field = &vm.heap.strings[string_id];
+        let field = &vm.heap.strings[*string_id].clone();
         if let Value::Instance(instance) = args[0] {
-            match instance.fields.remove(field) {
+            match instance.to_value_mut(&mut vm.heap).fields.remove(field) {
                 Some(_) => Ok(Value::Nil),
                 None => Err(format!("Undefined property '{field}'.")),
             }
         } else {
             Err(format!(
                 "`delattr` only works on instances, got `{}`",
-                args[0]
+                args[0].to_string(&vm.heap)
             ))
         }
     } else {
         Err(format!(
             "`delattr` can only index with string indexes, got: `{}` (instance: `{}`)",
-            args[1], args[0]
+            args[1].to_string(&vm.heap),
+            args[0].to_string(&vm.heap)
         ))
     }
 }
 
 /// Return the length of a list.
 #[allow(clippy::cast_possible_wrap)]
-pub(super) fn len_native(_vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+pub(super) fn len_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
-        Value::Instance(instance) => match &instance.backing {
+        Value::Instance(instance) => match &instance.to_value(&vm.heap).backing {
             Some(NativeClass::List(list)) => Ok((list.items.len() as i64).into()),
+            Some(NativeClass::Set(set)) => Ok((set.items.len() as i64).into()),
             _ => Err(format!(
-                "'len' expected list argument, got: `{}` instead.",
-                **instance
+                "'len' expected list or set argument, got: `{}` instead.",
+                instance.to_value(&vm.heap)
             )),
         },
         _ => Err(format!(
             "'len' expected list argument, got: `{}` instead.",
-            &args[0]
+            &args[0].to_string(&vm.heap)
         )),
     }
 }

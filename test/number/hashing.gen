@@ -1,0 +1,5 @@
+const float_one = 1.0;
+const small_int_one = 1;
+const big_int_one = 9223372036854775808 + 1 - 9223372036854775808;
+const my_set = {float_one, small_int_one, big_int_one};
+print(len(my_set));  # expect: 1

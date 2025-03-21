@@ -1,0 +1,6 @@
+const float_one = 1.0;
+const small_int_one = 1;
+const big_int_one = 9223372036854775808 + 1 - 9223372036854775808;
+print(float_one == small_int_one);  # expect: true
+print(float_one == big_int_one);  # expect: true
+print(small_int_one == big_int_one);  # expect: true

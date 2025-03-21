@@ -11,16 +11,18 @@ use crate::{
 
 use derivative::Derivative;
 use derive_more::From;
+use hashbrown::HashTable;
+use hashbrown::hash_table::Entry;
 use num_bigint::BigInt;
 use num_traits::Pow;
 use num_traits::identities::Zero;
-use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
+use rustc_hash::{FxHashMap as HashMap, FxHasher};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Rem, Sub};
 use std::path::PathBuf;
 
 /// Central enum for the types of runtime values that exist in generic.
-#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Value {
     Bool(bool),
     Nil,
@@ -45,54 +47,95 @@ pub enum Value {
 
 // This is fake btw. But it is only used for hash,
 // which throws unreachable for all the variants where it doesnt actually hold.
-impl Eq for Value {}
-impl Hash for Value {
-    fn hash<H: Hasher>(&self, state: &mut H) {
+impl Value {
+    pub(crate) fn to_hash(&self, heap: &Heap) -> u64 {
+        let mut state = FxHasher::default();
         match self {
-            Self::Bool(b) => b.hash(state),
+            Self::Bool(b) => b.hash(&mut state),
             Self::Nil => state.write_u8(0),
             Self::StopIteration => state.write_u8(1),
             Self::Number(n) => match n {
                 Number::Float(f) => {
                     let f = if *f == 0.0 { 0.0 } else { *f };
-                    f.to_bits().hash(state);
+                    // If f has no fractional part, we treat it like an integer.
+                    if f.fract() == 0.0 {
+                        // Convert to an integer if the float has no fractional part
+                        #[allow(clippy::cast_possible_truncation)]
+                        (BigInt::from(f as i64)).hash(&mut state);
+                    } else {
+                        f.to_bits().hash(&mut state); // Otherwise, hash the float as is
+                    }
                 }
-                Number::Integer(i) => i.hash(state),
+                Number::Integer(i) => match i {
+                    GenericInt::Small(n) => BigInt::from(*n).hash(&mut state),
+                    &GenericInt::Big(n) => (n.to_value(heap)).hash(&mut state),
+                },
             },
-            Self::String(s) => s.hash(state),
+            Self::String(s) => s.hash(&mut state),
             _ => {
-                unreachable!("Only hashable types are Bool, Nil, Integer, and String, got {self}.")
+                unreachable!("Only hashable types are Bool, Nil, Integer, and String.")
             }
+        }
+        state.finish()
+    }
+
+    pub(crate) fn eq(&self, other: &Self, heap: &Heap) -> bool {
+        match (self, other) {
+            (Self::Bool(a), Self::Bool(b)) => a == b,
+            (Self::Nil, Self::Nil) | (Self::StopIteration, Self::StopIteration) => true,
+            (Self::Number(a), Self::Number(b)) => a.eq(b, heap),
+            (Self::String(a), Self::String(b)) => a == b || a.to_value(heap) == b.to_value(heap),
+            (Self::Function(a), Self::Function(b)) => {
+                a == b || a.to_value(heap) == b.to_value(heap)
+            }
+            (Self::Module(a), Self::Module(b)) => a == b || a.to_value(heap) == b.to_value(heap),
+            (Self::Closure(a), Self::Closure(b)) => a == b || a.to_value(heap) == b.to_value(heap),
+            (Self::NativeFunction(a), Self::NativeFunction(b)) => {
+                a == b || a.to_value(heap) == b.to_value(heap)
+            }
+            (Self::NativeMethod(a), Self::NativeMethod(b)) => {
+                a == b || a.to_value(heap) == b.to_value(heap)
+            }
+            (Self::Upvalue(a), Self::Upvalue(b)) => {
+                a == b || a.to_value(heap).eq(b.to_value(heap), heap)
+            }
+            (Self::Class(a), Self::Class(b)) => a == b || a.to_value(heap) == b.to_value(heap),
+            (Self::Instance(a), Self::Instance(b)) => {
+                a == b || a.to_value(heap) == b.to_value(heap)
+            }
+            (Self::BoundMethod(a), Self::BoundMethod(b)) => {
+                a == b || a.to_value(heap) == b.to_value(heap)
+            }
+            _ => false, // Return false if the variants are different
         }
     }
 }
 
-impl std::fmt::Display for Value {
-    /// Displaying of `Value` mostly delegates to the underlying types being pointed to.
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Value {
+    pub fn to_string(&self, heap: &Heap) -> String {
         match self {
-            Self::Bool(bool) => f.pad(&format!("{bool}")),
-            Self::Number(num) => f.pad(&format!("{num}")),
-            Self::Nil => f.pad("nil"),
-            Self::StopIteration => f.pad("StopIteration"),
-            Self::String(s) => f.pad(s),
+            Self::Bool(bool) => format!("{bool}"),
+            Self::Number(num) => num.to_string(heap),
+            Self::Nil => "nil".to_string(),
+            Self::StopIteration => "StopIteration".to_string(),
+            Self::String(s) => (*s.to_value(heap)).to_string(),
             // Can i do all of these just like string?
-            Self::Function(ref_id) => f.pad(&format!("{}", **ref_id)),
-            Self::Closure(ref_id) => f.pad(&format!("{}", **ref_id)),
-            Self::NativeFunction(ref_id) => f.pad(&format!("{}", **ref_id)),
-            Self::NativeMethod(ref_id) => f.pad(&format!("{}", **ref_id)),
-            Self::Class(ref_id) => f.pad(&format!("{}", **ref_id)),
-            Self::Instance(ref_id) => f.pad(&format!("{}", **ref_id)),
-            Self::BoundMethod(ref_id) => f.pad(&format!("{}", **ref_id)),
-            Self::Upvalue(ref_id) => f.pad(&format!("{}", **ref_id)),
-            Self::Module(ref_id) => f.pad(&format!("{}", **ref_id)),
+            Self::Function(ref_id) => ref_id.to_value(heap).to_string(heap),
+            Self::Closure(ref_id) => ref_id.to_value(heap).to_string(heap),
+            Self::NativeFunction(ref_id) => ref_id.to_value(heap).to_string(heap),
+            Self::NativeMethod(ref_id) => ref_id.to_value(heap).to_string(heap),
+            Self::Class(ref_id) => ref_id.to_value(heap).to_string(heap),
+            Self::Instance(ref_id) => ref_id.to_value(heap).to_string(heap),
+            Self::BoundMethod(ref_id) => ref_id.to_value(heap).to_string(heap),
+            Self::Upvalue(ref_id) => format!("{}", ref_id.to_value(heap)),
+            Self::Module(ref_id) => ref_id.to_value(heap).to_string(heap),
         }
     }
 }
 
 // These could probably be individual entries in the enum tbh.
 /// Enum summarizing all of the generic number types.
-#[derive(Debug, PartialEq, PartialOrd, Clone, From, Copy)]
+#[derive(Debug, Clone, From, Copy, PartialEq)]
 pub enum Number {
     Float(f64),
     Integer(GenericInt),
@@ -106,26 +149,20 @@ impl From<Number> for Result<Number, String> {
 
 // These could probably be individual entries in the enum tbh.
 /// Enum summarizing all of the generic number types.
-#[derive(Debug, Clone, From, Copy)]
+#[derive(Debug, Clone, From, Copy, PartialEq, Eq)]
 pub enum GenericInt {
     Small(i64),
     Big(BigIntId),
 }
 
-impl std::fmt::Display for GenericInt {
+impl GenericInt {
     /// Upvalues are implementation details and should never be seen by the user.
     /// So this is only used for debugging.
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    pub(crate) fn to_string(&self, heap: &Heap) -> String {
         match self {
-            Self::Small(n) => f.pad(&format!("{n}")),
-            Self::Big(n) => f.pad(&format!("{}", **n)),
+            Self::Small(n) => format!("{n}"),
+            Self::Big(n) => format!("{}", n.to_value(heap)),
         }
-    }
-}
-
-impl From<BigIntId> for BigInt {
-    fn from(id: BigIntId) -> Self {
-        (*id).clone()
     }
 }
 
@@ -135,21 +172,21 @@ impl GenericInt {
     }
 
     #[allow(clippy::wrong_self_convention)]
-    pub fn to_bigint(&self) -> BigInt {
+    pub fn to_bigint(&self, heap: &Heap) -> BigInt {
         match self {
             Self::Small(n) => BigInt::from(*n),
-            Self::Big(n) => (*n).into(),
+            Self::Big(n) => n.to_value(heap).clone(),
         }
     }
 
-    fn promote(lhs: &Self, rhs: &Self) -> (BigInt, BigInt) {
-        (lhs.to_bigint(), rhs.to_bigint())
+    fn promote(lhs: &Self, rhs: &Self, heap: &Heap) -> (BigInt, BigInt) {
+        (lhs.to_bigint(heap), rhs.to_bigint(heap))
     }
 
-    pub fn is_zero(&self) -> bool {
+    pub fn is_zero(&self, heap: &Heap) -> bool {
         match self {
             Self::Small(n) => *n == 0,
-            Self::Big(n) => n.is_zero(),
+            Self::Big(n) => n.to_value(heap).is_zero(),
         }
     }
 }
@@ -163,12 +200,12 @@ macro_rules! impl_op {
                         Some(res) => GenericInt::Small(res).into(),
                         None => {
                             let (big_a, big_b) =
-                                Self::promote(&GenericInt::Small(a), &GenericInt::Small(b));
+                                Self::promote(&GenericInt::Small(a), &GenericInt::Small(b), heap);
                             *heap.add_big_int(big_a.$method(big_b)).as_generic_int()
                         }
                     },
                     (lhs, rhs) => {
-                        let (big_lhs, big_rhs) = Self::promote(&lhs, &rhs);
+                        let (big_lhs, big_rhs) = Self::promote(&lhs, &rhs, heap);
                         *heap.add_big_int(big_lhs.$method(big_rhs)).as_generic_int()
                     }
                 }
@@ -186,7 +223,7 @@ macro_rules! impl_div_rem {
     ($method:ident, $checked_method:ident) => {
         impl GenericInt {
             pub(crate) fn $method(self, rhs: Self, heap: &mut Heap) -> Result<GenericInt, String> {
-                if rhs.is_zero() {
+                if rhs.is_zero(heap) {
                     return Err("Division by zero".to_string());
                 }
 
@@ -195,12 +232,12 @@ macro_rules! impl_div_rem {
                         Some(res) => Ok(GenericInt::Small(res)),
                         None => {
                             let (big_a, big_b) =
-                                Self::promote(&GenericInt::Small(a), &GenericInt::Small(b));
+                                Self::promote(&GenericInt::Small(a), &GenericInt::Small(b), heap);
                             Ok(*heap.add_big_int(big_a.$method(big_b)).as_generic_int())
                         }
                     },
                     (lhs, rhs) => {
-                        let (big_lhs, big_rhs) = Self::promote(&lhs, &rhs);
+                        let (big_lhs, big_rhs) = Self::promote(&lhs, &rhs, heap);
                         { Ok(*heap.add_big_int(big_lhs.$method(big_rhs)).as_generic_int()) }
                     }
                 }
@@ -221,7 +258,7 @@ macro_rules! impl_bitwise_op {
                 match (self, rhs) {
                     (GenericInt::Small(a), GenericInt::Small(b)) => GenericInt::Small(a.$method(b)),
                     (lhs, rhs) => {
-                        let (big_lhs, big_rhs) = Self::promote(&lhs, &rhs);
+                        let (big_lhs, big_rhs) = Self::promote(&lhs, &rhs, heap);
                         *heap.add_big_int(big_lhs.$method(big_rhs)).as_generic_int()
                     }
                 }
@@ -236,60 +273,81 @@ impl_bitwise_op!(BitOr, bitor);
 impl_bitwise_op!(BitXor, bitxor);
 
 // Comparisons for GenericInt against other GenericInt
-impl PartialEq for GenericInt {
-    fn eq(&self, other: &Self) -> bool {
+impl GenericInt {
+    fn eq(&self, other: &Self, heap: &Heap) -> bool {
         match (self, other) {
             (Self::Small(a), Self::Small(b)) => a == b,
-            (Self::Big(a), Self::Big(b)) => **a == **b,
-            (Self::Small(a), Self::Big(b)) => BigInt::from(*a) == **b,
-            (Self::Big(a), Self::Small(b)) => **a == BigInt::from(*b),
+            (Self::Big(a), Self::Big(b)) => a == b || a.to_value(heap) == b.to_value(heap),
+            (Self::Small(a), Self::Big(b)) => &BigInt::from(*a) == b.to_value(heap),
+            (Self::Big(a), Self::Small(b)) => a.to_value(heap) == &BigInt::from(*b),
         }
     }
 }
 
-impl Hash for GenericInt {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
-            Self::Small(n) => BigInt::from(*n).hash(state),
-            Self::Big(n) => (**n).hash(state),
-        }
-    }
-}
-
-impl PartialOrd for GenericInt {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+#[allow(dead_code)]
+impl GenericInt {
+    fn partial_cmp(&self, other: &Self, heap: &Heap) -> Option<std::cmp::Ordering> {
         match (self, other) {
             (Self::Small(a), Self::Small(b)) => a.partial_cmp(b),
             (Self::Big(a), Self::Big(b)) => a.partial_cmp(b),
-            (Self::Small(a), Self::Big(b)) => BigInt::from(*a).partial_cmp(b),
-            (Self::Big(a), Self::Small(b)) => (**a).partial_cmp(&BigInt::from(*b)),
+            (Self::Small(a), Self::Big(b)) => BigInt::from(*a).partial_cmp(b.to_value(heap)),
+            (Self::Big(a), Self::Small(b)) => (a.to_value(heap)).partial_cmp(&BigInt::from(*b)),
         }
     }
-}
 
-// Comparisons against integers (i64)
-impl PartialEq<i64> for GenericInt {
-    fn eq(&self, other: &i64) -> bool {
+    fn lt(&self, other: &Self, heap: &Heap) -> bool {
+        self.partial_cmp(other, heap) == Some(std::cmp::Ordering::Less)
+    }
+
+    fn gt(&self, other: &Self, heap: &Heap) -> bool {
+        self.partial_cmp(other, heap) == Some(std::cmp::Ordering::Greater)
+    }
+
+    fn ge(&self, other: &Self, heap: &Heap) -> bool {
+        matches!(
+            self.partial_cmp(other, heap),
+            Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
+        )
+    }
+
+    fn le(&self, other: &Self, heap: &Heap) -> bool {
+        matches!(
+            self.partial_cmp(other, heap),
+            Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+        )
+    }
+
+    fn eq_i64(&self, other: i64, heap: &Heap) -> bool {
         match self {
-            Self::Small(a) => a == other,
-            Self::Big(a) => **a == BigInt::from(*other),
+            Self::Small(a) => a == &other,
+            Self::Big(a) => a.to_value(heap) == &BigInt::from(other),
         }
     }
-}
 
-impl PartialOrd<i64> for GenericInt {
-    fn partial_cmp(&self, other: &i64) -> Option<std::cmp::Ordering> {
+    fn partial_cmp_i64(&self, other: i64, heap: &Heap) -> Option<std::cmp::Ordering> {
         match self {
-            Self::Small(a) => a.partial_cmp(other),
-            Self::Big(a) => (**a).partial_cmp(&BigInt::from(*other)),
+            Self::Small(a) => a.partial_cmp(&other),
+            Self::Big(a) => (a.to_value(heap)).partial_cmp(&BigInt::from(other)),
         }
+    }
+
+    pub(crate) fn lt_i64(&self, other: i64, heap: &Heap) -> bool {
+        self.partial_cmp_i64(other, heap) == Some(std::cmp::Ordering::Less)
+    }
+
+    pub(crate) fn ge_i64(&self, other: i64, heap: &Heap) -> bool {
+        matches!(
+            self.partial_cmp_i64(other, heap),
+            Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
+        )
     }
 }
 
 impl GenericInt {
     #[allow(clippy::option_if_let_else)]
     fn pow(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
-        if rhs < 0 {
+        // rhs < 0
+        if rhs.lt_i64(0, heap) {
             return Err("Negative exponent".to_string());
         }
         match (self, rhs) {
@@ -306,18 +364,25 @@ impl GenericInt {
                 }
             }
             (Self::Big(a), Self::Big(b)) => Ok(*heap
-                .add_big_int((*a).clone().pow(
-                    u64::try_from((*b).clone()).expect("Previously checked that rhs is positive"),
-                ))
+                .add_big_int(
+                    (a.to_value(heap)).clone().pow(
+                        u64::try_from((b.to_value(heap)).clone())
+                            .expect("Previously checked that rhs is positive"),
+                    ),
+                )
                 .as_generic_int()),
             (Self::Small(a), Self::Big(b)) => Ok(*heap
-                .add_big_int(BigInt::from(a).pow(
-                    u64::try_from((*b).clone()).expect("Previously checked that rhs is positive"),
-                ))
+                .add_big_int(
+                    BigInt::from(a).pow(
+                        u64::try_from((b.to_value(heap)).clone())
+                            .expect("Previously checked that rhs is positive"),
+                    ),
+                )
                 .as_generic_int()),
             (Self::Big(a), Self::Small(b)) => Ok(*heap
                 .add_big_int(
-                    (*a).clone()
+                    (a.to_value(heap))
+                        .clone()
                         .pow(u64::try_from(b).expect("Previously checked that rhs is positive")),
                 )
                 .as_generic_int()),
@@ -327,35 +392,36 @@ impl GenericInt {
     fn neg(self, heap: &mut Heap) -> Self {
         match self {
             Self::Small(n) => Self::Small(n.neg()),
-            Self::Big(n) => *heap.add_big_int((*n).clone().neg()).as_generic_int(),
+            Self::Big(n) => *heap
+                .add_big_int((n.to_value(heap)).clone().neg())
+                .as_generic_int(),
         }
     }
 }
 
-impl From<GenericInt> for f64 {
+impl GenericInt {
     #[allow(clippy::option_if_let_else)]
     #[allow(clippy::cast_precision_loss)]
-    fn from(n: GenericInt) -> Self {
-        match n {
-            GenericInt::Small(n) => n as Self,
-            GenericInt::Big(n) => match i64::try_from((*n).clone()) {
-                Ok(n) => n as Self,
-                Err(_) => Self::INFINITY, // Or f64::MAX?
+    pub(crate) fn to_f64(&self, heap: &Heap) -> f64 {
+        match self {
+            Self::Small(n) => *n as f64,
+            Self::Big(n) => match i64::try_from((n.to_value(heap)).clone()) {
+                Ok(n) => n as f64,
+                Err(_) => f64::INFINITY, // Or f64::MAX?
             },
         }
     }
 }
 
-impl TryFrom<GenericInt> for i32 {
-    type Error = String;
+impl GenericInt {
     #[allow(clippy::option_if_let_else)]
-    fn try_from(n: GenericInt) -> Result<Self, Self::Error> {
-        match n {
-            GenericInt::Small(n) => match Self::try_from(n) {
+    fn try_to_i32(&self, heap: &Heap) -> Result<i32, String> {
+        match self {
+            Self::Small(n) => match i32::try_from(*n) {
                 Ok(n) => Ok(n),
                 Err(_) => Err("Number too large to fit in i32".to_string()),
             },
-            GenericInt::Big(n) => match Self::try_from((*n).clone()) {
+            Self::Big(n) => match i32::try_from((n.to_value(heap)).clone()) {
                 Ok(n) => Ok(n),
                 Err(_) => Err("Number too large to fit in i32".to_string()),
             },
@@ -363,16 +429,15 @@ impl TryFrom<GenericInt> for i32 {
     }
 }
 
-impl TryFrom<GenericInt> for u64 {
-    type Error = String;
+impl GenericInt {
     #[allow(clippy::option_if_let_else)]
-    fn try_from(n: GenericInt) -> Result<Self, Self::Error> {
-        match n {
-            GenericInt::Small(n) => match Self::try_from(n) {
+    pub(crate) fn try_to_u64(&self, heap: &Heap) -> Result<u64, String> {
+        match self {
+            Self::Small(n) => match u64::try_from(*n) {
                 Ok(n) => Ok(n),
                 Err(_) => Err("Number loses sign.".to_string()),
             },
-            GenericInt::Big(n) => match Self::try_from((*n).clone()) {
+            Self::Big(n) => match u64::try_from((n.to_value(heap)).clone()) {
                 Ok(n) => Ok(n),
                 Err(_) => Err("Number too large to fit in u64 or signed".to_string()),
             },
@@ -401,37 +466,36 @@ impl GenericInt {
     }
 }
 
-impl TryFrom<GenericInt> for usize {
-    type Error = String;
+impl GenericInt {
     #[allow(clippy::option_if_let_else)]
-    fn try_from(n: GenericInt) -> Result<Self, Self::Error> {
-        match n {
-            GenericInt::Small(n) => match Self::try_from(n) {
-                Ok(n) => Ok(n),
-                Err(_) => Err("Number too large to fit in usize".to_string()),
-            },
-            GenericInt::Big(n) => match Self::try_from((*n).clone()) {
-                Ok(n) => Ok(n),
-                Err(_) => Err("Number too large to fit in usize".to_string()),
-            },
-        }
-    }
-}
-
-impl std::fmt::Display for Number {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    pub(crate) fn try_to_usize(&self, heap: &Heap) -> Result<usize, String> {
         match self {
-            Self::Float(num) => f.pad(&format!("{num:?}")),
-            Self::Integer(num) => f.pad(&format!("{num}")),
+            Self::Small(n) => match usize::try_from(*n) {
+                Ok(n) => Ok(n),
+                Err(_) => Err("Number too large to fit in usize".to_string()),
+            },
+            Self::Big(n) => match usize::try_from((n.to_value(heap)).clone()) {
+                Ok(n) => Ok(n),
+                Err(_) => Err("Number too large to fit in usize".to_string()),
+            },
         }
     }
 }
 
-impl From<Number> for f64 {
-    fn from(n: Number) -> Self {
-        match n {
-            Number::Float(f) => f,
-            Number::Integer(i) => Self::from(i),
+impl Number {
+    fn to_string(&self, heap: &Heap) -> String {
+        match self {
+            Self::Float(num) => format!("{num:?}"),
+            Self::Integer(num) => num.to_string(heap),
+        }
+    }
+}
+
+impl Number {
+    pub(crate) fn to_f64(&self, heap: &Heap) -> f64 {
+        match self {
+            Self::Float(f) => *f,
+            Self::Integer(i) => i.to_f64(heap),
         }
     }
 }
@@ -443,24 +507,33 @@ impl From<i64> for Number {
 }
 
 impl Number {
+    pub(super) fn eq(&self, other: &Self, heap: &Heap) -> bool {
+        match (self, other) {
+            (Self::Integer(a), Self::Integer(b)) => a.eq(b, heap),
+            (Self::Float(a), Self::Float(b)) => a == b,
+            (Self::Integer(a), Self::Float(b)) => a.to_f64(heap) == *b,
+            (Self::Float(a), Self::Integer(b)) => *a == b.to_f64(heap),
+        }
+    }
+
     /// Expressions `a**b` on numbers produce integers, only if
     /// both are already integers and `b`is not negative.
     /// Everything else produces a float result.
     #[allow(clippy::option_if_let_else)]
     pub(super) fn pow(self, exp: Self, heap: &mut Heap) -> Self {
         match (self, exp) {
-            (Self::Integer(a), Self::Integer(b)) if b >= 0 => Self::Integer(
+            (Self::Integer(a), Self::Integer(b)) if b.ge_i64(0, heap) => Self::Integer(
                 a.pow(b, heap)
                     .expect("Only calling integer pow for exp >= 0"),
             ),
-            (Self::Float(a), Self::Integer(b)) => match i32::try_from(b) {
+            (Self::Float(a), Self::Integer(b)) => match b.try_to_i32(heap) {
                 Ok(b) => Self::Float(a.powi(b)),
                 Err(_) => Self::Float(f64::INFINITY), // Or f64::MAX?
             },
-            (Self::Integer(a), Self::Float(b)) => Self::Float(f64::from(a).powf(b)),
+            (Self::Integer(a), Self::Float(b)) => Self::Float(a.to_f64(heap).powf(b)),
             (Self::Float(a), Self::Float(b)) => Self::Float(a.powf(b)),
-            (Self::Integer(a), Self::Integer(b)) => match i32::try_from(b) {
-                Ok(b) => Self::Float(f64::from(a).powi(b)),
+            (Self::Integer(a), Self::Integer(b)) => match b.try_to_i32(heap) {
+                Ok(b) => Self::Float(a.to_f64(heap).powi(b)),
                 Err(_) => Self::Float(f64::INFINITY), // Or f64::MAX?
             },
         }
@@ -471,8 +544,8 @@ impl Number {
     pub(super) fn floor_div(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
         match (self, rhs) {
             (Self::Integer(a), Self::Integer(b)) => Ok(Self::Integer((a.div(b, heap))?)),
-            (Self::Float(a), Self::Integer(b)) => Ok(Self::Float((a / f64::from(b)).floor())),
-            (Self::Integer(a), Self::Float(b)) => Ok(Self::Float((f64::from(a) / b).floor())),
+            (Self::Float(a), Self::Integer(b)) => Ok(Self::Float((a / b.to_f64(heap)).floor())),
+            (Self::Integer(a), Self::Float(b)) => Ok(Self::Float((a.to_f64(heap) / b).floor())),
             (Self::Float(a), Self::Float(b)) => Ok(Self::Float((a / b).floor())),
         }
     }
@@ -488,19 +561,19 @@ impl Number {
 impl Number {
     /// Standard division ALWAYS produces floats, even for two integer arguments and even
     /// if the result could be represented as an integer.
-    pub(crate) fn div(self, rhs: Self, _heap: &mut Heap) -> Self {
+    pub(crate) fn div(self, rhs: Self, heap: &Heap) -> Self {
         match (self, rhs) {
-            (Self::Integer(a), Self::Integer(b)) => Self::Float(f64::from(a) / f64::from(b)),
-            (Self::Float(a), Self::Integer(b)) => Self::Float(a / f64::from(b)),
-            (Self::Integer(a), Self::Float(b)) => Self::Float(f64::from(a) / b),
+            (Self::Integer(a), Self::Integer(b)) => Self::Float(a.to_f64(heap) / b.to_f64(heap)),
+            (Self::Float(a), Self::Integer(b)) => Self::Float(a / b.to_f64(heap)),
+            (Self::Integer(a), Self::Float(b)) => Self::Float(a.to_f64(heap) / b),
             (Self::Float(a), Self::Float(b)) => Self::Float(a / b),
         }
     }
     pub(crate) fn add(self, rhs: Self, heap: &mut Heap) -> Self {
         match (self, rhs) {
             (Self::Integer(a), Self::Integer(b)) => Self::Integer(a.add(b, heap)),
-            (Self::Float(a), Self::Integer(b)) => Self::Float(a + f64::from(b)),
-            (Self::Integer(a), Self::Float(b)) => Self::Float(f64::from(a) + b),
+            (Self::Float(a), Self::Integer(b)) => Self::Float(a + b.to_f64(heap)),
+            (Self::Integer(a), Self::Float(b)) => Self::Float(a.to_f64(heap) + b),
             (Self::Float(a), Self::Float(b)) => Self::Float(a + b),
         }
     }
@@ -508,8 +581,8 @@ impl Number {
     pub(crate) fn sub(self, rhs: Self, heap: &mut Heap) -> Self {
         match (self, rhs) {
             (Self::Integer(a), Self::Integer(b)) => Self::Integer(a.sub(b, heap)),
-            (Self::Float(a), Self::Integer(b)) => Self::Float(a - f64::from(b)),
-            (Self::Integer(a), Self::Float(b)) => Self::Float(f64::from(a) - b),
+            (Self::Float(a), Self::Integer(b)) => Self::Float(a - b.to_f64(heap)),
+            (Self::Integer(a), Self::Float(b)) => Self::Float(a.to_f64(heap) - b),
             (Self::Float(a), Self::Float(b)) => Self::Float(a - b),
         }
     }
@@ -517,8 +590,8 @@ impl Number {
     pub(crate) fn mul(self, rhs: Self, heap: &mut Heap) -> Self {
         match (self, rhs) {
             (Self::Integer(a), Self::Integer(b)) => Self::Integer(a.mul(b, heap)),
-            (Self::Float(a), Self::Integer(b)) => Self::Float(a * f64::from(b)),
-            (Self::Integer(a), Self::Float(b)) => Self::Float(f64::from(a) * b),
+            (Self::Float(a), Self::Integer(b)) => Self::Float(a * b.to_f64(heap)),
+            (Self::Integer(a), Self::Float(b)) => Self::Float(a.to_f64(heap) * b),
             (Self::Float(a), Self::Float(b)) => Self::Float(a * b),
         }
     }
@@ -547,16 +620,47 @@ impl Number {
     pub(crate) fn rem(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
         match (self, rhs) {
             (Self::Integer(a), Self::Integer(b)) => Ok(Self::Integer((a.rem(b, heap))?)),
-            (Self::Float(a), Self::Integer(b)) => Ok(Self::Float(a % f64::from(b))),
-            (Self::Integer(a), Self::Float(b)) => Ok(Self::Float(f64::from(a) % b)),
+            (Self::Float(a), Self::Integer(b)) => Ok(Self::Float(a % b.to_f64(heap))),
+            (Self::Integer(a), Self::Float(b)) => Ok(Self::Float(a.to_f64(heap) % b)),
             (Self::Float(a), Self::Float(b)) => Ok(Self::Float(a % b)),
         }
+    }
+
+    fn partial_cmp(&self, other: &Self, heap: &Heap) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (Self::Integer(a), Self::Integer(b)) => a.partial_cmp(b, heap),
+            (Self::Float(a), Self::Float(b)) => a.partial_cmp(b),
+            (Self::Integer(a), Self::Float(b)) => a.to_f64(heap).partial_cmp(b),
+            (Self::Float(a), Self::Integer(b)) => a.partial_cmp(&b.to_f64(heap)),
+        }
+    }
+
+    pub(crate) fn lt(&self, other: &Self, heap: &Heap) -> bool {
+        self.partial_cmp(other, heap) == Some(std::cmp::Ordering::Less)
+    }
+
+    pub(crate) fn gt(&self, other: &Self, heap: &Heap) -> bool {
+        self.partial_cmp(other, heap) == Some(std::cmp::Ordering::Greater)
+    }
+
+    pub(crate) fn ge(&self, other: &Self, heap: &Heap) -> bool {
+        matches!(
+            self.partial_cmp(other, heap),
+            Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
+        )
+    }
+
+    pub(crate) fn le(&self, other: &Self, heap: &Heap) -> bool {
+        matches!(
+            self.partial_cmp(other, heap),
+            Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+        )
     }
 }
 
 /// Uncaptured (open) upvalues point to the stack index of the value,
 /// while captured upvalues point to the value in the heap.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Upvalue {
     Open(usize),
     Closed(Value),
@@ -575,6 +679,14 @@ impl Upvalue {
         match self {
             Self::Open(n) => *n,
             Self::Closed(_) => unreachable!("Only call as_open on a known open upvalue!"),
+        }
+    }
+
+    pub(super) fn eq(&self, other: &Self, heap: &Heap) -> bool {
+        match (self, other) {
+            (Self::Open(a), Self::Open(b)) => a == b,
+            (Self::Closed(a), Self::Closed(b)) => a.eq(b, heap),
+            _ => false,
         }
     }
 }
@@ -599,9 +711,15 @@ pub struct Closure {
     pub(super) containing_module: Option<ModuleId>,
 }
 
+impl Closure {
+    fn to_string(&self, heap: &Heap) -> String {
+        self.function.to_value(heap).to_string(heap)
+    }
+}
+
 impl std::fmt::Display for Closure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad(&format!("{}", *self.function))
+        f.pad("<Closure Value>")
     }
 }
 
@@ -617,8 +735,9 @@ impl Closure {
         function: FunctionId,
         is_module: bool,
         containing_module: Option<ModuleId>,
+        heap: &Heap,
     ) -> Self {
-        let upvalue_count = function.upvalue_count;
+        let upvalue_count = function.to_value(heap).upvalue_count;
         Self {
             function,
             upvalues: Vec::with_capacity(upvalue_count),
@@ -635,7 +754,7 @@ impl Value {
     }
 }
 
-#[derive(Debug, PartialOrd, Clone)]
+#[derive(Debug, Clone)]
 pub struct BoundMethod {
     // Probably could be an InstanceId now
     pub(super) receiver: Value,
@@ -645,33 +764,37 @@ pub struct BoundMethod {
 
 impl std::fmt::Display for BoundMethod {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad(&format!(
-            "<bound method {}.{} of {}>",
-            *self.receiver_class_name(),
-            *self.method_name(),
-            self.receiver
-        ))
+        f.pad("<bound method Value>")
     }
 }
 
 impl BoundMethod {
-    fn method_name(&self) -> StringId {
+    fn to_string(&self, heap: &Heap) -> String {
+        format!(
+            "<bound method {}.{} of {}>",
+            *self.receiver_class_name(heap).to_value(heap),
+            *self.method_name(heap).to_value(heap),
+            self.receiver.to_string(heap)
+        )
+    }
+
+    fn method_name(&self, heap: &Heap) -> StringId {
         match self.method {
-            Value::NativeMethod(native) => native.name,
-            Value::Closure(closure) => closure.function.name,
+            Value::NativeMethod(native) => native.to_value(heap).name,
+            Value::Closure(closure) => closure.to_value(heap).function.to_value(heap).name,
             x => unreachable!(
                 "Bound method only binds over closures or native methods, got `{}` instead.",
-                x
+                x.to_string(heap)
             ),
         }
     }
 
-    fn receiver_class_name(&self) -> StringId {
+    fn receiver_class_name(&self, heap: &Heap) -> StringId {
         match self.receiver {
-            Value::Instance(instance) => instance.class.name,
+            Value::Instance(instance) => instance.to_value(heap).class.to_value(heap).name,
             x => unreachable!(
                 "Bound methods can only have instances as receivers, got `{}` instead.",
-                x
+                x.to_string(heap)
             ),
         }
     }
@@ -683,7 +806,7 @@ impl BoundMethod {
 /// captured upvalues.
 ///
 /// Additionally hold the chunk of compiled bytecode.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Function {
     pub(super) arity: usize,
     pub(super) chunk: Chunk,
@@ -693,7 +816,7 @@ pub struct Function {
 
 impl std::fmt::Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad(&format!("<fn {}>", *self.name))
+        f.pad("<fn Value>")
     }
 }
 
@@ -706,6 +829,10 @@ impl Function {
             chunk: Chunk::new(name),
             upvalue_count: 0,
         }
+    }
+
+    fn to_string(&self, heap: &Heap) -> String {
+        format!("<fn {}>", *self.name.to_value(heap))
     }
 }
 
@@ -726,7 +853,13 @@ pub struct NativeFunction {
 
 impl std::fmt::Display for NativeFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad(&format!("<native fn {}>", *self.name))
+        f.pad("<native fn Value>")
+    }
+}
+
+impl NativeFunction {
+    fn to_string(&self, heap: &Heap) -> String {
+        format!("<native fn {}>", *self.name.to_value(heap))
     }
 }
 
@@ -748,10 +881,17 @@ pub struct NativeMethod {
 
 impl std::fmt::Display for NativeMethod {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad(&format!(
+        f.pad("<native method Value>")
+    }
+}
+
+impl NativeMethod {
+    fn to_string(&self, heap: &Heap) -> String {
+        format!(
             "<native method {} of class {}>",
-            *self.name, *self.class
-        ))
+            *self.name.to_value(heap),
+            *self.class.to_value(heap)
+        )
     }
 }
 
@@ -763,15 +903,18 @@ const fn always_equals<T>(_: &T, _: &T) -> bool {
     true
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Derivative)]
-#[derivative(PartialOrd)]
+#[derive(Debug, Clone, Derivative)]
+#[derivative(PartialOrd, PartialEq)]
 pub struct Class {
     pub(super) name: StringId,
-    #[derivative(PartialOrd = "ignore")]
+    #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
     // Have to be general Value because it can be a nativemethod(how?) or a closure
+    // Should probably also be String and not StringId?
     pub(super) methods: HashMap<StringId, Value>,
     pub(super) is_native: bool,
 }
+
+impl Eq for Class {}
 
 impl Class {
     #[must_use]
@@ -782,11 +925,15 @@ impl Class {
             is_native,
         }
     }
+
+    fn to_string(&self, heap: &Heap) -> String {
+        format!("<class {}>", *self.name.to_value(heap))
+    }
 }
 
 impl std::fmt::Display for Class {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad(&format!("<class {}>", *self.name))
+        f.pad("<class Value>")
     }
 }
 
@@ -810,13 +957,24 @@ impl Instance {
             backing,
         }
     }
+
+    #[allow(clippy::option_if_let_else)]
+    fn to_string(&self, heap: &Heap) -> String {
+        match &self.backing {
+            Some(native_class) => native_class.to_string(heap),
+            None => format!(
+                "<{} instance>",
+                self.class.to_value(heap).name.to_value(heap)
+            ),
+        }
+    }
 }
 
 impl std::fmt::Display for Instance {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.backing {
-            Some(native_class) => f.pad(&format!("{native_class}")),
-            None => f.pad(&format!("<{} instance>", *(self.class.name))),
+            Some(_) => f.pad("<native instance Value>"),
+            None => f.pad("<instance Value>"),
         }
     }
 }
@@ -828,17 +986,19 @@ impl PartialEq for BoundMethod {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Derivative)]
-#[derivative(PartialOrd)]
+#[derive(Debug, Clone, Derivative)]
+#[derivative(PartialOrd, PartialEq)]
 pub struct Module {
     pub(super) name: StringId,
     pub(super) path: PathBuf,
-    #[derivative(PartialOrd = "ignore")]
+    #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
     pub(super) globals: HashMap<StringId, Global>,
     pub(super) names_to_import: Option<Vec<StringId>>,
     pub(super) alias: StringId,
     pub(super) local_import: bool,
 }
+
+impl Eq for Module {}
 
 impl Module {
     pub(super) fn new(
@@ -857,11 +1017,15 @@ impl Module {
             local_import,
         }
     }
+
+    fn to_string(&self, heap: &Heap) -> String {
+        format!("<module {}>", *self.name.to_value(heap))
+    }
 }
 
 impl std::fmt::Display for Module {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad(&format!("<module {}>", *self.name))
+        f.pad("<module Value>")
     }
 }
 
@@ -976,147 +1140,147 @@ impl Value {
     pub(super) fn as_generic_int(&self) -> &GenericInt {
         match self {
             Self::Number(Number::Integer(n)) => n,
-            _ => unreachable!("Expected Number, found `{}`", self),
+            _ => unreachable!("Expected Number, found `{:?}`", self),
         }
     }
 
     pub(super) fn as_closure(&self) -> &ClosureId {
         match self {
             Self::Closure(c) => c,
-            _ => unreachable!("Expected Closure, found `{}`", self),
+            _ => unreachable!("Expected Closure, found `{:?}`", self),
         }
     }
 
     pub(super) fn as_string(&self) -> &StringId {
         match self {
             Self::String(s) => s,
-            _ => unreachable!("Expected String, found `{}`", self),
+            _ => unreachable!("Expected String, found `{:?}`", self),
         }
     }
 
     pub(super) fn as_native_method(&self) -> &NativeMethodId {
         match self {
             Self::NativeMethod(n) => n,
-            _ => unreachable!("Expected Native, found `{}`", self),
+            _ => unreachable!("Expected Native, found `{:?}`", self),
         }
     }
 
     pub(super) fn as_function(&self) -> &FunctionId {
         match self {
             Self::Function(f) => f,
-            _ => unreachable!("Expected Function, found `{}`", self),
+            _ => unreachable!("Expected Function, found `{:?}`", self),
         }
     }
 
     pub(super) fn as_class(&self) -> &ClassId {
         match self {
             Self::Class(c) => c,
-            _ => unreachable!("Expected Class, found `{}`", self),
+            _ => unreachable!("Expected Class, found `{:?}`", self),
         }
     }
 
     pub(super) fn as_instance(&mut self) -> &InstanceId {
         match self {
             Self::Instance(i) => i,
-            _ => unreachable!("Expected Instance, found `{}`", self),
+            _ => unreachable!("Expected Instance, found `{:?}`", self),
         }
     }
 
     pub(super) fn as_class_mut(&mut self) -> &mut ClassId {
         match self {
             Self::Class(c) => c,
-            _ => unreachable!("Expected Class, found `{}`", self),
+            _ => unreachable!("Expected Class, found `{:?}`", self),
         }
     }
 
     pub(super) fn upvalue_location(&self) -> &UpvalueId {
         match self {
             Self::Upvalue(v) => v,
-            _ => unreachable!("Expected upvalue, found `{}`", self),
+            _ => unreachable!("Expected upvalue, found `{:?}`", self),
         }
     }
 
-    pub(super) fn class_name(&self) -> StringId {
+    pub(super) fn class_name(&self, heap: &Heap) -> StringId {
         match &self {
-            Self::Instance(instance) => instance.class.name,
-            x => unreachable!("Only instances have classes. Got `{}`", x),
+            Self::Instance(instance) => instance.to_value(heap).class.to_value(heap).name,
+            x => unreachable!("Only instances have classes. Got `{:?}`", x),
         }
     }
 
     pub(super) fn as_module(&self) -> &ModuleId {
         match self {
             Self::Module(m) => m,
-            _ => unreachable!("Expected Module, found `{}`", self),
+            _ => unreachable!("Expected Module, found `{:?}`", self),
         }
     }
 
-    pub(super) fn as_list(&self) -> &List {
+    pub(super) fn as_list<'a>(&self, heap: &'a Heap) -> &'a List {
         match self {
-            Self::Instance(inst) => match &inst.backing {
+            Self::Instance(inst) => match &inst.to_value(heap).backing {
                 Some(NativeClass::List(list)) => list,
-                _ => unreachable!("Expected List, found `{}`", self),
+                _ => unreachable!("Expected List, found `{:?}`", self),
             },
-            _ => unreachable!("Expected List, found `{}`", self),
+            _ => unreachable!("Expected List, found `{:?}`", self),
         }
     }
 
-    pub(super) fn as_list_mut(&mut self) -> &mut List {
+    pub(super) fn as_list_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut List {
         match self {
-            Self::Instance(inst) => match &mut inst.backing {
+            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
                 Some(NativeClass::List(list)) => list,
                 _ => unreachable!("Expected List, found something else."),
             },
-            _ => unreachable!("Expected List, found `{}`", self),
+            _ => unreachable!("Expected List, found `{:?}`", self),
         }
     }
 
-    pub(super) fn as_list_iter_mut(&mut self) -> &mut ListIterator {
+    pub(super) fn as_list_iter_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut ListIterator {
         match self {
-            Self::Instance(inst) => match &mut inst.backing {
+            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
                 Some(NativeClass::ListIterator(list_iter)) => list_iter,
                 _ => unreachable!("Expected ListIterator, found something else."),
             },
-            _ => unreachable!("Expected ListIterator, found `{}`", self),
+            _ => unreachable!("Expected ListIterator, found `{:?}`", self),
         }
     }
 
-    pub(super) fn as_set(&self) -> &Set {
+    pub(super) fn as_set<'a>(&self, heap: &'a Heap) -> &'a Set {
         match self {
-            Self::Instance(inst) => match &inst.backing {
+            Self::Instance(inst) => match &inst.to_value(heap).backing {
                 Some(NativeClass::Set(set)) => set,
-                _ => unreachable!("Expected Set, found `{}`", self),
+                _ => unreachable!("Expected Set, found `{:?}`", self),
             },
-            _ => unreachable!("Expected Set, found `{}`", self),
+            _ => unreachable!("Expected Set, found `{:?}`", self),
         }
     }
 
-    pub(super) fn as_set_mut(&mut self) -> &mut Set {
+    pub(super) fn as_set_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Set {
         match self {
-            Self::Instance(inst) => match &mut inst.backing {
+            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
                 Some(NativeClass::Set(set)) => set,
                 _ => unreachable!("Expected Set, found something else."),
             },
-            _ => unreachable!("Expected Set, found `{}`", self),
+            _ => unreachable!("Expected Set, found `{:?}`", self),
         }
     }
 
-    pub(super) fn as_dict(&self) -> &Dict {
+    pub(super) fn as_dict<'a>(&self, heap: &'a Heap) -> &'a Dict {
         match self {
-            Self::Instance(inst) => match &inst.backing {
+            Self::Instance(inst) => match &inst.to_value(heap).backing {
                 Some(NativeClass::Dict(dict)) => dict,
-                _ => unreachable!("Expected Dict, found `{}`", self),
+                _ => unreachable!("Expected Dict, found `{:?}`", self),
             },
-            _ => unreachable!("Expected Dict, found `{}`", self),
+            _ => unreachable!("Expected Dict, found `{:?}`", self),
         }
     }
 
-    pub(super) fn as_dict_mut(&mut self) -> &mut Dict {
+    pub(super) fn as_dict_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Dict {
         match self {
-            Self::Instance(inst) => match &mut inst.backing {
+            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
                 Some(NativeClass::Dict(dict)) => dict,
                 _ => unreachable!("Expected Dict, found something else."),
             },
-            _ => unreachable!("Expected Dict, found `{}`", self),
+            _ => unreachable!("Expected Dict, found `{:?}`", self),
         }
     }
 }
@@ -1139,20 +1303,18 @@ impl NativeClass {
             _ => unreachable!("Unknown native class `{}`.", kind),
         }
     }
-}
 
-impl std::fmt::Display for NativeClass {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    pub(crate) fn to_string(&self, heap: &Heap) -> String {
         match self {
-            Self::List(list) => list.fmt(f),
-            Self::ListIterator(list_iter) => list_iter.fmt(f),
-            Self::Set(set) => set.fmt(f),
-            Self::Dict(dict) => dict.fmt(f),
+            Self::List(list) => list.to_string(heap),
+            Self::ListIterator(list_iter) => list_iter.to_string(heap),
+            Self::Set(set) => set.to_string(heap),
+            Self::Dict(dict) => dict.to_string(heap),
         }
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
+#[derive(Debug, Clone)]
 pub struct List {
     pub(super) items: Vec<Value>,
 }
@@ -1162,23 +1324,26 @@ impl List {
     pub(super) const fn new() -> Self {
         Self { items: Vec::new() }
     }
+
+    fn to_string(&self, heap: &Heap) -> String {
+        format!(
+            "[{}]",
+            self.items
+                .iter()
+                .map(|item| item.to_string(heap))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
 }
 
 impl std::fmt::Display for List {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let comma_separated = format!(
-            "[{}]",
-            self.items
-                .iter()
-                .map(std::string::ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        f.pad(&comma_separated)
+        f.pad("<List Value>")
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Default)]
 pub struct ListIterator {
     pub(super) list: Option<InstanceId>,
     pub(super) index: usize,
@@ -1189,76 +1354,138 @@ impl ListIterator {
         Self { list, index: 0 }
     }
 
-    pub(super) fn get_list(&self) -> Option<&List> {
-        self.list.as_ref().and_then(|item| match &item.backing {
-            Some(NativeClass::List(list)) => Some(list),
-            _ => None,
-        })
+    pub(super) fn get_list<'a>(&self, heap: &'a Heap) -> Option<&'a List> {
+        self.list
+            .as_ref()
+            .and_then(|item| match &item.to_value(heap).backing {
+                Some(NativeClass::List(list)) => Some(list),
+                _ => None,
+            })
+    }
+
+    #[allow(clippy::option_if_let_else)]
+    fn to_string(&self, heap: &Heap) -> String {
+        match self.list {
+            Some(list) => format!("<list iterator of {}>", list.to_value(heap).to_string(heap)),
+            None => "<list iterator>".to_string(),
+        }
     }
 }
 
 impl std::fmt::Display for ListIterator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.list {
-            Some(list) => f.pad(&format!("<list iterator of {}>", *list)),
-            None => f.pad("<list iterator>"),
+            Some(_) => f.pad("<list iterator of Value>"),
+            None => f.pad("<list iterator Value>"),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Set {
-    pub(super) items: HashSet<Value>,
+    pub(super) items: HashTable<Value>,
 }
 
 impl Set {
     #[must_use]
     pub(super) fn new() -> Self {
         Self {
-            items: HashSet::default(),
+            items: HashTable::default(),
         }
+    }
+
+    fn to_string(&self, heap: &Heap) -> String {
+        format!(
+            "{{{}}}",
+            self.items
+                .iter()
+                .map(|item| item.to_string(heap))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+
+    pub(super) fn add(&mut self, item: Value, heap: &Heap) {
+        if let Entry::Vacant(entry) = self.items.entry(
+            item.to_hash(heap),
+            |val| val.eq(&item, heap),
+            |val| val.to_hash(heap),
+        ) {
+            entry.insert(item);
+        }
+    }
+
+    pub(super) fn remove(&mut self, item: &Value, heap: &Heap) -> bool {
+        self.items
+            .find_entry(item.to_hash(heap), |val| val.eq(item, heap))
+            .is_ok_and(|entry| {
+                entry.remove();
+                true
+            })
+    }
+
+    pub(super) fn contains(&self, item: &Value, heap: &Heap) -> bool {
+        self.items
+            .find(item.to_hash(heap), |val| val.eq(item, heap))
+            .is_some()
     }
 }
 
 impl std::fmt::Display for Set {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let comma_separated = format!(
-            "{{{}}}",
-            self.items
-                .iter()
-                .map(std::string::ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        f.pad(&comma_separated)
+        f.pad("<Set Value>")
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Dict {
-    pub(super) items: HashMap<Value, Value>,
+    pub(super) items: HashTable<(Value, Value)>,
 }
 
 impl Dict {
     #[must_use]
     pub(super) fn new() -> Self {
         Self {
-            items: HashMap::default(),
+            items: HashTable::default(),
         }
+    }
+
+    fn to_string(&self, heap: &Heap) -> String {
+        format!(
+            "{{{}}}",
+            self.items
+                .iter()
+                .map(|(key, value)| format!("{}: {}", key.to_string(heap), value.to_string(heap)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+
+    pub(super) fn add(&mut self, key: Value, value: Value, heap: &Heap) {
+        match self.items.entry(
+            key.to_hash(heap),
+            |(k, _v)| k.eq(&key, heap),
+            |(k, _v)| k.to_hash(heap),
+        ) {
+            Entry::Vacant(entry) => {
+                entry.insert((key, value));
+            }
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().1 = value;
+            }
+        }
+    }
+
+    pub(super) fn get(&self, key: &Value, heap: &Heap) -> Option<&Value> {
+        self.items
+            .find(key.to_hash(heap), |(k, _v)| k.eq(key, heap))
+            .map(|(_k, v)| v)
     }
 }
 
 impl std::fmt::Display for Dict {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let comma_separated = format!(
-            "{{{}}}",
-            self.items
-                .iter()
-                .map(|(key, value)| format!("{key}: {value}"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        f.pad(&comma_separated)
+        f.pad("<Dict Value>")
     }
 }
 

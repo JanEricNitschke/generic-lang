@@ -1,5 +1,8 @@
 //! Contains the `OpCode` enum as well as the chunks containing the bytecode to be interpreted.
 
+#![allow(dead_code)]
+
+use crate::heap::Heap;
 use crate::{heap::StringId, types::Line, value::Value};
 use convert_case::{Case, Casing};
 use derivative::Derivative;
@@ -160,17 +163,19 @@ impl OpCode {
 /// Each chunk has a name, mainly for debugging purposes, its code,
 /// line information for each entry in the code array as well as a constant
 /// table for literal constants that appear in the chunk.
-#[derive(PartialEq, Eq, Derivative, Clone)]
-#[derivative(PartialOrd)]
+#[derive(Derivative, Clone, Debug)]
+#[derivative(PartialEq)]
 pub struct Chunk {
     name: StringId,
     code: Vec<u8>,
-    #[derivative(PartialOrd = "ignore")]
+    #[derivative(PartialEq = "ignore")]
     /// Lines are runlength encoded as there are usually
     /// multiple bytes that originate from the same line.
     lines: Vec<(usize, Line)>,
+    #[derivative(PartialEq = "ignore")]
     constants: Vec<Value>,
 }
+impl Eq for Chunk {}
 
 impl Chunk {
     pub(super) fn new(name: StringId) -> Self {
@@ -269,14 +274,15 @@ impl Chunk {
     }
 }
 
-impl std::fmt::Debug for Chunk {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "== {} ==", *self.name)?;
+impl Chunk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>, heap: &Heap) -> std::fmt::Result {
+        writeln!(f, "== {} ==", self.name.to_value(heap)).unwrap(); // Handle unwrap for simplicity in this context
         let mut disassembler = InstructionDisassembler::new(self);
         while disassembler.offset.as_ref() < &self.code.len() {
-            write!(f, "{disassembler:?}")?;
-            *disassembler.offset += disassembler.instruction_len(*disassembler.offset);
+            disassembler.fmt(f, heap)?;
+            *disassembler.offset += disassembler.instruction_len(*disassembler.offset, heap);
         }
+
         Ok(())
     }
 }
@@ -303,7 +309,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
     }
 
     #[allow(clippy::enum_glob_use)]
-    fn instruction_len(&self, offset: usize) -> usize {
+    fn instruction_len(&self, offset: usize, heap: &Heap) -> usize {
         use OpCode::*;
         let opcode = OpCode::try_from_primitive(self.chunk.code[offset]).unwrap();
         std::mem::size_of::<OpCode>()
@@ -325,16 +331,16 @@ impl<'chunk> InstructionDisassembler<'chunk> {
                 | GetLocalLong
                 | SetLocalLong
                 | ImportAs => 3,
-                Closure => 1 + self.upvalue_code_len(offset),
+                Closure => 1 + self.upvalue_code_len(offset, heap),
                 ImportFrom => 2 + self.import_from_len(offset),
             }
     }
 
-    fn upvalue_code_len(&self, closure_offset: usize) -> usize {
+    fn upvalue_code_len(&self, closure_offset: usize, heap: &Heap) -> usize {
         let code = self.chunk.code();
         let constant = code[closure_offset + 1];
         let value = self.chunk.get_constant(constant);
-        value.as_function().upvalue_count * 2
+        value.as_function().to_value(heap).upvalue_count * 2
     }
 
     fn import_from_len(&self, import_from_offset: usize) -> usize {
@@ -348,6 +354,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         f: &mut std::fmt::Formatter,
         name: &str,
         offset: CodeOffset,
+        heap: &Heap,
     ) -> std::fmt::Result {
         let constant_index = ConstantIndex(self.chunk.code()[offset.as_ref() + 1]);
         let constant_value = if (*constant_index.as_ref() as usize) < self.chunk.constants.len() {
@@ -363,7 +370,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
             OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
             OPERAND_ALIGNMENT = self.operand_alignment
         )?;
-        writeln!(f, " '{constant_value}'  ",)
+        writeln!(f, " '{}'  ", constant_value.to_string(heap))
     }
 
     fn debug_import_standard_opcode(
@@ -371,6 +378,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         f: &mut std::fmt::Formatter,
         name: &str,
         offset: CodeOffset,
+        heap: &Heap,
     ) -> std::fmt::Result {
         let import_path_index = ConstantIndex(self.chunk.code()[offset.as_ref() + 1]);
         let is_local = self.chunk.code()[offset.as_ref() + 2] == 1;
@@ -385,7 +393,9 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         writeln!(
             f,
             " '{}' | '{}'",
-            *self.chunk.get_constant(*import_path_index.as_ref()),
+            self.chunk
+                .get_constant(*import_path_index.as_ref())
+                .to_string(heap),
             if is_local { "local" } else { "global" }
         )
     }
@@ -395,6 +405,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         f: &mut std::fmt::Formatter,
         name: &str,
         offset: CodeOffset,
+        heap: &Heap,
     ) -> std::fmt::Result {
         let import_path_index = ConstantIndex(self.chunk.code()[offset.as_ref() + 1]);
         let alias_index = ConstantIndex(self.chunk.code()[offset.as_ref() + 2]);
@@ -410,9 +421,13 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         writeln!(
             f,
             " '{}' | {} '{}'  |  '{}'",
-            *self.chunk.get_constant(*import_path_index.as_ref()),
+            self.chunk
+                .get_constant(*import_path_index.as_ref())
+                .to_string(heap),
             *alias_index,
-            *self.chunk.get_constant(*alias_index.as_ref()),
+            self.chunk
+                .get_constant(*alias_index.as_ref())
+                .to_string(heap),
             if is_local { "local" } else { "global" }
         )
     }
@@ -422,6 +437,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         f: &mut std::fmt::Formatter,
         name: &str,
         offset: CodeOffset,
+        heap: &Heap,
     ) -> std::fmt::Result {
         let code = self.chunk.code();
         let import_path_index = ConstantIndex(code[offset.as_ref() + 1]);
@@ -438,14 +454,16 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         write!(
             f,
             " '{}' | '{}'",
-            *self.chunk.get_constant(*import_path_index.as_ref()),
+            self.chunk
+                .get_constant(*import_path_index.as_ref())
+                .to_string(heap),
             if is_local { "local" } else { "global" }
         )?;
         for op_idx in 0..n_operands {
             let name_index = ConstantIndex(code[offset.as_ref() + op_idx as usize + 4]);
             let name = *self.chunk.get_constant(*name_index.as_ref());
 
-            write!(f, " | {} '{}'", *name_index, name)?;
+            write!(f, " | {} '{}'", *name_index, name.to_string(heap))?;
         }
         writeln!(f)?;
         Ok(())
@@ -456,6 +474,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         f: &mut std::fmt::Formatter,
         name: &str,
         offset: CodeOffset,
+        heap: &Heap,
     ) -> std::fmt::Result {
         let code = self.chunk.code();
         let constant_index = ConstantLongIndex(
@@ -468,7 +487,9 @@ impl<'chunk> InstructionDisassembler<'chunk> {
             "{:-OPCODE_NAME_ALIGNMENT$} {:>OPERAND_ALIGNMENT$} '{}'",
             name,
             *constant_index,
-            *self.chunk.get_constant(*constant_index.as_ref()),
+            self.chunk
+                .get_constant(*constant_index.as_ref())
+                .to_string(heap),
             OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
             OPERAND_ALIGNMENT = self.operand_alignment
         )
@@ -480,6 +501,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         f: &mut std::fmt::Formatter,
         name: &str,
         _offset: CodeOffset,
+        _heap: &Heap,
     ) -> std::fmt::Result {
         writeln!(f, "{name}")
     }
@@ -489,6 +511,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         f: &mut std::fmt::Formatter,
         name: &str,
         offset: CodeOffset,
+        _heap: &Heap,
     ) -> std::fmt::Result {
         let slot = self.chunk.code[*offset + 1];
         writeln!(
@@ -504,6 +527,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         f: &mut std::fmt::Formatter,
         name: &str,
         offset: CodeOffset,
+        _heap: &Heap,
     ) -> std::fmt::Result {
         let code = self.chunk.code();
         let slot = (usize::from(code[offset.as_ref() + 1]) << 16)
@@ -522,11 +546,12 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         f: &mut std::fmt::Formatter,
         name: &str,
         offset: CodeOffset,
+        heap: &Heap,
     ) -> std::fmt::Result {
         let code = self.chunk.code();
         let jump = (usize::from(code[offset.as_ref() + 1]) << 8)
             + (usize::from(code[offset.as_ref() + 2]));
-        let target = *offset + self.instruction_len(*offset);
+        let target = *offset + self.instruction_len(*offset, heap);
         let target = if OpCode::try_from_primitive(code[*offset]).unwrap() == OpCode::Loop {
             target - jump
         } else {
@@ -548,6 +573,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         f: &mut std::fmt::Formatter,
         name: &str,
         offset: CodeOffset,
+        heap: &Heap,
     ) -> std::fmt::Result {
         let mut offset = *offset + 1;
 
@@ -559,14 +585,17 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         let value = self.chunk.get_constant(constant);
         writeln!(
             f,
-            "{name:-OPCODE_NAME_ALIGNMENT$} {constant:>OPERAND_ALIGNMENT$} {value}",
+            "{:-OPCODE_NAME_ALIGNMENT$} {:>OPERAND_ALIGNMENT$} {}",
+            name,
+            constant,
+            value.to_string(heap),
             OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
-            OPERAND_ALIGNMENT = self.operand_alignment
+            OPERAND_ALIGNMENT = self.operand_alignment,
         )?;
 
         let function = value.as_function();
         //eprintln!("{} {}", *function.name, function.upvalue_count);
-        for _ in 0..function.upvalue_count {
+        for _ in 0..function.to_value(heap).upvalue_count {
             let is_local = code[offset];
             offset += 1;
 
@@ -597,6 +626,7 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         f: &mut std::fmt::Formatter,
         name: &str,
         offset: CodeOffset,
+        heap: &Heap,
     ) -> std::fmt::Result {
         let code = self.chunk.code();
         let constant = code[offset.as_ref() + 1];
@@ -605,7 +635,10 @@ impl<'chunk> InstructionDisassembler<'chunk> {
         let formatted_name = format!("{name} ({arg_count} args)");
         writeln!(
             f,
-            "{formatted_name:-OPCODE_NAME_ALIGNMENT$} {constant:>OPERAND_ALIGNMENT$} '{constant_value}'",
+            "{:-OPCODE_NAME_ALIGNMENT$} {:>OPERAND_ALIGNMENT$} '{}'",
+            formatted_name,
+            constant,
+            constant_value.to_string(heap),
             OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
             OPERAND_ALIGNMENT = self.operand_alignment
         )
@@ -617,6 +650,7 @@ macro_rules! disassemble {
         $self:ident,
         $f:ident,
         $offset:ident,
+        $heap:ident,
         $m:expr,
         $(
             $k:ident(
@@ -626,14 +660,14 @@ macro_rules! disassemble {
     ) => {paste! {
         match $m {
             $($(
-                OpCode::$v => $self.[<debug_ $k _opcode>]($f, stringify!([<OP_ $v:snake:upper>]), $offset)
+                OpCode::$v => $self.[<debug_ $k _opcode>]($f, stringify!([<OP_ $v:snake:upper>]), $offset, $heap)
             ),*),*
         }
     }}
 }
 
-impl std::fmt::Debug for InstructionDisassembler<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl InstructionDisassembler<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>, heap: &Heap) -> std::fmt::Result {
         let code = self.chunk.code();
         let offset = self.offset;
 
@@ -658,6 +692,7 @@ impl std::fmt::Debug for InstructionDisassembler<'_> {
             self,
             f,
             offset,
+            heap,
             opcode,
             constant(
                 Constant,
