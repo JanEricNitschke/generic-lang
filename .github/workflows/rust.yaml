@@ -32,6 +32,10 @@ jobs:
         cargo clippy -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
     - name: Test
       run: cargo test --verbose
+    - name: Test with MIRI
+      run: |
+        rustup toolchain install nightly --component miri
+        cargo +nightly miri test --verbose
     - name: Setup dart
       uses: dart-lang/setup-dart@v1
       with:
