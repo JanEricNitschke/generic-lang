@@ -1,0 +1,99 @@
+use crate::heap::{ClosureId, FunctionId, Heap};
+use crate::value::Closure;
+
+/// A call frame for the call stack.
+///
+/// Contains the closure corresponding to the relevant function,
+/// the instruction pointer within the function, as well as the `stack_base`
+/// of the function in the global stack.
+///
+/// Additionally, it contains a boolean indicating whether the closure is a module,
+/// in order to handle transferring globals one module end.
+#[derive(Debug)]
+pub(super) struct CallFrame {
+    pub(super) closure: ClosureId,
+    pub(super) ip: usize,
+    pub(super) stack_base: usize,
+    pub(super) is_module: bool,
+}
+
+impl CallFrame {
+    pub(super) fn closure<'a>(&self, heap: &'a Heap) -> &'a Closure {
+        self.closure.to_value(heap)
+    }
+}
+
+/// Actual call stack of the VM.
+///
+/// Contains stored references for the current closure and function,
+/// to not have to grab them from the vector every time.
+#[derive(Debug)]
+pub(super) struct CallStack {
+    frames: Vec<CallFrame>,
+    // Maybe this could either be a straight pointer or at least not an Option.
+    current_closure: Option<ClosureId>,
+    current_function: Option<FunctionId>,
+}
+
+impl CallStack {
+    #[must_use]
+    pub(super) fn new() -> Self {
+        Self {
+            frames: Vec::with_capacity(crate::config::FRAMES_MAX),
+            current_closure: None,
+            current_function: None,
+        }
+    }
+
+    pub(super) fn iter(&self) -> std::slice::Iter<CallFrame> {
+        self.frames.iter()
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.frames.is_empty()
+    }
+
+    pub(super) fn pop(&mut self, heap: &Heap) -> Option<CallFrame> {
+        let retval = self.frames.pop();
+        self.current_closure = self.frames.last().map(|f| f.closure);
+        self.current_function = self.current_closure.map(|c| c.to_value(heap).function);
+        retval
+    }
+
+    pub(super) fn push(&mut self, closure: ClosureId, stack_base: usize, heap: &Heap) {
+        self.frames.push(CallFrame {
+            closure,
+            ip: 0,
+            stack_base,
+            is_module: closure.to_value(heap).is_module,
+        });
+        self.current_closure = Some(closure);
+        self.current_function = Some(closure.to_value(heap).function);
+    }
+
+    pub(super) fn current_mut(&mut self) -> &mut CallFrame {
+        let i = self.frames.len() - 1;
+        &mut self.frames[i]
+    }
+
+    pub(super) fn current(&self) -> &CallFrame {
+        let i = self.frames.len() - 1;
+        &self.frames[i]
+    }
+
+    pub(super) fn code_byte(&self, index: usize, heap: &Heap) -> u8 {
+        self.current_function.unwrap().to_value(heap).chunk.code()[index]
+    }
+
+    pub(super) const fn closure(&self) -> ClosureId {
+        self.current_closure.unwrap()
+    }
+
+    pub(super) const fn function(&self) -> FunctionId {
+        self.current_function.unwrap()
+    }
+
+    pub(super) fn len(&self) -> usize {
+        self.frames.len()
+    }
+}

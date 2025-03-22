@@ -10,9 +10,7 @@ use std::{io::Write, path::PathBuf};
 
 use clap::Parser;
 
-use vm::InterpretResult;
-
-use crate::vm::VM;
+use vm::{InterpretResult, VM};
 
 mod bitwise;
 mod chunk;
