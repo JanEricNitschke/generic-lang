@@ -56,10 +56,10 @@ more-benchmark-ci: $(REL_BIN)
 	for filename in benchmark/*.gen; do \
 		echo $$filename; \
 		filebase=$${filename%.*}; \
-		hyperfine --reference "./target/release/generic $${filebase}.gen" --show-output --warmup 1 "./target/release/generic $${filebase}.gen" "./reference/craftinginterpreters/clox $${filebase}.lox.nom" "./reference/craftinginterpreters/jlox $${filebase}.lox.nom"; \
+		hyperfine --reference "./target/release/generic $${filebase}.gen" --show-output --warmup 1 "./reference/craftinginterpreters/clox $${filebase}.lox.nom" "./reference/craftinginterpreters/jlox $${filebase}.lox.nom"; \
 	done
 
 .PHONY: fib-benchmark-ci
 fib-benchmark-ci: $(REL_BIN)
-	hyperfine --reference "./target/release/generic benchmark/fib/fib.gen" --warmup 1 "./target/release/generic benchmark/fib/fib.gen" "./reference/craftinginterpreters/clox benchmark/fib/fib.lox.nom"   \
+	hyperfine --reference "./target/release/generic benchmark/fib/fib.gen" --warmup 1 "./reference/craftinginterpreters/clox benchmark/fib/fib.lox.nom"   \
 	"python benchmark/fib/fib.py" "ruby benchmark/fib/fib.rb" "./reference/craftinginterpreters/jlox benchmark/fib/fib.lox.nom" \
