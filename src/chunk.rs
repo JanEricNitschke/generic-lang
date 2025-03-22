@@ -134,6 +134,12 @@ pub enum OpCode {
     ImportAs,
 }
 
+#[cfg(test)]
+#[test]
+fn opcode_size() {
+    assert_eq!(std::mem::size_of::<OpCode>(), 1);
+}
+
 impl OpCode {
     pub(super) const fn to_long(self) -> Self {
         match self {
@@ -768,10 +774,4 @@ impl Debug for InstructionDisassembler<'_, '_> {
         )?;
         Ok(())
     }
-}
-
-#[cfg(test)]
-#[test]
-fn opcode_size() {
-    assert_eq!(std::mem::size_of::<OpCode>(), 1);
 }
