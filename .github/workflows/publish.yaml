@@ -1,0 +1,134 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BIN_NAME: generic
+
+jobs:
+  crates-io:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - name: Login to crates.io
+        run: cargo login ${{ secrets.CRATES_IO_API_TOKEN }}
+
+      - name: Publish package
+        run: cargo publish --allow-dirty
+
+  build:
+    name: Build Binaries
+    continue-on-error: true
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Build for ${{ matrix.target }}
+        run: cargo build --release --target=${{ matrix.target }}
+
+      - name: Rename and move binaries
+        run: |
+          mkdir -p artifacts
+          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
+            mv target/${{ matrix.target }}/release/${{ env.BIN_NAME }}.exe artifacts/${{ env.BIN_NAME }}-${{ matrix.target }}.exe
+          else
+            mv target/${{ matrix.target }}/release/${{ env.BIN_NAME }} artifacts/${{ env.BIN_NAME }}-${{ matrix.target }}
+          fi
+        shell: bash
+
+      - name: Upload binaries as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: artifacts/*
+
+  package:
+    name: Package Crate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Package crate
+        run: cargo package
+
+      - name: Extract version from Cargo.toml
+        id: version
+        run: echo "VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[0].version')" >> "$GITHUB_ENV"
+
+      - name: Upload crate package as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: crate
+          path: target/package/*.crate
+
+  release:
+    name: Create GitHub Release & Publish Crate
+    needs: [build, package]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all built binaries
+        uses: actions/download-artifact@v4
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            binary-*/*
+            crate/*
+
+      - name: Download crate package
+        uses: actions/download-artifact@v4
+        with:
+          name: crate
+          path: target/package
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ env.VERSION }}
+          body: "Automated release for version ${{ env.VERSION }}"
+          files: |
+            binary-*/*
+            crate/*
+          draft: false
+          prerelease: false
