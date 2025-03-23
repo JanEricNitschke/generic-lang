@@ -9,7 +9,7 @@ repository  = "https://github.com/JanEricNitschke/generic-lang"
 license     = "MIT"
 keywords    = ["programming-language", "generic"]
 categories  = ["parser-implementations", "compilers"]
-exclude     = ["/reference", "tool", ".*"]
+include     = ["**/*.rs", "Cargo.toml", "/LICENSE", "/README.md", "/Makefile"]
 
 
 [[bin]]
@@ -33,9 +33,9 @@ path-slash   = "0.2.1"
 strum        = "0.27"
 strum_macros = "0.27"
 convert_case = "0.8.0"
-num-bigint = { version = "0.4.6", features = ["rand"] }
-num-traits = "0.2.19"
-hashbrown = "0.15.2"
+num-bigint   = { version = "0.4.6", features = ["rand"] }
+num-traits   = "0.2.19"
+hashbrown    = "0.15.2"
 
 [features]
 print_code              = []
