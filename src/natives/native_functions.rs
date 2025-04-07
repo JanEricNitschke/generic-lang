@@ -44,7 +44,7 @@ pub(super) fn sleep_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
                 x.to_string(&vm.heap)
             ));
         }
-    };
+    }
     Ok(Value::Nil)
 }
 

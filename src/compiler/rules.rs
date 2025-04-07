@@ -385,7 +385,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 .heap
                 .add_big_int(integer_str.parse::<BigInt>().unwrap());
             self.emit_constant(bigint_id);
-        };
+        }
     }
 
     /// Emit a string constant.

@@ -36,7 +36,7 @@ pub(super) fn set_remove_native(
             "Value `{}` is not hashable.",
             args[0].to_string(&vm.heap)
         ));
-    };
+    }
     let result = my_set.remove(args[0], &vm.heap).into();
     *receiver.as_set_mut(&mut vm.heap) = my_set;
     Ok(result)
@@ -55,6 +55,6 @@ pub(super) fn set_contains_native(
             "Value `{}` is not hashable.",
             args[0].to_string(&vm.heap)
         ));
-    };
+    }
     Ok(my_set.contains(args[0], &vm.heap).into())
 }
