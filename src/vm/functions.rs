@@ -282,7 +282,7 @@ impl VM {
                     arity,
                     arg_count
                 );
-            };
+            }
             return false;
         }
         let fun = f.fun;
@@ -338,7 +338,7 @@ impl VM {
                     arity,
                     arg_count
                 );
-            };
+            }
             return false;
         }
         let fun = f.fun;

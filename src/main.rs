@@ -5,6 +5,7 @@
 //! There are currently no other command line options.
 
 #![allow(clippy::wrong_self_convention)]
+#![allow(clippy::missing_const_for_fn)]
 
 use std::{io::Write, path::PathBuf};
 

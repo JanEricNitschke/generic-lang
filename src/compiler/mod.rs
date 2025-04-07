@@ -44,10 +44,10 @@ struct Local<'scanner> {
 ///
 /// - Function is a normal function.
 /// - Initializer is a constructor and is special because it returns `this` on exit without
-///     a return statement or on a bare `return`. Returns with values are not allowed.
+///   a return statement or on a bare `return`. Returns with values are not allowed.
 /// - Method is a method on a class. It is special because the local slot 0 is always `this`.
 /// - Script is the top-level code in a file (main script or imported modules).
-///     Does not allow `return` statements.
+///   Does not allow `return` statements.
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum FunctionType {
     Function,
