@@ -35,7 +35,7 @@ strum_macros = "0.27"
 convert_case = "0.8.0"
 num-bigint   = { version = "0.4.6", features = ["rand"] }
 num-traits   = "0.2.19"
-hashbrown    = "0.15.2"
+hashbrown    = "0.15.3"
 
 [features]
 print_code              = []
