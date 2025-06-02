@@ -10,7 +10,7 @@ repos:
       - id: check-toml
       - id: check-xml
   - repo: https://github.com/crate-ci/typos
-    rev: v1.30.2
+    rev: v1.32.0
     hooks:
       - id: typos
         args: []

@@ -242,14 +242,11 @@ impl Compiler<'_, '_> {
         let old_loop_state = {
             let start = CodeOffset(self.current_chunk_len());
             let depth = self.scope_depth();
-            std::mem::replace(
-                self.loop_state_mut(),
-                Some(LoopState {
-                    depth,
-                    start,
-                    break_jumps: Vec::new(),
-                }),
-            )
+            self.loop_state_mut().replace(LoopState {
+                depth,
+                start,
+                break_jumps: Vec::new(),
+            })
         };
 
         // Compile increment clause
@@ -376,14 +373,11 @@ impl Compiler<'_, '_> {
         let old_loop_state = {
             let start = CodeOffset(self.current_chunk_len());
             let depth = self.scope_depth();
-            std::mem::replace(
-                self.loop_state_mut(),
-                Some(LoopState {
-                    depth,
-                    start,
-                    break_jumps: Vec::new(),
-                }),
-            )
+            self.loop_state_mut().replace(LoopState {
+                depth,
+                start,
+                break_jumps: Vec::new(),
+            })
         };
 
         // Compile the check clause as a call to "__next__" on the iterator
@@ -456,14 +450,11 @@ impl Compiler<'_, '_> {
         let old_loop_state = {
             let start = CodeOffset(self.current_chunk_len());
             let depth = self.scope_depth();
-            std::mem::replace(
-                self.loop_state_mut(),
-                Some(LoopState {
-                    depth,
-                    start,
-                    break_jumps: Vec::new(),
-                }),
-            )
+            self.loop_state_mut().replace(LoopState {
+                depth,
+                start,
+                break_jumps: Vec::new(),
+            })
         };
 
         self.expression();
