@@ -45,7 +45,7 @@ impl CallStack {
         }
     }
 
-    pub(super) fn iter(&self) -> std::slice::Iter<CallFrame> {
+    pub(super) fn iter(&self) -> std::slice::Iter<'_, CallFrame> {
         self.frames.iter()
     }
 

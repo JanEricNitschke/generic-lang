@@ -212,7 +212,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             .push(NestableState::new(function_name, function_type));
     }
 
-    fn end_nesting(&mut self) -> NestableState {
+    fn end_nesting(&mut self) -> NestableState<'_> {
         self.nestable_state.pop().unwrap()
     }
 
@@ -221,7 +221,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         function_name: &S,
         function_type: FunctionType,
         f: F,
-    ) -> NestableState
+    ) -> NestableState<'_>
     where
         S: ToString,
         F: Fn(&mut Self),
@@ -274,7 +274,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         &mut self.nestable_state.last_mut().unwrap().loop_state
     }
 
-    fn locals(&self) -> &Vec<Local> {
+    fn locals(&self) -> &Vec<Local<'scanner>> {
         &self.nestable_state.last().unwrap().locals
     }
 
