@@ -19,7 +19,7 @@ path = "src/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap         = { version = "4.5.39", features = ["derive"] }
+clap         = { version = "4.5.40", features = ["derive"] }
 derivative   = "2.2.0"
 rustc-hash   = "2.1.1"
 humansize    = "2.1.3"
