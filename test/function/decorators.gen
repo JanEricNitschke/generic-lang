@@ -72,7 +72,7 @@ print(add6(2, 3)); # expect: 20
 
 var apple = 5;
 
-@apple 
+@apple # expect runtime error: Can only call functions and classes.
 fun add7(a, b) {
     return a + b;
-} # expect runtime error: Can only call functions and classes.
+} 

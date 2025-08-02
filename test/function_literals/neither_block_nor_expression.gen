@@ -1,0 +1,3 @@
+->(a, b) fun apple(a, b) { # Error at 'fun': Expect expression.
+    return a + b;  # Error at 'return': Can't return from top-level code.
+}; # Error at '}': Expect expression.

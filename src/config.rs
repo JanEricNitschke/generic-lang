@@ -9,3 +9,5 @@ pub const STACK_MAX: usize = FRAMES_MAX * 256;
 /// is performed when the heap has grown by a constant factor compared
 /// to the last one.
 pub const GC_HEAP_GROW_FACTOR: usize = 2;
+
+pub const LAMBDA_NAME: &str = "lambda";

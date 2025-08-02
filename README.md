@@ -11,7 +11,7 @@ This implementation is written in [Rust](https://github.com/rust-lang/rust) and 
 
 ## Syntax highlighting
 
-A rudimentary vscode extension exists in the form of [generic-lang-vscode](https://github.com/JanEricNitschke/generic-lang).
+A rudimentary vscode extension exists in the form of [generic-lang-vscode](https://github.com/JanEricNitschke/generic-lang-vscode).
 
 ## Building
 

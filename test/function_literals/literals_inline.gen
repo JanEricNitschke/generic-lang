@@ -1,0 +1,1 @@
+print((->(a, b) a + b)(2, 3) + ->(c, d) { return c + d; }(4, 5) - 13); # expect: 1
