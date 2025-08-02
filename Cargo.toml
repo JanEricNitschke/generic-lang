@@ -43,6 +43,7 @@ trace_execution         = []
 trace_execution_verbose = ["trace_execution"]
 log_gc                  = []
 stress_gc               = []
+debug_parser            = []
 
 [profile.release]
 lto           = true

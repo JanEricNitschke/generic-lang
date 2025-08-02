@@ -41,6 +41,19 @@ impl<'scanner> Compiler<'scanner, '_> {
         self.emit_byte(OpCode::Return, line);
     }
 
+    pub(super) fn end(&mut self, raw: bool) {
+        if raw {
+            self.emit_byte(OpCode::Return, self.line());
+        } else {
+            self.emit_return();
+        }
+
+        #[cfg(feature = "print_code")]
+        if !self.had_error {
+            println!("{}", self.current_chunk().clone().to_string(&mut self.heap));
+        }
+    }
+
     pub(super) fn emit_constant<T>(&mut self, value: T)
     where
         T: Into<Value>,

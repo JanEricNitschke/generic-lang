@@ -2,6 +2,7 @@
 
 #![allow(dead_code)]
 
+use crate::config::LAMBDA_NAME;
 use crate::heap::Heap;
 use crate::{heap::StringId, types::Line, value::Value};
 use convert_case::{Case, Casing};
@@ -12,7 +13,6 @@ use shrinkwraprs::Shrinkwrap;
 use std::fmt::Debug;
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
-
 #[derive(Shrinkwrap, Clone, Copy, Debug)]
 #[shrinkwrap(mutable)]
 pub struct CodeOffset(pub usize);
@@ -283,7 +283,13 @@ impl Chunk {
 
 impl Chunk {
     pub(crate) fn to_string(&self, heap: &Heap) -> String {
-        let mut result = format!("== {} ==\n", self.name.to_value(heap));
+        let name = self.name.to_value(heap);
+
+        let mut result = if name == LAMBDA_NAME {
+            format!("== {name} ({:?}) ==\n", self.lines)
+        } else {
+            format!("== {name} ==\n")
+        };
 
         let mut disassembler = InstructionDisassembler::new(self, heap);
         while disassembler.offset.as_ref() < &self.code.len() {

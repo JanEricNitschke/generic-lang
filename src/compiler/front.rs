@@ -18,6 +18,15 @@ impl Compiler<'_, '_> {
         loop {
             let token = self.scanner.scan();
             self.current = Some(token);
+            #[cfg(feature = "debug_parser")]
+            {
+                println!(
+                    "Current: {:<25} Previous: {:<25} Panic: {:<5}",
+                    format!("{:?}", self.current_token_kind()),
+                    format!("{:?}", self.previous_token_kind()),
+                    self.panic_mode
+                );
+            }
             if !self.check(TK::Error) {
                 break;
             }
@@ -54,6 +63,11 @@ impl Compiler<'_, '_> {
 
     pub(super) fn check_previous(&self, kind: TK) -> bool {
         self.previous.as_ref().is_some_and(|t| t.kind == kind)
+    }
+
+    #[cfg(feature = "debug_parser")]
+    pub(super) fn previous_token_kind(&self) -> Option<TK> {
+        self.previous.as_ref().map(|t| t.kind)
     }
 
     /// Produce bytecode for parsing an expression.
@@ -120,16 +134,17 @@ impl Compiler<'_, '_> {
     }
 
     fn decorated_fun_definition(&mut self) -> Option<ConstantLongIndex> {
+        let line = self.line();
         self.expression();
         let fun_global = self.fun_definition();
-        self.emit_bytes(OpCode::Call, 1, self.line());
+        self.emit_bytes(OpCode::Call, 1, line);
         fun_global
     }
 
     fn undecorated_fun_definition(&mut self) -> Option<ConstantLongIndex> {
         let global = self.parse_variable("Expect function name.", true);
         self.mark_initialized();
-        self.function(FunctionType::Function);
+        self.named_function(FunctionType::Function);
         global
     }
 
@@ -740,11 +755,19 @@ impl Compiler<'_, '_> {
         self.emit_byte(OpCode::Pop, line);
     }
 
-    fn function(&mut self, function_type: FunctionType) {
-        let line = self.line();
+    fn named_function(&mut self, function_type: FunctionType) {
         let function_name = self.previous.as_ref().unwrap().as_str().to_string();
+        self.function(&function_name, function_type, false);
+    }
 
-        let nested_state = self.nested(&function_name, function_type, |compiler| {
+    pub(super) fn function<S: ToString>(
+        &mut self,
+        function_name: &S,
+        function_type: FunctionType,
+        allow_expression_body: bool,
+    ) {
+        let line = self.line();
+        let nested_state = self.nested(function_name, function_type, |compiler| {
             compiler.begin_scope();
 
             compiler.consume(TK::LeftParen, "Expect '(' after function name.");
@@ -765,10 +788,18 @@ impl Compiler<'_, '_> {
             }
 
             compiler.consume(TK::RightParen, "Expect ')' after parameters.");
-            compiler.consume(TK::LeftBrace, "Expect '{' before function body.");
-            compiler.block();
-            compiler.end();
+
+            if compiler.match_(TK::LeftBrace) {
+                compiler.block();
+                compiler.end(false);
+            } else if allow_expression_body {
+                compiler.expression();
+                compiler.end(true);
+            } else {
+                compiler.error_at_current("Expect '{' before function body.");
+            }
         });
+
         let nested_function = nested_state.current_function;
         let nested_upvalues = nested_state.upvalues;
 
@@ -792,7 +823,7 @@ impl Compiler<'_, '_> {
         } else {
             FunctionType::Method
         };
-        self.function(function_type);
+        self.named_function(function_type);
         self.emit_bytes(
             OpCode::Method,
             ConstantIndex::try_from(name_constant)

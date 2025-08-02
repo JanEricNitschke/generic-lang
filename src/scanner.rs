@@ -85,6 +85,7 @@ pub enum TokenKind {
 
     At,
     Fun,
+    RightArrow,
     Return,
 
     Error,
@@ -172,6 +173,8 @@ impl<'a> Scanner<'a> {
                 b'-' => {
                     if self.match_(b'=') {
                         TK::MinusEqual
+                    } else if self.match_(b'>') {
+                        TK::RightArrow
                     } else {
                         TK::Minus
                     }

@@ -5,10 +5,10 @@
 use num_bigint::BigInt;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
+use super::{Compiler, FunctionType};
 use crate::chunk::OpCode;
+use crate::config::LAMBDA_NAME;
 use crate::scanner::TokenKind as TK;
-
-use super::Compiler;
 
 // The precedence of the different operators in the language
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromPrimitive, IntoPrimitive)]
@@ -16,9 +16,9 @@ use super::Compiler;
 pub(super) enum Precedence {
     None,
     Assignment, // =
-    In,         // in
     Or,         // or
     And,        // and
+    In,         // in
     Equality,   // == !=
     Comparison, // < > <= >=
     BitOr,      // |
@@ -30,6 +30,12 @@ pub(super) enum Precedence {
     Exponent,   // **
     Call,       // . () []
     Primary,
+}
+
+impl Precedence {
+    const fn non_assigning() -> Self {
+        Self::Or
+    }
 }
 
 // Typedef for the functions that parse the different types of expressions
@@ -75,7 +81,7 @@ macro_rules! make_rules {
     }};
 }
 
-pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 75];
+pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 76];
 
 // Can't be static because the associated function types include lifetimes
 #[rustfmt::skip]
@@ -134,6 +140,7 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         For           = [None,            None,      None      ],
         At            = [None,            None,      None      ],
         Fun           = [None,            None,      None      ],
+        RightArrow    = [lambda,          None,      None      ],
         If            = [None,            None,      None      ],
         Unless        = [None,            None,      None      ],
         Nil           = [literal,         None,      None      ],
@@ -257,6 +264,14 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             TK::In => self.in_(),
             _ => unreachable!("Unknown binary operator: {}", operator),
         }
+    }
+
+    /// Parse lambda expressions.
+    ///
+    /// We support either single expressions, where no `return` is needed,
+    /// or full blocks with a `return` statement.
+    fn lambda(&mut self, _can_assign: bool) {
+        self.function(&LAMBDA_NAME, FunctionType::Function, true);
     }
 
     /// Parse `X in Y`
@@ -408,7 +423,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         // Handle trailing comma
         while !self.check(TK::RightBracket) {
             // No assignments
-            self.parse_precedence(Precedence::Or);
+            self.parse_precedence(Precedence::non_assigning());
             if item_count == 255 {
                 self.error("Can't have more than 255 items in a list literal.");
                 break;
@@ -436,11 +451,11 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         let mut is_dict = true;
 
         if !self.check(TK::RightBrace) {
-            self.parse_precedence(Precedence::Or);
+            self.parse_precedence(Precedence::non_assigning());
             is_dict = self.match_(TK::Colon);
 
             if is_dict {
-                self.parse_precedence(Precedence::Or);
+                self.parse_precedence(Precedence::non_assigning());
             }
             item_count += 1;
             // Handle potential trailing comma after (first/only) element
@@ -450,7 +465,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 if is_dict {
                     self.parse_dict_entry();
                 } else {
-                    self.parse_precedence(Precedence::Or);
+                    self.parse_precedence(Precedence::non_assigning());
                 }
 
                 if item_count == 255 {
@@ -482,9 +497,9 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     }
 
     fn parse_dict_entry(&mut self) {
-        self.parse_precedence(Precedence::Or);
+        self.parse_precedence(Precedence::non_assigning());
         self.consume(TK::Colon, "Expect ':' after key.");
-        self.parse_precedence(Precedence::Or);
+        self.parse_precedence(Precedence::non_assigning());
     }
 
     /// Parse subscript (`a[b]`) expressions.
@@ -495,7 +510,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Also works by invoking `__getitem__` or `__setitem__`
     /// on the value to allow classes to overload how this operation works.
     fn subscript(&mut self, can_assign: bool) {
-        self.parse_precedence(Precedence::Or);
+        self.parse_precedence(Precedence::non_assigning());
         self.consume(TK::RightBracket, "Expect ']' after index.");
         let line = self.line();
         if can_assign

@@ -48,6 +48,9 @@ jobs:
     - name: Check trace_execution_verbose
       run: |
         cargo run --features "trace_execution_verbose" test/number/equality.gen
+    - name: Check debug_parser
+      run: |
+        ! cargo run --features "debug_parser" test/function_literals/neither_block_nor_expression.gen
     - name: Setup dart
       uses: dart-lang/setup-dart@v1
       with:

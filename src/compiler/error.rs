@@ -31,12 +31,25 @@ impl Compiler<'_, '_> {
             eprintln!(": {msg}");
         }
         self.had_error = true;
+        #[cfg(feature = "debug_parser")]
+        {
+            println!("Hit error, set panic_mode: {}", self.panic_mode);
+        }
     }
 
     pub(super) fn synchronize(&mut self) {
+        #[cfg(feature = "debug_parser")]
+        {
+            println!("Synchronizing after error");
+        }
         self.panic_mode = false;
         while !self.check(TK::Eof) {
             if self.check_previous(TK::Semicolon) {
+                #[cfg(feature = "debug_parser")]
+                {
+                    println!("Found semicolon, resuming parsing");
+                }
+
                 return;
             }
             if let Some(
@@ -51,6 +64,13 @@ impl Compiler<'_, '_> {
                 | TK::Return,
             ) = self.current_token_kind()
             {
+                #[cfg(feature = "debug_parser")]
+                {
+                    println!(
+                        "Found statement start at {:?}, resuming parsing",
+                        self.current_token_kind()
+                    );
+                }
                 return;
             }
             self.advance();

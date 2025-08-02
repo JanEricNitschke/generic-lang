@@ -194,7 +194,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             self.declaration();
         }
 
-        self.end();
+        self.end(false);
         if self.had_error {
             None
         } else {
@@ -247,15 +247,6 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         let result = f(self);
         self.nestable_state.push(state);
         result
-    }
-
-    fn end(&mut self) {
-        self.emit_return();
-
-        #[cfg(feature = "print_code")]
-        if !self.had_error {
-            println!("{}", self.current_chunk().clone().to_string(&mut self.heap));
-        }
     }
 
     fn current_function(&self) -> &Function {
