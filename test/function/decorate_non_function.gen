@@ -1,0 +1,11 @@
+
+fun plus_three(func) {
+    fun inner(a, b) {
+        return func(a, b) + 3;
+    }
+    return inner;
+}
+
+
+@plus_three 
+class Foo {}  # Error at 'class': Expect function declaration or another decorator call after a decorator call.

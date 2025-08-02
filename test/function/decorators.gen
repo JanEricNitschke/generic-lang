@@ -1,0 +1,78 @@
+
+fun plus_three(func) {
+    fun inner(a, b) {
+        return func(a, b) + 3;
+    }
+    return inner;
+}
+
+fun with_args(additive, multiple) {
+    fun decorator(func) {
+        fun inner(a, b) {
+            return (func(a, b) + additive) * multiple;
+        }
+        return inner;
+    }
+    return decorator;
+}
+
+
+class Decorator {
+    times_two(func) {
+        fun inner(a, b) {
+            return func(a, b) * 2;
+        }
+        return inner;
+    }
+}
+
+var decorators = [plus_three, Decorator().times_two];
+
+
+fun add1(a, b) {
+    return a + b;
+}
+print(add1(2, 3)); # expect: 5
+
+@plus_three
+fun add2(a, b) {
+    return a + b;
+}
+print(add2(2, 3)); # expect: 8
+print(add2); # expect: <fn inner>
+
+
+@Decorator().times_two
+fun add3(a, b) {
+    return a + b;
+}
+print(add3(2, 3)); # expect: 10
+
+
+@decorators[0]
+fun add4(a, b) {
+    return a + b;
+}
+print(add4(2, 3)); # expect: 8
+
+@Decorator().times_two
+@plus_three
+fun add5(a, b) {
+    return a + b;
+}
+print(add5(2, 3)); # expect: 16
+
+
+@with_args(5, 2)
+fun add6(a, b) {
+    return a + b;
+}
+print(add6(2, 3)); # expect: 20
+
+
+var apple = 5;
+
+@apple 
+fun add7(a, b) {
+    return a + b;
+} # expect runtime error: Can only call functions and classes.

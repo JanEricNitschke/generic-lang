@@ -8,7 +8,7 @@ use crate::types::Line;
 #[derive(IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Clone, Copy, Debug)]
 #[repr(u8)]
 pub enum TokenKind {
-    // Single-Character Tokens.
+    // Character Tokens.
     LeftParen,
     RightParen,
     LeftBrace,
@@ -48,8 +48,6 @@ pub enum TokenKind {
     Less,
     LessEqual,
 
-    In,
-
     // Literals.
     Identifier,
     String,
@@ -76,6 +74,8 @@ pub enum TokenKind {
     Default,
     Case,
 
+    In,
+
     Const,
     Var,
 
@@ -83,6 +83,7 @@ pub enum TokenKind {
     This,
     Super,
 
+    At,
     Fun,
     Return,
 
@@ -167,6 +168,7 @@ impl<'a> Scanner<'a> {
                 b';' => TK::Semicolon,
                 b',' => TK::Comma,
                 b'.' => TK::Dot,
+                b'@' => TK::At,
                 b'-' => {
                     if self.match_(b'=') {
                         TK::MinusEqual

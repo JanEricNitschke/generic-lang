@@ -6,7 +6,7 @@
 use super::{ClassState, Compiler, FunctionType, LoopState, rules::Precedence};
 
 use crate::{
-    chunk::{CodeOffset, ConstantIndex, OpCode},
+    chunk::{CodeOffset, ConstantIndex, ConstantLongIndex, OpCode},
     scanner::{Token, TokenKind as TK},
     types::Line,
     utils::get_file_stem,
@@ -48,6 +48,14 @@ impl Compiler<'_, '_> {
         self.current_token_kind() == Some(kind)
     }
 
+    pub(super) fn current_token_kind(&self) -> Option<TK> {
+        self.current.as_ref().map(|t| t.kind)
+    }
+
+    pub(super) fn check_previous(&self, kind: TK) -> bool {
+        self.previous.as_ref().is_some_and(|t| t.kind == kind)
+    }
+
     /// Produce bytecode for parsing an expression.
     ///
     /// After that bytecode runs the resulting value will be on top of the stack.
@@ -60,7 +68,10 @@ impl Compiler<'_, '_> {
             self.var_declaration(true);
         } else if self.match_(TK::Const) {
             self.var_declaration(false);
-        } else if self.match_(TK::Fun) {
+        } else if self.check(TK::Fun) || self.check(TK::At) {
+            // We use `check` instead of `match_` here because
+            // `fun_declaration` will handle the advance for us
+            // because it needs to do so anyway for multiple decorators
             self.fun_declaration();
         } else if self.match_(TK::Class) {
             self.class_declaration();
@@ -87,10 +98,39 @@ impl Compiler<'_, '_> {
     }
 
     fn fun_declaration(&mut self) {
+        let global = self.fun_definition();
+        self.define_variable(global, true);
+    }
+
+    fn fun_definition(&mut self) -> Option<ConstantLongIndex> {
+        if self.match_(TK::At) {
+            self.decorated_fun_definition()
+        } else if self.match_(TK::Fun) {
+            self.undecorated_fun_definition()
+        } else {
+            self.error_at_current(
+                "Expect function declaration or another decorator call after a decorator call.",
+            );
+            if *self.scope_depth() > 0 {
+                None
+            } else {
+                Some(ConstantLongIndex(0))
+            }
+        }
+    }
+
+    fn decorated_fun_definition(&mut self) -> Option<ConstantLongIndex> {
+        self.expression();
+        let fun_global = self.fun_definition();
+        self.emit_bytes(OpCode::Call, 1, self.line());
+        fun_global
+    }
+
+    fn undecorated_fun_definition(&mut self) -> Option<ConstantLongIndex> {
         let global = self.parse_variable("Expect function name.", true);
         self.mark_initialized();
         self.function(FunctionType::Function);
-        self.define_variable(global, true);
+        global
     }
 
     fn class_declaration(&mut self) {
@@ -763,13 +803,5 @@ impl Compiler<'_, '_> {
 
     pub(super) fn line(&self) -> Line {
         self.previous.as_ref().map_or(Line(0), |x| x.line)
-    }
-
-    pub(super) fn current_token_kind(&self) -> Option<TK> {
-        self.current.as_ref().map(|t| t.kind)
-    }
-
-    pub(super) fn check_previous(&self, kind: TK) -> bool {
-        self.previous.as_ref().is_some_and(|t| t.kind == kind)
     }
 }

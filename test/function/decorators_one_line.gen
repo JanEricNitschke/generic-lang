@@ -1,0 +1,13 @@
+
+fun plus_three(func) {
+    fun inner(a, b) {
+        return func(a, b) + 3;
+    }
+    return inner;
+}
+
+@plus_three @plus_three
+fun add1(a, b) {
+    return a + b;
+}
+print(add1(2, 3)); # expect: 11

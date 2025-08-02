@@ -42,6 +42,7 @@ impl Compiler<'_, '_> {
             if let Some(
                 TK::Class
                 | TK::Fun
+                | TK::At
                 | TK::Const
                 | TK::Var
                 | TK::For
