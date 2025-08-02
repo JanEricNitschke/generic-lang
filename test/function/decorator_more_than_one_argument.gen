@@ -1,0 +1,12 @@
+
+fun plus_three(func, more_stuff) {
+    fun inner(a, b) {
+        return func(a, b) + 3;
+    }
+    return inner;
+}
+
+@plus_three 
+fun add(a, b) {
+    return a + b;
+} # expect runtime error: Expected 2 arguments but got 1.
