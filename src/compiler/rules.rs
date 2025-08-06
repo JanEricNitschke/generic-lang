@@ -82,7 +82,7 @@ macro_rules! make_rules {
     }};
 }
 
-pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 77];
+pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 80];
 
 // Can't be static because the associated function types include lifetimes
 #[rustfmt::skip]
@@ -165,6 +165,9 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Await         = [None,            None,      None      ],
         Async         = [None,            None,      None      ],
         StopIteration = [literal,         None,      None      ],
+        Try           = [None,            None,      None      ],
+        Catch         = [None,            None,      None      ],
+        Finally       = [None,            None,      None      ],
     )
 }
 

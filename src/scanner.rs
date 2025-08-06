@@ -100,6 +100,10 @@ pub enum TokenKind {
     Yield,
     Async,
     Await,
+
+    Try,
+    Catch,
+    Finally,
 }
 
 impl std::fmt::Display for TokenKind {
@@ -378,7 +382,11 @@ impl<'a> Scanner<'a> {
             },
             b'b' => self.check_keyword(1, "reak", TokenKind::Break),
             b'c' => match self.source.get(self.start + 1) {
-                Some(b'a') => self.check_keyword(2, "se", TokenKind::Case),
+                Some(b'a') => match self.source.get(self.start + 2) {
+                    Some(b's') => self.check_keyword(3, "e", TokenKind::Case),
+                    Some(b't') => self.check_keyword(3, "ch", TokenKind::Catch),
+                    _ => TokenKind::Identifier,
+                },
                 Some(b'l') => self.check_keyword(2, "ass", TokenKind::Class),
                 Some(b'o') => match self.source.get(self.start + 2) {
                     Some(b'n') => match self.source.get(self.start + 3) {
@@ -394,6 +402,7 @@ impl<'a> Scanner<'a> {
             b'e' => self.check_keyword(1, "lse", TokenKind::Else),
             b'f' => match self.source.get(self.start + 1) {
                 Some(b'a') => self.check_keyword(2, "lse", TokenKind::False),
+                Some(b'i') => self.check_keyword(2, "nally", TokenKind::Finally),
                 Some(b'o') => match self.source.get(self.start + 2) {
                     Some(b'r') => match self.check_keyword(3, "", TokenKind::For) {
                         TokenKind::For => TokenKind::For,
@@ -404,8 +413,8 @@ impl<'a> Scanner<'a> {
                     },
                     _ => TokenKind::Identifier,
                 },
-                Some(b'u') => self.check_keyword(2, "n", TokenKind::Fun),
                 Some(b'r') => self.check_keyword(2, "om", TokenKind::From),
+                Some(b'u') => self.check_keyword(2, "n", TokenKind::Fun),
                 _ => TokenKind::Identifier,
             },
             b'i' => match self.source.get(self.start + 1) {
@@ -425,7 +434,11 @@ impl<'a> Scanner<'a> {
             b'S' => self.check_keyword(1, "topIteration", TokenKind::StopIteration),
             b't' => match self.source.get(self.start + 1) {
                 Some(b'h') => self.check_keyword(2, "is", TokenKind::This),
-                Some(b'r') => self.check_keyword(2, "ue", TokenKind::True),
+                Some(b'r') => match self.source.get(self.start + 2) {
+                    Some(b'u') => self.check_keyword(3, "e", TokenKind::True),
+                    Some(b'y') => self.check_keyword(3, "", TokenKind::Try),
+                    _ => TokenKind::Identifier,
+                },
                 _ => TokenKind::Identifier,
             },
             b'u' => match self.source.get(self.start + 1) {
