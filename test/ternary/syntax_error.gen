@@ -1,0 +1,1 @@
+true ? 5 3;  # Error at '3': Expect ':' after 'then' branch of ternary operator.

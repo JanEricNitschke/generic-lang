@@ -1,0 +1,2 @@
+print(true ? false ? 1 : 2 : 3);  # expect: 2
+print(false ? nil : true ? 4 : 5);  # expect: 4

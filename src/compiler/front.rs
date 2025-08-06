@@ -224,32 +224,52 @@ impl Compiler<'_, '_> {
         }
     }
 
+    /// Parse a conditional statement, either `if` or `unless`.
+    ///
+    /// Structure is:
+    ///
+    /// if (condition) {
+    ///     "A": then block
+    /// } else {
+    ///     "B": else block
+    /// }
+    ///  "C" // Continue here after the conditional statement.
     fn conditional_statement(&mut self, if_statement: bool) {
         let line = self.line();
 
+        // Parse the condition
         self.expression();
 
         self.consume(TK::LeftBrace, "Expect '{' after condition");
 
+        // If the condition is such that we do NOT want the "then" block,
+        // we jump over it and continue at B.
         let then_jump = self.emit_jump(if if_statement {
             OpCode::JumpIfFalse
         } else {
             OpCode::JumpIfTrue
         });
+        // If we want the block then we pop the condition and just continue at A
         self.emit_byte(OpCode::Pop, line);
         self.scoped_block();
 
+        // And afterwards always jump over the "else" block to C.
         let else_jump = self.emit_jump(OpCode::Jump);
 
+        // If we do the jump over the "then" block, we need to patch it
+        // to continue at "B" the "else" block. Which is here.
         self.patch_jump(then_jump);
 
+        // Here we first need to pop the condition, because we jumped over that.
         self.emit_byte(OpCode::Pop, line);
 
+        // If we have an "else" block, we parse it now.
         if self.match_(TK::Else) {
             self.consume(TK::LeftBrace, "Expect '{' after else");
             self.scoped_block();
         }
 
+        // And finally we patch the jump over the "else" block to continue at "C".
         self.patch_jump(else_jump);
     }
 

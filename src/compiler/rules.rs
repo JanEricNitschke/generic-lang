@@ -16,6 +16,7 @@ use crate::scanner::TokenKind as TK;
 pub(super) enum Precedence {
     None,
     Assignment, // =
+    Ternary,    // ?:
     Or,         // or
     And,        // and
     In,         // in
@@ -34,7 +35,7 @@ pub(super) enum Precedence {
 
 impl Precedence {
     const fn non_assigning() -> Self {
-        Self::Or
+        Self::Ternary
     }
 }
 
@@ -81,7 +82,7 @@ macro_rules! make_rules {
     }};
 }
 
-pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 76];
+pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 77];
 
 // Can't be static because the associated function types include lifetimes
 #[rustfmt::skip]
@@ -141,6 +142,7 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         At            = [None,            None,      None      ],
         Fun           = [None,            None,      None      ],
         RightArrow    = [lambda,          None,      None      ],
+        QuestionMark  = [None,            ternary,   Ternary   ],
         If            = [None,            None,      None      ],
         Unless        = [None,            None,      None      ],
         Nil           = [literal,         None,      None      ],
@@ -264,6 +266,42 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             TK::In => self.in_(),
             _ => unreachable!("Unknown binary operator: {}", operator),
         }
+    }
+
+    /// Parse a (the) ternary expression
+    ///
+    /// a ? b : c
+    /// Evaluates `a`, if it is truthy, then `b` is evaluated and returned,
+    /// otherwise `c` is evaluated and returned.
+    ///
+    /// When we enter this function, the first operand (`a`) is already on the stack.
+    /// For the rest of the logic have a look at [`Compiler::conditional_statement`].
+    /// We work exactly like that except we always have a "then" and we only have expressions
+    /// instead of blocks.
+    fn ternary(&mut self, _can_assign: bool) {
+        let line = self.line();
+
+        let then_jump = self.emit_jump(OpCode::JumpIfFalse);
+
+        // First value: We pop the condition and parse the "then" expression.
+        // And jump over the code for the "else" expression.
+        self.emit_byte(OpCode::Pop, line);
+        self.parse_precedence(Precedence::Ternary);
+        let else_jump = self.emit_jump(OpCode::Jump);
+
+        self.consume(
+            TK::Colon,
+            "Expect ':' after 'then' branch of ternary operator.",
+        );
+
+        // Patch the jump over the "else" expression to continue after the end of the "then" expression.
+        self.patch_jump(then_jump);
+
+        // Here we first need to pop the condition, because we jumped over that.
+        self.emit_byte(OpCode::Pop, line);
+        self.parse_precedence(Precedence::Ternary);
+
+        self.patch_jump(else_jump);
     }
 
     /// Parse lambda expressions.
@@ -586,7 +624,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Handle `this`.
     ///
     /// If inside a class this simply works on the local variable
-    /// `this`which is initialized to the specific instance.
+    /// `this` which is initialized to the specific instance.
     ///
     /// Outside of a class context this is a syntax error.
     fn this(&mut self, _can_assign: bool) {
