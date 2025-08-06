@@ -1,0 +1,1 @@
+catch 1; # Error at 'catch': Try, catch and finally are not yet implemented.

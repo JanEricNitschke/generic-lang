@@ -217,8 +217,10 @@ impl Compiler<'_, '_> {
             self.import_statement();
         } else if self.match_(TK::From) {
             self.import_from_statement();
-        } else if self.match_(TK::Async) || self.match_(TK::Await) | self.match_(TK::Yield) {
+        } else if self.match_(TK::Async) || self.match_(TK::Await) || self.match_(TK::Yield) {
             self.error("Async, await and yield are not yet implemented.");
+        } else if self.match_(TK::Try) || self.match_(TK::Catch) || self.match_(TK::Finally) {
+            self.error("Try, catch and finally are not yet implemented.");
         } else {
             self.expression_statement();
         }
