@@ -20,6 +20,8 @@ pub enum TokenKind {
     Comma,
     Dot,
 
+    QuestionMark,
+
     Minus,
     MinusEqual,
     Plus,
@@ -159,6 +161,7 @@ impl<'a> Scanner<'a> {
         let token_kind = match self.advance() {
             None => TK::Eof,
             Some(c) => match c {
+                b'?' => TK::QuestionMark,
                 b':' => TK::Colon,
                 b'(' => TK::LeftParen,
                 b')' => TK::RightParen,

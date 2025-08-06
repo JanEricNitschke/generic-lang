@@ -1,0 +1,2 @@
+print(true ? 4 : 5);  # expect: 4
+print(nil ? 3 : 6);  # expect: 6

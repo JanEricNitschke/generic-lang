@@ -1,0 +1,4 @@
+print(0 or 2 ? false and 5 : 3);  # expect: false
+print(false ? 1 : nil or 6);  # expect: 6
+const x = true ? 2 : 3;
+print(x);  # expect: 2
