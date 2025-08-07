@@ -1,0 +1,5 @@
+foreach (var val in [1, 2, 3]) {
+    fun foo() {}
+    break;
+}
+print(1); # expect: 1
