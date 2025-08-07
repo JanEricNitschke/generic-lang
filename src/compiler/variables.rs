@@ -65,12 +65,12 @@ impl<'scanner> Compiler<'scanner, '_> {
         let mut arg = self.resolve_local(name);
 
         // Upvalue?
-        if arg.is_none() {
-            if let Some(upvalue_arg) = self.resolve_upvalue(name) {
-                get_op = OpCode::GetUpvalue;
-                set_op = OpCode::SetUpvalue;
-                arg = Some(usize::from(upvalue_arg));
-            }
+        if arg.is_none()
+            && let Some(upvalue_arg) = self.resolve_upvalue(name)
+        {
+            get_op = OpCode::GetUpvalue;
+            set_op = OpCode::SetUpvalue;
+            arg = Some(usize::from(upvalue_arg));
         }
 
         // If neither local nor upvalue, then it must be a global

@@ -86,7 +86,7 @@ struct Upvalue {
 /// Nestable part of the compiler state
 ///
 /// This struct is used to keep track of the state of the compiler that can be nested
-/// when compilingn ested functions.
+/// when compiling nested functions.
 struct NestableState<'scanner> {
     current_function: Function,
     function_type: FunctionType,
@@ -95,7 +95,7 @@ struct NestableState<'scanner> {
     globals_by_name: HashMap<StringId, ConstantLongIndex>,
     upvalues: Vec<Upvalue>,
     scope_depth: ScopeDepth,
-    loop_state: Option<LoopState>,
+    loop_state: Vec<LoopState>,
 }
 
 impl NestableState<'_> {
@@ -123,7 +123,7 @@ impl NestableState<'_> {
             upvalues: Vec::new(),
             globals_by_name: HashMap::default(),
             scope_depth: ScopeDepth::default(),
-            loop_state: None,
+            loop_state: Vec::new(),
         }
     }
 }
@@ -257,12 +257,20 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         &mut self.nestable_state.last_mut().unwrap().current_function
     }
 
-    fn loop_state(&self) -> Option<&LoopState> {
-        self.nestable_state.last().unwrap().loop_state.as_ref()
+    fn loop_state(&self) -> &Vec<LoopState> {
+        &self.nestable_state.last().unwrap().loop_state
     }
 
-    fn loop_state_mut(&mut self) -> &mut Option<LoopState> {
+    fn loop_state_mut(&mut self) -> &mut Vec<LoopState> {
         &mut self.nestable_state.last_mut().unwrap().loop_state
+    }
+
+    fn last_loop_state(&self) -> Option<&LoopState> {
+        self.loop_state().last()
+    }
+
+    fn last_loop_state_mut(&mut self) -> Option<&mut LoopState> {
+        self.loop_state_mut().last_mut()
     }
 
     fn locals(&self) -> &Vec<Local<'scanner>> {

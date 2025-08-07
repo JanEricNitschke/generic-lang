@@ -400,10 +400,10 @@ impl VM {
             }
         }
 
-        if let Some(upvalue) = upvalue {
-            if upvalue.to_value(&self.heap).as_open() == local {
-                return *upvalue;
-            }
+        if let Some(upvalue) = upvalue
+            && upvalue.to_value(&self.heap).as_open() == local
+        {
+            return *upvalue;
         }
         let upvalue = self.heap.add_upvalue(Upvalue::Open(local));
         let upvalue_id = upvalue.upvalue_location();

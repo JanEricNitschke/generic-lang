@@ -107,7 +107,13 @@ impl<'scanner> Compiler<'scanner, '_> {
     }
 
     pub(super) fn patch_break_jumps(&mut self) {
-        while let Some(break_jump) = self.loop_state_mut().as_mut().unwrap().break_jumps.pop() {
+        while let Some(break_jump) = self
+            .last_loop_state_mut()
+            .as_mut()
+            .unwrap()
+            .break_jumps
+            .pop()
+        {
             self.patch_jump(break_jump);
         }
     }

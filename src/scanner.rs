@@ -69,6 +69,7 @@ pub enum TokenKind {
     For,
     ForEach,
     While,
+    Apostrophe,
     Until,
     Continue,
     Break,
@@ -165,6 +166,7 @@ impl<'a> Scanner<'a> {
         let token_kind = match self.advance() {
             None => TK::Eof,
             Some(c) => match c {
+                b'\'' => TK::Apostrophe,
                 b'?' => TK::QuestionMark,
                 b':' => TK::Colon,
                 b'(' => TK::LeftParen,
