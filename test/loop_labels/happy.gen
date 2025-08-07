@@ -1,0 +1,38 @@
+for 'first (var i = 0; i < 10; i = i + 1) {
+    foreach (var j in [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
+        var k = 0;
+        if (i == 0 and j == 0) {
+            while 'third (k < 9) {
+                print(i * 100 + j * 10 + k); # expect: 0
+                break;
+            }
+        }
+
+        if (i == 0 and j == 1) {
+            print(i * 100 + j * 10 + k); # expect: 10
+            continue;
+        }
+
+        if (i == 0 and j == 2) {
+            while 'third (k < 9) {
+                print(i * 100 + j * 10 + k); # expect: 20
+                break 'third;
+            }
+        }
+
+        if (i == 0 and j == 3) {
+            print(i * 100 + j * 10 + k); # expect: 30
+            continue 'first;
+        }
+
+        if (j >= 3) {
+            print(i * 100 + j * 10 + k); # expect: 130
+            break 'first;
+        }
+
+        if (j >= 4) {
+            print("Bad");
+        }
+    }
+    print("Bad");
+}

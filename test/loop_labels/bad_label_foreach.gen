@@ -1,0 +1,3 @@
+foreach badlabel (var val in [0, 1]) { # Error at 'badlabel': Expect label ('label) or '(' after 'foreach'.
+    print(val);
+}

@@ -1,0 +1,5 @@
+foreach 'first (var i in [0, 1]) {
+    foreach 'first (var j in [0, 1]) {  # Error at 'first': Duplicate loop label 'first'.
+        print(i + j);
+    }
+}
