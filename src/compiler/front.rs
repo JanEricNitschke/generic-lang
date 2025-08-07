@@ -289,8 +289,120 @@ impl Compiler<'_, '_> {
         self.consume(TK::RightBrace, "Expect '}' after block.");
     }
 
+    fn loop_label(&mut self) -> Option<String> {
+        if self.match_(TK::Apostrophe) {
+            self.consume(TK::Identifier, "Expect loop label after `'`.");
+            Some(self.previous.as_ref().unwrap().as_str().to_string())
+        } else {
+            None
+        }
+    }
+
+    fn check_duplicate_loop_label(&mut self, label: Option<&str>) {
+        if let Some(label) = label
+            && self
+                .loop_state()
+                .iter()
+                .any(|state| state.label.as_deref() == Some(label))
+        {
+            self.error(&format!("Duplicate loop label '{label}'."));
+        }
+    }
+
+    fn loop_statement(&mut self, while_statement: bool) {
+        let line = self.line();
+        // Add new loop state
+        let start = CodeOffset(self.current_chunk_len());
+        let depth = self.scope_depth();
+        let label = self.loop_label();
+        self.check_duplicate_loop_label(label.as_deref());
+        self.loop_state_mut()
+            .push(LoopState::new(depth, start, label));
+
+        self.expression();
+        self.consume(TK::LeftBrace, "Expect '{' before loop body.");
+
+        let exit_jump = self.emit_jump(if while_statement {
+            OpCode::JumpIfFalse
+        } else {
+            OpCode::JumpIfTrue
+        });
+        self.emit_byte(OpCode::Pop, line);
+        self.scoped_block();
+        let loop_start = self.last_loop_state().as_ref().unwrap().start;
+        self.emit_loop(loop_start);
+
+        self.patch_jump(exit_jump);
+        self.emit_byte(OpCode::Pop, line);
+        self.patch_break_jumps();
+        self.loop_state_mut().pop();
+    }
+
+    fn continue_statement(&mut self) {
+        let line = self.line();
+        let label = self.loop_label();
+
+        match self.loop_state_by_label(label.as_deref()) {
+            None => self.error("'continue' outside a loop."),
+            Some(state) => {
+                let depth = state.depth;
+                let start = state.start;
+                self.consume(TK::Semicolon, "Expect ';' after 'continue'.");
+                let locals_to_drop = self
+                    .locals()
+                    .iter()
+                    .rev()
+                    .take_while(|local| local.depth > depth)
+                    .count();
+                for _ in 0..locals_to_drop {
+                    self.emit_byte(OpCode::Pop, line);
+                }
+
+                self.emit_loop(start);
+            }
+        }
+    }
+
+    fn break_statement(&mut self) {
+        let line = self.line();
+        let label = self.loop_label();
+
+        // First check if we're in a loop and get the depth
+        let loop_depth = match self.loop_state_by_label(label.as_deref()) {
+            None => {
+                self.error("'break' outside a loop.");
+                return;
+            }
+            Some(state) => state.depth,
+        };
+
+        self.consume(TK::Semicolon, "Expect ';' after 'break'.");
+
+        // Calculate locals to drop
+        let locals_to_drop = self
+            .locals()
+            .iter()
+            .rev()
+            .take_while(|local| local.depth > loop_depth)
+            .count();
+
+        // Emit pop instructions
+        for _ in 0..locals_to_drop {
+            self.emit_byte(OpCode::Pop, line);
+        }
+
+        // Now we can safely get the mutable reference and add the jump
+        let jump = self.emit_jump(OpCode::Jump);
+        self.loop_state_by_label_mut(label.as_deref())
+            .unwrap()
+            .break_jumps
+            .push(jump);
+    }
+
     fn for_statement(&mut self) {
         self.begin_scope();
+        let label = self.loop_label();
+        self.check_duplicate_loop_label(label.as_deref());
         self.consume(TK::LeftParen, "Expect label ('label) or '(' after 'for'.");
         let line = self.line();
 
@@ -318,11 +430,8 @@ impl Compiler<'_, '_> {
         // Add new loop state
         let start = CodeOffset(self.current_chunk_len());
         let depth = self.scope_depth();
-        self.loop_state_mut().push(LoopState {
-            depth,
-            start,
-            break_jumps: Vec::new(),
-        });
+        self.loop_state_mut()
+            .push(LoopState::new(depth, start, label));
 
         // Compile increment clause
         let mut exit_jump = None;
@@ -391,22 +500,23 @@ impl Compiler<'_, '_> {
         self.end_scope();
     }
 
+    /// Loop:
+    /// foreach (var val in `my_list`) {
+    ///     print(val);
+    /// }
+    /// Should be identical to:
+    /// {
+    ///     var iter = `my_list`.__iter__();
+    ///     var val = 0;
+    ///
+    ///     while ((val = iter.__next__()) != StopIteration) {
+    ///         print(val);
+    ///     }
+    /// }
     fn foreach_statement(&mut self) {
-        // Loop:
-        // foreach (var val in my_list) {
-        //     print(val);
-        // }
-        // Should be identical to:
-        // {
-        //     var iter = my_list.__iter__();
-        //     var val = 0;
-
-        //     while ((val = iter.__next__()) != StopIteration) {
-        //         print(val);
-        //     }
-        // }
-
         self.begin_scope();
+        let label = self.loop_label();
+        self.check_duplicate_loop_label(label.as_deref());
         self.consume(
             TK::LeftParen,
             "Expect label ('label) or '(' after 'foreach'.",
@@ -451,11 +561,8 @@ impl Compiler<'_, '_> {
         // Add new loop state
         let start = CodeOffset(self.current_chunk_len());
         let depth = self.scope_depth();
-        self.loop_state_mut().push(LoopState {
-            depth,
-            start,
-            break_jumps: Vec::new(),
-        });
+        self.loop_state_mut()
+            .push(LoopState::new(depth, start, label));
 
         // Compile the check clause as a call to "__next__" on the iterator
         // and an assignment to the loop variable
@@ -520,92 +627,6 @@ impl Compiler<'_, '_> {
             self.consume(TK::Semicolon, "Expect ';' after return value.");
             self.emit_byte(OpCode::Return, self.line());
         }
-    }
-
-    fn loop_statement(&mut self, while_statement: bool) {
-        let line = self.line();
-        // Add new loop state
-        let start = CodeOffset(self.current_chunk_len());
-        let depth = self.scope_depth();
-        self.loop_state_mut().push(LoopState {
-            depth,
-            start,
-            break_jumps: Vec::new(),
-        });
-
-        self.expression();
-        self.consume(TK::LeftBrace, "Expect '{' before loop body.");
-
-        let exit_jump = self.emit_jump(if while_statement {
-            OpCode::JumpIfFalse
-        } else {
-            OpCode::JumpIfTrue
-        });
-        self.emit_byte(OpCode::Pop, line);
-        self.scoped_block();
-        let loop_start = self.last_loop_state().as_ref().unwrap().start;
-        self.emit_loop(loop_start);
-
-        self.patch_jump(exit_jump);
-        self.emit_byte(OpCode::Pop, line);
-        self.patch_break_jumps();
-        self.loop_state_mut().pop();
-    }
-
-    fn continue_statement(&mut self) {
-        let line = self.line();
-
-        match self.last_loop_state() {
-            None => self.error("'continue' outside a loop."),
-            Some(state) => {
-                let depth = state.depth;
-                let start = state.start;
-                self.consume(TK::Semicolon, "Expect ';' after 'continue'.");
-                let locals_to_drop = self
-                    .locals()
-                    .iter()
-                    .rev()
-                    .take_while(|local| local.depth > depth)
-                    .count();
-                for _ in 0..locals_to_drop {
-                    self.emit_byte(OpCode::Pop, line);
-                }
-
-                self.emit_loop(start);
-            }
-        }
-    }
-
-    fn break_statement(&mut self) {
-        let line = self.line();
-
-        // First check if we're in a loop and get the depth
-        let loop_depth = match self.last_loop_state() {
-            None => {
-                self.error("'break' outside a loop.");
-                return;
-            }
-            Some(state) => state.depth,
-        };
-
-        self.consume(TK::Semicolon, "Expect ';' after 'break'.");
-
-        // Calculate locals to drop
-        let locals_to_drop = self
-            .locals()
-            .iter()
-            .rev()
-            .take_while(|local| local.depth > loop_depth)
-            .count();
-
-        // Emit pop instructions
-        for _ in 0..locals_to_drop {
-            self.emit_byte(OpCode::Pop, line);
-        }
-
-        // Now we can safely get the mutable reference and add the jump
-        let jump = self.emit_jump(OpCode::Jump);
-        self.last_loop_state_mut().unwrap().break_jumps.push(jump);
     }
 
     fn switch_statement(&mut self) {
