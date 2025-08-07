@@ -1,0 +1,5 @@
+var i = 9;
+while i < 10 {
+    print(i); # expect: 9
+    i += 1;
+}

@@ -1,0 +1,3 @@
+while badlabel true { # Error at 'true': Expect '{' before loop body.
+    print(val);
+}

@@ -1,0 +1,3 @@
+for badlabel (;;) { # Error at 'badlabel': Expect label ('label) or '(' after 'for'.
+    print(val);
+}

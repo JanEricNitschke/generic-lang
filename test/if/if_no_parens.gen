@@ -1,0 +1,10 @@
+# Evaluate the 'then' expression if the condition is true.
+if true {
+    print("good"); # expect: good
+}
+if false {
+    print("bad");
+}
+# Allow block body.
+const a = 3;
+if a == 3 { print("block"); } # expect: block

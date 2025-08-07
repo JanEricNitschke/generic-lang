@@ -1,0 +1,3 @@
+for ' (var val in [0, 1]) { # Error at '(': Expect loop label after `'`.
+    print(val);
+}
