@@ -59,7 +59,7 @@ enum FunctionType {
 /// Struct to handle the state of a loop.
 ///
 /// Needed for nested loops to properly assign jump targets for continue and break.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct LoopState {
     /// The depth of the scope when the loop was entered.
     /// Needed to free all locals declared inside the loop.
@@ -71,6 +71,21 @@ struct LoopState {
     /// Needed to patch all of them when the compilation of the loop body is finished.
     /// Required as there is no way to know how long the loop body will be when the `break` is compiled.
     break_jumps: Vec<CodeOffset>,
+    /// The label of the loop, if any.
+    /// Used to identify the loop in `break` and `continue` statements.
+    label: Option<String>,
+}
+
+impl LoopState {
+    #[must_use]
+    const fn new(depth: ScopeDepth, start: CodeOffset, label: Option<String>) -> Self {
+        Self {
+            depth,
+            start,
+            break_jumps: Vec::new(),
+            label,
+        }
+    }
 }
 
 /// Struct to handle the state of an upvalue.
@@ -116,7 +131,7 @@ impl NestableState<'_> {
                     },
                     line: Line(0),
                 },
-                depth: ScopeDepth(0),
+                depth: ScopeDepth::default(),
                 mutable: false,
                 is_captured: false,
             }],
@@ -271,6 +286,29 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
 
     fn last_loop_state_mut(&mut self) -> Option<&mut LoopState> {
         self.loop_state_mut().last_mut()
+    }
+
+    fn loop_state_by_label(&self, label: Option<&str>) -> Option<&LoopState> {
+        label.map_or_else(
+            || self.last_loop_state(),
+            |label| {
+                self.loop_state()
+                    .iter()
+                    .rev()
+                    .find(|state| state.label.as_deref() == Some(label))
+            },
+        )
+    }
+
+    fn loop_state_by_label_mut(&mut self, label: Option<&str>) -> Option<&mut LoopState> {
+        match label {
+            None => self.last_loop_state_mut(),
+            Some(label) => self
+                .loop_state_mut()
+                .iter_mut()
+                .rev()
+                .find(|state| state.label.as_deref() == Some(label)),
+        }
     }
 
     fn locals(&self) -> &Vec<Local<'scanner>> {
