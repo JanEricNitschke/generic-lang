@@ -1,0 +1,6 @@
+foreach (var val in [1, 2, 3]) {
+    var foo;
+    break;
+}
+print(1); # expect: 1
+print(foo); # expect runtime error: Undefined variable 'foo'.

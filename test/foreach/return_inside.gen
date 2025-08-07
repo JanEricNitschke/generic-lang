@@ -1,0 +1,9 @@
+fun f() {
+  foreach (var val in [1, 2, 3]) {
+    var i = "i";
+    return i;
+  }
+}
+
+print(f());
+# expect: i
