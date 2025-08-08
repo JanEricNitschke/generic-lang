@@ -1,0 +1,12 @@
+class Error {}
+class SubError < Error {}
+
+try {
+    try {
+        throw SubError();
+    } catch Error {
+        print("Caught Error");
+    }
+} catch SubError {
+    print("Caught SubError"); # expect: Caught SubError
+}

@@ -1,0 +1,12 @@
+class Error1 {}
+class Error2 {}
+
+try {
+    throw Error1();
+    print("Try");
+} catch (Error1, Error2) {
+    print("Catch"); # expect: Catch
+} else {
+    print("Else");
+}
+print("Done"); # expect: Done

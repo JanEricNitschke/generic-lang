@@ -1,0 +1,11 @@
+class Error {}
+
+fun get_exception() {
+    return Error;
+}
+
+try {
+    throw Error();
+} catch get_exception() {
+    print("Catch"); # expect: Catch
+}

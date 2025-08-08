@@ -1,0 +1,7 @@
+class Error {}
+
+try {
+    throw Error();
+} catch "Apple" {  # expect runtime error: Exception to catch must be a class, got: Apple
+    print("Catch");
+}

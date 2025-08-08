@@ -1,1 +1,1 @@
-finally 1; # Error at 'finally': Try, catch and finally are not yet implemented.
+finally 1; # Error at 'finally': Finally is not yet implemented.

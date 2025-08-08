@@ -118,7 +118,6 @@ bool _runSuite(String name) {
   _skipped = 0;
   _expectations = 0;
 
-
   for (var file in Glob("test/**.gen").listSync()) {
     _runTest(file.path);
   }
@@ -183,6 +182,9 @@ class ExpectedOutput {
   final String output;
 
   ExpectedOutput(this.line, this.output);
+
+  @override
+  String toString() => 'ExpectedOutput(line: $line, output: "$output")';
 }
 
 class Test {
@@ -205,6 +207,18 @@ class Test {
   final _failures = <String>[];
 
   Test(this._path);
+
+  @override
+  String toString() {
+    return 'Test('
+        'path: $_path, '
+        'expectedOutput: $_expectedOutput, '
+        'expectedErrors: $_expectedErrors, '
+        'expectedRuntimeError: $_expectedRuntimeError, '
+        'runtimeErrorLine: $_runtimeErrorLine, '
+        'expectedExitCode: $_expectedExitCode'
+        ')';
+  }
 
   bool parse() {
     // Get the path components.
@@ -300,7 +314,9 @@ class Test {
       if (_customInterpreter != null) ...?_customArguments else ..._suite!.args,
       _path
     ];
-    var result = Process.runSync(_customInterpreter ?? _suite!.executable, args);
+    var result =
+        Process.runSync(_customInterpreter ?? _suite!.executable, args);
+
 
     // Normalize Windows line endings.
     var outputLines = const LineSplitter().convert(result.stdout as String);
