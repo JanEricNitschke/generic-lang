@@ -1,0 +1,20 @@
+class Error1 {}
+class Error2 {}
+class Error3 {}
+
+fun get_exception() {
+    throw Error1();
+}
+
+
+try{
+    try {
+        throw Error2();
+    } catch get_exception()  {
+        print("Catch");
+    } catch Error1 {
+        print("Catch Error1");
+    }
+}  catch Error1 {
+    print("Catch Error1");  # expect: Catch Error1
+}

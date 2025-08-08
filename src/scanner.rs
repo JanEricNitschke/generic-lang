@@ -105,6 +105,7 @@ pub enum TokenKind {
     Try,
     Catch,
     Finally,
+    Throw,
 }
 
 impl std::fmt::Display for TokenKind {
@@ -435,7 +436,11 @@ impl<'a> Scanner<'a> {
             },
             b'S' => self.check_keyword(1, "topIteration", TokenKind::StopIteration),
             b't' => match self.source.get(self.start + 1) {
-                Some(b'h') => self.check_keyword(2, "is", TokenKind::This),
+                Some(b'h') => match self.source.get(self.start + 2) {
+                    Some(b'i') => self.check_keyword(3, "s", TokenKind::This),
+                    Some(b'r') => self.check_keyword(3, "ow", TokenKind::Throw),
+                    _ => TokenKind::Identifier,
+                },
                 Some(b'r') => match self.source.get(self.start + 2) {
                     Some(b'u') => self.check_keyword(3, "e", TokenKind::True),
                     Some(b'y') => self.check_keyword(3, "", TokenKind::Try),

@@ -1,0 +1,43 @@
+class Error1 {}
+class Error2 {}
+
+fun inner_1() {
+    try {
+        throw Error2();
+        print("Try");
+    } catch Error1 as e {
+        print(e);
+    } else {
+        print("Else Inner");
+    }
+}
+
+fun inner_2() {
+    try {
+        throw Error1();
+        print("Try");
+    } catch Error1 as e {
+        print(e); 
+    } else {
+        print("Else Inner");
+    }
+}
+
+
+try {
+    inner_1();
+} catch Error2 as e {
+    print(e); # expect: <Error2 instance>
+} else {
+    print("Else Outer");
+}
+
+try {
+    inner_2(); # expect: <Error1 instance>
+} catch Error2 as e {
+    print(e);
+} else {
+    print("Else Outer"); # expect: Else Outer
+}
+
+print("Done"); # expect: Done

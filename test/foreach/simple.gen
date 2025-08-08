@@ -1,0 +1,4 @@
+foreach  (var val in [1, 2, 3]) {
+    print(val); # expect: 1
+    break;
+}

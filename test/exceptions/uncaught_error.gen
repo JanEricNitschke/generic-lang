@@ -1,0 +1,26 @@
+class Error1 {}
+class Error2 {}
+class Error3 {}
+class Error4 {}
+
+fun second() {
+    try {
+        throw Error1();
+    } catch Error4 {
+        print("Catch third");
+    }
+}
+
+fun first() {
+    try {
+        second();
+    } catch Error3 as e {
+        print(e);
+    }
+}
+
+try {
+    first();
+} catch Error2 as e {
+    print(e);
+}  # expect runtime error: Uncaught exception: <Error1 instance>

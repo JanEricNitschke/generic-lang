@@ -1,0 +1,18 @@
+class Error {}
+
+{
+    var a = 1;
+    try {
+        var b = 2;
+        throw Error();
+        var c = 3;
+        print("Try");
+    } catch Error {
+        var d = 4;
+        print(d); # expect: 4
+        print("Catch"); # expect: Catch
+    } else {
+        print("Else");
+    }
+    print("Done"); # expect: Done
+}

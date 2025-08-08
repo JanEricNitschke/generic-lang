@@ -1,0 +1,30 @@
+class Error1 {}
+class Error2 {}
+
+
+try {
+    try {
+        throw Error1();
+    } catch Error1 as e1 {
+        print(e1); # expect: <Error1 instance>
+        throw Error2();
+    } catch Error2 as e2 {
+        print(e2);
+    }
+} catch Error2 as e{
+    print(e); # expect: <Error2 instance>
+}
+
+
+try {
+    try {
+        throw Error2();
+    } catch Error1 as e1 {
+        print(e1);
+    } catch Error2 as e2 {
+        print(e2);  # expect: <Error2 instance>
+        throw Error1();
+    }
+} catch Error1 as e{
+    print(e); # expect: <Error1 instance>
+}

@@ -1,0 +1,4 @@
+try {
+    print("Try");
+} # Error at '}': Each try block needs at least one catch clause.
+print("Done"); 

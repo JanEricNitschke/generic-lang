@@ -1,0 +1,10 @@
+class Error {}
+
+try {
+    print("Try"); # expect: Try
+} catch Error {
+    print("Catch");
+} else {
+    print("Else"); # expect: Else
+}
+print("Done"); # expect: Done
