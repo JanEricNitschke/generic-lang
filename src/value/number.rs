@@ -12,6 +12,7 @@ use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Rem, Sub};
 pub enum Number {
     Float(f64),
     Integer(GenericInt),
+    Rational(Rational),
 }
 
 // Conversions
@@ -32,6 +33,7 @@ impl Number {
         match self {
             Self::Float(num) => format!("{num:?}"),
             Self::Integer(num) => num.to_string(heap),
+            Self::Rational(rat) => rat.to_string(),
         }
     }
 
@@ -39,6 +41,7 @@ impl Number {
         match self {
             Self::Float(f) => *f,
             Self::Integer(i) => i.to_f64(heap),
+            Self::Rational(r) => r.to_f64(),
         }
     }
 }
@@ -65,6 +68,9 @@ impl Number {
                 Ok(b) => Self::Float(a.to_f64(heap).powi(b)),
                 Err(_) => Self::Float(f64::INFINITY), // Or f64::MAX?
             },
+            // For now, convert rationals to floats for power operations
+            (Self::Rational(a), other) => Self::Float(a.to_f64().powf(other.to_f64(heap))),
+            (other, Self::Rational(b)) => Self::Float(other.to_f64(heap).powf(b.to_f64())),
         }
     }
 
@@ -76,6 +82,9 @@ impl Number {
             (Self::Float(a), Self::Integer(b)) => Ok(Self::Float((a / b.to_f64(heap)).floor())),
             (Self::Integer(a), Self::Float(b)) => Ok(Self::Float((a.to_f64(heap) / b).floor())),
             (Self::Float(a), Self::Float(b)) => Ok(Self::Float((a / b).floor())),
+            // Convert rationals to floats for floor division
+            (Self::Rational(a), other) => Ok(Self::Float((a.to_f64() / other.to_f64(heap)).floor())),
+            (other, Self::Rational(b)) => Ok(Self::Float((other.to_f64(heap) / b.to_f64()).floor())),
         }
     }
 
@@ -83,6 +92,7 @@ impl Number {
         match self {
             Self::Integer(n) => Self::Integer(n.neg(heap)),
             Self::Float(f) => Self::Float(-f),
+            Self::Rational(r) => Self::Rational(Rational::new(-r.numerator, r.denominator).unwrap()),
         }
     }
 
@@ -94,6 +104,9 @@ impl Number {
             (Self::Float(a), Self::Integer(b)) => Self::Float(a / b.to_f64(heap)),
             (Self::Integer(a), Self::Float(b)) => Self::Float(a.to_f64(heap) / b),
             (Self::Float(a), Self::Float(b)) => Self::Float(a / b),
+            // Convert rationals to floats for division
+            (Self::Rational(a), other) => Self::Float(a.to_f64() / other.to_f64(heap)),
+            (other, Self::Rational(b)) => Self::Float(other.to_f64(heap) / b.to_f64()),
         }
     }
     pub(crate) fn add(self, rhs: Self, heap: &mut Heap) -> Self {
@@ -102,6 +115,9 @@ impl Number {
             (Self::Float(a), Self::Integer(b)) => Self::Float(a + b.to_f64(heap)),
             (Self::Integer(a), Self::Float(b)) => Self::Float(a.to_f64(heap) + b),
             (Self::Float(a), Self::Float(b)) => Self::Float(a + b),
+            // Convert rationals to floats for addition
+            (Self::Rational(a), other) => Self::Float(a.to_f64() + other.to_f64(heap)),
+            (other, Self::Rational(b)) => Self::Float(other.to_f64(heap) + b.to_f64()),
         }
     }
 
@@ -111,6 +127,9 @@ impl Number {
             (Self::Float(a), Self::Integer(b)) => Self::Float(a - b.to_f64(heap)),
             (Self::Integer(a), Self::Float(b)) => Self::Float(a.to_f64(heap) - b),
             (Self::Float(a), Self::Float(b)) => Self::Float(a - b),
+            // Convert rationals to floats for subtraction
+            (Self::Rational(a), other) => Self::Float(a.to_f64() - other.to_f64(heap)),
+            (other, Self::Rational(b)) => Self::Float(other.to_f64(heap) - b.to_f64()),
         }
     }
 
@@ -120,6 +139,9 @@ impl Number {
             (Self::Float(a), Self::Integer(b)) => Self::Float(a * b.to_f64(heap)),
             (Self::Integer(a), Self::Float(b)) => Self::Float(a.to_f64(heap) * b),
             (Self::Float(a), Self::Float(b)) => Self::Float(a * b),
+            // Convert rationals to floats for multiplication
+            (Self::Rational(a), other) => Self::Float(a.to_f64() * other.to_f64(heap)),
+            (other, Self::Rational(b)) => Self::Float(other.to_f64(heap) * b.to_f64()),
         }
     }
 
@@ -150,6 +172,9 @@ impl Number {
             (Self::Float(a), Self::Integer(b)) => Ok(Self::Float(a % b.to_f64(heap))),
             (Self::Integer(a), Self::Float(b)) => Ok(Self::Float(a.to_f64(heap) % b)),
             (Self::Float(a), Self::Float(b)) => Ok(Self::Float(a % b)),
+            // Convert rationals to floats for modulus
+            (Self::Rational(a), other) => Ok(Self::Float(a.to_f64() % other.to_f64(heap))),
+            (other, Self::Rational(b)) => Ok(Self::Float(other.to_f64(heap) % b.to_f64())),
         }
     }
 
@@ -159,6 +184,10 @@ impl Number {
             (Self::Float(a), Self::Float(b)) => a == b,
             (Self::Integer(a), Self::Float(b)) => a.to_f64(heap) == *b,
             (Self::Float(a), Self::Integer(b)) => *a == b.to_f64(heap),
+            (Self::Rational(a), Self::Rational(b)) => a == b,
+            // Compare rationals with other types by converting to float
+            (Self::Rational(a), other) => a.to_f64() == other.to_f64(heap),
+            (other, Self::Rational(b)) => other.to_f64(heap) == b.to_f64(),
         }
     }
 
@@ -168,6 +197,10 @@ impl Number {
             (Self::Float(a), Self::Float(b)) => a.partial_cmp(b),
             (Self::Integer(a), Self::Float(b)) => a.to_f64(heap).partial_cmp(b),
             (Self::Float(a), Self::Integer(b)) => a.partial_cmp(&b.to_f64(heap)),
+            (Self::Rational(a), Self::Rational(b)) => a.to_f64().partial_cmp(&b.to_f64()),
+            // Compare rationals with other types by converting to float
+            (Self::Rational(a), other) => a.to_f64().partial_cmp(&other.to_f64(heap)),
+            (other, Self::Rational(b)) => other.to_f64(heap).partial_cmp(&b.to_f64()),
         }
     }
 
@@ -514,6 +547,70 @@ impl GenericInt {
                 Ok(n) => Ok(n),
                 Err(_) => Err("Number too large to fit in usize".to_string()),
             },
+        }
+    }
+}
+
+/// Rational number representation with numerator and denominator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rational {
+    pub numerator: i64,
+    pub denominator: i64,
+}
+
+impl Rational {
+    /// Create a new rational number and reduce it to simplest form.
+    pub fn new(numerator: i64, denominator: i64) -> Result<Self, String> {
+        if denominator == 0 {
+            return Err("Rational denominator cannot be zero".to_string());
+        }
+        
+        let mut num = numerator;
+        let mut den = denominator;
+        
+        // Make sure denominator is positive
+        if den < 0 {
+            num = -num;
+            den = -den;
+        }
+        
+        // Reduce to simplest form
+        let gcd = Self::gcd(num.abs(), den.abs());
+        num /= gcd;
+        den /= gcd;
+        
+        Ok(Self {
+            numerator: num,
+            denominator: den,
+        })
+    }
+    
+    /// Calculate greatest common divisor using Euclidean algorithm.
+    fn gcd(mut a: i64, mut b: i64) -> i64 {
+        while b != 0 {
+            let temp = b;
+            b = a % b;
+            a = temp;
+        }
+        a
+    }
+    
+    /// Convert rational to floating point.
+    pub fn to_f64(&self) -> f64 {
+        self.numerator as f64 / self.denominator as f64
+    }
+    
+    /// Check if rational represents an integer.
+    pub fn is_integer(&self) -> bool {
+        self.denominator == 1
+    }
+    
+    /// Convert to string representation.
+    pub fn to_string(&self) -> String {
+        if self.denominator == 1 {
+            format!("{}", self.numerator)
+        } else {
+            format!("{}:{}", self.numerator, self.denominator)
         }
     }
 }

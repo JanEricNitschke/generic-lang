@@ -476,6 +476,182 @@ macro_rules! run_instruction {
                 let instance_value = $self.heap.add_instance(instance);
                 $self.stack_push_value(instance_value);
             }
+            // Build a range. Expects two integers on the stack: start, end (end on top).
+            OpCode::BuildRangeInclusive => {
+                let end_value = $self.stack.pop().expect("Stack underflow");
+                let start_value = $self.stack.pop().expect("Stack underflow");
+                
+                let start = match start_value.as_generic_int().try_to_u64(&$self.heap) {
+                    Ok(val) => val as i64,
+                    Err(_) => match start_value {
+                        Value::Number(crate::value::Number::Integer(n)) => {
+                            // Try to convert to i64 directly
+                            match n {
+                                crate::value::GenericInt::Small(val) => val,
+                                _ => {
+                                    runtime_error!($self, "Range start too large for range creation.");
+                                    return InterpretResult::RuntimeError;
+                                }
+                            }
+                        }
+                        _ => {
+                            runtime_error!($self, "Range start must be an integer.");
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                };
+                
+                let end = match end_value.as_generic_int().try_to_u64(&$self.heap) {
+                    Ok(val) => val as i64,
+                    Err(_) => match end_value {
+                        Value::Number(crate::value::Number::Integer(n)) => {
+                            match n {
+                                crate::value::GenericInt::Small(val) => val,
+                                _ => {
+                                    runtime_error!($self, "Range end too large for range creation.");
+                                    return InterpretResult::RuntimeError;
+                                }
+                            }
+                        }
+                        _ => {
+                            runtime_error!($self, "Range end must be an integer.");
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                };
+
+                let range = Range::new(start, end, true);
+                let instance = Instance::new(
+                    *$self.heap.native_classes.get("Range").unwrap(),
+                    Some(range.into()),
+                );
+                let instance_value = $self.heap.add_instance(instance);
+                $self.stack_push_value(instance_value);
+            }
+            // Build an exclusive range. Expects two integers on the stack: start, end (end on top).
+            OpCode::BuildRangeExclusive => {
+                let end_value = $self.stack.pop().expect("Stack underflow");
+                let start_value = $self.stack.pop().expect("Stack underflow");
+                
+                let start = match start_value.as_generic_int().try_to_u64(&$self.heap) {
+                    Ok(val) => val as i64,
+                    Err(_) => match start_value {
+                        Value::Number(crate::value::Number::Integer(n)) => {
+                            match n {
+                                crate::value::GenericInt::Small(val) => val,
+                                _ => {
+                                    runtime_error!($self, "Range start too large for range creation.");
+                                    return InterpretResult::RuntimeError;
+                                }
+                            }
+                        }
+                        _ => {
+                            runtime_error!($self, "Range start must be an integer.");
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                };
+                
+                let end = match end_value.as_generic_int().try_to_u64(&$self.heap) {
+                    Ok(val) => val as i64,
+                    Err(_) => match end_value {
+                        Value::Number(crate::value::Number::Integer(n)) => {
+                            match n {
+                                crate::value::GenericInt::Small(val) => val,
+                                _ => {
+                                    runtime_error!($self, "Range end too large for range creation.");
+                                    return InterpretResult::RuntimeError;
+                                }
+                            }
+                        }
+                        _ => {
+                            runtime_error!($self, "Range end must be an integer.");
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                };
+
+                let range = Range::new(start, end, false);
+                let instance = Instance::new(
+                    *$self.heap.native_classes.get("Range").unwrap(),
+                    Some(range.into()),
+                );
+                let instance_value = $self.heap.add_instance(instance);
+                $self.stack_push_value(instance_value);
+            }
+            // Build a rational number. Expects two integers on the stack: numerator, denominator (denominator on top).
+            OpCode::BuildRational => {
+                let denominator_value = $self.stack.pop().expect("Stack underflow");
+                let numerator_value = $self.stack.pop().expect("Stack underflow");
+                
+                let numerator = match numerator_value.as_generic_int().try_to_u64(&$self.heap) {
+                    Ok(val) => val as i64,
+                    Err(_) => match numerator_value {
+                        Value::Number(crate::value::Number::Integer(n)) => {
+                            match n {
+                                crate::value::GenericInt::Small(val) => val,
+                                _ => {
+                                    runtime_error!($self, "Rational numerator too large.");
+                                    return InterpretResult::RuntimeError;
+                                }
+                            }
+                        }
+                        _ => {
+                            runtime_error!($self, "Rational numerator must be an integer.");
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                };
+                
+                let denominator = match denominator_value.as_generic_int().try_to_u64(&$self.heap) {
+                    Ok(val) => val as i64,
+                    Err(_) => match denominator_value {
+                        Value::Number(crate::value::Number::Integer(n)) => {
+                            match n {
+                                crate::value::GenericInt::Small(val) => val,
+                                _ => {
+                                    runtime_error!($self, "Rational denominator too large.");
+                                    return InterpretResult::RuntimeError;
+                                }
+                            }
+                        }
+                        _ => {
+                            runtime_error!($self, "Rational denominator must be an integer.");
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                };
+
+                match Rational::new(numerator, denominator) {
+                    Ok(rational) => {
+                        $self.stack_push_value(Number::Rational(rational).into());
+                    }
+                    Err(msg) => {
+                        runtime_error!($self, "{}", msg);
+                        return InterpretResult::RuntimeError;
+                    }
+                }
+            }
+            // Build a tuple. The number of items is the operand.
+            // Items are on the stack in order from left to right
+            // (... --- item1 --- item2 --- ... --- itemN)
+            OpCode::BuildTuple => {
+                let mut tuple = Tuple::new();
+
+                let arg_count = $self.read_byte();
+                for index in (0..arg_count).rev() {
+                    tuple.items.push(*$self.peek(index as usize).unwrap());
+                }
+                for _ in 0..arg_count {
+                    $self.stack.pop();
+                }
+                let instance = Instance::new(
+                    *$self.heap.native_classes.get("Tuple").unwrap(),
+                    Some(tuple.into()),
+                );
+                let instance_value = $self.heap.add_instance(instance);
+                $self.stack_push_value(instance_value);
+            }
             // Import a module by filepath without qualifiers.
             // Expects either the path to the module or the name of
             // a stdlib module as a string as an operand.

@@ -16,6 +16,7 @@ use crate::scanner::TokenKind as TK;
 pub(super) enum Precedence {
     None,
     Assignment, // =
+    Tuple,      // ,
     Ternary,    // ?:
     Or,         // or
     And,        // and
@@ -82,7 +83,7 @@ macro_rules! make_rules {
     }};
 }
 
-pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 82];
+pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 84];
 
 // Can't be static because the associated function types include lifetimes
 #[rustfmt::skip]
@@ -92,7 +93,7 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         RightParen    = [None,            None,      None      ],
         LeftBrace     = [hash_collection, None,      None      ],
         RightBrace    = [None,            None,      None      ],
-        Colon         = [None,            None,      None      ],
+        Colon         = [None,            binary,    Assignment],
         LeftBracket   = [list,            subscript, Call      ],
         RightBracket  = [None,            None,      None      ],
         Comma         = [None,            None,      None      ],
@@ -170,6 +171,8 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Catch         = [None,            None,      None      ],
         Finally       = [None,            None,      None      ],
         Throw         = [None,            None,      None      ],
+        DotDotEqual   = [None,            binary,    Comparison],
+        DotDotLess    = [None,            binary,    Comparison],
     )
 }
 
@@ -268,6 +271,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             TK::Percent => self.emit_byte(OpCode::Mod, line),
             TK::StarStar => self.emit_byte(OpCode::Exp, line),
             TK::SlashSlash => self.emit_byte(OpCode::FloorDiv, line),
+            TK::DotDotEqual => self.emit_byte(OpCode::BuildRangeInclusive, line),
+            TK::DotDotLess => self.emit_byte(OpCode::BuildRangeExclusive, line),
+            TK::Colon => self.emit_byte(OpCode::BuildRational, line),
+            TK::Comma => self.emit_byte(OpCode::BuildTuple, line),
             TK::In => self.in_(),
             _ => unreachable!("Unknown binary operator: {}", operator),
         }
@@ -406,10 +413,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
-    // TODO: Make this also create tuples?
     /// Used for grouping expressions to overwrite default precedence.
-    ///
-    /// The full expression within the grouping will be parsed as one.
     fn grouping(&mut self, _can_assign: bool) {
         self.expression();
         self.consume(TK::RightParen, "Expect ')' after expression.");

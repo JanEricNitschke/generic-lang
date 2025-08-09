@@ -550,6 +550,14 @@ impl Heap {
                         gray_value!(self, value);
                     }
                 }
+                NativeClass::Range(_) => {
+                    // Range only contains primitive integers, no references to gray
+                }
+                NativeClass::Tuple(tuple) => {
+                    for item in &tuple.items {
+                        gray_value!(self, item);
+                    }
+                }
             }
         }
         #[cfg(feature = "log_gc")]

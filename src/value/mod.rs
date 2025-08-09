@@ -13,9 +13,9 @@ pub use classes::{BoundMethod, Class, Instance};
 pub use functions::{Closure, Function, Module, Upvalue};
 pub use natives::{
     Dict, List, ListIterator, ModuleContents, NativeClass, NativeFunction, NativeFunctionImpl,
-    NativeMethod, NativeMethodImpl, Set,
+    NativeMethod, NativeMethodImpl, Range, Set, Tuple,
 };
-pub use number::{GenericInt, Number};
+pub use number::{GenericInt, Number, Rational};
 
 use num_bigint::BigInt;
 use rustc_hash::FxHasher;
@@ -70,6 +70,16 @@ impl Value {
                     GenericInt::Small(n) => BigInt::from(*n).hash(&mut state),
                     &GenericInt::Big(n) => (n.to_value(heap)).hash(&mut state),
                 },
+                Number::Rational(r) => {
+                    // Hash rational as its float representation
+                    let f = r.to_f64();
+                    if f.fract() == 0.0 {
+                        #[allow(clippy::cast_possible_truncation)]
+                        (BigInt::from(f as i64)).hash(&mut state);
+                    } else {
+                        f.to_bits().hash(&mut state);
+                    }
+                }
             },
             Self::String(s) => s.hash(&mut state),
             _ => {
@@ -391,6 +401,46 @@ impl Value {
                 _ => unreachable!("Expected Dict, found something else."),
             },
             _ => unreachable!("Expected Dict, found `{:?}`", self),
+        }
+    }
+
+    pub(super) fn as_range<'a>(&self, heap: &'a Heap) -> &'a Range {
+        match self {
+            Self::Instance(inst) => match &inst.to_value(heap).backing {
+                Some(NativeClass::Range(range)) => range,
+                _ => unreachable!("Expected Range, found `{:?}`", self),
+            },
+            _ => unreachable!("Expected Range, found `{:?}`", self),
+        }
+    }
+
+    pub(super) fn as_range_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Range {
+        match self {
+            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
+                Some(NativeClass::Range(range)) => range,
+                _ => unreachable!("Expected Range, found something else."),
+            },
+            _ => unreachable!("Expected Range, found `{:?}`", self),
+        }
+    }
+
+    pub(super) fn as_tuple<'a>(&self, heap: &'a Heap) -> &'a Tuple {
+        match self {
+            Self::Instance(inst) => match &inst.to_value(heap).backing {
+                Some(NativeClass::Tuple(tuple)) => tuple,
+                _ => unreachable!("Expected Tuple, found `{:?}`", self),
+            },
+            _ => unreachable!("Expected Tuple, found `{:?}`", self),
+        }
+    }
+
+    pub(super) fn as_tuple_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Tuple {
+        match self {
+            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
+                Some(NativeClass::Tuple(tuple)) => tuple,
+                _ => unreachable!("Expected Tuple, found something else."),
+            },
+            _ => unreachable!("Expected Tuple, found `{:?}`", self),
         }
     }
 }

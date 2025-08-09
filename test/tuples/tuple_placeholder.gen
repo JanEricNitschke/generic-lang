@@ -1,0 +1,12 @@
+# Note: Tuple implementation is partially complete
+# The infrastructure (Tuple class, BuildTuple opcode) is implemented
+# but the parsing is not yet working properly
+
+# This will be the expected syntax:
+# print(()); # Empty tuple
+# print((1,)); # Single element tuple  
+# print((1, 2, 3)); # Multi-element tuple
+# print(type((1, 2))); # Should show <type Tuple>
+
+# For now, tuples are not functional but the groundwork is laid
+print("Tuple parsing not yet implemented");

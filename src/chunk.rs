@@ -132,6 +132,10 @@ pub enum OpCode {
     BuildList,
     BuildSet,
     BuildDict,
+    BuildRangeInclusive,
+    BuildRangeExclusive,
+    BuildRational,
+    BuildTuple,
 
     Import,
     ImportFrom,
@@ -345,10 +349,11 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
                 | BitOr | BitXor | Nil | True | False | StopIteration | Not | Equal | Greater
                 | Less | LessEqual | GreaterEqual | NotEqual | Pop | Dup | CloseUpvalue
                 | Inherit | Return | LoadOne | LoadTwo | LoadZero | LoadMinusOne | LoadOnef
-                | LoadZerof | Swap | PopHandler | CompareException | Throw | Reraise => 0,
+                | LoadZerof | Swap | PopHandler | CompareException | Throw | Reraise 
+                | BuildRangeInclusive | BuildRangeExclusive | BuildRational => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | GetUpvalue | SetUpvalue | Class | GetProperty
-                | SetProperty | Method | GetSuper | BuildList | BuildSet | BuildDict | DupN => 1,
+                | SetProperty | Method | GetSuper | BuildList | BuildSet | BuildDict | BuildTuple | DupN => 1,
                 Jump | JumpIfFalse | JumpIfTrue | PopJumpIfFalse | PopJumpIfTrue
                 | JumpIfTrueOrPop | JumpIfFalseOrPop | RegisterCatches | Loop | Invoke | Import
                 | SuperInvoke => 2,
@@ -749,7 +754,7 @@ impl Debug for InstructionDisassembler<'_, '_> {
             closure(Closure),
             byte(
                 Call, GetUpvalue, SetUpvalue, Class, GetLocal, SetLocal, BuildList, BuildSet,
-                BuildDict, DupN,
+                BuildDict, BuildTuple, DupN,
             ),
             byte_long(GetLocalLong, SetLocalLong),
             jump(
@@ -802,7 +807,10 @@ impl Debug for InstructionDisassembler<'_, '_> {
                 PopHandler,
                 CompareException,
                 Throw,
-                Reraise
+                Reraise,
+                BuildRangeInclusive,
+                BuildRangeExclusive,
+                BuildRational
             ),
         )?;
         Ok(())
