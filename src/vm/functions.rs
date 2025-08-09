@@ -4,7 +4,7 @@ use crate::value::NativeClass;
 use crate::{
     chunk::{CodeOffset, OpCode},
     heap::{NativeFunctionId, NativeMethodId, StringId, UpvalueId},
-    value::{Class, Closure, Dict, Instance, List, Number, Set, Upvalue, Value},
+    value::{Class, Closure, Dict, Instance, List, Number, Range, Set, Upvalue, Value},
 };
 
 use super::{Global, InterpretResult, VM};

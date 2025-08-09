@@ -13,7 +13,7 @@ pub use classes::{BoundMethod, Class, Instance};
 pub use functions::{Closure, Function, Module, Upvalue};
 pub use natives::{
     Dict, List, ListIterator, ModuleContents, NativeClass, NativeFunction, NativeFunctionImpl,
-    NativeMethod, NativeMethodImpl, Set,
+    NativeMethod, NativeMethodImpl, Range, Set,
 };
 pub use number::{GenericInt, Number};
 
@@ -391,6 +391,26 @@ impl Value {
                 _ => unreachable!("Expected Dict, found something else."),
             },
             _ => unreachable!("Expected Dict, found `{:?}`", self),
+        }
+    }
+
+    pub(super) fn as_range<'a>(&self, heap: &'a Heap) -> &'a Range {
+        match self {
+            Self::Instance(inst) => match &inst.to_value(heap).backing {
+                Some(NativeClass::Range(range)) => range,
+                _ => unreachable!("Expected Range, found `{:?}`", self),
+            },
+            _ => unreachable!("Expected Range, found `{:?}`", self),
+        }
+    }
+
+    pub(super) fn as_range_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Range {
+        match self {
+            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
+                Some(NativeClass::Range(range)) => range,
+                _ => unreachable!("Expected Range, found something else."),
+            },
+            _ => unreachable!("Expected Range, found `{:?}`", self),
         }
     }
 }

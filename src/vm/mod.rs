@@ -40,7 +40,7 @@ use crate::{
     scanner::Scanner,
     stdlib,
     value::{
-        Class, Closure, Dict, Function, Instance, List, ModuleContents, Number, Set, Upvalue, Value,
+        Class, Closure, Dict, Function, Instance, List, ModuleContents, Number, Range, Set, Upvalue, Value,
     },
 };
 

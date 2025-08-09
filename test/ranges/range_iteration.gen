@@ -1,0 +1,34 @@
+# Test range iteration with foreach
+foreach (var i in 1..=3) {
+    print(i);
+}
+# expect: 1
+# expect: 2
+# expect: 3
+
+foreach (var i in 0..<3) {
+    print(i);
+}
+# expect: 0
+# expect: 1
+# expect: 2
+
+# Test empty range iteration
+foreach (var i in 5..=3) {
+    print("should not print");
+}
+
+foreach (var i in 5..<3) {
+    print("should not print");
+}
+
+# Test single element range
+foreach (var i in 5..=5) {
+    print(i);
+}
+# expect: 5
+
+foreach (var i in 5..<6) {
+    print(i);
+}
+# expect: 5

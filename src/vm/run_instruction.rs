@@ -476,6 +476,109 @@ macro_rules! run_instruction {
                 let instance_value = $self.heap.add_instance(instance);
                 $self.stack_push_value(instance_value);
             }
+            // Build a range. Expects two integers on the stack: start, end (end on top).
+            OpCode::BuildRangeInclusive => {
+                let end_value = $self.stack.pop().expect("Stack underflow");
+                let start_value = $self.stack.pop().expect("Stack underflow");
+                
+                let start = match start_value.as_generic_int().try_to_u64(&$self.heap) {
+                    Ok(val) => val as i64,
+                    Err(_) => match start_value {
+                        Value::Number(crate::value::Number::Integer(n)) => {
+                            // Try to convert to i64 directly
+                            match n {
+                                crate::value::GenericInt::Small(val) => val,
+                                _ => {
+                                    runtime_error!($self, "Range start too large for range creation.");
+                                    return InterpretResult::RuntimeError;
+                                }
+                            }
+                        }
+                        _ => {
+                            runtime_error!($self, "Range start must be an integer.");
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                };
+                
+                let end = match end_value.as_generic_int().try_to_u64(&$self.heap) {
+                    Ok(val) => val as i64,
+                    Err(_) => match end_value {
+                        Value::Number(crate::value::Number::Integer(n)) => {
+                            match n {
+                                crate::value::GenericInt::Small(val) => val,
+                                _ => {
+                                    runtime_error!($self, "Range end too large for range creation.");
+                                    return InterpretResult::RuntimeError;
+                                }
+                            }
+                        }
+                        _ => {
+                            runtime_error!($self, "Range end must be an integer.");
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                };
+
+                let range = Range::new(start, end, true);
+                let instance = Instance::new(
+                    *$self.heap.native_classes.get("Range").unwrap(),
+                    Some(range.into()),
+                );
+                let instance_value = $self.heap.add_instance(instance);
+                $self.stack_push_value(instance_value);
+            }
+            // Build an exclusive range. Expects two integers on the stack: start, end (end on top).
+            OpCode::BuildRangeExclusive => {
+                let end_value = $self.stack.pop().expect("Stack underflow");
+                let start_value = $self.stack.pop().expect("Stack underflow");
+                
+                let start = match start_value.as_generic_int().try_to_u64(&$self.heap) {
+                    Ok(val) => val as i64,
+                    Err(_) => match start_value {
+                        Value::Number(crate::value::Number::Integer(n)) => {
+                            match n {
+                                crate::value::GenericInt::Small(val) => val,
+                                _ => {
+                                    runtime_error!($self, "Range start too large for range creation.");
+                                    return InterpretResult::RuntimeError;
+                                }
+                            }
+                        }
+                        _ => {
+                            runtime_error!($self, "Range start must be an integer.");
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                };
+                
+                let end = match end_value.as_generic_int().try_to_u64(&$self.heap) {
+                    Ok(val) => val as i64,
+                    Err(_) => match end_value {
+                        Value::Number(crate::value::Number::Integer(n)) => {
+                            match n {
+                                crate::value::GenericInt::Small(val) => val,
+                                _ => {
+                                    runtime_error!($self, "Range end too large for range creation.");
+                                    return InterpretResult::RuntimeError;
+                                }
+                            }
+                        }
+                        _ => {
+                            runtime_error!($self, "Range end must be an integer.");
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                };
+
+                let range = Range::new(start, end, false);
+                let instance = Instance::new(
+                    *$self.heap.native_classes.get("Range").unwrap(),
+                    Some(range.into()),
+                );
+                let instance_value = $self.heap.add_instance(instance);
+                $self.stack_push_value(instance_value);
+            }
             // Import a module by filepath without qualifiers.
             // Expects either the path to the module or the name of
             // a stdlib module as a string as an operand.

@@ -85,6 +85,7 @@ pub enum NativeClass {
     ListIterator(ListIterator),
     Set(Set),
     Dict(Dict),
+    Range(Range),
 }
 
 impl NativeClass {
@@ -94,6 +95,7 @@ impl NativeClass {
             "ListIterator" => Self::ListIterator(ListIterator::new(None)),
             "Set" => Self::Set(Set::new()),
             "Dict" => Self::Dict(Dict::new()),
+            "Range" => unreachable!("Range should not be created via new()"),
             _ => unreachable!("Unknown native class `{}`.", kind),
         }
     }
@@ -104,6 +106,7 @@ impl NativeClass {
             Self::ListIterator(list_iter) => list_iter.to_string(heap),
             Self::Set(set) => set.to_string(heap),
             Self::Dict(dict) => dict.to_string(heap),
+            Self::Range(range) => range.to_string(heap),
         }
     }
 }
@@ -129,6 +132,12 @@ impl From<Set> for NativeClass {
 impl From<Dict> for NativeClass {
     fn from(dict: Dict) -> Self {
         Self::Dict(dict)
+    }
+}
+
+impl From<Range> for NativeClass {
+    fn from(range: Range) -> Self {
+        Self::Range(range)
     }
 }
 
@@ -308,5 +317,57 @@ impl Dict {
 impl std::fmt::Display for Dict {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.pad("<Dict Value>")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Range {
+    pub(crate) start: i64,
+    pub(crate) end: i64,
+    pub(crate) inclusive: bool,
+}
+
+impl Range {
+    #[must_use]
+    pub(crate) fn new(start: i64, end: i64, inclusive: bool) -> Self {
+        Self { start, end, inclusive }
+    }
+
+    fn to_string(&self, _heap: &Heap) -> String {
+        if self.inclusive {
+            format!("{}..={}", self.start, self.end)
+        } else {
+            format!("{}..<{}", self.start, self.end)
+        }
+    }
+
+    pub(crate) fn contains(&self, value: i64) -> bool {
+        if self.inclusive {
+            value >= self.start && value <= self.end
+        } else {
+            value >= self.start && value < self.end
+        }
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        if self.start > self.end {
+            return 0;
+        }
+        let diff = self.end - self.start;
+        if self.inclusive {
+            (diff + 1) as usize
+        } else {
+            diff as usize
+        }
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl std::fmt::Display for Range {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad("<Range Value>")
     }
 }

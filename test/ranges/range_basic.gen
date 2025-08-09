@@ -1,0 +1,27 @@
+var r1 = 1..=5;
+print(r1); # expect: 1..=5
+print(type(r1)); # expect: <type Range>
+
+var r2 = 0..<3;
+print(r2); # expect: 0..<3
+print(type(r2)); # expect: <type Range>
+
+# Test contains method
+print(r1.contains(3)); # expect: true
+print(r1.contains(5)); # expect: true
+print(r1.contains(6)); # expect: false
+
+print(r2.contains(0)); # expect: true  
+print(r2.contains(2)); # expect: true
+print(r2.contains(3)); # expect: false
+
+# Test len method
+print(r1.len()); # expect: 5
+print(r2.len()); # expect: 3
+
+# Test empty ranges
+var empty1 = 5..=3;
+print(empty1.len()); # expect: 0
+
+var empty2 = 5..<3;
+print(empty2.len()); # expect: 0

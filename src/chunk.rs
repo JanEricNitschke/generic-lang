@@ -132,6 +132,8 @@ pub enum OpCode {
     BuildList,
     BuildSet,
     BuildDict,
+    BuildRangeInclusive,
+    BuildRangeExclusive,
 
     Import,
     ImportFrom,
@@ -345,7 +347,8 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
                 | BitOr | BitXor | Nil | True | False | StopIteration | Not | Equal | Greater
                 | Less | LessEqual | GreaterEqual | NotEqual | Pop | Dup | CloseUpvalue
                 | Inherit | Return | LoadOne | LoadTwo | LoadZero | LoadMinusOne | LoadOnef
-                | LoadZerof | Swap | PopHandler | CompareException | Throw | Reraise => 0,
+                | LoadZerof | Swap | PopHandler | CompareException | Throw | Reraise 
+                | BuildRangeInclusive | BuildRangeExclusive => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | GetUpvalue | SetUpvalue | Class | GetProperty
                 | SetProperty | Method | GetSuper | BuildList | BuildSet | BuildDict | DupN => 1,
@@ -802,7 +805,9 @@ impl Debug for InstructionDisassembler<'_, '_> {
                 PopHandler,
                 CompareException,
                 Throw,
-                Reraise
+                Reraise,
+                BuildRangeInclusive,
+                BuildRangeExclusive
             ),
         )?;
         Ok(())

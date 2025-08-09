@@ -5,6 +5,7 @@
 mod dict;
 mod list;
 mod native_functions;
+mod range;
 mod set;
 
 use crate::vm::VM;
@@ -17,6 +18,8 @@ use crate::natives::list::{
 use crate::natives::set::{set_contains_native, set_insert_native, set_remove_native};
 
 use crate::natives::dict::{dict_get_native, dict_set_native};
+
+use crate::natives::range::{range_contains_native, range_iter_native, range_len_native, range_next_native};
 
 use crate::natives::native_functions::{
     assert_native, clock_native, delattr_native, getattr_native, hasattr_native, input_native,
@@ -66,4 +69,10 @@ pub fn define(vm: &mut VM) {
     vm.define_native_class(&"Dict", true);
     vm.define_native_method(&"Dict", &"__getitem__", &[1], dict_get_native);
     vm.define_native_method(&"Dict", &"__setitem__", &[2], dict_set_native);
+
+    vm.define_native_class(&"Range", true);
+    vm.define_native_method(&"Range", &"contains", &[1], range_contains_native);
+    vm.define_native_method(&"Range", &"len", &[0], range_len_native);
+    vm.define_native_method(&"Range", &"__iter__", &[0], range_iter_native);
+    vm.define_native_method(&"Range", &"__next__", &[0], range_next_native);
 }
