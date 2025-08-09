@@ -495,6 +495,7 @@ macro_rules! run_instruction {
             // Import a set of names from a module.
             // Number of names to import are the operand.
             // Module to import them from and the names are on the stack.
+            // Items are on the stack in order from left to right
             // (... --- modulename --- name1 --- name2 --- ... --- nameN)
             OpCode::ImportFrom => {
                 let file_path = $self.read_string("OP_IMPORT_AS");
@@ -513,6 +514,45 @@ macro_rules! run_instruction {
                 if let Some(value) =
                     $self.import_file(file_path, names_to_import, None, local_import)
                 {
+                    return value;
+                }
+            }
+            // Register an exception handler.
+            // The operand is the offset from the current instruction right before
+            // the try block to the start of the first catch block.
+            // The know where to  resume the handler we need the frame we are -> the frames to keep
+            // as well as the instruction pointer to jump to in that frame.
+            // We also need to know the stack length to be able to remove any
+            // left over values on there.
+            OpCode::RegisterCatches => {
+                let offset = $self.read_16bit_number();
+                let target_ip = $self.callstack.current().ip + offset;
+                let frames_to_keep = $self.callstack.len();
+                let stack_length = $self.stack.len();
+                $self.register_exception_handler(frames_to_keep, target_ip, stack_length);
+            }
+            // Just pop the top most handler. No operand, no work with the stack.
+            OpCode::PopHandler => {
+                $self.pop_exception_handler();
+            }
+            // Throw the exception on the top of the stack.
+            // We pop the exception, unwind to the handler and push the exception again.
+            OpCode::Throw => {
+                let exception = $self.stack.pop().expect("Stack underflow in OP_THROW.");
+                if let Some(value) = $self.unwind(exception) {
+                    return value;
+                }
+            }
+            // Layout is Stack Top: [exception_class_to_catch, exception_value_raised]
+            OpCode::CompareException => {
+                if let Some(value) = $self.compare_exception() {
+                    return value;
+                }
+            }
+            //  We expect either the exception at the stop of the stack that should be reraised
+            // or nil if we handled the exception.
+            OpCode::Reraise => {
+                if let Some(value) = $self.reraise_exception() {
                     return value;
                 }
             }

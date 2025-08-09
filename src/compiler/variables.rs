@@ -34,7 +34,6 @@ impl<'scanner> Compiler<'scanner, '_> {
                 locals.pop();
             }
         }
-
         for instruction in instructions {
             self.emit_byte(instruction, line);
         }

@@ -8,7 +8,7 @@ use crate::value::Closure;
 /// of the function in the global stack.
 ///
 /// Additionally, it contains a boolean indicating whether the closure is a module,
-/// in order to handle transferring globals one module end.
+/// in order to handle transferring globals on module end.
 #[derive(Debug)]
 pub(super) struct CallFrame {
     pub(super) closure: ClosureId,
@@ -53,11 +53,20 @@ impl CallStack {
         self.frames.is_empty()
     }
 
-    pub(super) fn pop(&mut self, heap: &Heap) -> Option<CallFrame> {
-        let retval = self.frames.pop();
+    pub fn set_currents(&mut self, heap: &Heap) {
         self.current_closure = self.frames.last().map(|f| f.closure);
         self.current_function = self.current_closure.map(|c| c.to_value(heap).function);
+    }
+
+    pub(super) fn pop(&mut self, heap: &Heap) -> Option<CallFrame> {
+        let retval = self.frames.pop();
+        self.set_currents(heap);
         retval
+    }
+
+    pub(super) fn truncate(&mut self, n: usize, heap: &Heap) {
+        self.frames.truncate(n);
+        self.set_currents(heap);
     }
 
     pub(super) fn push(&mut self, closure: ClosureId, stack_base: usize, heap: &Heap) {

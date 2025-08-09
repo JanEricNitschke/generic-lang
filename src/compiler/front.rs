@@ -197,6 +197,10 @@ impl Compiler<'_, '_> {
     fn statement(&mut self) {
         if self.match_(TK::If) || self.match_(TK::Unless) {
             self.conditional_statement(self.check_previous(TK::If));
+        } else if self.match_(TK::Try) {
+            self.try_statement();
+        } else if self.match_(TK::Throw) {
+            self.throw_statement();
         } else if self.match_(TK::LeftBrace) {
             self.scoped_block();
         } else if self.match_(TK::For) {
@@ -219,15 +223,122 @@ impl Compiler<'_, '_> {
             self.import_from_statement();
         } else if self.match_(TK::Async) || self.match_(TK::Await) || self.match_(TK::Yield) {
             self.error("Async, await and yield are not yet implemented.");
-        } else if self.match_(TK::Try)
-            || self.match_(TK::Catch)
-            || self.match_(TK::Finally)
-            || self.match_(TK::Throw)
-        {
-            self.error("Try, catch, finally and throw are not yet implemented.");
+        } else if self.match_(TK::Finally) {
+            self.error("Finally is not yet implemented.");
         } else {
             self.expression_statement();
         }
+    }
+
+    fn try_statement(&mut self) {
+        let mut first_catch_start = Some(self.emit_jump(OpCode::RegisterCatches));
+
+        self.consume(TK::LeftBrace, "Expect '{' after try");
+        self.scoped_block();
+
+        self.emit_byte(OpCode::PopHandler, self.line());
+        let jump_to_else = self.emit_jump(OpCode::Jump);
+        let mut catch_jumps_to_end = Vec::new();
+        let mut jump_to_next_catch = None;
+
+        while self.match_(TK::Catch) {
+            if let Some(first_catch_offset) = first_catch_start {
+                self.patch_jump(first_catch_offset);
+                first_catch_start = None;
+            }
+
+            self.begin_scope();
+
+            let exception_var_name = "@exception";
+            // Declare space for where the exception variable will be sitting on the stack.
+            self.add_local(
+                self.synthetic_identifier_token(exception_var_name.as_bytes()),
+                false,
+            );
+            self.define_variable(None, false);
+
+            if let Some(jump) = jump_to_next_catch {
+                self.patch_jump(jump);
+            }
+
+            let mut jumps_to_catch_body = Vec::new();
+
+            if self.match_(TK::LeftParen) {
+                loop {
+                    self.expression();
+                    // This compares the exception at STACK[-2] with the class at STACK[-1]
+                    // Pops the class and leaves the comparison result above the exception.
+                    self.emit_byte(OpCode::CompareException, self.line());
+                    jumps_to_catch_body.push(self.emit_jump(OpCode::JumpIfTrue));
+                    self.emit_byte(OpCode::Pop, self.line());
+
+                    if !self.match_(TK::Comma) {
+                        break;
+                    }
+                }
+                self.consume(TK::RightParen, "Expect ')' after exception types.");
+            } else {
+                self.expression();
+                self.emit_byte(OpCode::CompareException, self.line());
+                jumps_to_catch_body.push(self.emit_jump(OpCode::JumpIfTrue));
+                self.emit_byte(OpCode::Pop, self.line());
+            }
+
+            jump_to_next_catch = Some(self.emit_jump(OpCode::Jump));
+
+            for jump in jumps_to_catch_body {
+                self.patch_jump(jump);
+            }
+            self.emit_byte(OpCode::Pop, self.line());
+
+            if self.match_(TK::As) {
+                let global = self.parse_variable("Expect exception variable name.", false);
+                self.named_variable(&exception_var_name, false);
+                self.define_variable(global, false);
+            }
+
+            self.consume(TK::LeftBrace, "Expect '{' after catch clause");
+            self.block();
+            self.end_scope();
+            // We remove the exception with the end of the scope.
+            // Leave nil on the stack to indicate the the reraise that we caught the exception.
+            self.emit_byte(OpCode::Nil, self.line());
+            catch_jumps_to_end.push(self.emit_jump(OpCode::Jump));
+        }
+
+        self.patch_jump(jump_to_else);
+
+        if self.match_(TK::Else) {
+            self.consume(TK::LeftBrace, "Expect '{' after else");
+            self.block();
+        }
+        let jump_over_reraise = self.emit_jump(OpCode::Jump);
+
+        match jump_to_next_catch {
+            Some(jump) => self.patch_jump(jump),
+            None => self.error("Each try block needs at least one catch clause."),
+        }
+        for jump in catch_jumps_to_end {
+            self.patch_jump(jump);
+        }
+        self.emit_byte(OpCode::Reraise, self.line());
+
+        self.patch_jump(jump_over_reraise);
+
+        // TODO: Add this back
+        // Finally is tricky because it needs to interrupt not only exceptions
+        // but also return, break and continue.
+        // if self.match_(TK::Finally) {
+        //     // Parse finally block
+        //     self.consume(TK::LeftBrace, "Expect '{' after finally");
+        //     self.block();
+        // }
+    }
+
+    fn throw_statement(&mut self) {
+        self.expression();
+        self.consume(TK::Semicolon, "Expect ';' after throw expression.");
+        self.emit_byte(OpCode::Throw, self.line());
     }
 
     /// Parse a conditional statement, either `if` or `unless`.
