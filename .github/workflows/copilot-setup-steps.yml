@@ -1,0 +1,35 @@
+name: "Copilot Setup Steps"
+
+# Automatically run the setup steps when they are changed to allow for easy validation, and
+# allow manual testing through the repository's "Actions" tab
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+    - name: Set up Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+    - name: Build
+      run: cargo build --verbose
+    - name: Setup clippy
+      run: rustup component add clippy
+    - name: Install Miri
+      run: |
+        rustup toolchain install nightly --component miri
+        cargo +nightly miri setup
+    - name: Setup dart
+      uses: dart-lang/setup-dart@v1
+      with:
+        sdk: stable
