@@ -488,36 +488,43 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// `key: value`. Whether the code is parsed as set or dict is determined
     /// by the presence of a colon after the first token.
     ///
-    /// Another noteworthy point is that empty braces are parsed as a dict.
+    /// Empty braces `{}` are parsed as an empty set.
+    /// Empty dict literal is `{:}`.
     fn hash_collection(&mut self, _can_assign: bool) {
         let mut item_count = 0;
-        let mut is_dict = true;
+        let mut is_dict = false;
 
         if !self.check(TK::RightBrace) {
-            self.parse_precedence(Precedence::non_assigning());
-            is_dict = self.match_(TK::Colon);
-
-            if is_dict {
+            // Check for empty dict literal {:}
+            if self.check(TK::Colon) {
+                is_dict = true;
+                self.advance(); // consume the colon
+            } else {
                 self.parse_precedence(Precedence::non_assigning());
-            }
-            item_count += 1;
-            // Handle potential trailing comma after (first/only) element
-            self.match_(TK::Comma);
+                is_dict = self.match_(TK::Colon);
 
-            while !self.check(TK::RightBrace) {
                 if is_dict {
-                    self.parse_dict_entry();
-                } else {
                     self.parse_precedence(Precedence::non_assigning());
                 }
-
-                if item_count == 255 {
-                    self.error("Can't have more than 255 items in a set literal.");
-                    break;
-                }
                 item_count += 1;
-                if !self.match_(TK::Comma) {
-                    break;
+                // Handle potential trailing comma after (first/only) element
+                self.match_(TK::Comma);
+
+                while !self.check(TK::RightBrace) {
+                    if is_dict {
+                        self.parse_dict_entry();
+                    } else {
+                        self.parse_precedence(Precedence::non_assigning());
+                    }
+
+                    if item_count == 255 {
+                        self.error("Can't have more than 255 items in a set literal.");
+                        break;
+                    }
+                    item_count += 1;
+                    if !self.match_(TK::Comma) {
+                        break;
+                    }
                 }
             }
         }

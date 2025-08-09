@@ -269,14 +269,18 @@ impl Dict {
     }
 
     fn to_string(&self, heap: &Heap) -> String {
-        format!(
-            "{{{}}}",
-            self.items
-                .iter()
-                .map(|(key, value)| format!("{}: {}", key.to_string(heap), value.to_string(heap)))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
+        if self.items.is_empty() {
+            "{:}".to_string()
+        } else {
+            format!(
+                "{{{}}}",
+                self.items
+                    .iter()
+                    .map(|(key, value)| format!("{}: {}", key.to_string(heap), value.to_string(heap)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        }
     }
 
     pub(crate) fn add(&mut self, key: Value, value: Value, heap: &Heap) {
