@@ -92,7 +92,7 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         RightParen    = [None,            None,      None      ],
         LeftBrace     = [hash_collection, None,      None      ],
         RightBrace    = [None,            None,      None      ],
-        Colon         = [None,            None,      None      ],
+        Colon         = [None,            binary,    Assignment],
         LeftBracket   = [list,            subscript, Call      ],
         RightBracket  = [None,            None,      None      ],
         Comma         = [None,            None,      None      ],
@@ -272,6 +272,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             TK::SlashSlash => self.emit_byte(OpCode::FloorDiv, line),
             TK::DotDotEqual => self.emit_byte(OpCode::BuildRangeInclusive, line),
             TK::DotDotLess => self.emit_byte(OpCode::BuildRangeExclusive, line),
+            TK::Colon => self.emit_byte(OpCode::BuildRational, line),
             TK::In => self.in_(),
             _ => unreachable!("Unknown binary operator: {}", operator),
         }

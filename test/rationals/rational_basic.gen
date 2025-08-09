@@ -1,0 +1,29 @@
+# Basic rational number functionality
+var r1 = 3:4;
+print(r1); # expect: 3:4
+print(type(r1)); # expect: <type rational>
+
+# Rational reduction
+var r2 = 6:8;  
+print(r2); # expect: 3:4
+
+# Integer rational (denominator = 1)
+var r3 = 5:1;
+print(r3); # expect: 5
+
+# Negative rationals
+var r4 = -3:4;
+print(r4); # expect: -3:4
+
+var r5 = 3:-4; 
+print(r5); # expect: -3:4
+
+# Division by zero error
+# var bad = 3:0; # This would cause runtime error
+
+# Arithmetic with rationals (converts to float for now)
+# Note: Due to precedence issues, rationals need parentheses in complex expressions
+print((1:2) + (1:3)); # expect: 0.8333333333333333
+print((3:4) - (1:4)); # expect: 0.5
+print((2:3) * (3:4)); # expect: 0.5
+print((3:4) / (2:3)); # expect: 1.125

@@ -130,6 +130,20 @@ pub(super) fn to_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Valu
                 )),
             },
             Number::Integer(_) => Ok(Value::Number(*n)),
+            Number::Rational(r) => {
+                if r.is_integer() {
+                    Ok(Value::Number(Number::Integer(GenericInt::Small(r.numerator))))
+                } else {
+                    // Convert to float first, then to int
+                    match GenericInt::try_from_f64(r.to_f64(), &mut vm.heap) {
+                        Ok(i) => Ok(Value::Number(i.into())),
+                        Err(_) => Err(format!(
+                            "'int' could not convert rational '{}' to an integer.",
+                            r.to_string()
+                        )),
+                    }
+                }
+            }
         },
         Value::Bool(value) => Ok(Value::Number(i64::from(*value).into())),
         x => Err(format!(
@@ -208,6 +222,7 @@ pub(super) fn type_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value,
         Value::Number(n) => match n {
             Number::Float(_) => Value::String(vm.heap.string_id(&"<type float>")),
             Number::Integer(_) => Value::String(vm.heap.string_id(&"<type int>")),
+            Number::Rational(_) => Value::String(vm.heap.string_id(&"<type rational>")),
         },
         Value::String(_) => Value::String(vm.heap.string_id(&"<type string>")),
         Value::Upvalue(_) => Value::String(vm.heap.string_id(&"<type upvalue>")),

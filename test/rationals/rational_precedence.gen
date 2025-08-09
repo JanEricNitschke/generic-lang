@@ -1,0 +1,18 @@
+# Note: Due to precedence issues, rational operator (:) has very low precedence
+# This means expressions need parentheses for correct evaluation
+
+# These work correctly:
+print(true ? 1 : 2); # expect: 1
+print({1: 2, 3: 4}); # expect: {3: 4, 1: 2}
+
+# Basic rationals work:
+print(3:4); # expect: 3:4
+
+# But precedence with arithmetic requires parentheses:
+# print(1 + 2:3); would be parsed as (1 + 2):3 = 3:3 = 1
+print(1 + (2:3)); # expect: 1.6666666666666665
+print((1 + 2):3); # expect: 1
+
+# Comparison with rationals:
+print((3:4) == (6:8)); # expect: true
+print((1:2) < (3:4));  # expect: true
