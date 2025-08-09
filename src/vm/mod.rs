@@ -16,6 +16,7 @@ mod arithmetics;
 mod run_instruction;
 mod bytecode;
 mod callstack;
+mod exception_handling;
 mod state;
 mod variables;
 
@@ -23,6 +24,7 @@ mod functions;
 
 use arithmetics::{BinaryOpResult, IntoResultValue};
 use callstack::CallStack;
+use exception_handling::ExceptionHandler;
 
 use rustc_hash::FxHashMap as HashMap;
 use std::collections::VecDeque;
@@ -81,6 +83,7 @@ pub struct VM {
     pub(super) heap: Heap,
     pub(super) stack: Vec<Value>,
     callstack: CallStack,
+    exception_handlers: Vec<ExceptionHandler>,
     open_upvalues: VecDeque<UpvalueId>,
     // Could also keep a cache of the last module or its globals for performance
     modules: Vec<ModuleId>,
@@ -96,8 +99,9 @@ impl VM {
     pub(super) fn new(path: PathBuf) -> Self {
         Self {
             heap: Heap::new(),
-            callstack: CallStack::new(),
             stack: Vec::with_capacity(crate::config::STACK_MAX),
+            callstack: CallStack::new(),
+            exception_handlers: Vec::new(),
             open_upvalues: VecDeque::new(),
             modules: Vec::new(),
             path,

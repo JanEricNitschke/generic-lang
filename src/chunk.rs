@@ -132,6 +132,12 @@ pub enum OpCode {
     Import,
     ImportFrom,
     ImportAs,
+
+    RegisterCatches,
+    PopHandler,
+    CompareException,
+    Reraise,
+    Throw,
 }
 
 #[cfg(test)]
@@ -335,11 +341,12 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
                 | BitOr | BitXor | Nil | True | False | StopIteration | Not | Equal | Greater
                 | Less | LessEqual | GreaterEqual | NotEqual | Pop | Dup | CloseUpvalue
                 | Inherit | Return | LoadOne | LoadTwo | LoadZero | LoadMinusOne | LoadOnef
-                | LoadZerof | Swap => 0,
+                | LoadZerof | Swap | PopHandler | CompareException | Throw | Reraise => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | GetUpvalue | SetUpvalue | Class | GetProperty
                 | SetProperty | Method | GetSuper | BuildList | BuildSet | BuildDict | DupN => 1,
-                Jump | JumpIfFalse | JumpIfTrue | Loop | Invoke | Import | SuperInvoke => 2,
+                Jump | JumpIfFalse | JumpIfTrue | RegisterCatches | Loop | Invoke | Import
+                | SuperInvoke => 2,
                 ConstantLong
                 | GetGlobalLong
                 | SetGlobalLong
@@ -739,7 +746,7 @@ impl Debug for InstructionDisassembler<'_, '_> {
                 BuildDict, DupN,
             ),
             byte_long(GetLocalLong, SetLocalLong),
-            jump(Jump, JumpIfFalse, JumpIfTrue, Loop),
+            jump(Jump, JumpIfFalse, JumpIfTrue, Loop, RegisterCatches),
             invoke(Invoke, SuperInvoke),
             simple(
                 Add,
@@ -776,6 +783,10 @@ impl Debug for InstructionDisassembler<'_, '_> {
                 LoadOnef,
                 LoadZerof,
                 Swap,
+                PopHandler,
+                CompareException,
+                Throw,
+                Reraise
             ),
         )?;
         Ok(())

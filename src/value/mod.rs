@@ -289,7 +289,7 @@ impl Value {
         }
     }
 
-    pub(super) fn as_instance(&mut self) -> &InstanceId {
+    pub(super) fn as_instance(&self) -> &InstanceId {
         match self {
             Self::Instance(i) => i,
             _ => unreachable!("Expected Instance, found `{:?}`", self),
