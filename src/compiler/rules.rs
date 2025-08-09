@@ -284,13 +284,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// We work exactly like that except we always have a "then" and we only have expressions
     /// instead of blocks.
     fn ternary(&mut self, _can_assign: bool) {
-        let line = self.line();
+        let then_jump = self.emit_jump(OpCode::PopJumpIfFalse);
 
-        let then_jump = self.emit_jump(OpCode::JumpIfFalse);
-
-        // First value: We pop the condition and parse the "then" expression.
-        // And jump over the code for the "else" expression.
-        self.emit_byte(OpCode::Pop, line);
+        // First value: We parse the "then" expression and jump over the "else" expression.
+        // The condition has already been popped by PopJumpIfFalse.
         self.parse_precedence(Precedence::Ternary);
         let else_jump = self.emit_jump(OpCode::Jump);
 
@@ -302,8 +299,6 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         // Patch the jump over the "else" expression to continue after the end of the "then" expression.
         self.patch_jump(then_jump);
 
-        // Here we first need to pop the condition, because we jumped over that.
-        self.emit_byte(OpCode::Pop, line);
         self.parse_precedence(Precedence::Ternary);
 
         self.patch_jump(else_jump);
@@ -624,8 +619,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// falsey or the last operand if all are truthy.
     /// The second expression is not evaluated if the first is already false.
     fn and(&mut self, _can_assign: bool) {
-        let end_jump = self.emit_jump(OpCode::JumpIfFalse);
-        self.emit_byte(OpCode::Pop, self.line());
+        let end_jump = self.emit_jump(OpCode::JumpIfFalseOrPop);
         self.parse_precedence(Precedence::And);
         self.patch_jump(end_jump);
     }
@@ -634,8 +628,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ///
     /// Work equivalently to [`Compiler::and`].
     fn or(&mut self, _can_assign: bool) {
-        let end_jump = self.emit_jump(OpCode::JumpIfTrue);
-        self.emit_byte(OpCode::Pop, self.line());
+        let end_jump = self.emit_jump(OpCode::JumpIfTrueOrPop);
         self.parse_precedence(Precedence::Or);
         self.patch_jump(end_jump);
     }

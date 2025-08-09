@@ -69,6 +69,10 @@ pub enum OpCode {
     Jump,
     JumpIfFalse,
     JumpIfTrue,
+    PopJumpIfFalse,
+    PopJumpIfTrue,
+    JumpIfTrueOrPop,
+    JumpIfFalseOrPop,
     Loop,
     Call,
 
@@ -345,7 +349,8 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | GetUpvalue | SetUpvalue | Class | GetProperty
                 | SetProperty | Method | GetSuper | BuildList | BuildSet | BuildDict | DupN => 1,
-                Jump | JumpIfFalse | JumpIfTrue | RegisterCatches | Loop | Invoke | Import
+                Jump | JumpIfFalse | JumpIfTrue | PopJumpIfFalse | PopJumpIfTrue
+                | JumpIfTrueOrPop | JumpIfFalseOrPop | RegisterCatches | Loop | Invoke | Import
                 | SuperInvoke => 2,
                 ConstantLong
                 | GetGlobalLong
@@ -691,6 +696,7 @@ macro_rules! disassemble {
 }
 
 impl Debug for InstructionDisassembler<'_, '_> {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let code = self.chunk.code();
         let offset = self.offset;
@@ -746,7 +752,17 @@ impl Debug for InstructionDisassembler<'_, '_> {
                 BuildDict, DupN,
             ),
             byte_long(GetLocalLong, SetLocalLong),
-            jump(Jump, JumpIfFalse, JumpIfTrue, Loop, RegisterCatches),
+            jump(
+                Jump,
+                JumpIfFalse,
+                JumpIfTrue,
+                PopJumpIfFalse,
+                PopJumpIfTrue,
+                JumpIfTrueOrPop,
+                JumpIfFalseOrPop,
+                Loop,
+                RegisterCatches
+            ),
             invoke(Invoke, SuperInvoke),
             simple(
                 Add,
