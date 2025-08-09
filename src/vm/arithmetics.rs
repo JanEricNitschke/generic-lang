@@ -1,6 +1,6 @@
 use super::{InterpretResult, VM};
 use crate::chunk::CodeOffset;
-use crate::value::Value;
+use crate::value::{Value, Number};
 
 #[derive(PartialEq, Eq)]
 pub(super) enum BinaryOpResult {
@@ -97,6 +97,23 @@ macro_rules! binary_op {
 impl VM {
     pub(super) fn add(&mut self) -> Option<InterpretResult> {
         let slice_start = self.stack.len() - 2;
+        
+        // First try __add__ overloading if left operand is an instance
+        if let [left, _right] = &self.stack[slice_start..] {
+            if let Value::Instance(_instance) = left {
+                let add_method_name = self.heap.string_id(&"__add__");
+                
+                // Use the invoke method to call __add__ on the instance
+                // Stack is currently: [..., left, right]
+                // invoke expects: [..., instance, arg1, arg2, ...] where instance is at position -arg_count-1
+                if self.invoke(add_method_name, 1) {
+                    return None; // Method call successful, execution continues
+                }
+                // If invoke returned false, the method doesn't exist, fall through to default behavior
+            }
+        }
+        
+        // Fall back to default numeric/string addition behavior
         let ok = match &self.stack[slice_start..] {
             [left, right] => match (&left, &right) {
                 (Value::Number(a), Value::Number(b)) => {
