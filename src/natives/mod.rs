@@ -75,4 +75,6 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"Range", &"len", &[0], range_len_native);
     vm.define_native_method(&"Range", &"__iter__", &[0], range_iter_native);
     vm.define_native_method(&"Range", &"__next__", &[0], range_next_native);
+
+    vm.define_native_class(&"Tuple", true);
 }

@@ -632,6 +632,26 @@ macro_rules! run_instruction {
                     }
                 }
             }
+            // Build a tuple. The number of items is the operand.
+            // Items are on the stack in order from left to right
+            // (... --- item1 --- item2 --- ... --- itemN)
+            OpCode::BuildTuple => {
+                let mut tuple = Tuple::new();
+
+                let arg_count = $self.read_byte();
+                for index in (0..arg_count).rev() {
+                    tuple.items.push(*$self.peek(index as usize).unwrap());
+                }
+                for _ in 0..arg_count {
+                    $self.stack.pop();
+                }
+                let instance = Instance::new(
+                    *$self.heap.native_classes.get("Tuple").unwrap(),
+                    Some(tuple.into()),
+                );
+                let instance_value = $self.heap.add_instance(instance);
+                $self.stack_push_value(instance_value);
+            }
             // Import a module by filepath without qualifiers.
             // Expects either the path to the module or the name of
             // a stdlib module as a string as an operand.

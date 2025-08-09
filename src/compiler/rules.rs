@@ -16,6 +16,7 @@ use crate::scanner::TokenKind as TK;
 pub(super) enum Precedence {
     None,
     Assignment, // =
+    Tuple,      // ,
     Ternary,    // ?:
     Or,         // or
     And,        // and
@@ -273,6 +274,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             TK::DotDotEqual => self.emit_byte(OpCode::BuildRangeInclusive, line),
             TK::DotDotLess => self.emit_byte(OpCode::BuildRangeExclusive, line),
             TK::Colon => self.emit_byte(OpCode::BuildRational, line),
+            TK::Comma => self.emit_byte(OpCode::BuildTuple, line),
             TK::In => self.in_(),
             _ => unreachable!("Unknown binary operator: {}", operator),
         }
@@ -411,10 +413,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
-    // TODO: Make this also create tuples?
     /// Used for grouping expressions to overwrite default precedence.
-    ///
-    /// The full expression within the grouping will be parsed as one.
     fn grouping(&mut self, _can_assign: bool) {
         self.expression();
         self.consume(TK::RightParen, "Expect ')' after expression.");
