@@ -1,3 +1,7 @@
 var my_set = {1,2,3};
 print(my_set); # expect: {2, 3, 1}
 print(type(my_set)); # expect: <type Set>
+
+var my_empty_set = {};
+print(my_empty_set); # expect: {}
+print(type(my_empty_set)); # expect: <type Set>

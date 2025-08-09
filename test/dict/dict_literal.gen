@@ -3,8 +3,8 @@ var my_dict = {
     "age": 30,
     "city": "New York"
 };
-var my_empty_dict = {};
-print(my_empty_dict); # expect: {}
+var my_empty_dict = {:};
+print(my_empty_dict); # expect: {:}
 print(type(my_empty_dict)); # expect: <type Dict>
 print(my_dict["name"]); # expect: John
 print(my_dict["city"]); # expect: New York
