@@ -1,6 +1,6 @@
 use super::{InterpretResult, VM};
 use crate::chunk::CodeOffset;
-use crate::value::{Value, Number};
+use crate::value::Value;
 
 #[derive(PartialEq, Eq)]
 pub(super) enum BinaryOpResult {
@@ -100,16 +100,18 @@ impl VM {
         
         // First try __add__ overloading if left operand is an instance
         if let [left, _right] = &self.stack[slice_start..] {
-            if let Value::Instance(_instance) = left {
+            if let Value::Instance(instance) = left {
                 let add_method_name = self.heap.string_id(&"__add__");
+                let instance_data = instance.to_value(&self.heap);
                 
-                // Use the invoke method to call __add__ on the instance
-                // Stack is currently: [..., left, right]
-                // invoke expects: [..., instance, arg1, arg2, ...] where instance is at position -arg_count-1
-                if self.invoke(add_method_name, 1) {
+                // Check if the method exists before invoking to avoid error messages
+                let has_method = instance_data.fields.contains_key("__add__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&add_method_name);
+                
+                if has_method && self.invoke(add_method_name, 1) {
                     return None; // Method call successful, execution continues
                 }
-                // If invoke returned false, the method doesn't exist, fall through to default behavior
+                // If method doesn't exist or invoke failed, fall through to default behavior
             }
         }
         
@@ -141,6 +143,110 @@ impl VM {
             runtime_error!(
                 self,
                 "Operands must be two numbers or two strings. Got: [{}]",
+                self.stack[slice_start..]
+                    .iter()
+                    .map(|v| v.to_string(&self.heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            return Some(InterpretResult::RuntimeError);
+        }
+        None
+    }
+
+    pub(super) fn subtract(&mut self) -> Option<InterpretResult> {
+        let slice_start = self.stack.len() - 2;
+        
+        // First try __sub__ overloading if left operand is an instance
+        if let [left, _right] = &self.stack[slice_start..] {
+            if let Value::Instance(instance) = left {
+                let sub_method_name = self.heap.string_id(&"__sub__");
+                let instance_data = instance.to_value(&self.heap);
+                
+                // Check if the method exists before invoking to avoid error messages
+                let has_method = instance_data.fields.contains_key("__sub__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&sub_method_name);
+                
+                if has_method && self.invoke(sub_method_name, 1) {
+                    return None; // Method call successful, execution continues
+                }
+                // If method doesn't exist or invoke failed, fall through to default behavior
+            }
+        }
+        
+        // Fall back to default numeric subtraction behavior
+        let ok = match &self.stack[slice_start..] {
+            [left, right] => {
+                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
+                    let value = (a.sub(*b, &mut self.heap)).into();
+                    self.stack.pop();
+                    self.stack.pop();
+                    self.stack_push_value(value);
+                    true
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        };
+
+        if !ok {
+            runtime_error!(
+                self,
+                "Operands must be numbers. Got: [{}]",
+                self.stack[slice_start..]
+                    .iter()
+                    .map(|v| v.to_string(&self.heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            return Some(InterpretResult::RuntimeError);
+        }
+        None
+    }
+
+    pub(super) fn multiply(&mut self) -> Option<InterpretResult> {
+        let slice_start = self.stack.len() - 2;
+        
+        // First try __mul__ overloading if left operand is an instance
+        if let [left, _right] = &self.stack[slice_start..] {
+            if let Value::Instance(instance) = left {
+                let mul_method_name = self.heap.string_id(&"__mul__");
+                let instance_data = instance.to_value(&self.heap);
+                
+                // Check if the method exists before invoking to avoid error messages
+                let has_method = instance_data.fields.contains_key("__mul__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&mul_method_name);
+                
+                if has_method && self.invoke(mul_method_name, 1) {
+                    return None; // Method call successful, execution continues
+                }
+                // If method doesn't exist or invoke failed, fall through to default behavior
+            }
+        }
+        
+        // Fall back to default numeric multiplication behavior
+        let ok = match &self.stack[slice_start..] {
+            [left, right] => {
+                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
+                    let value = (a.mul(*b, &mut self.heap)).into();
+                    self.stack.pop();
+                    self.stack.pop();
+                    self.stack_push_value(value);
+                    true
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        };
+
+        if !ok {
+            runtime_error!(
+                self,
+                "Operands must be numbers. Got: [{}]",
                 self.stack[slice_start..]
                     .iter()
                     .map(|v| v.to_string(&self.heap))

@@ -1,0 +1,19 @@
+class Vector {
+    __init__(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    # Scalar multiplication - scale vector by a number
+    __mul__(scalar) {
+        return Vector(this.x * scalar, this.y * scalar);
+    }
+}
+
+var v1 = Vector(3, 4);
+var v2 = v1 * 2;
+print(v2.x); # expect: 6
+print(v2.y); # expect: 8
+
+# Test that regular number multiplication still works
+print(5 * 7); # expect: 35

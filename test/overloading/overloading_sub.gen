@@ -1,0 +1,24 @@
+class Vector {
+    __init__(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    __sub__(other) {
+        return Vector(this.x - other.x, this.y - other.y);
+    }
+}
+
+var v1 = Vector(5, 7);
+var v2 = Vector(2, 3);
+var v3 = v1 - v2;
+print(v3.x); # expect: 3
+print(v3.y); # expect: 4
+
+# Test that regular number subtraction still works
+print(10 - 3); # expect: 7
+
+# Test error case - object without __sub__ should fall back to numeric error
+class NoSub {}
+var noSub = NoSub();
+noSub - 5; # expect runtime error: Operands must be numbers. Got: [<NoSub instance>, 5]

@@ -152,8 +152,16 @@ macro_rules! run_instruction {
                     return value;
                 }
             }
-            OpCode::Subtract => binary_op!($self, sub, false, mut_heap),
-            OpCode::Multiply => binary_op!($self, mul, false, mut_heap),
+            OpCode::Subtract => {
+                if let Some(value) = $self.subtract() {
+                    return value;
+                }
+            }
+            OpCode::Multiply => {
+                if let Some(value) = $self.multiply() {
+                    return value;
+                }
+            }
             OpCode::Divide => binary_op!($self, div, false, mut_heap),
             OpCode::BitXor => binary_op!($self, bitxor, true, mut_heap),
             OpCode::BitAnd => binary_op!($self, bitand, true, mut_heap),
