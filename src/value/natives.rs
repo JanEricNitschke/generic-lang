@@ -268,19 +268,19 @@ impl Dict {
         }
     }
 
+    #[allow(clippy::literal_string_with_formatting_args)]
     fn to_string(&self, heap: &Heap) -> String {
         if self.items.is_empty() {
-            "{:}".to_string()
-        } else {
-            format!(
-                "{{{}}}",
-                self.items
-                    .iter()
-                    .map(|(key, value)| format!("{}: {}", key.to_string(heap), value.to_string(heap)))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
+            return "{:}".to_string();
         }
+        format!(
+            "{{{}}}",
+            self.items
+                .iter()
+                .map(|(key, value)| format!("{}: {}", key.to_string(heap), value.to_string(heap)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     }
 
     pub(crate) fn add(&mut self, key: Value, value: Value, heap: &Heap) {
