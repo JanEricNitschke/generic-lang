@@ -106,6 +106,10 @@ macro_rules! run_instruction {
             | OpCode::DefineGlobalConstLong) => $self.define_global(op),
             OpCode::JumpIfFalse => $self.jump_conditional(false),
             OpCode::JumpIfTrue => $self.jump_conditional(true),
+            OpCode::PopJumpIfFalse => $self.pop_jump_conditional(false),
+            OpCode::PopJumpIfTrue => $self.pop_jump_conditional(true),
+            OpCode::JumpIfTrueOrPop => $self.jump_if_or_pop(true),
+            OpCode::JumpIfFalseOrPop => $self.jump_if_or_pop(false),
             // Arg count is passed as the operand
             // The function to call is on the stack followed by all arguments
             // in order from left to right.

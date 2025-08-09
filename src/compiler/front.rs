@@ -269,8 +269,7 @@ impl Compiler<'_, '_> {
                     // This compares the exception at STACK[-2] with the class at STACK[-1]
                     // Pops the class and leaves the comparison result above the exception.
                     self.emit_byte(OpCode::CompareException, self.line());
-                    jumps_to_catch_body.push(self.emit_jump(OpCode::JumpIfTrue));
-                    self.emit_byte(OpCode::Pop, self.line());
+                    jumps_to_catch_body.push(self.emit_jump(OpCode::PopJumpIfTrue));
 
                     if !self.match_(TK::Comma) {
                         break;
@@ -280,8 +279,7 @@ impl Compiler<'_, '_> {
             } else {
                 self.expression();
                 self.emit_byte(OpCode::CompareException, self.line());
-                jumps_to_catch_body.push(self.emit_jump(OpCode::JumpIfTrue));
-                self.emit_byte(OpCode::Pop, self.line());
+                jumps_to_catch_body.push(self.emit_jump(OpCode::PopJumpIfTrue));
             }
 
             jump_to_next_catch = Some(self.emit_jump(OpCode::Jump));
@@ -289,7 +287,6 @@ impl Compiler<'_, '_> {
             for jump in jumps_to_catch_body {
                 self.patch_jump(jump);
             }
-            self.emit_byte(OpCode::Pop, self.line());
 
             if self.match_(TK::As) {
                 let global = self.parse_variable("Expect exception variable name.", false);
@@ -352,22 +349,19 @@ impl Compiler<'_, '_> {
     /// }
     ///  "C" // Continue here after the conditional statement.
     fn conditional_statement(&mut self, if_statement: bool) {
-        let line = self.line();
-
         // Parse the condition
         self.expression();
 
         self.consume(TK::LeftBrace, "Expect '{' after condition");
 
         // If the condition is such that we do NOT want the "then" block,
-        // we jump over it and continue at B.
+        // we jump over it and continue at B. The new PopJumpIf opcodes
+        // automatically pop the condition value.
         let then_jump = self.emit_jump(if if_statement {
-            OpCode::JumpIfFalse
+            OpCode::PopJumpIfFalse
         } else {
-            OpCode::JumpIfTrue
+            OpCode::PopJumpIfTrue
         });
-        // If we want the block then we pop the condition and just continue at A
-        self.emit_byte(OpCode::Pop, line);
         self.scoped_block();
 
         // And afterwards always jump over the "else" block to C.
@@ -376,9 +370,6 @@ impl Compiler<'_, '_> {
         // If we do the jump over the "then" block, we need to patch it
         // to continue at "B" the "else" block. Which is here.
         self.patch_jump(then_jump);
-
-        // Here we first need to pop the condition, because we jumped over that.
-        self.emit_byte(OpCode::Pop, line);
 
         // If we have an "else" block, we parse it now.
         if self.match_(TK::Else) {
@@ -425,7 +416,6 @@ impl Compiler<'_, '_> {
     }
 
     fn loop_statement(&mut self, while_statement: bool) {
-        let line = self.line();
         // Add new loop state
         let start = CodeOffset(self.current_chunk_len());
         let depth = self.scope_depth();
@@ -438,17 +428,15 @@ impl Compiler<'_, '_> {
         self.consume(TK::LeftBrace, "Expect '{' before loop body.");
 
         let exit_jump = self.emit_jump(if while_statement {
-            OpCode::JumpIfFalse
+            OpCode::PopJumpIfFalse
         } else {
-            OpCode::JumpIfTrue
+            OpCode::PopJumpIfTrue
         });
-        self.emit_byte(OpCode::Pop, line);
         self.scoped_block();
         let loop_start = self.last_loop_state().as_ref().unwrap().start;
         self.emit_loop(loop_start);
 
         self.patch_jump(exit_jump);
-        self.emit_byte(OpCode::Pop, line);
         self.patch_break_jumps();
         self.loop_state_mut().pop();
     }
@@ -549,14 +537,11 @@ impl Compiler<'_, '_> {
             .push(LoopState::new(depth, start, label));
 
         // Compile increment clause
-        let mut exit_jump = None;
-        if !self.match_(TK::Semicolon) {
+        let exit_jump = (!self.match_(TK::Semicolon)).then(|| {
             self.expression();
             self.consume(TK::Semicolon, "Expect ';' after loop condition.");
-
-            exit_jump = Some(self.emit_jump(OpCode::JumpIfFalse));
-            self.emit_byte(OpCode::Pop, line);
-        }
+            self.emit_jump(OpCode::PopJumpIfFalse)
+        });
 
         // Increment
         if !self.match_(TK::RightParen) {
@@ -606,7 +591,6 @@ impl Compiler<'_, '_> {
 
         if let Some(exit_jump) = exit_jump {
             self.patch_jump(exit_jump);
-            self.emit_byte(OpCode::Pop, self.line());
         }
 
         self.patch_break_jumps();
@@ -694,9 +678,7 @@ impl Compiler<'_, '_> {
         self.emit_byte(OpCode::StopIteration, line);
         self.emit_byte(OpCode::NotEqual, line);
 
-        let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
-        //Clean up the comparison result if no jump
-        self.emit_byte(OpCode::Pop, line);
+        let exit_jump = self.emit_jump(OpCode::PopJumpIfFalse);
 
         // Alias loop variable for this iteration of the loop
         self.begin_scope();
@@ -720,8 +702,6 @@ impl Compiler<'_, '_> {
         let loop_start = self.last_loop_state().as_ref().unwrap().start;
         self.emit_loop(loop_start);
         self.patch_jump(exit_jump);
-        // Clean up the comparison result if jump
-        self.emit_byte(OpCode::Pop, line);
         self.patch_break_jumps();
         self.loop_state_mut().pop();
 
@@ -765,8 +745,7 @@ impl Compiler<'_, '_> {
                 self.expression();
                 self.consume(TK::Colon, "Expect ':' after 'case' value.");
                 self.emit_byte(OpCode::Equal, self.line());
-                let jump = self.emit_jump(OpCode::JumpIfFalse);
-                self.emit_byte(OpCode::Pop, self.line()); // Get rid of true comparison
+                let jump = self.emit_jump(OpCode::PopJumpIfFalse);
                 Some(jump)
             } else {
                 // The default case does not need to get jumped over
@@ -791,15 +770,12 @@ impl Compiler<'_, '_> {
 
             if let Some(miss_jump) = miss_jump {
                 self.patch_jump(miss_jump);
-                // Get rid of the 'false' of the comparison
-                self.emit_byte(OpCode::Pop, self.line());
             }
         }
 
         for end_jump in end_jumps {
             self.patch_jump(end_jump);
         }
-
         self.emit_byte(OpCode::Pop, self.line()); // Get rid of switch value
 
         self.consume(TK::RightBrace, "Expect '}' after 'switch' body.");

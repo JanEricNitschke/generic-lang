@@ -185,6 +185,39 @@ impl VM {
         }
     }
 
+    /// Pop from stack and jump conditionally based on the popped value.
+    ///
+    /// Similar to `jump_conditional` but pops the condition value from the stack
+    /// before checking if it should jump. This combines the common pattern of
+    /// conditional jump followed by pop.
+    fn pop_jump_conditional(&mut self, if_true: bool) {
+        let offset = self.read_16bit_number();
+        let condition = self.stack.pop().expect("Stack underflow in POP_JUMP_IF");
+
+        // Same logic as jump_conditional but with the popped condition
+        if condition.is_falsey() ^ if_true {
+            self.callstack.current_mut().ip += offset;
+        }
+    }
+
+    /// Jump if the top of stack matches the condition, leaving the value on the stack.
+    /// Otherwise (condition doesn't match), pop the value from the stack.
+    ///
+    /// This is useful for and/or operators where we want to preserve
+    /// the operand value when short-circuiting.
+    fn jump_if_or_pop(&mut self, if_true: bool) {
+        let offset = self.read_16bit_number();
+        let condition = *self.peek(0).expect("Stack underflow in JUMP_IF_OR_POP");
+
+        if condition.is_falsey() ^ if_true {
+            // Condition matches, jump and leave value on stack
+            self.callstack.current_mut().ip += offset;
+        } else {
+            // Condition doesn't match, pop it
+            self.stack.pop().expect("Stack underflow in JUMP_IF_OR_POP");
+        }
+    }
+
     /// Logical not the top value on the stack.
     ///
     /// Treats `nil` and `false` as falsey and everything else as truthy.
