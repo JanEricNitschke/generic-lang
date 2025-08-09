@@ -1,0 +1,142 @@
+# Comprehensive test for all operator overloading implementations
+# Tests arithmetic, comparison, and other overloaded operators
+
+class TestNumber {
+    __init__(value) {
+        this.value = value;
+    }
+
+    # Arithmetic operators
+    __add__(other) {
+        return TestNumber(this.value + other.value);
+    }
+
+    __sub__(other) {
+        return TestNumber(this.value - other.value);
+    }
+
+    __mul__(other) {
+        return TestNumber(this.value * other.value);
+    }
+
+    __div__(other) {
+        return TestNumber(this.value / other.value);
+    }
+
+    __mod__(other) {
+        return TestNumber(this.value % other.value);
+    }
+
+    __pow__(other) {
+        return TestNumber(this.value ** other.value);
+    }
+
+    __floordiv__(other) {
+        return TestNumber(this.value // other.value);
+    }
+
+    # Comparison operators
+    __eq__(other) {
+        return this.value == other.value;
+    }
+
+    __lt__(other) {
+        return this.value < other.value;
+    }
+
+    __le__(other) {
+        return this.value <= other.value;
+    }
+
+    __gt__(other) {
+        return this.value > other.value;
+    }
+
+    __ge__(other) {
+        return this.value >= other.value;
+    }
+}
+
+print("=== Testing Arithmetic Operators ===");
+
+var a = TestNumber(10);
+var b = TestNumber(3);
+
+# Test addition
+var sum = a + b;
+print("10 + 3 = " + str(sum.value)); # expect: 10 + 3 = 13
+
+# Test subtraction
+var diff = a - b;
+print("10 - 3 = " + str(diff.value)); # expect: 10 - 3 = 7
+
+# Test multiplication
+var prod = a * b;
+print("10 * 3 = " + str(prod.value)); # expect: 10 * 3 = 30
+
+# Test division
+var div = a / b;
+print("10 / 3 = " + str(div.value)); # expect: 10 / 3 = 3.3333333333333335
+
+# Test modulo
+var mod = a % b;
+print("10 % 3 = " + str(mod.value)); # expect: 10 % 3 = 1
+
+# Test power
+var pow = a ** b;
+print("10 ** 3 = " + str(pow.value)); # expect: 10 ** 3 = 1000
+
+# Test floor division
+var floordiv = a // b;
+print("10 // 3 = " + str(floordiv.value)); # expect: 10 // 3 = 3
+
+print("=== Testing Comparison Operators ===");
+
+var x = TestNumber(5);
+var y = TestNumber(5);
+var z = TestNumber(3);
+
+# Test equality
+print("5 == 5: " + str(x == y)); # expect: 5 == 5: true
+print("5 == 3: " + str(x == z)); # expect: 5 == 3: false
+
+# Test inequality (should use default behavior since __ne__ not implemented)
+print("5 != 3: " + str(x != z)); # expect: 5 != 3: true
+
+# Test less than
+print("3 < 5: " + str(z < x)); # expect: 3 < 5: true
+print("5 < 3: " + str(x < z)); # expect: 5 < 3: false
+
+# Test less than or equal
+print("3 <= 5: " + str(z <= x)); # expect: 3 <= 5: true
+print("5 <= 5: " + str(x <= y)); # expect: 5 <= 5: true
+print("5 <= 3: " + str(x <= z)); # expect: 5 <= 3: false
+
+# Test greater than
+print("5 > 3: " + str(x > z)); # expect: 5 > 3: true
+print("3 > 5: " + str(z > x)); # expect: 3 > 5: false
+
+# Test greater than or equal
+print("5 >= 3: " + str(x >= z)); # expect: 5 >= 3: true
+print("5 >= 5: " + str(x >= y)); # expect: 5 >= 5: true
+print("3 >= 5: " + str(z >= x)); # expect: 3 >= 5: false
+
+print("=== Testing Backward Compatibility ===");
+
+# Ensure regular numbers still work
+print("Regular arithmetic:");
+print("10 + 3 = " + str(10 + 3)); # expect: 10 + 3 = 13
+print("10 - 3 = " + str(10 - 3)); # expect: 10 - 3 = 7
+print("10 * 3 = " + str(10 * 3)); # expect: 10 * 3 = 30
+print("10 / 3 = " + str(10 / 3)); # expect: 10 / 3 = 3.3333333333333335
+print("10 % 3 = " + str(10 % 3)); # expect: 10 % 3 = 1
+print("10 ** 3 = " + str(10 ** 3)); # expect: 10 ** 3 = 1000
+print("10 // 3 = " + str(10 // 3)); # expect: 10 // 3 = 3
+
+print("Regular comparisons:");
+print("5 == 5: " + str(5 == 5)); # expect: 5 == 5: true
+print("5 != 3: " + str(5 != 3)); # expect: 5 != 3: true
+print("3 < 5: " + str(3 < 5)); # expect: 3 < 5: true
+print("5 <= 5: " + str(5 <= 5)); # expect: 5 <= 5: true
+print("5 > 3: " + str(5 > 3)); # expect: 5 > 3: true
+print("5 >= 5: " + str(5 >= 5)); # expect: 5 >= 5: true

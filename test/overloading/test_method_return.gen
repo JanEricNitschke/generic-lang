@@ -1,0 +1,11 @@
+# Test method return values
+class Test {
+    test_method() {
+        print("In test_method, returning false");
+        return false;
+    }
+}
+
+var obj = Test();
+var result = obj.test_method();
+print("Method returned: " + str(result));

@@ -1,0 +1,16 @@
+# Test arithmetic return values
+class TestNumber {
+    __init__(value) {
+        this.value = value;
+    }
+
+    __add__(other) {
+        print("In __add__, returning TestNumber");
+        return TestNumber(this.value + other.value);
+    }
+}
+
+var a = TestNumber(5);
+var b = TestNumber(3);
+var result = a + b;
+print("Addition result: " + str(result.value));

@@ -1,0 +1,18 @@
+# Test power operator
+class TestNumber {
+    __init__(value) {
+        this.value = value;
+    }
+
+    __pow__(other) {
+        return TestNumber(this.value ** other.value);
+    }
+}
+
+var a = TestNumber(2);
+var b = TestNumber(3);
+
+print("=== Power Operator ===");
+
+var pow_result = a ** b;
+print("2 ** 3 = " + str(pow_result.value)); # expect: 2 ** 3 = 8

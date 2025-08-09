@@ -1,0 +1,22 @@
+# Test with __eq__ that prints what's happening
+class SimpleNumber {
+    __init__(value) {
+        this.value = value;
+    }
+    
+    __eq__(other) {
+        print("__eq__ called, returning false");
+        return false;
+    }
+}
+
+var a = SimpleNumber(5);
+var b = SimpleNumber(3);
+
+print("=== Testing a == b ===");
+var result1 = a == b;
+print("Final result of a == b: " + str(result1));
+
+print("=== Testing a != b ===");
+var result2 = a != b;
+print("Final result of a != b: " + str(result2));

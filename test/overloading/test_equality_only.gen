@@ -1,0 +1,18 @@
+# Test equality only
+class TestNumber {
+    __init__(value) {
+        this.value = value;
+    }
+    
+    __eq__(other) {
+        return this.value == other.value;
+    }
+}
+
+var a = TestNumber(5);
+var b = TestNumber(5);
+var c = TestNumber(3);
+
+print("Testing equality only:");
+print("5 == 5: " + str(a == b)); # should be true
+print("5 == 3: " + str(a == c)); # should be false

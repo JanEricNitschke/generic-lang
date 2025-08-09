@@ -1,0 +1,25 @@
+# More specific test to understand the issue
+class TestNumber {
+    __init__(value) {
+        this.value = value;
+    }
+
+    __eq__(other) {
+        print("In __eq__: comparing " + str(this.value) + " with " + str(other.value));
+        print("Returning: " + str(this.value == other.value));
+        return this.value == other.value;
+    }
+}
+
+print("=== Testing x == z ===");
+var x = TestNumber(5);
+var z = TestNumber(3);
+var result1 = x == z;
+print("Final result: " + str(result1));
+
+print("=== Testing x != z ===");
+# Let's recreate the objects to ensure clean state
+var x2 = TestNumber(5);
+var z2 = TestNumber(3);
+var result2 = x2 != z2;
+print("Final result: " + str(result2));

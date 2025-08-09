@@ -162,17 +162,61 @@ macro_rules! run_instruction {
                     return value;
                 }
             }
-            OpCode::Divide => binary_op!($self, div, false, mut_heap),
-            OpCode::BitXor => binary_op!($self, bitxor, true, mut_heap),
-            OpCode::BitAnd => binary_op!($self, bitand, true, mut_heap),
-            OpCode::BitOr => binary_op!($self, bitor, true, mut_heap),
-            OpCode::Exp => binary_op!($self, pow, false, mut_heap),
-            OpCode::Mod => binary_op!($self, rem, false, mut_heap),
-            OpCode::FloorDiv => binary_op!($self, floor_div, false, mut_heap),
-            OpCode::Greater => binary_op!($self, gt, false, non_mut_heap),
-            OpCode::Less => binary_op!($self, lt, false, non_mut_heap),
-            OpCode::GreaterEqual => binary_op!($self, ge, false, non_mut_heap),
-            OpCode::LessEqual => binary_op!($self, le, false, non_mut_heap),
+            OpCode::Divide => {
+                if let Some(value) = $self.divide() {
+                    return value;
+                }
+            }
+            OpCode::BitXor => {
+                if let Some(value) = $self.bitwise_xor() {
+                    return value;
+                }
+            }
+            OpCode::BitAnd => {
+                if let Some(value) = $self.bitwise_and() {
+                    return value;
+                }
+            }
+            OpCode::BitOr => {
+                if let Some(value) = $self.bitwise_or() {
+                    return value;
+                }
+            }
+            OpCode::Exp => {
+                if let Some(value) = $self.power() {
+                    return value;
+                }
+            }
+            OpCode::Mod => {
+                if let Some(value) = $self.modulo() {
+                    return value;
+                }
+            }
+            OpCode::FloorDiv => {
+                if let Some(value) = $self.floor_divide() {
+                    return value;
+                }
+            }
+            OpCode::Greater => {
+                if let Some(value) = $self.greater() {
+                    return value;
+                }
+            }
+            OpCode::Less => {
+                if let Some(value) = $self.less() {
+                    return value;
+                }
+            }
+            OpCode::GreaterEqual => {
+                if let Some(value) = $self.greater_equal() {
+                    return value;
+                }
+            }
+            OpCode::LessEqual => {
+                if let Some(value) = $self.less_equal() {
+                    return value;
+                }
+            }
             OpCode::NotEqual => $self.equal(true),
             OpCode::Jump => {
                 let offset = $self.read_16bit_number();

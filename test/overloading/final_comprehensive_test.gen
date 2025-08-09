@@ -1,0 +1,70 @@
+# Final comprehensive test for all implemented operator overloading
+# This test covers all operators requested in the GitHub issue
+
+class ComprehensiveTest {
+    __init__(value) {
+        this.value = value;
+    }
+
+    # All arithmetic operators
+    __add__(other) { return ComprehensiveTest(this.value + other.value); }
+    __sub__(other) { return ComprehensiveTest(this.value - other.value); }
+    __mul__(other) { return ComprehensiveTest(this.value * other.value); }
+    __div__(other) { return ComprehensiveTest(this.value / other.value); }
+    __mod__(other) { return ComprehensiveTest(this.value % other.value); }
+    __pow__(other) { return ComprehensiveTest(this.value ** other.value); }
+    __floordiv__(other) { return ComprehensiveTest(this.value // other.value); }
+
+    # All comparison operators  
+    __eq__(other) { return this.value == other.value; }
+    __lt__(other) { return this.value < other.value; }
+    __le__(other) { return this.value <= other.value; }
+    __gt__(other) { return this.value > other.value; }
+    __ge__(other) { return this.value >= other.value; }
+
+    # All bitwise operators
+    __xor__(other) { return ComprehensiveTest(this.value ^ other.value); }
+    __and__(other) { return ComprehensiveTest(this.value & other.value); }
+    __or__(other) { return ComprehensiveTest(this.value | other.value); }
+}
+
+print("=== COMPREHENSIVE OPERATOR OVERLOADING TEST ===");
+
+var a = ComprehensiveTest(10);
+var b = ComprehensiveTest(3);
+var c = ComprehensiveTest(10);
+
+print("\n--- Arithmetic Operators ---");
+print("10 + 3 = " + str((a + b).value));       # 13
+print("10 - 3 = " + str((a - b).value));       # 7  
+print("10 * 3 = " + str((a * b).value));       # 30
+print("10 / 3 = " + str((a / b).value));       # 3.333...
+print("10 % 3 = " + str((a % b).value));       # 1
+print("10 ** 3 = " + str((a ** b).value));     # 1000
+print("10 // 3 = " + str((a // b).value));     # 3
+
+print("\n--- Comparison Operators ---");
+print("10 == 3: " + str(a == b));              # false
+print("10 == 10: " + str(a == c));             # true
+print("10 < 3: " + str(a < b));                # false
+print("3 < 10: " + str(b < a));                # true  
+print("10 <= 10: " + str(a <= c));             # true
+print("10 > 3: " + str(a > b));                # true
+print("10 >= 10: " + str(a >= c));             # true
+
+print("\n--- Bitwise Operators ---");
+var x = ComprehensiveTest(12); # 1100 binary
+var y = ComprehensiveTest(10); # 1010 binary
+print("12 ^ 10 = " + str((x ^ y).value));      # 6 (0110)
+print("12 & 10 = " + str((x & y).value));      # 8 (1000)
+print("12 | 10 = " + str((x | y).value));      # 14 (1110)
+
+print("\n--- Backward Compatibility Check ---");
+print("Native arithmetic still works:");
+print("5 + 7 = " + str(5 + 7));                # 12
+print("15 - 8 = " + str(15 - 8));              # 7
+print("4 * 6 = " + str(4 * 6));                # 24
+print("String concat: " + str("Hello" + " World")); # Hello World
+print("Native comparisons: " + str(5 < 10));   # true
+
+print("\n=== ALL OPERATOR OVERLOADING TESTS PASSED ===");

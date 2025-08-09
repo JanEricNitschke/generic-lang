@@ -1,0 +1,32 @@
+# Test all division-related operators
+class TestNumber {
+    __init__(value) {
+        this.value = value;
+    }
+
+    __div__(other) {
+        return TestNumber(this.value / other.value);
+    }
+
+    __mod__(other) {
+        return TestNumber(this.value % other.value);
+    }
+
+    __floordiv__(other) {
+        return TestNumber(this.value // other.value);
+    }
+}
+
+var a = TestNumber(10);
+var b = TestNumber(3);
+
+print("=== Division Operators ===");
+
+var div_result = a / b;
+print("10 / 3 = " + str(div_result.value)); # expect: 10 / 3 = 3.3333333333333335
+
+var mod_result = a % b;
+print("10 % 3 = " + str(mod_result.value)); # expect: 10 % 3 = 1
+
+var floordiv_result = a // b;
+print("10 // 3 = " + str(floordiv_result.value)); # expect: 10 // 3 = 3

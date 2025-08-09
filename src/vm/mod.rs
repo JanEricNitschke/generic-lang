@@ -242,14 +242,73 @@ impl VM {
     ///
     /// If the stack does not have two values. This is an internal error and should never happen.
     fn equal(&mut self, negate: bool) {
-        let left_id = self
-            .stack
-            .pop()
-            .expect("stack underflow in OP_EQUAL (first)");
+        // Check for operator overloading if left operand is an instance
+        let slice_start = self.stack.len() - 2;
+        let should_try_overloading = if let [left, _right] = &self.stack[slice_start..] {
+            matches!(left, Value::Instance(_))
+        } else {
+            false
+        };
+
+        if should_try_overloading {
+            let left_instance = if let Value::Instance(instance) = &self.stack[slice_start] {
+                *instance
+            } else {
+                unreachable!()
+            };
+
+            if negate {
+                // For !=, first try __ne__ method
+                let ne_method_name = self.heap.string_id(&"__ne__");
+                let instance_data = left_instance.to_value(&self.heap);
+                let has_ne_method = instance_data.fields.contains_key("__ne__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&ne_method_name);
+                
+                if has_ne_method && self.invoke(ne_method_name, 1) {
+                    return; // Method call successful, execution continues
+                }
+                
+                // If __ne__ doesn't exist, try __eq__ and negate the result
+                let eq_method_name = self.heap.string_id(&"__eq__");
+                let instance_data = left_instance.to_value(&self.heap);
+                let has_eq_method = instance_data.fields.contains_key("__eq__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&eq_method_name);
+                
+                if has_eq_method && self.invoke(eq_method_name, 1) {
+                    // Now negate the result - the return value should be on top of stack
+                    let result = self.stack.pop().expect("stack underflow after __eq__ call");
+                    let negated_result = match result {
+                        Value::Bool(b) => Value::Bool(!b),
+                        _ => {
+                            // If __eq__ doesn't return a boolean, treat non-falsy as true, falsy as false  
+                            Value::Bool(result.is_falsey())
+                        }
+                    };
+                    self.stack_push_value(negated_result);
+                    return; // Method call successful, execution continues
+                }
+            } else {
+                // For ==, try __eq__ method
+                let eq_method_name = self.heap.string_id(&"__eq__");
+                let instance_data = left_instance.to_value(&self.heap);
+                let has_eq_method = instance_data.fields.contains_key("__eq__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&eq_method_name);
+                
+                if has_eq_method && self.invoke(eq_method_name, 1) {
+                    return; // Method call successful, execution continues
+                }
+            }
+        }
+        
+        // Fall back to default equality behavior
         let right_id = self
             .stack
             .pop()
-            .expect("stack underflow in OP_EQUAL (second)");
+            .expect("stack underflow in OP_EQUAL (right)");
+        let left_id = self
+            .stack
+            .pop()
+            .expect("stack underflow in OP_EQUAL (left)");
         let result = left_id.eq(&right_id, &self.heap) != negate;
         self.stack_push(result.into());
     }

@@ -1,0 +1,38 @@
+# Test bitwise operators
+class BitTest {
+    __init__(value) {
+        this.value = value;
+    }
+
+    __xor__(other) {
+        return BitTest(this.value ^ other.value);
+    }
+
+    __and__(other) {
+        return BitTest(this.value & other.value);
+    }
+
+    __or__(other) {
+        return BitTest(this.value | other.value);
+    }
+}
+
+var a = BitTest(12); # 1100 in binary
+var b = BitTest(10); # 1010 in binary
+
+print("=== Bitwise Operators ===");
+
+var xor_result = a ^ b;
+print("12 ^ 10 = " + str(xor_result.value)); # expect: 12 ^ 10 = 6 (0110)
+
+var and_result = a & b;
+print("12 & 10 = " + str(and_result.value)); # expect: 12 & 10 = 8 (1000)
+
+var or_result = a | b;
+print("12 | 10 = " + str(or_result.value)); # expect: 12 | 10 = 14 (1110)
+
+print("=== Backward compatibility ===");
+print("Regular bitwise:");
+print("12 ^ 10 = " + str(12 ^ 10)); # expect: 12 ^ 10 = 6
+print("12 & 10 = " + str(12 & 10)); # expect: 12 & 10 = 8
+print("12 | 10 = " + str(12 | 10)); # expect: 12 | 10 = 14

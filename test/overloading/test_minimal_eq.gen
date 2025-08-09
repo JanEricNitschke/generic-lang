@@ -1,0 +1,23 @@
+# Test with minimal __eq__ that just returns false
+class SimpleNumber {
+    __init__(value) {
+        this.value = value;
+    }
+    
+    __eq__(other) {
+        print("__eq__ called");
+        return false;
+    }
+}
+
+var a = SimpleNumber(5);
+var b = SimpleNumber(3);
+
+print("Testing with minimal __eq__:");
+print("Before a == b");
+var result1 = a == b;
+print("a == b: " + str(result1));
+
+print("Before a != b");
+var result2 = a != b;
+print("a != b: " + str(result2));

@@ -1,0 +1,17 @@
+# Test inequality manually
+class TestNumber {
+    __init__(value) {
+        this.value = value;
+    }
+    
+    __eq__(other) {
+        return this.value == other.value;
+    }
+}
+
+var x = TestNumber(5);
+var z = TestNumber(3);
+
+print("Testing inequality:");
+var result = x != z;
+print("Result: " + str(result));

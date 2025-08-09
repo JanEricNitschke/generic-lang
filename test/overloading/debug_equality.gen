@@ -1,0 +1,22 @@
+# Simple test to debug the issue
+class TestNumber {
+    __init__(value) {
+        this.value = value;
+    }
+
+    __eq__(other) {
+        print("__eq__ called: " + str(this.value) + " == " + str(other.value));
+        return this.value == other.value;
+    }
+}
+
+var x = TestNumber(5);
+var z = TestNumber(3);
+
+print("Testing equality:");
+var result1 = x == z;
+print("Result of x == z: " + str(result1));
+
+print("Testing inequality:");
+var result2 = x != z;
+print("Result of x != z: " + str(result2));

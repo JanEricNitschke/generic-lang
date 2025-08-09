@@ -1,0 +1,13 @@
+# Test without __eq__ to see if != works at all
+class SimpleNumber {
+    __init__(value) {
+        this.value = value;
+    }
+}
+
+var a = SimpleNumber(5);
+var b = SimpleNumber(3);
+
+print("Testing without __eq__:");
+print("a == b: " + str(a == b));
+print("a != b: " + str(a != b));

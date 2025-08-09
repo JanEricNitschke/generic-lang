@@ -259,6 +259,627 @@ impl VM {
         None
     }
 
+    pub(super) fn divide(&mut self) -> Option<InterpretResult> {
+        let slice_start = self.stack.len() - 2;
+        
+        // First try __div__ overloading if left operand is an instance
+        if let [left, _right] = &self.stack[slice_start..] {
+            if let Value::Instance(instance) = left {
+                let div_method_name = self.heap.string_id(&"__div__");
+                let instance_data = instance.to_value(&self.heap);
+                
+                // Check if the method exists before invoking to avoid error messages
+                let has_method = instance_data.fields.contains_key("__div__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&div_method_name);
+                
+                if has_method && self.invoke(div_method_name, 1) {
+                    return None; // Method call successful, execution continues
+                }
+                // If method doesn't exist or invoke failed, fall through to default behavior
+            }
+        }
+        
+        // Fall back to default numeric division behavior
+        let ok = match &self.stack[slice_start..] {
+            [left, right] => {
+                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
+                    match a.div(*b, &mut self.heap).into_result_value() {
+                        Ok(value) => {
+                            self.stack.pop();
+                            self.stack.pop();
+                            self.stack_push_value(value);
+                            true
+                        }
+                        Err(error) => {
+                            runtime_error!(self, "{error}");
+                            return Some(InterpretResult::RuntimeError);
+                        }
+                    }
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        };
+
+        if !ok {
+            runtime_error!(
+                self,
+                "Operands must be numbers. Got: [{}]",
+                self.stack[slice_start..]
+                    .iter()
+                    .map(|v| v.to_string(&self.heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            return Some(InterpretResult::RuntimeError);
+        }
+        None
+    }
+
+    pub(super) fn modulo(&mut self) -> Option<InterpretResult> {
+        let slice_start = self.stack.len() - 2;
+        
+        // First try __mod__ overloading if left operand is an instance
+        if let [left, _right] = &self.stack[slice_start..] {
+            if let Value::Instance(instance) = left {
+                let mod_method_name = self.heap.string_id(&"__mod__");
+                let instance_data = instance.to_value(&self.heap);
+                
+                // Check if the method exists before invoking to avoid error messages
+                let has_method = instance_data.fields.contains_key("__mod__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&mod_method_name);
+                
+                if has_method && self.invoke(mod_method_name, 1) {
+                    return None; // Method call successful, execution continues
+                }
+                // If method doesn't exist or invoke failed, fall through to default behavior
+            }
+        }
+        
+        // Fall back to default numeric modulo behavior
+        let ok = match &self.stack[slice_start..] {
+            [left, right] => {
+                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
+                    match a.rem(*b, &mut self.heap).into_result_value() {
+                        Ok(value) => {
+                            self.stack.pop();
+                            self.stack.pop();
+                            self.stack_push_value(value);
+                            true
+                        }
+                        Err(error) => {
+                            runtime_error!(self, "{error}");
+                            return Some(InterpretResult::RuntimeError);
+                        }
+                    }
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        };
+
+        if !ok {
+            runtime_error!(
+                self,
+                "Operands must be numbers. Got: [{}]",
+                self.stack[slice_start..]
+                    .iter()
+                    .map(|v| v.to_string(&self.heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            return Some(InterpretResult::RuntimeError);
+        }
+        None
+    }
+
+    pub(super) fn power(&mut self) -> Option<InterpretResult> {
+        let slice_start = self.stack.len() - 2;
+        
+        // First try __pow__ overloading if left operand is an instance
+        if let [left, _right] = &self.stack[slice_start..] {
+            if let Value::Instance(instance) = left {
+                let pow_method_name = self.heap.string_id(&"__pow__");
+                let instance_data = instance.to_value(&self.heap);
+                
+                // Check if the method exists before invoking to avoid error messages
+                let has_method = instance_data.fields.contains_key("__pow__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&pow_method_name);
+                
+                if has_method && self.invoke(pow_method_name, 1) {
+                    return None; // Method call successful, execution continues
+                }
+                // If method doesn't exist or invoke failed, fall through to default behavior
+            }
+        }
+        
+        // Fall back to default numeric power behavior
+        let ok = match &self.stack[slice_start..] {
+            [left, right] => {
+                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
+                    match a.pow(*b, &mut self.heap).into_result_value() {
+                        Ok(value) => {
+                            self.stack.pop();
+                            self.stack.pop();
+                            self.stack_push_value(value);
+                            true
+                        }
+                        Err(error) => {
+                            runtime_error!(self, "{error}");
+                            return Some(InterpretResult::RuntimeError);
+                        }
+                    }
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        };
+
+        if !ok {
+            runtime_error!(
+                self,
+                "Operands must be numbers. Got: [{}]",
+                self.stack[slice_start..]
+                    .iter()
+                    .map(|v| v.to_string(&self.heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            return Some(InterpretResult::RuntimeError);
+        }
+        None
+    }
+
+    pub(super) fn floor_divide(&mut self) -> Option<InterpretResult> {
+        let slice_start = self.stack.len() - 2;
+        
+        // First try __floordiv__ overloading if left operand is an instance
+        if let [left, _right] = &self.stack[slice_start..] {
+            if let Value::Instance(instance) = left {
+                let floordiv_method_name = self.heap.string_id(&"__floordiv__");
+                let instance_data = instance.to_value(&self.heap);
+                
+                // Check if the method exists before invoking to avoid error messages
+                let has_method = instance_data.fields.contains_key("__floordiv__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&floordiv_method_name);
+                
+                if has_method && self.invoke(floordiv_method_name, 1) {
+                    return None; // Method call successful, execution continues
+                }
+                // If method doesn't exist or invoke failed, fall through to default behavior
+            }
+        }
+        
+        // Fall back to default numeric floor division behavior
+        let ok = match &self.stack[slice_start..] {
+            [left, right] => {
+                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
+                    match a.floor_div(*b, &mut self.heap).into_result_value() {
+                        Ok(value) => {
+                            self.stack.pop();
+                            self.stack.pop();
+                            self.stack_push_value(value);
+                            true
+                        }
+                        Err(error) => {
+                            runtime_error!(self, "{error}");
+                            return Some(InterpretResult::RuntimeError);
+                        }
+                    }
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        };
+
+        if !ok {
+            runtime_error!(
+                self,
+                "Operands must be numbers. Got: [{}]",
+                self.stack[slice_start..]
+                    .iter()
+                    .map(|v| v.to_string(&self.heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            return Some(InterpretResult::RuntimeError);
+        }
+        None
+    }
+
+    pub(super) fn greater(&mut self) -> Option<InterpretResult> {
+        let slice_start = self.stack.len() - 2;
+        
+        // First try __gt__ overloading if left operand is an instance
+        if let [left, _right] = &self.stack[slice_start..] {
+            if let Value::Instance(instance) = left {
+                let gt_method_name = self.heap.string_id(&"__gt__");
+                let instance_data = instance.to_value(&self.heap);
+                
+                // Check if the method exists before invoking to avoid error messages
+                let has_method = instance_data.fields.contains_key("__gt__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&gt_method_name);
+                
+                if has_method && self.invoke(gt_method_name, 1) {
+                    return None; // Method call successful, execution continues
+                }
+                // If method doesn't exist or invoke failed, fall through to default behavior
+            }
+        }
+        
+        // Fall back to default numeric comparison behavior
+        let ok = match &self.stack[slice_start..] {
+            [left, right] => {
+                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
+                    let value = a.gt(b, &self.heap).into();
+                    self.stack.pop();
+                    self.stack.pop();
+                    self.stack_push_value(value);
+                    true
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        };
+
+        if !ok {
+            runtime_error!(
+                self,
+                "Operands must be numbers. Got: [{}]",
+                self.stack[slice_start..]
+                    .iter()
+                    .map(|v| v.to_string(&self.heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            return Some(InterpretResult::RuntimeError);
+        }
+        None
+    }
+
+    pub(super) fn less(&mut self) -> Option<InterpretResult> {
+        let slice_start = self.stack.len() - 2;
+        
+        // First try __lt__ overloading if left operand is an instance
+        if let [left, _right] = &self.stack[slice_start..] {
+            if let Value::Instance(instance) = left {
+                let lt_method_name = self.heap.string_id(&"__lt__");
+                let instance_data = instance.to_value(&self.heap);
+                
+                // Check if the method exists before invoking to avoid error messages
+                let has_method = instance_data.fields.contains_key("__lt__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&lt_method_name);
+                
+                if has_method && self.invoke(lt_method_name, 1) {
+                    return None; // Method call successful, execution continues
+                }
+                // If method doesn't exist or invoke failed, fall through to default behavior
+            }
+        }
+        
+        // Fall back to default numeric comparison behavior
+        let ok = match &self.stack[slice_start..] {
+            [left, right] => {
+                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
+                    let value = a.lt(b, &self.heap).into();
+                    self.stack.pop();
+                    self.stack.pop();
+                    self.stack_push_value(value);
+                    true
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        };
+
+        if !ok {
+            runtime_error!(
+                self,
+                "Operands must be numbers. Got: [{}]",
+                self.stack[slice_start..]
+                    .iter()
+                    .map(|v| v.to_string(&self.heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            return Some(InterpretResult::RuntimeError);
+        }
+        None
+    }
+
+    pub(super) fn greater_equal(&mut self) -> Option<InterpretResult> {
+        let slice_start = self.stack.len() - 2;
+        
+        // First try __ge__ overloading if left operand is an instance
+        if let [left, _right] = &self.stack[slice_start..] {
+            if let Value::Instance(instance) = left {
+                let ge_method_name = self.heap.string_id(&"__ge__");
+                let instance_data = instance.to_value(&self.heap);
+                
+                // Check if the method exists before invoking to avoid error messages
+                let has_method = instance_data.fields.contains_key("__ge__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&ge_method_name);
+                
+                if has_method && self.invoke(ge_method_name, 1) {
+                    return None; // Method call successful, execution continues
+                }
+                // If method doesn't exist or invoke failed, fall through to default behavior
+            }
+        }
+        
+        // Fall back to default numeric comparison behavior
+        let ok = match &self.stack[slice_start..] {
+            [left, right] => {
+                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
+                    let value = a.ge(b, &self.heap).into();
+                    self.stack.pop();
+                    self.stack.pop();
+                    self.stack_push_value(value);
+                    true
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        };
+
+        if !ok {
+            runtime_error!(
+                self,
+                "Operands must be numbers. Got: [{}]",
+                self.stack[slice_start..]
+                    .iter()
+                    .map(|v| v.to_string(&self.heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            return Some(InterpretResult::RuntimeError);
+        }
+        None
+    }
+
+    pub(super) fn less_equal(&mut self) -> Option<InterpretResult> {
+        let slice_start = self.stack.len() - 2;
+        
+        // First try __le__ overloading if left operand is an instance
+        if let [left, _right] = &self.stack[slice_start..] {
+            if let Value::Instance(instance) = left {
+                let le_method_name = self.heap.string_id(&"__le__");
+                let instance_data = instance.to_value(&self.heap);
+                
+                // Check if the method exists before invoking to avoid error messages
+                let has_method = instance_data.fields.contains_key("__le__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&le_method_name);
+                
+                if has_method && self.invoke(le_method_name, 1) {
+                    return None; // Method call successful, execution continues
+                }
+                // If method doesn't exist or invoke failed, fall through to default behavior
+            }
+        }
+        
+        // Fall back to default numeric comparison behavior
+        let ok = match &self.stack[slice_start..] {
+            [left, right] => {
+                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
+                    let value = a.le(b, &self.heap).into();
+                    self.stack.pop();
+                    self.stack.pop();
+                    self.stack_push_value(value);
+                    true
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        };
+
+        if !ok {
+            runtime_error!(
+                self,
+                "Operands must be numbers. Got: [{}]",
+                self.stack[slice_start..]
+                    .iter()
+                    .map(|v| v.to_string(&self.heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            return Some(InterpretResult::RuntimeError);
+        }
+        None
+    }
+
+    pub(super) fn bitwise_xor(&mut self) -> Option<InterpretResult> {
+        let slice_start = self.stack.len() - 2;
+        
+        // First try __xor__ overloading if left operand is an instance
+        if let [left, _right] = &self.stack[slice_start..] {
+            if let Value::Instance(instance) = left {
+                let xor_method_name = self.heap.string_id(&"__xor__");
+                let instance_data = instance.to_value(&self.heap);
+                
+                // Check if the method exists before invoking to avoid error messages
+                let has_method = instance_data.fields.contains_key("__xor__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&xor_method_name);
+                
+                if has_method && self.invoke(xor_method_name, 1) {
+                    return None; // Method call successful, execution continues
+                }
+                // If method doesn't exist or invoke failed, fall through to default behavior
+            }
+        }
+        
+        // Fall back to default bitwise XOR behavior
+        let ok = match &self.stack[slice_start..] {
+            [left, right] => {
+                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
+                    match a.bitxor(*b, &mut self.heap).into_result_value() {
+                        Ok(value) => {
+                            self.stack.pop();
+                            self.stack.pop();
+                            self.stack_push_value(value);
+                            true
+                        }
+                        Err(error) => {
+                            runtime_error!(self, "{error}");
+                            return Some(InterpretResult::RuntimeError);
+                        }
+                    }
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        };
+
+        if !ok {
+            runtime_error!(
+                self,
+                "Operands must be integers. Got: [{}]",
+                self.stack[slice_start..]
+                    .iter()
+                    .map(|v| v.to_string(&self.heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            return Some(InterpretResult::RuntimeError);
+        }
+        None
+    }
+
+    pub(super) fn bitwise_and(&mut self) -> Option<InterpretResult> {
+        let slice_start = self.stack.len() - 2;
+        
+        // First try __and__ overloading if left operand is an instance
+        if let [left, _right] = &self.stack[slice_start..] {
+            if let Value::Instance(instance) = left {
+                let and_method_name = self.heap.string_id(&"__and__");
+                let instance_data = instance.to_value(&self.heap);
+                
+                // Check if the method exists before invoking to avoid error messages
+                let has_method = instance_data.fields.contains_key("__and__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&and_method_name);
+                
+                if has_method && self.invoke(and_method_name, 1) {
+                    return None; // Method call successful, execution continues
+                }
+                // If method doesn't exist or invoke failed, fall through to default behavior
+            }
+        }
+        
+        // Fall back to default bitwise AND behavior
+        let ok = match &self.stack[slice_start..] {
+            [left, right] => {
+                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
+                    match a.bitand(*b, &mut self.heap).into_result_value() {
+                        Ok(value) => {
+                            self.stack.pop();
+                            self.stack.pop();
+                            self.stack_push_value(value);
+                            true
+                        }
+                        Err(error) => {
+                            runtime_error!(self, "{error}");
+                            return Some(InterpretResult::RuntimeError);
+                        }
+                    }
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        };
+
+        if !ok {
+            runtime_error!(
+                self,
+                "Operands must be integers. Got: [{}]",
+                self.stack[slice_start..]
+                    .iter()
+                    .map(|v| v.to_string(&self.heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            return Some(InterpretResult::RuntimeError);
+        }
+        None
+    }
+
+    pub(super) fn bitwise_or(&mut self) -> Option<InterpretResult> {
+        let slice_start = self.stack.len() - 2;
+        
+        // First try __or__ overloading if left operand is an instance
+        if let [left, _right] = &self.stack[slice_start..] {
+            if let Value::Instance(instance) = left {
+                let or_method_name = self.heap.string_id(&"__or__");
+                let instance_data = instance.to_value(&self.heap);
+                
+                // Check if the method exists before invoking to avoid error messages
+                let has_method = instance_data.fields.contains_key("__or__") 
+                    || instance_data.class.to_value(&self.heap).methods.contains_key(&or_method_name);
+                
+                if has_method && self.invoke(or_method_name, 1) {
+                    return None; // Method call successful, execution continues
+                }
+                // If method doesn't exist or invoke failed, fall through to default behavior
+            }
+        }
+        
+        // Fall back to default bitwise OR behavior
+        let ok = match &self.stack[slice_start..] {
+            [left, right] => {
+                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
+                    match a.bitor(*b, &mut self.heap).into_result_value() {
+                        Ok(value) => {
+                            self.stack.pop();
+                            self.stack.pop();
+                            self.stack_push_value(value);
+                            true
+                        }
+                        Err(error) => {
+                            runtime_error!(self, "{error}");
+                            return Some(InterpretResult::RuntimeError);
+                        }
+                    }
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        };
+
+        if !ok {
+            runtime_error!(
+                self,
+                "Operands must be integers. Got: [{}]",
+                self.stack[slice_start..]
+                    .iter()
+                    .map(|v| v.to_string(&self.heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            return Some(InterpretResult::RuntimeError);
+        }
+        None
+    }
+
     /// Negate the top value on the stack.
     ///
     /// # Panics
