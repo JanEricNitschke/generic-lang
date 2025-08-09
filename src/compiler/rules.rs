@@ -491,43 +491,50 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Empty braces `{}` are parsed as an empty set.
     /// Empty dict literal is `{:}`.
     fn hash_collection(&mut self, _can_assign: bool) {
-        let mut item_count = 0;
-        let mut is_dict = false;
+        // Empty set literal
+        if self.check(TK::RightBrace) {
+            return self.finish_hash_collection(false, 0);
+        }
 
-        if !self.check(TK::RightBrace) {
-            // Check for empty dict literal {:}
-            if self.check(TK::Colon) {
-                is_dict = true;
-                self.advance(); // consume the colon
+        // Empty dict literal {:}
+        if self.match_(TK::Colon) {
+            return self.finish_hash_collection(true, 0);
+        }
+
+        // First element
+        let mut item_count = 0;
+        self.parse_precedence(Precedence::non_assigning());
+        let is_dict = self.match_(TK::Colon);
+        if is_dict {
+            self.parse_precedence(Precedence::non_assigning());
+        }
+        item_count += 1;
+        self.match_(TK::Comma); // optional trailing comma after first
+
+        // Remaining elements
+        while !self.check(TK::RightBrace) {
+            if is_dict {
+                self.parse_dict_entry();
             } else {
                 self.parse_precedence(Precedence::non_assigning());
-                is_dict = self.match_(TK::Colon);
+            }
 
-                if is_dict {
-                    self.parse_precedence(Precedence::non_assigning());
-                }
-                item_count += 1;
-                // Handle potential trailing comma after (first/only) element
-                self.match_(TK::Comma);
-
-                while !self.check(TK::RightBrace) {
-                    if is_dict {
-                        self.parse_dict_entry();
-                    } else {
-                        self.parse_precedence(Precedence::non_assigning());
-                    }
-
-                    if item_count == 255 {
-                        self.error("Can't have more than 255 items in a set literal.");
-                        break;
-                    }
-                    item_count += 1;
-                    if !self.match_(TK::Comma) {
-                        break;
-                    }
-                }
+            if item_count == 255 {
+                self.error("Can't have more than 255 items in a set literal.");
+                break;
+            }
+            item_count += 1;
+            if !self.match_(TK::Comma) {
+                break;
             }
         }
+
+        self.finish_hash_collection(is_dict, item_count);
+    }
+
+    /// Helper function to consume the closing brace and emit the appropriate
+    /// collection creation opcode (`BuildDict` or `BuildSet`) for dict or set literals.
+    fn finish_hash_collection(&mut self, is_dict: bool, item_count: u8) {
         self.consume(
             TK::RightBrace,
             &format!(
