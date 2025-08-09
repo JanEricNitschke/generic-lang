@@ -65,9 +65,15 @@ Always reference these instructions first and fallback to search or bash command
   ```
 
 ### Linting and Formatting
+- **Install clippy component**: `rustup component add clippy` -- takes 5 seconds. Set timeout to 60 seconds.
 - **Always run `cargo fmt --check` before committing** -- takes <1 second.
-- **Always run `cargo clippy -- -D warnings` before committing** -- takes 8 seconds. Set timeout to 60 seconds.
-- CI will fail if code is not properly formatted or has clippy warnings.
+- **Basic clippy checks**: `cargo clippy -- -D warnings` -- takes 8 seconds. Set timeout to 60 seconds.
+- **Comprehensive clippy checks**: `cargo clippy -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo` -- takes 10 seconds. Set timeout to 60 seconds.
+- **Install nightly with miri**: `rustup toolchain install nightly --component miri` -- takes 60 seconds. NEVER CANCEL. Set timeout to 120+ seconds.
+- **Setup miri**: `cargo +nightly miri setup` -- takes 30 seconds. Set timeout to 60 seconds.
+- **Run miri tests**: `cargo +nightly miri test --verbose` -- takes 15 seconds. Set timeout to 60 seconds.
+- **Run specific miri test**: `MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri run -- test/overloading/overloading_for_in.gen` -- takes 5 seconds. Set timeout to 60 seconds.
+- **Ensure all of these pass before pushing** -- CI will fail if code is not properly formatted or has clippy warnings.
 
 ### Benchmarking
 - **Simple benchmark**: `hyperfine --warmup 1 "./target/release/generic benchmark/fib/fib.gen"` -- takes 10 seconds.
