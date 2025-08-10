@@ -10,8 +10,9 @@ mod set;
 use crate::vm::VM;
 
 use crate::natives::list::{
-    list_add_native, list_append_native, list_contains_native, list_get_native, list_insert_native,
-    list_iter_native, list_iter_next_native, list_len_native, list_pop_native, list_set_native,
+    list_add_native, list_append_native, list_bool_native, list_contains_native, list_get_native,
+    list_insert_native, list_iter_native, list_iter_next_native, list_len_native, list_pop_native,
+    list_set_native,
 };
 
 use crate::natives::set::{
@@ -58,6 +59,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"List", &"__setitem__", &[2], list_set_native);
     vm.define_native_method(&"List", &"__add__", &[1], list_add_native);
     vm.define_native_method(&"List", &"__len__", &[0], list_len_native);
+    vm.define_native_method(&"List", &"__bool__", &[0], list_bool_native);
 
     vm.define_native_class(&"ListIterator", false);
     vm.define_native_method(&"ListIterator", &"__next__", &[0, 1], list_iter_next_native);

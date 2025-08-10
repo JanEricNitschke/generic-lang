@@ -1,0 +1,30 @@
+class A{}
+class B {
+    __bool__() {
+        return false;
+    }
+}
+
+if A() {
+    print("A is truthy");  # expect: A is truthy
+} else {
+    print("A is falsey");
+}
+
+if B() {
+    print("B is truthy");
+} else {
+    print("B is falsey");  # expect: B is falsey
+}
+
+if [] {
+    print("[] is truthy");
+} else {
+    print("[] is falsey");  # expect: [] is falsey
+}
+
+if [1] {
+    print("[1] is truthy");  # expect: [1] is truthy
+} else {
+    print("[1] is falsey");
+}

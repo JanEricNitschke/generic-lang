@@ -174,13 +174,7 @@ impl VM {
         // if_true - is_falsey() ->:
         // false ^ true = true
         // false ^ false = false
-        if self
-            .stack
-            .last()
-            .expect("stack underflow in OP_JUMP_IF_FALSE")
-            .is_falsey()
-            ^ if_true
-        {
+        if self.is_falsey(*self.peek(0).expect("Stack underflow in JUMP_IF_FALSE")) ^ if_true {
             self.callstack.current_mut().ip += offset;
         }
     }
@@ -195,7 +189,7 @@ impl VM {
         let condition = self.stack.pop().expect("Stack underflow in POP_JUMP_IF");
 
         // Same logic as jump_conditional but with the popped condition
-        if condition.is_falsey() ^ if_true {
+        if self.is_falsey(condition) ^ if_true {
             self.callstack.current_mut().ip += offset;
         }
     }
@@ -209,7 +203,7 @@ impl VM {
         let offset = self.read_16bit_number();
         let condition = *self.peek(0).expect("Stack underflow in JUMP_IF_OR_POP");
 
-        if condition.is_falsey() ^ if_true {
+        if self.is_falsey(condition) ^ if_true {
             // Condition matches, jump and leave value on stack
             self.callstack.current_mut().ip += offset;
         } else {
@@ -226,12 +220,9 @@ impl VM {
     ///
     /// If the stack is empty. This is an internal error and should never happen.
     pub(super) fn not_(&mut self) {
-        let value = self
-            .stack
-            .pop()
-            .expect("Stack underflow in OP_NOT.")
-            .is_falsey();
-        self.stack_push(value.into());
+        let value = self.stack.pop().expect("Stack underflow in OP_NOT");
+        let result = self.is_falsey(value);
+        self.stack_push(result.into());
     }
 
     /// Check if the top two values on the stack are equal.
