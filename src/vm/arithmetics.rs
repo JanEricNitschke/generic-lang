@@ -1,6 +1,6 @@
 use super::{InterpretResult, VM};
 use crate::chunk::CodeOffset;
-use crate::value::Value;
+use crate::value::{GenericRational, Number, Value};
 
 #[derive(PartialEq, Eq)]
 pub(super) enum BinaryOpResult {
@@ -198,5 +198,36 @@ impl VM {
         } else {
             matches!(value, Value::Nil | Value::Bool(false))
         }
+    }
+
+    pub(crate) fn build_rational(&mut self) -> Option<InterpretResult> {
+        let denominator = self
+            .stack
+            .pop()
+            .expect("Stack underflow in OP_BUILD_RATIONAL");
+        let numerator = self
+            .stack
+            .pop()
+            .expect("Stack underflow in OP_BUILD_RATIONAL");
+        match (numerator, denominator) {
+            (
+                Value::Number(Number::Integer(numerator)),
+                Value::Number(Number::Integer(denominator)),
+            ) if !denominator.is_zero(&self.heap) => {
+                let rational = GenericRational::new(numerator, denominator, &mut self.heap)
+                    .expect("Failed to create rational");
+                self.stack_push_value(Value::Number(Number::Rational(rational)));
+            }
+            _ => {
+                runtime_error!(
+                    self,
+                    "Invalid operands ({}, {}) for rational construction.",
+                    numerator.to_string(&self.heap),
+                    denominator.to_string(&self.heap)
+                );
+                return Some(InterpretResult::RuntimeError);
+            }
+        }
+        None
     }
 }

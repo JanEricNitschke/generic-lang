@@ -4,6 +4,7 @@ use derive_more::From;
 use num_bigint::BigInt;
 use num_traits::Pow;
 use num_traits::identities::Zero;
+use std::hash::{Hash, Hasher};
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Rem, Sub};
 
 // These could probably be individual entries in the enum tbh.
@@ -12,6 +13,7 @@ use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Rem, Sub};
 pub enum Number {
     Float(f64),
     Integer(GenericInt),
+    Rational(GenericRational),
 }
 
 // Conversions
@@ -32,6 +34,7 @@ impl Number {
         match self {
             Self::Float(num) => format!("{num:?}"),
             Self::Integer(num) => num.to_string(heap),
+            Self::Rational(num) => num.to_string(heap),
         }
     }
 
@@ -39,6 +42,7 @@ impl Number {
         match self {
             Self::Float(f) => *f,
             Self::Integer(i) => i.to_f64(heap),
+            Self::Rational(r) => r.to_f64(heap),
         }
     }
 
@@ -59,15 +63,27 @@ impl Number {
                 a.pow(b, heap)
                     .expect("Only calling integer pow for exp >= 0"),
             ),
+            (Self::Rational(a), Self::Integer(b)) => Self::Rational(
+                a.pow(b, heap)
+                    .expect("Rational power should not fail for integer exponent"),
+            ),
+            (Self::Integer(a), Self::Rational(b)) => {
+                Self::Float(a.to_f64(heap).powf(b.to_f64(heap)))
+            }
             (Self::Float(a), Self::Integer(b)) => match b.try_to_i32(heap) {
                 Ok(b) => Self::Float(a.powi(b)),
-                Err(_) => Self::Float(f64::INFINITY), // Or f64::MAX?
+                Err(_) => Self::Float(f64::INFINITY),
             },
             (Self::Integer(a), Self::Float(b)) => Self::Float(a.to_f64(heap).powf(b)),
             (Self::Float(a), Self::Float(b)) => Self::Float(a.powf(b)),
+            (Self::Rational(a), Self::Float(b)) => Self::Float(a.to_f64(heap).powf(b)),
+            (Self::Float(a), Self::Rational(b)) => Self::Float(a.powf(b.to_f64(heap))),
+            (Self::Rational(a), Self::Rational(b)) => {
+                Self::Float(a.to_f64(heap).powf(b.to_f64(heap)))
+            }
             (Self::Integer(a), Self::Integer(b)) => match b.try_to_i32(heap) {
                 Ok(b) => Self::Float(a.to_f64(heap).powi(b)),
-                Err(_) => Self::Float(f64::INFINITY), // Or f64::MAX?
+                Err(_) => Self::Float(f64::INFINITY),
             },
         }
     }
@@ -77,9 +93,34 @@ impl Number {
     pub(crate) fn floor_div(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
         match (self, rhs) {
             (Self::Integer(a), Self::Integer(b)) => Ok(Self::Integer((a.div(b, heap))?)),
+            (Self::Rational(a), Self::Rational(b)) => {
+                let result = a.div(b, heap)?;
+                match result.to_int(heap) {
+                    Ok(int_result) => Ok(Self::Integer(int_result)),
+                    Err(_) => Ok(Self::Float(result.to_f64(heap).floor())),
+                }
+            }
             (Self::Float(a), Self::Integer(b)) => Ok(Self::Float((a / b.to_f64(heap)).floor())),
             (Self::Integer(a), Self::Float(b)) => Ok(Self::Float((a.to_f64(heap) / b).floor())),
             (Self::Float(a), Self::Float(b)) => Ok(Self::Float((a / b).floor())),
+            (Self::Rational(a), Self::Integer(b)) => {
+                let b_rat = GenericRational::new(b, GenericInt::Small(1), heap)?;
+                let result = a.div(b_rat, heap)?;
+                match result.to_int(heap) {
+                    Ok(int_result) => Ok(Self::Integer(int_result)),
+                    Err(_) => Ok(Self::Float(result.to_f64(heap).floor())),
+                }
+            }
+            (Self::Integer(a), Self::Rational(b)) => {
+                let a_rat = GenericRational::new(a, GenericInt::Small(1), heap)?;
+                let result = a_rat.div(b, heap)?;
+                match result.to_int(heap) {
+                    Ok(int_result) => Ok(Self::Integer(int_result)),
+                    Err(_) => Ok(Self::Float(result.to_f64(heap).floor())),
+                }
+            }
+            (Self::Float(a), Self::Rational(b)) => Ok(Self::Float((a / b.to_f64(heap)).floor())),
+            (Self::Rational(a), Self::Float(b)) => Ok(Self::Float((a.to_f64(heap) / b).floor())),
         }
     }
 
@@ -87,43 +128,97 @@ impl Number {
         match self {
             Self::Integer(n) => Self::Integer(n.neg(heap)),
             Self::Float(f) => Self::Float(-f),
+            Self::Rational(r) => Self::Rational(r.neg(heap)),
         }
     }
 
-    /// Standard division ALWAYS produces floats, even for two integer arguments and even
-    /// if the result could be represented as an integer.
-    pub(crate) fn div(self, rhs: Self, heap: &Heap) -> Self {
+    /// Standard division produces rationals for integer/integer and floats otherwise
+    pub(crate) fn div(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
         match (self, rhs) {
-            (Self::Integer(a), Self::Integer(b)) => Self::Float(a.to_f64(heap) / b.to_f64(heap)),
-            (Self::Float(a), Self::Integer(b)) => Self::Float(a / b.to_f64(heap)),
-            (Self::Integer(a), Self::Float(b)) => Self::Float(a.to_f64(heap) / b),
-            (Self::Float(a), Self::Float(b)) => Self::Float(a / b),
+            (Self::Integer(a), Self::Integer(b)) => match GenericRational::new(a, b, heap) {
+                Ok(rat) => Ok(Self::Rational(rat)),
+                Err(_) => Ok(Self::Float(a.to_f64(heap) / b.to_f64(heap))),
+            },
+            (Self::Rational(a), Self::Rational(b)) => Ok(Self::Rational(a.div(b, heap)?)),
+            (Self::Float(a), Self::Integer(b)) => Ok(Self::Float(a / b.to_f64(heap))),
+            (Self::Integer(a), Self::Float(b)) => Ok(Self::Float(a.to_f64(heap) / b)),
+            (Self::Float(a), Self::Float(b)) => Ok(Self::Float(a / b)),
+            (Self::Rational(a), Self::Integer(b)) => {
+                let b_rat = GenericRational::new(b, GenericInt::Small(1), heap)?;
+                Ok(Self::Rational(a.div(b_rat, heap)?))
+            }
+            (Self::Integer(a), Self::Rational(b)) => {
+                let a_rat = GenericRational::new(a, GenericInt::Small(1), heap)?;
+                Ok(Self::Rational(a_rat.div(b, heap)?))
+            }
+            (Self::Float(a), Self::Rational(b)) => Ok(Self::Float(a / b.to_f64(heap))),
+            (Self::Rational(a), Self::Float(b)) => Ok(Self::Float(a.to_f64(heap) / b)),
         }
     }
+
     pub(crate) fn add(self, rhs: Self, heap: &mut Heap) -> Self {
         match (self, rhs) {
             (Self::Integer(a), Self::Integer(b)) => Self::Integer(a.add(b, heap)),
+            (Self::Rational(a), Self::Rational(b)) => Self::Rational(a.add(b, heap)),
             (Self::Float(a), Self::Integer(b)) => Self::Float(a + b.to_f64(heap)),
             (Self::Integer(a), Self::Float(b)) => Self::Float(a.to_f64(heap) + b),
             (Self::Float(a), Self::Float(b)) => Self::Float(a + b),
+            (Self::Rational(a), Self::Integer(b)) => {
+                let b_rat = GenericRational::new(b, GenericInt::Small(1), heap)
+                    .expect("Creating rational from integer should not fail");
+                Self::Rational(a.add(b_rat, heap))
+            }
+            (Self::Integer(a), Self::Rational(b)) => {
+                let a_rat = GenericRational::new(a, GenericInt::Small(1), heap)
+                    .expect("Creating rational from integer should not fail");
+                Self::Rational(a_rat.add(b, heap))
+            }
+            (Self::Float(a), Self::Rational(b)) => Self::Float(a + b.to_f64(heap)),
+            (Self::Rational(a), Self::Float(b)) => Self::Float(a.to_f64(heap) + b),
         }
     }
 
     pub(crate) fn sub(self, rhs: Self, heap: &mut Heap) -> Self {
         match (self, rhs) {
             (Self::Integer(a), Self::Integer(b)) => Self::Integer(a.sub(b, heap)),
+            (Self::Rational(a), Self::Rational(b)) => Self::Rational(a.sub(b, heap)),
             (Self::Float(a), Self::Integer(b)) => Self::Float(a - b.to_f64(heap)),
             (Self::Integer(a), Self::Float(b)) => Self::Float(a.to_f64(heap) - b),
             (Self::Float(a), Self::Float(b)) => Self::Float(a - b),
+            (Self::Rational(a), Self::Integer(b)) => {
+                let b_rat = GenericRational::new(b, GenericInt::Small(1), heap)
+                    .expect("Creating rational from integer should not fail");
+                Self::Rational(a.sub(b_rat, heap))
+            }
+            (Self::Integer(a), Self::Rational(b)) => {
+                let a_rat = GenericRational::new(a, GenericInt::Small(1), heap)
+                    .expect("Creating rational from integer should not fail");
+                Self::Rational(a_rat.sub(b, heap))
+            }
+            (Self::Float(a), Self::Rational(b)) => Self::Float(a - b.to_f64(heap)),
+            (Self::Rational(a), Self::Float(b)) => Self::Float(a.to_f64(heap) - b),
         }
     }
 
     pub(crate) fn mul(self, rhs: Self, heap: &mut Heap) -> Self {
         match (self, rhs) {
             (Self::Integer(a), Self::Integer(b)) => Self::Integer(a.mul(b, heap)),
+            (Self::Rational(a), Self::Rational(b)) => Self::Rational(a.mul(b, heap)),
             (Self::Float(a), Self::Integer(b)) => Self::Float(a * b.to_f64(heap)),
             (Self::Integer(a), Self::Float(b)) => Self::Float(a.to_f64(heap) * b),
             (Self::Float(a), Self::Float(b)) => Self::Float(a * b),
+            (Self::Rational(a), Self::Integer(b)) => {
+                let b_rat = GenericRational::new(b, GenericInt::Small(1), heap)
+                    .expect("Creating rational from integer should not fail");
+                Self::Rational(a.mul(b_rat, heap))
+            }
+            (Self::Integer(a), Self::Rational(b)) => {
+                let a_rat = GenericRational::new(a, GenericInt::Small(1), heap)
+                    .expect("Creating rational from integer should not fail");
+                Self::Rational(a_rat.mul(b, heap))
+            }
+            (Self::Float(a), Self::Rational(b)) => Self::Float(a * b.to_f64(heap)),
+            (Self::Rational(a), Self::Float(b)) => Self::Float(a.to_f64(heap) * b),
         }
     }
 
@@ -154,6 +249,17 @@ impl Number {
             (Self::Float(a), Self::Integer(b)) => Ok(Self::Float(a % b.to_f64(heap))),
             (Self::Integer(a), Self::Float(b)) => Ok(Self::Float(a.to_f64(heap) % b)),
             (Self::Float(a), Self::Float(b)) => Ok(Self::Float(a % b)),
+            (Self::Rational(a), Self::Rational(b)) => {
+                Ok(Self::Float(a.to_f64(heap) % b.to_f64(heap)))
+            }
+            (Self::Rational(a), Self::Integer(b)) => {
+                Ok(Self::Float(a.to_f64(heap) % b.to_f64(heap)))
+            }
+            (Self::Integer(a), Self::Rational(b)) => {
+                Ok(Self::Float(a.to_f64(heap) % b.to_f64(heap)))
+            }
+            (Self::Float(a), Self::Rational(b)) => Ok(Self::Float(a % b.to_f64(heap))),
+            (Self::Rational(a), Self::Float(b)) => Ok(Self::Float(a.to_f64(heap) % b)),
         }
     }
 
@@ -161,8 +267,19 @@ impl Number {
         match (self, other) {
             (Self::Integer(a), Self::Integer(b)) => a.eq(b, heap),
             (Self::Float(a), Self::Float(b)) => a == b,
+            (Self::Rational(a), Self::Rational(b)) => a.eq(b, heap),
             (Self::Integer(a), Self::Float(b)) => a.to_f64(heap) == *b,
             (Self::Float(a), Self::Integer(b)) => *a == b.to_f64(heap),
+            (Self::Integer(a), Self::Rational(b)) => {
+                let a_rat = GenericRational::from_int(*a);
+                a_rat.eq(b, heap)
+            }
+            (Self::Rational(a), Self::Integer(b)) => {
+                let b_rat = GenericRational::from_int(*b);
+                a.eq(&b_rat, heap)
+            }
+            (Self::Float(a), Self::Rational(b)) => *a == b.to_f64(heap),
+            (Self::Rational(a), Self::Float(b)) => a.to_f64(heap) == *b,
         }
     }
 
@@ -170,8 +287,19 @@ impl Number {
         match (self, other) {
             (Self::Integer(a), Self::Integer(b)) => a.partial_cmp(b, heap),
             (Self::Float(a), Self::Float(b)) => a.partial_cmp(b),
+            (Self::Rational(a), Self::Rational(b)) => a.partial_cmp(b, heap),
             (Self::Integer(a), Self::Float(b)) => a.to_f64(heap).partial_cmp(b),
             (Self::Float(a), Self::Integer(b)) => a.partial_cmp(&b.to_f64(heap)),
+            (Self::Integer(a), Self::Rational(b)) => {
+                let a_rat = GenericRational::from_int(*a);
+                a_rat.partial_cmp(b, heap)
+            }
+            (Self::Rational(a), Self::Integer(b)) => {
+                let b_rat = GenericRational::from_int(*b);
+                a.partial_cmp(&b_rat, heap)
+            }
+            (Self::Float(a), Self::Rational(b)) => a.partial_cmp(&b.to_f64(heap)),
+            (Self::Rational(a), Self::Float(b)) => a.to_f64(heap).partial_cmp(b),
         }
     }
 
@@ -529,6 +657,226 @@ impl GenericInt {
                 Ok(n) => Ok(n),
                 Err(_) => Err("Number too large to fit in usize".to_string()),
             },
+        }
+    }
+}
+
+#[derive(Debug, Clone, From, Copy, PartialEq, Eq)]
+pub struct GenericRational {
+    numerator: GenericInt,
+    denominator: GenericInt,
+}
+
+impl GenericRational {
+    pub fn new(
+        numerator: GenericInt,
+        denominator: GenericInt,
+        heap: &mut Heap,
+    ) -> Result<Self, String> {
+        if denominator.is_zero(heap) {
+            return Err("Denominator cannot be zero".to_string());
+        }
+        let (numerator, denominator) = Self::reduce(numerator, denominator, heap);
+        Ok(Self {
+            numerator,
+            denominator,
+        })
+    }
+
+    pub fn from_int(numerator: GenericInt) -> Self {
+        Self {
+            numerator,
+            denominator: GenericInt::Small(1),
+        }
+    }
+
+    fn reduce(
+        mut numerator: GenericInt,
+        mut denominator: GenericInt,
+        heap: &mut Heap,
+    ) -> (GenericInt, GenericInt) {
+        let gcd = Self::gcd(numerator, denominator, heap);
+
+        numerator = numerator
+            .div(gcd, heap)
+            .expect("Failed to divide numerator");
+        denominator = denominator
+            .div(gcd, heap)
+            .expect("Failed to divide denominator");
+
+        // Ensure denominator is positive by moving sign to numerator if needed
+        if denominator.lt(&GenericInt::Small(0), heap) {
+            numerator = numerator.neg(heap);
+            denominator = denominator.neg(heap);
+        }
+
+        (numerator, denominator)
+    }
+
+    fn gcd(mut a: GenericInt, mut b: GenericInt, heap: &mut Heap) -> GenericInt {
+        while !b.is_zero(heap) {
+            let temp = b;
+            b = a.rem(temp, heap).unwrap();
+            a = temp;
+        }
+        a
+    }
+
+    pub fn to_int(&self, heap: &Heap) -> Result<GenericInt, String> {
+        if self.denominator.eq(&GenericInt::Small(1), heap) {
+            Ok(self.numerator)
+        } else {
+            Err("Cannot convert rational to integer".to_string())
+        }
+    }
+
+    pub(crate) fn to_string(&self, heap: &Heap) -> String {
+        format!(
+            "{}:{}",
+            self.numerator.to_string(heap),
+            self.denominator.to_string(heap)
+        )
+    }
+
+    pub fn hash<H: Hasher>(&self, state: &mut H, heap: &Heap) {
+        match self.numerator {
+            GenericInt::Small(n) => n.hash(state),
+            GenericInt::Big(n) => n.to_value(heap).hash(state),
+        }
+
+        match self.denominator {
+            GenericInt::Small(n) => n.hash(state),
+            GenericInt::Big(n) => n.to_value(heap).hash(state),
+        }
+    }
+
+    // Arithmetic operations
+    pub fn add(self, rhs: Self, heap: &mut Heap) -> Self {
+        // a/b + c/d = (a*d + b*c) / (b*d)
+        let num = self
+            .numerator
+            .mul(rhs.denominator, heap)
+            .add(self.denominator.mul(rhs.numerator, heap), heap);
+        let den = self.denominator.mul(rhs.denominator, heap);
+        Self::new(num, den, heap).expect("Failed to create rational")
+    }
+
+    pub fn sub(self, rhs: Self, heap: &mut Heap) -> Self {
+        // a/b - c/d = (a*d - b*c) / (b*d)
+        let num = self
+            .numerator
+            .mul(rhs.denominator, heap)
+            .sub(self.denominator.mul(rhs.numerator, heap), heap);
+        let den = self.denominator.mul(rhs.denominator, heap);
+        Self::new(num, den, heap).expect("Failed to create rational")
+    }
+
+    pub fn mul(self, rhs: Self, heap: &mut Heap) -> Self {
+        // a/b * c/d = (a*c) / (b*d)
+        let num = self.numerator.mul(rhs.numerator, heap);
+        let den = self.denominator.mul(rhs.denominator, heap);
+        Self::new(num, den, heap).expect("Failed to create rational")
+    }
+
+    pub fn div(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
+        // a/b / c/d = (a*d) / (b*c)
+        if rhs.numerator.is_zero(heap) {
+            return Err("Division by zero".to_string());
+        }
+        let num = self.numerator.mul(rhs.denominator, heap);
+        let den = self.denominator.mul(rhs.numerator, heap);
+        Self::new(num, den, heap)
+    }
+
+    pub fn neg(self, heap: &mut Heap) -> Self {
+        Self {
+            numerator: self.numerator.neg(heap),
+            denominator: self.denominator,
+        }
+    }
+
+    // Comparison operations
+    pub fn eq(&self, other: &Self, heap: &Heap) -> bool {
+        // Since rationals are always in reduced form, we can compare directly
+        self.numerator.eq(&other.numerator, heap) && self.denominator.eq(&other.denominator, heap)
+    }
+
+    pub fn partial_cmp(&self, other: &Self, heap: &Heap) -> Option<std::cmp::Ordering> {
+        // a/b <=> c/d is equivalent to a*d <=> b*c
+        if let (
+            GenericInt::Small(a),
+            GenericInt::Small(b),
+            GenericInt::Small(c),
+            GenericInt::Small(d),
+        ) = (
+            self.numerator,
+            self.denominator,
+            other.numerator,
+            other.denominator,
+        ) {
+            // For small values, try direct calculation first
+            if let (Some(lhs), Some(rhs)) = (a.checked_mul(d), b.checked_mul(c)) {
+                lhs.partial_cmp(&rhs)
+            } else {
+                // Overflow, fall back to BigInt
+                let lhs = self.numerator.to_bigint(heap) * other.denominator.to_bigint(heap);
+                let rhs = self.denominator.to_bigint(heap) * other.numerator.to_bigint(heap);
+                lhs.partial_cmp(&rhs)
+            }
+        } else {
+            // For larger values, use BigInt arithmetic
+            let lhs = self.numerator.to_bigint(heap) * other.denominator.to_bigint(heap);
+            let rhs = self.denominator.to_bigint(heap) * other.numerator.to_bigint(heap);
+            lhs.partial_cmp(&rhs)
+        }
+    }
+
+    pub fn lt(&self, other: &Self, heap: &Heap) -> bool {
+        self.partial_cmp(other, heap) == Some(std::cmp::Ordering::Less)
+    }
+
+    pub fn gt(&self, other: &Self, heap: &Heap) -> bool {
+        self.partial_cmp(other, heap) == Some(std::cmp::Ordering::Greater)
+    }
+
+    pub fn ge(&self, other: &Self, heap: &Heap) -> bool {
+        matches!(
+            self.partial_cmp(other, heap),
+            Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
+        )
+    }
+
+    pub fn le(&self, other: &Self, heap: &Heap) -> bool {
+        matches!(
+            self.partial_cmp(other, heap),
+            Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+        )
+    }
+
+    // Conversion operations
+    pub fn to_f64(&self, heap: &Heap) -> f64 {
+        self.numerator.to_f64(heap) / self.denominator.to_f64(heap)
+    }
+
+    pub fn is_zero(&self, heap: &Heap) -> bool {
+        self.numerator.is_zero(heap)
+    }
+
+    pub fn pow(self, exp: GenericInt, heap: &mut Heap) -> Result<Self, String> {
+        if exp.lt_i64(0, heap) {
+            // For negative exponents, return the reciprocal raised to the positive power
+            let pos_exp = exp.neg(heap);
+            let result = self.pow(pos_exp, heap)?;
+            // Return reciprocal: swap numerator and denominator
+            if result.numerator.is_zero(heap) {
+                return Err("Division by zero in rational power".to_string());
+            }
+            Self::new(result.denominator, result.numerator, heap)
+        } else {
+            // For positive exponents, raise both numerator and denominator to the power
+            let num = self.numerator.pow(exp, heap)?;
+            let den = self.denominator.pow(exp, heap)?;
+            Self::new(num, den, heap)
         }
     }
 }

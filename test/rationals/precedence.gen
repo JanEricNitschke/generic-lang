@@ -1,0 +1,2 @@
+# Can not do the call precedence level as rationals dont support any of those operations
+print(5:3**2);  # expect: 25:9

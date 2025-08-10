@@ -40,7 +40,7 @@ impl<'scanner> Compiler<'scanner, '_> {
     }
 
     /// Handle a named variable based on the identifier of the last token.
-    pub(super) fn variable(&mut self, can_assign: bool) {
+    pub(super) fn variable(&mut self, can_assign: bool, _ignore_operators: &[TK]) {
         self.named_variable(
             &self.previous.as_ref().unwrap().as_str().to_string(),
             can_assign,

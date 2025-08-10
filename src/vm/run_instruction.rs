@@ -568,6 +568,11 @@ macro_rules! run_instruction {
                     return value;
                 }
             }
+            OpCode::BuildRational => {
+                if let Some(value) = $self.build_rational() {
+                    return value;
+                }
+            }
         };
     };
 }

@@ -1,0 +1,12 @@
+var x = 1:2;
+
+switch x {
+    case 1:
+        print("Matched case 1");
+    case 0.3:
+        print("Matched case 0.3");
+    case 1:
+        2:print("Matched case (1:2)");
+    default:
+        print("No match");  # expect: No match
+}

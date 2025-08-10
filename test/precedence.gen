@@ -5,10 +5,10 @@ print(2 + 3 * 4); # expect: 14
 print(20 - 3 * 4); # expect: 8
 
 # / has higher precedence than +.
-print(2 + 6 / 3); # expect: 4.0
+print(2 + 6 / 3); # expect: 4:1
 
 # / has higher precedence than -.
-print(2 - 6 / 3); # expect: 0.0
+print(2 - 6 / 3); # expect: 0:1
 
 # < has higher precedence than ==.
 print(false == 2 < 1); # expect: true

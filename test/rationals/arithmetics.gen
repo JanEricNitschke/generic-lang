@@ -1,0 +1,19 @@
+var a = 5:3;
+var b = 2:7;
+print(a+b);  # expect: 41:21
+print(a-b);  # expect: 29:21
+print(a*b);  # expect: 10:21
+print(a/b);  # expect: 35:6
+
+var c = 6;
+print(a+c);  # expect: 23:3
+print(a-c);  # expect: -13:3
+print(a*c);  # expect: 10:1
+print(a/c);  # expect: 5:18
+
+print(6:3 + 1.2);  # expect: 3.2
+
+
+var x = 1234567:890123;
+var y = 2469135:1780247;
+print(x > y);  # expect: true
