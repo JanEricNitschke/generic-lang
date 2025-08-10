@@ -15,7 +15,7 @@ pub use natives::{
     Dict, List, ListIterator, ModuleContents, NativeClass, NativeFunction, NativeFunctionImpl,
     NativeMethod, NativeMethodImpl, Set,
 };
-pub use number::{GenericInt, Number};
+pub use number::{GenericInt, GenericRational, Number};
 
 use num_bigint::BigInt;
 use rustc_hash::FxHasher;
@@ -70,6 +70,9 @@ impl Value {
                     GenericInt::Small(n) => BigInt::from(*n).hash(&mut state),
                     &GenericInt::Big(n) => (n.to_value(heap)).hash(&mut state),
                 },
+                Number::Rational(rational) => {
+                    rational.hash(&mut state, heap);
+                }
             },
             Self::String(s) => s.hash(&mut state),
             _ => {

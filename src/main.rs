@@ -6,6 +6,7 @@
 
 #![allow(clippy::wrong_self_convention)]
 #![allow(clippy::missing_const_for_fn)]
+#![allow(clippy::option_if_let_else)]
 
 use std::{io::Write, path::PathBuf};
 

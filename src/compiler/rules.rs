@@ -30,6 +30,7 @@ pub(super) enum Precedence {
     Unary,      // ! -
     Exponent,   // **
     Call,       // . () []
+    Rational,   // :
     Primary,
 }
 
@@ -40,7 +41,7 @@ impl Precedence {
 }
 
 // Typedef for the functions that parse the different types of expressions
-type ParseFn<'scanner, 'arena> = fn(&mut Compiler<'scanner, 'arena>, bool) -> ();
+type ParseFn<'scanner, 'arena> = fn(&mut Compiler<'scanner, 'arena>, bool, &[TK]) -> ();
 
 // This  specifies the functions that handle the parsing of an operator as prefix or infix,
 // as well as its precedence. There will be one such struct for each Token.
@@ -92,7 +93,7 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         RightParen    = [None,            None,      None      ],
         LeftBrace     = [hash_collection, None,      None      ],
         RightBrace    = [None,            None,      None      ],
-        Colon         = [None,            None,      None      ],
+        Colon         = [None,            binary,    Rational  ],
         LeftBracket   = [list,            subscript, Call      ],
         RightBracket  = [None,            None,      None      ],
         Comma         = [None,            None,      None      ],
@@ -178,26 +179,35 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         &self.rules[operator as usize]
     }
 
+    pub(super) fn parse_precedence(&mut self, precedence: Precedence) {
+        self.parse_precedence_ignoring(precedence, &[]);
+    }
+
     /// The actual precedence parsing function.
     ///
     /// Based on Vaughan Pratt's "top-down operator precedence parsing".
     /// See: [Crafting Interpreters](https://craftinginterpreters.com/compiling-expressions.html)
-    pub(super) fn parse_precedence(&mut self, precedence: Precedence) {
+    pub(super) fn parse_precedence_ignoring(
+        &mut self,
+        precedence: Precedence,
+        ignore_operators: &[TK],
+    ) {
         self.advance();
         if let Some(prefix_rule) = self.get_rule(self.previous.as_ref().unwrap().kind).prefix {
             let can_assign = precedence <= Precedence::Assignment;
-            prefix_rule(self, can_assign);
+            prefix_rule(self, can_assign, ignore_operators);
             while precedence
                 <= self
                     .get_rule(self.current.as_ref().unwrap().kind)
                     .precedence
+                && !ignore_operators.contains(&self.current.as_ref().unwrap().kind)
             {
                 self.advance();
                 let infix_rule = self
                     .get_rule(self.previous.as_ref().unwrap().kind)
                     .infix
                     .unwrap();
-                infix_rule(self, can_assign);
+                infix_rule(self, can_assign, ignore_operators);
             }
 
             if can_assign
@@ -220,11 +230,11 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
 
     /// Parse the expression which will leave its value on the stack.
     /// Then emit the bytecode for the respective operation which will act on the value on the stack.
-    fn unary(&mut self, _can_assign: bool) {
+    fn unary(&mut self, _can_assign: bool, ignore_operators: &[TK]) {
         let operator = self.previous.as_ref().unwrap().kind;
         let line = self.line();
 
-        self.parse_precedence(Precedence::Unary);
+        self.parse_precedence_ignoring(Precedence::Unary, ignore_operators);
 
         match operator {
             TK::Minus => self.emit_byte(OpCode::Negate, line),
@@ -237,17 +247,18 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// The left operand is already on the stack.
     /// The final order on the stack will be that the right operand is on top of the left one.
     /// This is then handled correctly in the VM when the bytecode of a binary operator is encountered.
-    fn binary(&mut self, _can_assign: bool) {
+    fn binary(&mut self, _can_assign: bool, ignore_operators: &[TK]) {
         // First operand is already on the stack
         let operator = self.previous.as_ref().unwrap().kind;
         let line = self.line();
         let rule = self.get_rule(operator);
 
         // Correctly put the second operand on the stack
-        self.parse_precedence(
+        self.parse_precedence_ignoring(
             Precedence::try_from_primitive(u8::from(rule.precedence) + 1).expect(
                 "Invalid precedence in 'binary', should never be called for `Primary expression`.",
             ),
+            ignore_operators,
         );
 
         // Emit the correct byte code to perform the operation on the two values
@@ -269,6 +280,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             TK::StarStar => self.emit_byte(OpCode::Exp, line),
             TK::SlashSlash => self.emit_byte(OpCode::FloorDiv, line),
             TK::In => self.in_(),
+            TK::Colon => self.emit_byte(OpCode::BuildRational, line),
             _ => unreachable!("Unknown binary operator: {}", operator),
         }
     }
@@ -283,12 +295,15 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// For the rest of the logic have a look at [`Compiler::conditional_statement`].
     /// We work exactly like that except we always have a "then" and we only have expressions
     /// instead of blocks.
-    fn ternary(&mut self, _can_assign: bool) {
+    fn ternary(&mut self, _can_assign: bool, ignore_operators: &[TK]) {
         let then_jump = self.emit_jump(OpCode::PopJumpIfFalse);
 
         // First value: We parse the "then" expression and jump over the "else" expression.
         // The condition has already been popped by PopJumpIfFalse.
-        self.parse_precedence(Precedence::Ternary);
+        self.parse_precedence_ignoring(
+            Precedence::Ternary,
+            &[&[TK::Colon], ignore_operators].concat(),
+        );
         let else_jump = self.emit_jump(OpCode::Jump);
 
         self.consume(
@@ -299,7 +314,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         // Patch the jump over the "else" expression to continue after the end of the "then" expression.
         self.patch_jump(then_jump);
 
-        self.parse_precedence(Precedence::Ternary);
+        self.parse_precedence_ignoring(
+            Precedence::Ternary,
+            &[&[TK::Colon], ignore_operators].concat(),
+        );
 
         self.patch_jump(else_jump);
     }
@@ -308,7 +326,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ///
     /// We support either single expressions, where no `return` is needed,
     /// or full blocks with a `return` statement.
-    fn lambda(&mut self, _can_assign: bool) {
+    fn lambda(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         self.function(&LAMBDA_NAME, FunctionType::Function, true);
     }
 
@@ -328,7 +346,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     }
 
     /// Parsing any call just means parsing the arguments and then emitting the correct bytecode.
-    fn call(&mut self, _can_assign: bool) {
+    fn call(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let arg_count = self.argument_list();
         self.emit_bytes(OpCode::Call, arg_count, self.line());
     }
@@ -337,7 +355,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ///
     /// This is actually fairly complicated, as cases like
     /// `a.b;`, `a.b = c;`, `a.b();` and `a.b() = c;` all have to be handled correctly here.
-    fn dot(&mut self, can_assign: bool) {
+    fn dot(&mut self, can_assign: bool, _ignore_operators: &[TK]) {
         self.consume(TK::Identifier, "Expect property name after '.'.");
         let name_constant =
             self.identifier_constant(&self.previous.as_ref().unwrap().as_str().to_string());
@@ -395,7 +413,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     }
 
     /// Handles the four tokens that directly corresponds to values.
-    fn literal(&mut self, _can_assign: bool) {
+    fn literal(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let literal = self.previous.as_ref().unwrap().kind;
         match literal {
             TK::False => self.emit_byte(OpCode::False, self.line()),
@@ -410,7 +428,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Used for grouping expressions to overwrite default precedence.
     ///
     /// The full expression within the grouping will be parsed as one.
-    fn grouping(&mut self, _can_assign: bool) {
+    fn grouping(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         self.expression();
         self.consume(TK::RightParen, "Expect ')' after expression.");
     }
@@ -422,7 +440,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// The constant gets loaded into the current chunks constant table
     /// and the index is pushed after the corresponding `OpCode`.
     /// The VM then loads the constant from the constant table using that index.
-    fn float(&mut self, _can_assign: bool) {
+    fn float(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let value: f64 = self.previous.as_ref().unwrap().as_str().parse().unwrap();
         self.emit_constant(value);
     }
@@ -430,7 +448,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Emit an integer literal.
     ///
     /// Works equivalent to [`Compiler::float`].
-    fn integer(&mut self, _can_assign: bool) {
+    fn integer(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let integer_str = self.previous.as_ref().unwrap().as_str();
         if let Ok(value) = integer_str.parse::<i64>() {
             self.emit_constant(value);
@@ -446,7 +464,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ///
     /// Here, the string is taken from the lexeme of the token with the last and first
     /// character (`"`) stripped. Rest works like for [`Compiler::float`].
-    fn string(&mut self, _can_assign: bool) {
+    fn string(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let lexeme = self.previous.as_ref().unwrap().as_str();
         let value = lexeme[1..lexeme.len() - 1].to_string();
         let string_id = self.heap.string_id(&value);
@@ -456,7 +474,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Parse a list literal ([a, b, c(,)])
     ///
     /// Handles optional trailing commas.
-    fn list(&mut self, _can_assign: bool) {
+    fn list(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let mut item_count = 0;
         // Handle trailing comma
         while !self.check(TK::RightBracket) {
@@ -485,7 +503,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ///
     /// Empty braces `{}` are parsed as an empty set.
     /// Empty dict literal is `{:}`.
-    fn hash_collection(&mut self, _can_assign: bool) {
+    fn hash_collection(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         // Empty set literal
         if self.check(TK::RightBrace) {
             return self.finish_hash_collection(false, 0);
@@ -498,10 +516,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
 
         // First element
         let mut item_count = 0;
-        self.parse_precedence(Precedence::non_assigning());
+        self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon]);
         let is_dict = self.match_(TK::Colon);
         if is_dict {
-            self.parse_precedence(Precedence::non_assigning());
+            self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon]);
         }
         item_count += 1;
         self.match_(TK::Comma); // optional trailing comma after first
@@ -511,7 +529,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             if is_dict {
                 self.parse_dict_entry();
             } else {
-                self.parse_precedence(Precedence::non_assigning());
+                self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon]);
             }
 
             if item_count == 255 {
@@ -549,9 +567,9 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     }
 
     fn parse_dict_entry(&mut self) {
-        self.parse_precedence(Precedence::non_assigning());
+        self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon]);
         self.consume(TK::Colon, "Expect ':' after key.");
-        self.parse_precedence(Precedence::non_assigning());
+        self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon]);
     }
 
     /// Parse subscript (`a[b]`) expressions.
@@ -561,7 +579,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ///
     /// Also works by invoking `__getitem__` or `__setitem__`
     /// on the value to allow classes to overload how this operation works.
-    fn subscript(&mut self, can_assign: bool) {
+    fn subscript(&mut self, can_assign: bool, _ignore_operators: &[TK]) {
         self.parse_precedence(Precedence::non_assigning());
         self.consume(TK::RightBracket, "Expect ']' after index.");
         let line = self.line();
@@ -618,18 +636,18 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// The result of such an expression is the first operand that evaluates
     /// falsey or the last operand if all are truthy.
     /// The second expression is not evaluated if the first is already false.
-    fn and(&mut self, _can_assign: bool) {
+    fn and(&mut self, _can_assign: bool, ignore_operators: &[TK]) {
         let end_jump = self.emit_jump(OpCode::JumpIfFalseOrPop);
-        self.parse_precedence(Precedence::And);
+        self.parse_precedence_ignoring(Precedence::And, ignore_operators);
         self.patch_jump(end_jump);
     }
 
     /// Short circuiting `or`.
     ///
     /// Work equivalently to [`Compiler::and`].
-    fn or(&mut self, _can_assign: bool) {
+    fn or(&mut self, _can_assign: bool, ignore_operators: &[TK]) {
         let end_jump = self.emit_jump(OpCode::JumpIfTrueOrPop);
-        self.parse_precedence(Precedence::Or);
+        self.parse_precedence_ignoring(Precedence::Or, ignore_operators);
         self.patch_jump(end_jump);
     }
 
@@ -639,12 +657,12 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// `this` which is initialized to the specific instance.
     ///
     /// Outside of a class context this is a syntax error.
-    fn this(&mut self, _can_assign: bool) {
+    fn this(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         if self.current_class().is_none() {
             self.error("Can't use 'this' outside of a class.");
             return;
         }
-        self.variable(false);
+        self.variable(false, &[]);
     }
 
     /// Handle `super` expressions that interact with the superlcass.
@@ -655,7 +673,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ///
     /// Unlike `this`, only method access either in the form of a call
     /// or to create a bound method is possible.
-    fn super_(&mut self, _can_assign: bool) {
+    fn super_(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         match self.current_class() {
             None => {
                 self.error("Can't use 'super' outside of a class.");

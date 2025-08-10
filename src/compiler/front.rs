@@ -164,7 +164,7 @@ impl Compiler<'_, '_> {
 
         if self.match_(TK::Less) {
             self.consume(TK::Identifier, "Expect superclass name.");
-            self.variable(false);
+            self.variable(false, &[]);
 
             if class_name == self.previous.as_ref().unwrap().as_str() {
                 self.error("A class can't inherit from itself.");
@@ -742,7 +742,7 @@ impl Compiler<'_, '_> {
             let miss_jump = if self.match_(TK::Case) {
                 // Have to dup because equality check removes it
                 self.emit_byte(OpCode::Dup, self.line());
-                self.expression();
+                self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Colon]);
                 self.consume(TK::Colon, "Expect ':' after 'case' value.");
                 self.emit_byte(OpCode::Equal, self.line());
                 let jump = self.emit_jump(OpCode::PopJumpIfFalse);
