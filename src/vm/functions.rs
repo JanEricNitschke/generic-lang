@@ -158,10 +158,18 @@ impl VM {
     ///    - If the bound method is a standard one, it is scheduled for execution.
     ///    - If the bound method is a native one, it is executed directly.
     fn call_value(&mut self, callee: Value, arg_count: u8) -> bool {
+        let call_id = self.heap.string_id(&"__call__");
         match callee {
             Value::NativeMethod(_) => {
                 println!("Got a native method");
                 false
+            }
+            Value::Instance(instance)
+                if instance
+                    .to_value(&self.heap)
+                    .has_field_or_method(call_id, &self.heap) =>
+            {
+                self.invoke(call_id, arg_count)
             }
             Value::Closure(_) => self.execute_call(callee, arg_count),
             Value::NativeFunction(f) => self.execute_native_function_call(f, arg_count),
@@ -214,13 +222,16 @@ impl VM {
                 _ => {
                     runtime_error!(
                         self,
-                        "Native methods only bind over  closures or native methods."
+                        "Native methods only bind over closures or native methods."
                     );
                     false
                 }
             },
             _ => {
-                runtime_error!(self, "Can only call functions and classes.");
+                runtime_error!(
+                    self,
+                    "Can only call functions, classes and instances with a `__call__` method."
+                );
                 false
             }
         }
