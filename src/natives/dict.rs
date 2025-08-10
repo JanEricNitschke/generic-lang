@@ -1,6 +1,9 @@
 //! Methods of the native `Dict` class.
 
-use crate::{value::Value, vm::VM};
+use crate::{
+    value::{Number, Value},
+    vm::VM,
+};
 
 /// Get an item via `dict[a]`, where `a` is a hashable value type.
 /// Currently only `nil`, `StopIteration`, bools, integers and strings are hashable.
@@ -39,4 +42,13 @@ pub(super) fn dict_set_native(
     dict.add(*args[0], *args[1], &vm.heap);
     *receiver.as_dict_mut(&mut vm.heap) = dict;
     Ok(Value::Nil)
+}
+
+pub(super) fn dict_len_native(
+    vm: &mut VM,
+    receiver: &mut Value,
+    _args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let dict = receiver.as_dict(&vm.heap);
+    Ok(Number::from_usize(dict.items.len(), &mut vm.heap).into())
 }

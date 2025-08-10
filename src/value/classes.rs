@@ -69,6 +69,18 @@ impl Instance {
             ),
         }
     }
+
+    pub(crate) fn has_field_or_method(&self, method_name: StringId, heap: &Heap) -> bool {
+        self.fields.contains_key(method_name.to_value(heap))
+            || self.class.to_value(heap).methods.contains_key(&method_name)
+    }
+
+    pub(crate) fn get_field_or_method(&self, method_name: StringId, heap: &Heap) -> Option<Value> {
+        self.fields
+            .get(method_name.to_value(heap))
+            .copied()
+            .or_else(|| self.class.to_value(heap).methods.get(&method_name).copied())
+    }
 }
 
 impl std::fmt::Display for Instance {

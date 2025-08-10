@@ -1,0 +1,8 @@
+class MyList {
+    __len__() {
+        return 5;
+    }
+}
+var a = MyList();
+print(a.__len__()); # expect: 5
+print(len(a)); # expect: 5
