@@ -378,8 +378,6 @@ pub(super) fn len_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, 
             matches!(len_method, Value::NativeMethod(_)),
         );
         let result = vm.stack.pop().expect("Stack underflow in len_native");
-        // We need to pop off the len_function itself.
-        vm.stack.pop().expect("Stack underflow in len_native");
         return Ok(result);
     }
 
