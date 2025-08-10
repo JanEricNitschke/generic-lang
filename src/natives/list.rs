@@ -1,7 +1,7 @@
 //! Methods of the native `List` class.
 
 use crate::{
-    value::{Instance, ListIterator, Number, Value},
+    value::{Instance, List, ListIterator, NativeClass, Number, Value},
     vm::VM,
 };
 
@@ -234,4 +234,50 @@ pub(super) fn list_iter_next_native(
     };
     *receiver.as_list_iter_mut(&mut vm.heap) = my_iter;
     result
+}
+
+pub(super) fn list_add_native(
+    vm: &mut VM,
+    receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let my_list = receiver.as_list(&vm.heap);
+    match &args[0] {
+        Value::Instance(instance) => match &instance.to_value(&vm.heap).backing {
+            Some(NativeClass::List(other_list)) => {
+                // Create a new list with combined contents
+                let mut new_list = List::new();
+
+                // Add all items from the receiver list
+                new_list.items.extend_from_slice(&my_list.items);
+
+                // Add all items from the argument list
+                new_list.items.extend_from_slice(&other_list.items);
+
+                // Create a new List instance
+                let instance = Instance::new(
+                    *vm.heap.native_classes.get("List").unwrap(),
+                    Some(new_list.into()),
+                );
+                Ok(vm.heap.add_instance(instance))
+            }
+            _ => Err(format!(
+                "Can only add a list to another list, got `{}`.",
+                instance.to_value(&vm.heap).to_string(&vm.heap)
+            )),
+        },
+        x => Err(format!(
+            "Can only add a list to another list, got `{}`.",
+            x.to_string(&vm.heap)
+        )),
+    }
+}
+
+pub(super) fn list_len_native(
+    vm: &mut VM,
+    receiver: &mut Value,
+    _args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let my_list = receiver.as_list(&vm.heap);
+    Ok(Number::from_usize(my_list.items.len(), &mut vm.heap).into())
 }

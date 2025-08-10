@@ -19,14 +19,21 @@ impl VM {
     ///
     /// Pushes the closure onto the stack and callstack. Then directly
     /// executes all of the bytecode for it before returning to the main loop.
-    pub(crate) fn execute_and_run_function(
+    pub(crate) fn invoke_and_run_function(
         &mut self,
-        closure: Value,
+        method_name: StringId,
         arg_count: u8,
+        method_is_native: bool,
     ) -> InterpretResult {
-        self.stack_push(closure);
-        self.execute_call(closure, arg_count);
-        self.run_function()
+        if !self.invoke(method_name, arg_count) {
+            return InterpretResult::RuntimeError;
+        }
+
+        if method_is_native {
+            InterpretResult::Ok
+        } else {
+            self.run_function()
+        }
     }
 
     /// Run the closure currently on top of the callstack.
@@ -55,7 +62,7 @@ impl VM {
     ///
     /// If it is an instance and the attribute is not a property of the instance
     /// then a method is looked up in the class.
-    pub(super) fn invoke(&mut self, method_name: StringId, arg_count: u8) -> bool {
+    pub(crate) fn invoke(&mut self, method_name: StringId, arg_count: u8) -> bool {
         let receiver = *self
             .peek(arg_count.into())
             .expect("Stack underflow in OP_INVOKE");
@@ -292,8 +299,7 @@ impl VM {
         let result = fun(self, ref_args.as_mut_slice());
         match result {
             Ok(value) => {
-                self.stack
-                    .truncate(self.stack.len() - usize::from(arg_count) - 1);
+                self.stack.truncate(start_index - 1);
                 self.stack_push(value);
                 true
             }

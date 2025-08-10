@@ -41,6 +41,10 @@ impl Number {
             Self::Integer(i) => i.to_f64(heap),
         }
     }
+
+    pub(crate) fn from_usize(n: usize, heap: &mut Heap) -> Self {
+        Self::Integer(GenericInt::from_usize(n, heap))
+    }
 }
 
 // Arithmethics
@@ -231,6 +235,17 @@ impl GenericInt {
         match self {
             Self::Small(n) => *n == 0,
             Self::Big(n) => n.to_value(heap).is_zero(),
+        }
+    }
+
+    #[allow(clippy::option_if_let_else)]
+    pub fn from_usize(n: usize, heap: &mut Heap) -> Self {
+        if let Ok(n) = i64::try_from(n) {
+            Self::Small(n)
+        } else {
+            // If usize is too large for i64, we use BigInt
+            let big_int = BigInt::from(n);
+            *heap.add_big_int(big_int).as_generic_int()
         }
     }
 }

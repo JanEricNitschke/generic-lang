@@ -43,34 +43,49 @@ macro_rules! binary_op_invoke {
 /// Handle binary operations between numbers.
 #[macro_export]
 macro_rules! binary_op {
-    ($self:ident, $method:ident, $int_only:tt, $heap_toggle:ident) => {{
+    ($self:ident, $method:ident, $gen_method:tt, $int_only:tt, $heap_toggle:ident) => {{
         let slice_start = $self.stack.len() - 2;
+
+        let gen_method_id = $self.heap.string_id(&$gen_method);
 
         let status = match &$self.stack[slice_start..] {
             [left, right] => {
-                if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
-                    if $int_only
-                        & (!matches!(a, Number::Integer(_)) | !matches!(b, Number::Integer(_)))
-                    {
-                        BinaryOpResult::InvalidOperands
-                    } else {
-                        match binary_op_invoke!($self, a, b, $method, $heap_toggle)
-                            .into_result_value()
+                match (&left, &right) {
+                    (Value::Number(a), Value::Number(b)) => {
+                        if $int_only
+                            & (!matches!(a, Number::Integer(_)) | !matches!(b, Number::Integer(_)))
                         {
-                            Ok(value) => {
-                                $self.stack.pop();
-                                $self.stack.pop();
-                                $self.stack_push_value(value);
-                                BinaryOpResult::Success
-                            }
-                            Err(error) => {
-                                runtime_error!($self, "{error}");
-                                BinaryOpResult::OperationError
+                            BinaryOpResult::InvalidOperands
+                        } else {
+                            match binary_op_invoke!($self, a, b, $method, $heap_toggle)
+                                .into_result_value()
+                            {
+                                Ok(value) => {
+                                    $self.stack.pop();
+                                    $self.stack.pop();
+                                    $self.stack_push_value(value);
+                                    BinaryOpResult::Success
+                                }
+                                Err(error) => {
+                                    runtime_error!($self, "{error}");
+                                    BinaryOpResult::OperationError
+                                }
                             }
                         }
                     }
-                } else {
-                    BinaryOpResult::InvalidOperands
+                    (Value::Instance(instance_id), _)
+                        if instance_id
+                            .to_value(&$self.heap)
+                            .has_field_or_method(gen_method_id, &$self.heap) =>
+                    {
+                        if !$self.invoke(gen_method_id, 1) {
+                            return InterpretResult::RuntimeError;
+                        }
+                        // If the invoke succeeds, decide what to return —
+                        // keeping same flow as original code
+                        BinaryOpResult::Success
+                    }
+                    _ => BinaryOpResult::InvalidOperands,
                 }
             }
             _ => BinaryOpResult::InvalidOperands,
@@ -97,6 +112,7 @@ macro_rules! binary_op {
 impl VM {
     pub(super) fn add(&mut self) -> Option<InterpretResult> {
         let slice_start = self.stack.len() - 2;
+        let gen_method_id = self.heap.string_id(&"__add__");
         let ok = match &self.stack[slice_start..] {
             [left, right] => match (&left, &right) {
                 (Value::Number(a), Value::Number(b)) => {
@@ -113,6 +129,18 @@ impl VM {
                     self.stack.pop();
                     self.stack.pop();
                     self.stack_push_value(new_string_id.into());
+                    true
+                }
+                (Value::Instance(instance_id), _)
+                    if instance_id
+                        .to_value(&self.heap)
+                        .has_field_or_method(gen_method_id, &self.heap) =>
+                {
+                    if !self.invoke(gen_method_id, 1) {
+                        return Some(InterpretResult::RuntimeError);
+                    }
+                    // If the invoke succeeds, decide what to return —
+                    // keeping same flow as original code
                     true
                 }
                 _ => false,

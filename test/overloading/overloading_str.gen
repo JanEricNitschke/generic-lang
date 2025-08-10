@@ -17,3 +17,11 @@ var inst2 = Test2();
 
 print(str(inst1)); # expect: Apple
 print(str(inst2)); # expect: <Test2 instance>
+
+inst2.__str__ = ->() "Pear";
+print(str(inst2)); # expect: Pear
+
+var my_list = [];
+print(str(my_list)); # expect: []
+my_list.__str__ = ->() "Banana";
+print(str(my_list)); # expect: Banana

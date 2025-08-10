@@ -152,19 +152,19 @@ macro_rules! run_instruction {
                     return value;
                 }
             }
-            OpCode::Subtract => binary_op!($self, sub, false, mut_heap),
-            OpCode::Multiply => binary_op!($self, mul, false, mut_heap),
-            OpCode::Divide => binary_op!($self, div, false, mut_heap),
-            OpCode::BitXor => binary_op!($self, bitxor, true, mut_heap),
-            OpCode::BitAnd => binary_op!($self, bitand, true, mut_heap),
-            OpCode::BitOr => binary_op!($self, bitor, true, mut_heap),
-            OpCode::Exp => binary_op!($self, pow, false, mut_heap),
-            OpCode::Mod => binary_op!($self, rem, false, mut_heap),
-            OpCode::FloorDiv => binary_op!($self, floor_div, false, mut_heap),
-            OpCode::Greater => binary_op!($self, gt, false, non_mut_heap),
-            OpCode::Less => binary_op!($self, lt, false, non_mut_heap),
-            OpCode::GreaterEqual => binary_op!($self, ge, false, non_mut_heap),
-            OpCode::LessEqual => binary_op!($self, le, false, non_mut_heap),
+            OpCode::Subtract => binary_op!($self, sub, "__sub__", false, mut_heap),
+            OpCode::Multiply => binary_op!($self, mul, "__mul__", false, mut_heap),
+            OpCode::Divide => binary_op!($self, div, "__div__", false, mut_heap),
+            OpCode::BitXor => binary_op!($self, bitxor, "__bitxor__", true, mut_heap),
+            OpCode::BitAnd => binary_op!($self, bitand, "__bitand__", true, mut_heap),
+            OpCode::BitOr => binary_op!($self, bitor, "__bitor__", true, mut_heap),
+            OpCode::Exp => binary_op!($self, pow, "__pow__", false, mut_heap),
+            OpCode::Mod => binary_op!($self, rem, "__mod__", false, mut_heap),
+            OpCode::FloorDiv => binary_op!($self, floor_div, "__floor_div__", false, mut_heap),
+            OpCode::Greater => binary_op!($self, gt, "__gt__", false, non_mut_heap),
+            OpCode::Less => binary_op!($self, lt, "__lt__", false, non_mut_heap),
+            OpCode::GreaterEqual => binary_op!($self, ge, "__ge__", false, non_mut_heap),
+            OpCode::LessEqual => binary_op!($self, le, "__le__", false, non_mut_heap),
             OpCode::NotEqual => $self.equal(true),
             OpCode::Jump => {
                 let offset = $self.read_16bit_number();

@@ -3,7 +3,7 @@ use crate::value::Value;
 
 impl VM {
     /// Check the top value of the stack.
-    pub(super) fn peek(&self, n: usize) -> Option<&Value> {
+    pub(crate) fn peek(&self, n: usize) -> Option<&Value> {
         let len = self.stack.len();
         if n >= len {
             None

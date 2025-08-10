@@ -1,6 +1,9 @@
 //! Methods of the native `Set` class.
 
-use crate::{value::Value, vm::VM};
+use crate::{
+    value::{Number, Value},
+    vm::VM,
+};
 
 /// Insert an item into the set `set.insert(item)`.
 /// Only works on hasheable values.
@@ -57,4 +60,13 @@ pub(super) fn set_contains_native(
         ));
     }
     Ok(my_set.contains(args[0], &vm.heap).into())
+}
+
+pub(super) fn set_len_native(
+    vm: &mut VM,
+    receiver: &mut Value,
+    _args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let my_set = receiver.as_set(&vm.heap);
+    Ok(Number::from_usize(my_set.items.len(), &mut vm.heap).into())
 }

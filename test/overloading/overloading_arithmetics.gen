@@ -1,0 +1,61 @@
+class Arithmetic {
+    __init__(value) {
+        this.value = value;
+    }
+    __add__(other)       { return Arithmetic(this.value + other.value); }
+    __sub__(other)       { return Arithmetic(this.value - other.value); }
+    __mul__(other)       { return Arithmetic(this.value * other.value); }
+    __div__(other)       { return Arithmetic(this.value / other.value); }
+    __bitxor__(other)    { return Arithmetic(this.value ^ other.value); }
+    __bitand__(other)    { return Arithmetic(this.value & other.value); }
+    __bitor__(other)     { return Arithmetic(this.value | other.value); }
+    __pow__(other)       { return Arithmetic(this.value ** other.value); }
+    __mod__(other)       { return Arithmetic(this.value % other.value); }
+    __floor_div__(other) { return Arithmetic(this.value // other.value); }
+
+    __gt__(other) { return this.value > other.value; }
+    __lt__(other) { return this.value < other.value; }
+    __ge__(other) { return this.value >= other.value; }
+    __le__(other) { return this.value <= other.value; }
+}
+
+var a = Arithmetic(5);
+var b = Arithmetic(10);
+
+print((a + b).value);        # expect: 15
+print((a - b).value);        # expect: -5
+print((a * b).value);        # expect: 50
+print((b / a).value);        # expect: 2.0
+print((a ^ b).value);        # expect: 15
+print((a & b).value);        # expect: 0
+print((a | b).value);        # expect: 15
+print((a ** b).value);       # expect: 9765625
+print((b % a).value);        # expect: 0
+print((b // a).value);       # expect: 2
+
+print(a > b);                # expect: false
+print(a < b);                # expect: true
+print(a >= b);               # expect: false
+print(a <= b);               # expect: true
+
+
+a.__add__ = ->(b) {
+    return Arithmetic(20);
+};
+
+print((a + b).value); # expect: 20
+
+
+
+class BadArithmetic {
+    __init__(value) {
+        this.value = value;
+    }
+}
+
+var c = BadArithmetic(10);
+var d = BadArithmetic(15);
+c.__add__ = ->(other) {
+    return BadArithmetic(2 * other.value);
+};
+print((c + d).value); # expect: 30

@@ -1,7 +1,6 @@
 //! Module containing free standing rust native functions.
 
 use crate::value::GenericInt;
-use crate::value::NativeClass;
 use crate::{
     value::{Number, Value},
     vm::VM,
@@ -160,24 +159,18 @@ pub(super) fn is_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Valu
 /// Fixed implementations for basic types, instances use the `__str__` method if present.
 pub(super) fn to_string_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     let value = &args[0];
-    match value {
-        Value::Instance(instance) => {
-            let str_id = &vm.heap.string_id(&"__str__").clone();
-            if let Some(closure) = instance
-                .to_value(&vm.heap)
-                .class
-                .to_value(&vm.heap)
-                .methods
-                .get(str_id)
-            {
-                vm.execute_and_run_function(*closure, 0);
-                let returned_value = vm.stack.pop().expect("Stack underflow in print_native");
-                Ok(returned_value)
-            } else {
-                Ok(Value::String(vm.heap.string_id(&value.to_string(&vm.heap))))
-            }
-        }
-        _ => Ok(Value::String(vm.heap.string_id(&value.to_string(&vm.heap)))),
+    let str_id = vm.heap.string_id(&"__str__");
+
+    if let Value::Instance(instance) = value
+        && let Some(str_method) = instance
+            .to_value(&vm.heap)
+            .get_field_or_method(str_id, &vm.heap)
+    {
+        vm.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)));
+        let returned_value = vm.stack.pop().expect("Stack underflow in print_native");
+        Ok(returned_value)
+    } else {
+        Ok(Value::String(vm.heap.string_id(&value.to_string(&vm.heap))))
     }
 }
 
@@ -220,7 +213,7 @@ pub(super) fn type_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value,
 /// Optionally supply a string to be printed at the end of the value.
 /// Defaults to `\n`.
 pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
-    let str_id = &vm.heap.string_id(&"__str__").clone();
+    let str_id = vm.heap.string_id(&"__str__");
     let end = if args.len() == 2 {
         match &args[1] {
             Value::String(string_id) => &string_id.to_value(&vm.heap).clone(),
@@ -235,24 +228,16 @@ pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
         "\n"
     };
     let value = &args[0];
-    match **value {
-        Value::Instance(instance) => {
-            if let Some(closure) = instance
-                .to_value(&vm.heap)
-                .class
-                .to_value(&vm.heap)
-                .methods
-                .get(str_id)
-                .copied()
-            {
-                vm.execute_and_run_function(closure, 0);
-                let returned_value = vm.stack.pop().expect("Stack underflow in print_native");
-                print!("{}{end}", returned_value.to_string(&vm.heap));
-            } else {
-                print!("{}{end}", value.to_string(&vm.heap));
-            }
-        }
-        _ => print!("{}{end}", value.to_string(&vm.heap)),
+    if let Value::Instance(instance) = **value
+        && let Some(str_method) = instance
+            .to_value(&vm.heap)
+            .get_field_or_method(str_id, &vm.heap)
+    {
+        vm.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)));
+        let returned_value = vm.stack.pop().expect("Stack underflow in print_native");
+        print!("{}{end}", returned_value.to_string(&vm.heap));
+    } else {
+        print!("{}{end}", value.to_string(&vm.heap));
     }
 
     Ok(Value::Nil)
@@ -380,18 +365,23 @@ pub(super) fn delattr_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Val
 /// Return the length of a list.
 #[allow(clippy::cast_possible_wrap)]
 pub(super) fn len_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
-    match &args[0] {
-        Value::Instance(instance) => match &instance.to_value(&vm.heap).backing {
-            Some(NativeClass::List(list)) => Ok((list.items.len() as i64).into()),
-            Some(NativeClass::Set(set)) => Ok((set.items.len() as i64).into()),
-            _ => Err(format!(
-                "'len' expected list or set argument, got: `{}` instead.",
-                instance.to_value(&vm.heap)
-            )),
-        },
-        _ => Err(format!(
-            "'len' expected list argument, got: `{}` instead.",
-            &args[0].to_string(&vm.heap)
-        )),
+    let len_method_id = vm.heap.string_id(&"__len__");
+
+    if let Value::Instance(instance) = args[0]
+        && let Some(len_method) = instance
+            .to_value(&vm.heap)
+            .get_field_or_method(len_method_id, &vm.heap)
+    {
+        vm.invoke_and_run_function(
+            len_method_id,
+            0,
+            matches!(len_method, Value::NativeMethod(_)),
+        );
+        let result = vm.stack.pop().expect("Stack underflow in len_native");
+        // We need to pop off the len_function itself.
+        vm.stack.pop().expect("Stack underflow in len_native");
+        return Ok(result);
     }
+
+    Err("Undefined property '__len__'.".into())
 }
