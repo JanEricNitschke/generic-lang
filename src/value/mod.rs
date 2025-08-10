@@ -236,10 +236,6 @@ impl From<ModuleId> for Value {
 
 // Retrieve the inner value
 impl Value {
-    pub(super) const fn is_falsey(&self) -> bool {
-        matches!(self, Self::Bool(false) | Self::Nil)
-    }
-
     pub(super) const fn is_hasheable(&self) -> bool {
         matches!(
             self,

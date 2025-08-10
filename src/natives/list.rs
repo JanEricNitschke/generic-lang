@@ -281,3 +281,12 @@ pub(super) fn list_len_native(
     let my_list = receiver.as_list(&vm.heap);
     Ok(Number::from_usize(my_list.items.len(), &mut vm.heap).into())
 }
+
+pub(super) fn list_bool_native(
+    vm: &mut VM,
+    receiver: &mut Value,
+    _args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let is_empty = receiver.as_list(&vm.heap).items.is_empty();
+    Ok((!is_empty).into())
+}

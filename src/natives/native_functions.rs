@@ -50,7 +50,7 @@ pub(super) fn sleep_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
 /// Error if the argument is falsey.
 pub(super) fn assert_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     let value = &args[0];
-    if value.is_falsey() {
+    if vm.is_falsey(**value) {
         Err(format!(
             "Assertion on `{}` failed!",
             value.to_string(&vm.heap)
