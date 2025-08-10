@@ -79,7 +79,7 @@ pub type NativeMethodImpl = fn(&mut VM, &mut Value, &mut [&mut Value]) -> Result
 pub type ModuleContents = Vec<(&'static str, &'static [u8], NativeFunctionImpl)>;
 
 // Actual Natives
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum NativeClass {
     List(List),
     ListIterator(ListIterator),
@@ -132,7 +132,7 @@ impl From<Dict> for NativeClass {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct List {
     pub(crate) items: Vec<Value>,
 }
@@ -255,6 +255,12 @@ impl std::fmt::Display for Set {
     }
 }
 
+impl PartialEq for Set {
+    fn eq(&self, other: &Self) -> bool {
+        hash_table_equal(&self.items, &other.items)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Dict {
     pub(crate) items: HashTable<(Value, Value)>,
@@ -309,4 +315,20 @@ impl std::fmt::Display for Dict {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.pad("<Dict Value>")
     }
+}
+
+impl PartialEq for Dict {
+    fn eq(&self, other: &Self) -> bool {
+        hash_table_equal(&self.items, &other.items)
+    }
+}
+
+fn hash_table_equal<T: PartialEq>(table1: &HashTable<T>, table2: &HashTable<T>) -> bool {
+    if table1.len() != table2.len() {
+        return false;
+    }
+
+    table1
+        .iter()
+        .all(|item1| table2.iter().any(|item2| item1 == item2))
 }

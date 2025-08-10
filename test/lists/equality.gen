@@ -11,6 +11,7 @@ class Tree {
 
 var my_list = [fib, Tree, nil, true];
 print(my_list == [fib, Tree, nil, true]); # expect: true
+print(my_list == [fib, Tree, nil, false]); # expect: false
 
 var a = [2, 4, 6];
 var b = [];

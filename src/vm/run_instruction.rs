@@ -144,7 +144,16 @@ macro_rules! run_instruction {
             OpCode::True => $self.stack_push(Value::Bool(true)),
             OpCode::False => $self.stack_push(Value::Bool(false)),
             OpCode::StopIteration => $self.stack.push(Value::StopIteration),
-            OpCode::Equal => $self.equal(false),
+            OpCode::Equal => {
+                if let Some(result) = $self.equal(false) {
+                    return result;
+                }
+            }
+            OpCode::NotEqual => {
+                if let Some(result) = $self.equal(true) {
+                    return result;
+                }
+            }
             // All of these work on the top two stack values.
             // Top most is right operand, second is left.
             OpCode::Add => {
@@ -165,7 +174,6 @@ macro_rules! run_instruction {
             OpCode::Less => binary_op!($self, lt, "__lt__", false, non_mut_heap),
             OpCode::GreaterEqual => binary_op!($self, ge, "__ge__", false, non_mut_heap),
             OpCode::LessEqual => binary_op!($self, le, "__le__", false, non_mut_heap),
-            OpCode::NotEqual => $self.equal(true),
             OpCode::Jump => {
                 let offset = $self.read_16bit_number();
                 $self.callstack.current_mut().ip += offset;

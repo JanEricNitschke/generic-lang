@@ -71,7 +71,7 @@ impl std::fmt::Display for Closure {
 /// captured upvalues.
 ///
 /// Additionally hold the chunk of compiled bytecode.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Eq, Clone)]
 pub struct Function {
     pub(crate) arity: usize,
     pub(crate) chunk: Chunk,
@@ -101,8 +101,15 @@ impl std::fmt::Display for Function {
     }
 }
 
+impl PartialEq for Function {
+    fn eq(&self, _other: &Self) -> bool {
+        // Two different functions are always considered different
+        false
+    }
+}
+
 #[derive(Debug, Clone, Derivative)]
-#[derivative(PartialOrd, PartialEq)]
+#[derivative(PartialOrd)]
 pub struct Module {
     pub(crate) name: StringId,
     pub(crate) path: PathBuf,
@@ -112,7 +119,6 @@ pub struct Module {
     pub(crate) alias: StringId,
     pub(crate) local_import: bool,
 }
-impl Eq for Module {}
 
 impl Module {
     pub(crate) fn new(
@@ -140,6 +146,15 @@ impl Module {
 impl std::fmt::Display for Module {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.pad("<module Value>")
+    }
+}
+
+impl Eq for Module {}
+
+impl PartialEq for Module {
+    fn eq(&self, _other: &Self) -> bool {
+        // Two different modules are always considered different
+        false
     }
 }
 
