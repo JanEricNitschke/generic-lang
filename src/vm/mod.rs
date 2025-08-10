@@ -232,16 +232,32 @@ impl VM {
     /// # Panics
     ///
     /// If the stack does not have two values. This is an internal error and should never happen.
-    fn equal(&mut self, negate: bool) {
-        let left_id = self
-            .stack
-            .pop()
-            .expect("stack underflow in OP_EQUAL (first)");
+    fn equal(&mut self, negate: bool) -> Option<InterpretResult> {
+        let eq_id = self.heap.string_id(&"__eq__");
+        let left_id = self.peek(1).expect("Stack underflow in OP EQUAL (left)");
+        if let Value::Instance(instance) = left_id
+            && instance
+                .to_value(&self.heap)
+                .has_field_or_method(eq_id, &self.heap)
+        {
+            // If the left value is an instance, use its __eq__ method
+            return if self.invoke(eq_id, 1) {
+                None
+            } else {
+                Some(InterpretResult::RuntimeError)
+            };
+        }
+
         let right_id = self
             .stack
             .pop()
-            .expect("stack underflow in OP_EQUAL (second)");
+            .expect("stack underflow in OP_EQUAL (right)");
+        let left_id = self
+            .stack
+            .pop()
+            .expect("stack underflow in OP_EQUAL (left)");
         let result = left_id.eq(&right_id, &self.heap) != negate;
         self.stack_push(result.into());
+        None
     }
 }

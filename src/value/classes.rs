@@ -6,7 +6,7 @@ use rustc_hash::FxHashMap as HashMap;
 use super::{NativeClass, Value};
 
 #[derive(Debug, Clone, Derivative)]
-#[derivative(PartialOrd, PartialEq)]
+#[derivative(PartialOrd)]
 pub struct Class {
     pub(crate) name: StringId,
     #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
@@ -15,7 +15,6 @@ pub struct Class {
     pub(crate) methods: HashMap<StringId, Value>,
     pub(crate) is_native: bool,
 }
-impl Eq for Class {}
 
 impl Class {
     #[must_use]
@@ -38,8 +37,17 @@ impl std::fmt::Display for Class {
     }
 }
 
+impl PartialEq for Class {
+    fn eq(&self, _other: &Self) -> bool {
+        // Two different classes are always considered different
+        false
+    }
+}
+
+impl Eq for Class {}
+
 #[derive(Derivative)]
-#[derivative(Debug, PartialEq, PartialOrd, Clone)]
+#[derivative(Debug, PartialOrd, Clone)]
 pub struct Instance {
     pub(crate) class: ClassId,
     #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
@@ -89,6 +97,12 @@ impl std::fmt::Display for Instance {
             Some(_) => f.pad("<native instance Value>"),
             None => f.pad("<instance Value>"),
         }
+    }
+}
+
+impl PartialEq for Instance {
+    fn eq(&self, other: &Self) -> bool {
+        self.backing.is_some() && self.backing == other.backing
     }
 }
 

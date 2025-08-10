@@ -1,0 +1,30 @@
+class NoEq {
+    __init__(value) {
+        this.value = value;
+    }
+}
+
+class Eq {
+    __init__(value) {
+        this.value = value;
+    }
+
+    __eq__(other) {
+        return this.value == other.value;
+    }
+}
+
+var noeq1 = NoEq(1);
+var noeq2 = NoEq(1);
+var eq1 = Eq(1);
+var eq2 = Eq(1);
+var eq3 = Eq(2);
+
+print(noeq1 == noeq1); # expect: true
+print(noeq1 == noeq2); # expect: false
+print(eq1 == eq1);     # expect: true
+print(eq1 == eq2);     # expect: true
+print(eq1 == eq3);     # expect: false
+
+print(eq1 == noeq1);  # expect: true
+print(noeq1 == eq1);  # expect: false
