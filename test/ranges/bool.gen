@@ -1,0 +1,17 @@
+if 0..<1 {
+    print(true); # expect: true
+} else {
+    print(false);
+}
+
+if 3..<3 {
+    print(true);
+} else {
+    print(false);  # expect: false
+}
+
+if 5..<3 {
+    print(true);  # expect: true
+} else {
+    print(false);
+}

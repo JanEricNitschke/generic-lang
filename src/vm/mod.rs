@@ -17,10 +17,10 @@ mod run_instruction;
 mod bytecode;
 mod callstack;
 mod exception_handling;
+mod functions;
+mod native_containers;
 mod state;
 mod variables;
-
-mod functions;
 
 use arithmetics::{BinaryOpResult, IntoResultValue};
 use callstack::CallStack;

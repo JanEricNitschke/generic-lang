@@ -83,6 +83,31 @@ macro_rules! gray_value {
                 }
                 $self.big_ints.gray.push(*id);
             }
+            Value::Number(Number::Rational(rational)) => {
+                let numerator = rational.numerator();
+                let denominator = rational.denominator();
+                #[cfg(feature = "log_gc")]
+                {
+                    eprintln!(
+                        "Rational/{:?} gray {}",
+                        numerator, $self.rationals[*numerator]
+                    );
+                }
+                if let GenericInt::Big(num) = numerator {
+                    #[cfg(feature = "log_gc")]
+                    {
+                        eprintln!("BigInt/{:?} gray {}", num, $self.big_ints[*num]);
+                    }
+                    $self.big_ints.gray.push(num);
+                }
+                if let GenericInt::Big(denom) = denominator {
+                    #[cfg(feature = "log_gc")]
+                    {
+                        eprintln!("BigInt/{:?} gray {}", denom, $self.big_ints[*denom]);
+                    }
+                    $self.big_ints.gray.push(denom);
+                }
+            }
             Value::Function(id) => {
                 #[cfg(feature = "log_gc")]
                 {
@@ -142,7 +167,10 @@ macro_rules! gray_value {
                 }
                 $self.modules.gray.push(*id);
             }
-            Value::Bool(_) | Value::Nil | Value::StopIteration | Value::Number(_) => {}
+            Value::Bool(_)
+            | Value::Nil
+            | Value::StopIteration
+            | Value::Number(Number::Integer(GenericInt::Small(_)) | Number::Float(_)) => {}
         }
     };
 }
@@ -535,9 +563,7 @@ impl Heap {
                     }
                 }
                 NativeClass::ListIterator(list_iter) => {
-                    if let Some(list) = &list_iter.list {
-                        self.instances.gray.push(*list);
-                    }
+                    self.instances.gray.push(list_iter.list);
                 }
                 NativeClass::Set(set) => {
                     for item in &set.items {
@@ -548,6 +574,20 @@ impl Heap {
                     for (key, value) in &dict.items {
                         gray_value!(self, key);
                         gray_value!(self, value);
+                    }
+                }
+                NativeClass::Range(range) => {
+                    gray_value!(self, &range.start().into());
+                    gray_value!(self, &range.end().into());
+                }
+                NativeClass::RangeIterator(range_iter) => {
+                    self.instances.gray.push(range_iter.range);
+                    if let GenericInt::Big(offset) = range_iter.offset {
+                        #[cfg(feature = "log_gc")]
+                        {
+                            eprintln!("BigInt/{:?} gray {}", offset, self.big_ints[offset]);
+                        }
+                        self.big_ints.gray.push(offset);
                     }
                 }
             }

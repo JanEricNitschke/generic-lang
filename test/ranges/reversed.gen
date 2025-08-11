@@ -1,0 +1,6 @@
+foreach (var x in 5..<1) {
+    print(x);  # expect: 5
+               # expect: 4
+               # expect: 3
+               # expect: 2
+}

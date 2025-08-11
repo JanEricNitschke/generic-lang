@@ -1,0 +1,5 @@
+var a = 1..=10;
+var b = a.__iter__();
+print(b);  # expect: <range iterator of 1..<11>
+print(b.__next__());  # expect: 1
+print(b.__next__());  # expect: 2

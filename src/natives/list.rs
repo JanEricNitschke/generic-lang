@@ -204,7 +204,7 @@ pub(super) fn list_iter_native(
     _args: &mut [&mut Value],
 ) -> Result<Value, String> {
     let my_list = receiver.as_instance();
-    let my_iterator = ListIterator::new(Some(*my_list));
+    let my_iterator = ListIterator::new(*my_list);
     let target_class = vm.heap.native_classes.get("ListIterator").unwrap();
     let my_instance = Instance::new(*target_class, Some(my_iterator.into()));
     Ok(vm.heap.add_instance(my_instance))
@@ -220,18 +220,14 @@ pub(super) fn list_iter_next_native(
 ) -> Result<Value, String> {
     let mut my_iter = std::mem::take(receiver.as_list_iter_mut(&mut vm.heap));
     let my_list = my_iter.get_list(&vm.heap);
-    let result = match my_list {
-        Some(my_list) => {
-            if my_iter.index < my_list.items.len() {
-                let value = my_list.items[my_iter.index];
-                my_iter.index += 1;
-                Ok(value)
-            } else {
-                Ok(Value::StopIteration)
-            }
-        }
-        None => Ok(Value::StopIteration),
+    let result = if my_iter.index < my_list.items.len() {
+        let value = my_list.items[my_iter.index];
+        my_iter.index += 1;
+        Ok(value)
+    } else {
+        Ok(Value::StopIteration)
     };
+
     *receiver.as_list_iter_mut(&mut vm.heap) = my_iter;
     result
 }

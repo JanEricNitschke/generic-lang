@@ -5,6 +5,7 @@
 mod dict;
 mod list;
 mod native_functions;
+mod range;
 mod set;
 
 use crate::vm::VM;
@@ -13,6 +14,11 @@ use crate::natives::list::{
     list_add_native, list_append_native, list_bool_native, list_contains_native, list_get_native,
     list_insert_native, list_iter_native, list_iter_next_native, list_len_native, list_pop_native,
     list_set_native,
+};
+
+use crate::natives::range::{
+    range_bool_native, range_contains_native, range_iter_native, range_iter_next_native,
+    range_len_native,
 };
 
 use crate::natives::set::{
@@ -62,7 +68,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"List", &"__bool__", &[0], list_bool_native);
 
     vm.define_native_class(&"ListIterator", false);
-    vm.define_native_method(&"ListIterator", &"__next__", &[0, 1], list_iter_next_native);
+    vm.define_native_method(&"ListIterator", &"__next__", &[0], list_iter_next_native);
 
     vm.define_native_class(&"Set", true);
     vm.define_native_method(&"Set", &"contains", &[1], set_contains_native);
@@ -74,4 +80,13 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"Dict", &"__getitem__", &[1], dict_get_native);
     vm.define_native_method(&"Dict", &"__setitem__", &[2], dict_set_native);
     vm.define_native_method(&"Dict", &"__len__", &[0], dict_len_native);
+
+    vm.define_native_class(&"Range", false);
+    vm.define_native_method(&"Range", &"contains", &[1], range_contains_native);
+    vm.define_native_method(&"Range", &"__iter__", &[0], range_iter_native);
+    vm.define_native_method(&"Range", &"__len__", &[0], range_len_native);
+    vm.define_native_method(&"Range", &"__bool__", &[0], range_bool_native);
+
+    vm.define_native_class(&"RangeIterator", false);
+    vm.define_native_method(&"RangeIterator", &"__next__", &[0], range_iter_next_native);
 }
