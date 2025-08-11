@@ -16,6 +16,7 @@ use crate::scanner::TokenKind as TK;
 pub(super) enum Precedence {
     None,
     Assignment, // =
+    Tuple,      // ,
     Ternary,    // ?:
     Or,         // or
     And,        // and
@@ -37,8 +38,16 @@ pub(super) enum Precedence {
 
 impl Precedence {
     const fn non_assigning() -> Self {
-        Self::Ternary
+        Self::Tuple
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ParseResult {
+    /// A prefix rule was found and executed
+    Success,
+    /// No prefix rule was found for the current token
+    NoPrefix,
 }
 
 // Typedef for the functions that parse the different types of expressions
@@ -97,7 +106,7 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Colon         = [None,            binary,    Rational  ],
         LeftBracket   = [list,            subscript, Call      ],
         RightBracket  = [None,            None,      None      ],
-        Comma         = [None,            None,      None      ],
+        Comma         = [None,            tuple,     Tuple    ],
         Default       = [None,            None,      None      ],
         Dot           = [None,            dot,       Call      ],
         Minus         = [unary,           binary,    Term      ],
@@ -182,21 +191,17 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         &self.rules[operator as usize]
     }
 
-    pub(super) fn parse_precedence(&mut self, precedence: Precedence) {
-        self.parse_precedence_ignoring(precedence, &[]);
-    }
-
     /// The actual precedence parsing function.
     ///
     /// Based on Vaughan Pratt's "top-down operator precedence parsing".
     /// See: [Crafting Interpreters](https://craftinginterpreters.com/compiling-expressions.html)
-    pub(super) fn parse_precedence_ignoring(
+    pub(super) fn try_parse_precedence_ignoring(
         &mut self,
         precedence: Precedence,
         ignore_operators: &[TK],
-    ) {
-        self.advance();
-        if let Some(prefix_rule) = self.get_rule(self.previous.as_ref().unwrap().kind).prefix {
+    ) -> ParseResult {
+        if let Some(prefix_rule) = self.get_rule(self.current.as_ref().unwrap().kind).prefix {
+            self.advance();
             let can_assign = precedence <= Precedence::Assignment;
             prefix_rule(self, can_assign, ignore_operators);
             while precedence
@@ -226,9 +231,28 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             {
                 self.error("Invalid assignment target.");
             }
+            ParseResult::Success
         } else {
-            self.error("Expect expression.");
+            ParseResult::NoPrefix
         }
+    }
+
+    pub(super) fn parse_precedence_ignoring(
+        &mut self,
+        precedence: Precedence,
+        ignore_operators: &[TK],
+    ) {
+        match self.try_parse_precedence_ignoring(precedence, ignore_operators) {
+            ParseResult::Success => {}
+            ParseResult::NoPrefix => {
+                self.advance();
+                self.error("Expect expression.");
+            }
+        }
+    }
+
+    pub(super) fn parse_precedence(&mut self, precedence: Precedence) {
+        self.parse_precedence_ignoring(precedence, &[]);
     }
 
     /// Parse the expression which will leave its value on the stack.
@@ -435,6 +459,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ///
     /// The full expression within the grouping will be parsed as one.
     fn grouping(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
+        if self.match_(TK::RightParen) {
+            self.emit_bytes(OpCode::BuildTuple, 0, self.line());
+            return;
+        }
         self.expression();
         self.consume(TK::RightParen, "Expect ')' after expression.");
     }
@@ -485,7 +513,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         // Handle trailing comma
         while !self.check(TK::RightBracket) {
             // No assignments
-            self.parse_precedence(Precedence::non_assigning());
+            self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Comma]);
             if item_count == 255 {
                 self.error("Can't have more than 255 items in a list literal.");
                 break;
@@ -497,6 +525,34 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
         self.consume(TK::RightBracket, "Expect ']' after list literal.");
         self.emit_bytes(OpCode::BuildList, item_count, self.line());
+    }
+
+    /// Parse a tuple literal 'a, b, c(,)'
+    ///
+    /// Handles optional trailing commas.
+    /// Empty tuples are '()' and parsed by [`Compiler::grouping`].
+    /// This only does tuples with at least one element.
+    fn tuple(&mut self, _can_assign: bool, ignore_operators: &[TK]) {
+        // This is infix, so the first expression has already been parsed.
+
+        let mut item_count = 1;
+        // Handle trailing comma
+        while self.try_parse_precedence_ignoring(
+            Precedence::Ternary,
+            &[&[TK::Comma], ignore_operators].concat(),
+        ) == ParseResult::Success
+        {
+            if item_count == 255 {
+                self.error("Can't have more than 255 items in a tuple literal.");
+                break;
+            }
+            item_count += 1;
+            if !self.match_(TK::Comma) {
+                break;
+            }
+        }
+
+        self.emit_bytes(OpCode::BuildTuple, item_count, self.line());
     }
 
     /// Handle the hashed collection `set`and `dict``.`
@@ -522,10 +578,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
 
         // First element
         let mut item_count = 0;
-        self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon]);
+        self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon, TK::Comma]);
         let is_dict = self.match_(TK::Colon);
         if is_dict {
-            self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon]);
+            self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon, TK::Comma]);
         }
         item_count += 1;
         self.match_(TK::Comma); // optional trailing comma after first
@@ -535,7 +591,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             if is_dict {
                 self.parse_dict_entry();
             } else {
-                self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon]);
+                self.parse_precedence_ignoring(
+                    Precedence::non_assigning(),
+                    &[TK::Colon, TK::Comma],
+                );
             }
 
             if item_count == 255 {
@@ -573,9 +632,9 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     }
 
     fn parse_dict_entry(&mut self) {
-        self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon]);
+        self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon, TK::Comma]);
         self.consume(TK::Colon, "Expect ':' after key.");
-        self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon]);
+        self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon, TK::Comma]);
     }
 
     /// Parse subscript (`a[b]`) expressions.

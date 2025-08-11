@@ -1,0 +1,22 @@
+var my_tuple = (1, 2, 3);
+print(my_tuple); # expect: (1, 2, 3)
+
+my_tuple = (1, "Test", nil);
+print(my_tuple); # expect: (1, Test, nil)
+
+fun fib(n) {
+  if (n < 2) {
+    return n;
+  }
+  return fib(n - 2) + fib(n - 1);
+}
+
+class Tree {
+  stuff() {}
+}
+
+my_tuple = (fib, Tree, Tree(), true);
+print(my_tuple); # expect: (<fn fib>, <class Tree>, <Tree instance>, true)
+
+var tuple = Tuple();
+print(tuple); # expect: ()

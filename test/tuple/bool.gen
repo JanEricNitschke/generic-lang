@@ -1,0 +1,11 @@
+if (1, 2) {
+    print("Tuple is truthy");  # expect: Tuple is truthy
+} else {
+    print("Tuple is falsy");
+}
+
+if () {
+    print("Empty tuple is truthy");
+} else {
+    print("Empty tuple is falsy");  # expect: Empty tuple is falsy
+}

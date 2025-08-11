@@ -1,0 +1,12 @@
+var empty = ();
+var one = (1,);
+var other_one = 1,;
+var two = (1, 2);
+var other_two = 1, 2;
+var third_two = 1, 2,;
+print(empty);  # expect: ()
+print(one);  # expect: (1,)
+print(other_one);  # expect: (1,)
+print(two);  # expect: (1, 2)
+print(other_two);  # expect: (1, 2)
+print(third_two);  # expect: (1, 2)

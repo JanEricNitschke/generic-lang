@@ -1,0 +1,4 @@
+var my_tuple = (1, 2, 3);
+print(my_tuple); # expect: (1, 2, 3)
+
+my_tuple[1] = "Test"; # expect runtime error: Undefined property '__setitem__'.

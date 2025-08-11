@@ -88,15 +88,18 @@ pub enum NativeClass {
     Dict(Dict),
     Range(Range),
     RangeIterator(RangeIterator),
+    Tuple(Tuple),
+    TupleIterator(TupleIterator),
 }
 
 impl NativeClass {
     pub(crate) fn new(kind: &str) -> Self {
         match kind {
-            "List" => Self::List(List::new()),
-            "Set" => Self::Set(Set::new()),
-            "Dict" => Self::Dict(Dict::new()),
-            "Range" => Self::Range(Range::new(GenericInt::Small(0), GenericInt::Small(0))),
+            "List" => Self::List(List::default()),
+            "Set" => Self::Set(Set::default()),
+            "Dict" => Self::Dict(Dict::default()),
+            "Range" => Self::Range(Range::default()),
+            "Tuple" => Self::Tuple(Tuple::default()),
             _ => unreachable!("Unknown native class `{}`.", kind),
         }
     }
@@ -109,6 +112,8 @@ impl NativeClass {
             Self::Dict(dict) => dict.to_string(heap),
             Self::Range(range) => range.to_string(heap),
             Self::RangeIterator(range_iter) => range_iter.to_string(heap),
+            Self::Tuple(tuple) => tuple.to_string(heap),
+            Self::TupleIterator(tuple_iter) => tuple_iter.to_string(heap),
         }
     }
 }
@@ -122,6 +127,18 @@ impl From<List> for NativeClass {
 impl From<ListIterator> for NativeClass {
     fn from(list_iterator: ListIterator) -> Self {
         Self::ListIterator(list_iterator)
+    }
+}
+
+impl From<Tuple> for NativeClass {
+    fn from(tuple: Tuple) -> Self {
+        Self::Tuple(tuple)
+    }
+}
+
+impl From<TupleIterator> for NativeClass {
+    fn from(tuple_iterator: TupleIterator) -> Self {
+        Self::TupleIterator(tuple_iterator)
     }
 }
 
@@ -156,8 +173,8 @@ pub struct List {
 
 impl List {
     #[must_use]
-    pub(crate) const fn new() -> Self {
-        Self { items: Vec::new() }
+    pub(crate) const fn new(items: Vec<Value>) -> Self {
+        Self { items }
     }
 
     fn to_string(&self, heap: &Heap) -> String {
@@ -169,6 +186,12 @@ impl List {
                 .collect::<Vec<_>>()
                 .join(", ")
         )
+    }
+}
+
+impl Default for List {
+    fn default() -> Self {
+        Self::new(Vec::new())
     }
 }
 
@@ -211,17 +234,15 @@ impl std::fmt::Display for ListIterator {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Set {
     pub(crate) items: HashTable<Value>,
 }
 
 impl Set {
     #[must_use]
-    pub(crate) fn new() -> Self {
-        Self {
-            items: HashTable::default(),
-        }
+    pub(crate) fn new(items: HashTable<Value>) -> Self {
+        Self { items }
     }
 
     fn to_string(&self, heap: &Heap) -> String {
@@ -261,6 +282,12 @@ impl Set {
     }
 }
 
+impl Default for Set {
+    fn default() -> Self {
+        Self::new(HashTable::default())
+    }
+}
+
 impl std::fmt::Display for Set {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.pad("<Set Value>")
@@ -273,17 +300,15 @@ impl PartialEq for Set {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Dict {
     pub(crate) items: HashTable<(Value, Value)>,
 }
 
 impl Dict {
     #[must_use]
-    pub(crate) fn new() -> Self {
-        Self {
-            items: HashTable::default(),
-        }
+    pub(crate) fn new(items: HashTable<(Value, Value)>) -> Self {
+        Self { items }
     }
 
     #[allow(clippy::literal_string_with_formatting_args)]
@@ -320,6 +345,12 @@ impl Dict {
         self.items
             .find(key.to_hash(heap), |(k, _v)| k.eq(key, heap))
             .map(|(_k, v)| v)
+    }
+}
+
+impl Default for Dict {
+    fn default() -> Self {
+        Self::new(HashTable::default())
     }
 }
 
@@ -395,6 +426,12 @@ impl Range {
     }
 }
 
+impl Default for Range {
+    fn default() -> Self {
+        Self::new(GenericInt::Small(0), GenericInt::Small(0))
+    }
+}
+
 impl PartialEq for Range {
     fn eq(&self, _other: &Self) -> bool {
         // Two different ranges are never equal (for now).
@@ -442,5 +479,84 @@ impl PartialEq for RangeIterator {
     fn eq(&self, _other: &Self) -> bool {
         // Two different ranges are never equal (for now).
         false
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tuple {
+    items: Vec<Value>,
+}
+
+impl Tuple {
+    #[must_use]
+    pub(crate) const fn new(items: Vec<Value>) -> Self {
+        Self { items }
+    }
+
+    pub fn items(&self) -> &[Value] {
+        &self.items
+    }
+
+    fn to_string(&self, heap: &Heap) -> String {
+        if self.items.len() == 1 {
+            return format!("({},)", self.items[0].to_string(heap));
+        }
+        format!(
+            "({})",
+            self.items
+                .iter()
+                .map(|item| item.to_string(heap))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
+
+impl Default for Tuple {
+    fn default() -> Self {
+        Self::new(Vec::new())
+    }
+}
+
+impl std::fmt::Display for Tuple {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad("<tuple Value>")
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Default)]
+pub struct TupleIterator {
+    tuple: InstanceId,
+    pub index: usize,
+}
+
+impl TupleIterator {
+    pub(crate) const fn new(tuple: InstanceId) -> Self {
+        Self { tuple, index: 0 }
+    }
+
+    pub(crate) fn tuple(&self) -> InstanceId {
+        self.tuple
+    }
+
+    pub(crate) fn get_tuple<'a>(&self, heap: &'a Heap) -> &'a Tuple {
+        match &self.tuple.to_value(heap).backing {
+            Some(NativeClass::Tuple(tuple)) => tuple,
+            _ => unreachable!("Expected a tuple instance, got {:?}", self.tuple),
+        }
+    }
+
+    #[allow(clippy::option_if_let_else)]
+    fn to_string(&self, heap: &Heap) -> String {
+        format!(
+            "<tuple iterator of {}>",
+            self.tuple.to_value(heap).to_string(heap)
+        )
+    }
+}
+
+impl std::fmt::Display for TupleIterator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad("<tuple iterator of Value>")
     }
 }

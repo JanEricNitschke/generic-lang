@@ -86,24 +86,17 @@ macro_rules! gray_value {
             Value::Number(Number::Rational(rational)) => {
                 let numerator = rational.numerator();
                 let denominator = rational.denominator();
-                #[cfg(feature = "log_gc")]
-                {
-                    eprintln!(
-                        "Rational/{:?} gray {}",
-                        numerator, $self.rationals[*numerator]
-                    );
-                }
                 if let GenericInt::Big(num) = numerator {
                     #[cfg(feature = "log_gc")]
                     {
-                        eprintln!("BigInt/{:?} gray {}", num, $self.big_ints[*num]);
+                        eprintln!("BigInt/{:?} gray {}", num, $self.big_ints[num]);
                     }
                     $self.big_ints.gray.push(num);
                 }
                 if let GenericInt::Big(denom) = denominator {
                     #[cfg(feature = "log_gc")]
                     {
-                        eprintln!("BigInt/{:?} gray {}", denom, $self.big_ints[*denom]);
+                        eprintln!("BigInt/{:?} gray {}", denom, $self.big_ints[denom]);
                     }
                     $self.big_ints.gray.push(denom);
                 }
@@ -562,8 +555,16 @@ impl Heap {
                         gray_value!(self, item);
                     }
                 }
+                NativeClass::Tuple(tuple) => {
+                    for item in tuple.items() {
+                        gray_value!(self, item);
+                    }
+                }
                 NativeClass::ListIterator(list_iter) => {
                     self.instances.gray.push(list_iter.list);
+                }
+                NativeClass::TupleIterator(tuple_iter) => {
+                    self.instances.gray.push(tuple_iter.tuple());
                 }
                 NativeClass::Set(set) => {
                     for item in &set.items {

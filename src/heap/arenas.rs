@@ -152,9 +152,10 @@ impl<K: Key, V: ArenaValue> Arena<K, V> {
     ///
     /// Also update the total number of allocated bytes.
     pub(super) fn sweep(&mut self, black_value: bool) {
+        #[cfg_attr(feature = "log_gc", allow(clippy::used_underscore_binding))]
         self.data.retain(|_key, value| {
             #[cfg(feature = "log_gc")]
-            if !(value.marked == black_value) {
+            if value.marked != black_value {
                 eprintln!("{}/{:?} free {}", self.name, _key, value.item);
             }
             value.marked == black_value

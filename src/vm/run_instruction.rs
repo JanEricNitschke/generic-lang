@@ -411,78 +411,36 @@ macro_rules! run_instruction {
                     return InterpretResult::RuntimeError;
                 }
             }
-            // Build a list. The number of items is the operand.
-            // Items are on the stack in order from left to right
-            // (... --- item1 --- item2 --- ... --- itemN)
             OpCode::BuildList => {
-                let mut list = List::new();
-
-                let arg_count = $self.read_byte();
-                for index in (0..arg_count).rev() {
-                    list.items.push(*$self.peek(index as usize).unwrap());
-                }
-                for _ in 0..arg_count {
-                    $self.stack.pop();
-                }
-                let instance = Instance::new(
-                    *$self.heap.native_classes.get("List").unwrap(),
-                    Some(list.into()),
-                );
-                let instance_value = $self.heap.add_instance(instance);
-                $self.stack_push_value(instance_value);
+                $self.build_list();
             }
-            // Build a set. The number of items is the operand.
-            // Items are on the stack in order from left to right
-            // (... --- item1 --- item2 --- ... --- itemN)
+            OpCode::BuildTuple => {
+                $self.build_tuple();
+            }
             OpCode::BuildSet => {
-                let mut set = Set::new();
-
-                let arg_count = $self.read_byte();
-                for index in (0..arg_count).rev() {
-                    let value = $self.peek(index as usize).unwrap();
-                    if !value.is_hasheable() {
-                        runtime_error!(
-                            $self,
-                            "Value `{}` is not hashable when this is required for items in a set.",
-                            value.to_string(&$self.heap)
-                        );
-                        return InterpretResult::RuntimeError;
-                    }
-                    set.add(*value, &$self.heap);
+                if let Some(value) = $self.build_set() {
+                    return value;
                 }
-                for _ in 0..arg_count {
-                    $self.stack.pop();
-                }
-                let instance = Instance::new(
-                    *$self.heap.native_classes.get("Set").unwrap(),
-                    Some(set.into()),
-                );
-                let instance_value = $self.heap.add_instance(instance);
-                $self.stack_push_value(instance_value);
             }
-            // Build a dict. The number of key-value-pairs is the operand.
-            // Items are on the stack in order from left to right
-            // (... --- key1 --- value1 --- key2 --- value2 --- ... --- keyN --- valueN)
             OpCode::BuildDict => {
-                let mut dict = Dict::new();
-                // Number of key, value pairs.
-                let arg_count = $self.read_byte();
-                for index in (0..arg_count).rev() {
-                    let key = $self.peek((2 * index + 1) as usize).unwrap();
-                    let value = $self.peek((2 * index) as usize).unwrap();
-                    dict.add(*key, *value, &$self.heap);
+                if let Some(value) = $self.build_dict() {
+                    return value;
                 }
-                for _ in 0..arg_count {
-                    // Pop key AND value
-                    $self.stack.pop();
-                    $self.stack.pop();
+            }
+            OpCode::BuildRangeExclusive => {
+                if let Some(value) = $self.build_range(true) {
+                    return value;
                 }
-                let instance = Instance::new(
-                    *$self.heap.native_classes.get("Dict").unwrap(),
-                    Some(dict.into()),
-                );
-                let instance_value = $self.heap.add_instance(instance);
-                $self.stack_push_value(instance_value);
+            }
+            OpCode::BuildRangeInclusive => {
+                if let Some(value) = $self.build_range(false) {
+                    return value;
+                }
+            }
+            OpCode::BuildRational => {
+                if let Some(value) = $self.build_rational() {
+                    return value;
+                }
             }
             // Import a module by filepath without qualifiers.
             // Expects either the path to the module or the name of
@@ -565,21 +523,6 @@ macro_rules! run_instruction {
             // or nil if we handled the exception.
             OpCode::Reraise => {
                 if let Some(value) = $self.reraise_exception() {
-                    return value;
-                }
-            }
-            OpCode::BuildRational => {
-                if let Some(value) = $self.build_rational() {
-                    return value;
-                }
-            }
-            OpCode::BuildRangeExclusive => {
-                if let Some(value) = $self.build_range(true) {
-                    return value;
-                }
-            }
-            OpCode::BuildRangeInclusive => {
-                if let Some(value) = $self.build_range(false) {
                     return value;
                 }
             }

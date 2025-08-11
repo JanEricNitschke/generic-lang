@@ -1,0 +1,14 @@
+fun my_func(a, b, c) {
+    print(a);
+    print(b);
+    print(c);
+}
+
+my_func(1, 2, 3);  # expect: 1
+                   # expect: 2
+                   # expect: 3
+
+
+my_func((1, 2, 3), 2, 3);  # expect: (1, 2, 3)
+                           # expect: 2
+                           # expect: 3

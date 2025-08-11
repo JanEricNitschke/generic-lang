@@ -39,9 +39,7 @@ use crate::{
     heap::{Heap, ModuleId, StringId, UpvalueId},
     scanner::Scanner,
     stdlib,
-    value::{
-        Class, Closure, Dict, Function, Instance, List, ModuleContents, Number, Set, Upvalue, Value,
-    },
+    value::{Class, Closure, Function, ModuleContents, Number, Upvalue, Value},
 };
 
 #[derive(Debug, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-//! Methods of the native `List` class.
+//! Methods of the native `Range` class.
 
 use crate::{
     value::{GenericInt, Instance, Number, RangeIterator, Value},

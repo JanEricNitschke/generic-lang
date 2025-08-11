@@ -1,0 +1,6 @@
+var my_tuple = (1, 2, -5, 3000, "Test");
+print(my_tuple.contains(1)); # expect: true
+print(my_tuple.contains(-5)); # expect: true
+print(my_tuple.contains(3000)); # expect: true
+print(my_tuple.contains("Test")); # expect: true
+print(my_tuple.contains(3)); # expect: false
