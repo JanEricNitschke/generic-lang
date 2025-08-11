@@ -1,0 +1,21 @@
+var a = 1..=10;
+print(a);  # expect: 1..<11
+foreach  (var x in a) {
+    if x == 3 {
+        print("Found 3");  # expect: Found 3
+        break;
+    }
+}
+
+foreach (var x in a) {
+    print(x);  # expect: 1
+               # expect: 2
+               # expect: 3
+               # expect: 4
+               # expect: 5
+               # expect: 6
+               # expect: 7
+               # expect: 8
+               # expect: 9
+               # expect: 10
+}

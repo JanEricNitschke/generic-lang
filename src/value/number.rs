@@ -3,10 +3,10 @@ use crate::heap::{BigIntId, Heap};
 use derive_more::From;
 use num_bigint::BigInt;
 use num_traits::Pow;
+use num_traits::Signed;
 use num_traits::identities::Zero;
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Rem, Sub};
-
 // These could probably be individual entries in the enum tbh.
 /// Enum summarizing all of the generic number types.
 #[derive(Debug, Clone, From, Copy, PartialEq)]
@@ -378,6 +378,12 @@ impl GenericInt {
     }
 }
 
+impl Default for GenericInt {
+    fn default() -> Self {
+        Self::Small(0)
+    }
+}
+
 // Arithmetics
 macro_rules! impl_op {
     ($method:ident, $checked_method:ident) => {
@@ -519,7 +525,7 @@ impl GenericInt {
 // Comparisons for GenericInt against other GenericInt
 #[allow(dead_code)]
 impl GenericInt {
-    fn eq(&self, other: &Self, heap: &Heap) -> bool {
+    pub fn eq(&self, other: &Self, heap: &Heap) -> bool {
         match (self, other) {
             (Self::Small(a), Self::Small(b)) => a == b,
             (Self::Big(a), Self::Big(b)) => a == b || a.to_value(heap) == b.to_value(heap),
@@ -537,7 +543,14 @@ impl GenericInt {
         }
     }
 
-    fn lt(&self, other: &Self, heap: &Heap) -> bool {
+    pub(crate) fn abs(&self, heap: &mut Heap) -> Self {
+        match self {
+            Self::Small(n) if n > &i64::MIN => Self::Small(n.abs()),
+            n => *heap.add_big_int(n.to_bigint(heap).abs()).as_generic_int(),
+        }
+    }
+
+    pub(crate) fn lt(&self, other: &Self, heap: &Heap) -> bool {
         self.partial_cmp(other, heap) == Some(std::cmp::Ordering::Less)
     }
 
@@ -552,7 +565,7 @@ impl GenericInt {
         )
     }
 
-    fn le(&self, other: &Self, heap: &Heap) -> bool {
+    pub(crate) fn le(&self, other: &Self, heap: &Heap) -> bool {
         matches!(
             self.partial_cmp(other, heap),
             Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
@@ -681,6 +694,14 @@ impl GenericRational {
             numerator,
             denominator,
         })
+    }
+
+    pub fn numerator(&self) -> GenericInt {
+        self.numerator
+    }
+
+    pub fn denominator(&self) -> GenericInt {
+        self.denominator
     }
 
     pub fn from_int(numerator: GenericInt) -> Self {

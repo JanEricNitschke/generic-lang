@@ -13,7 +13,7 @@ pub use classes::{BoundMethod, Class, Instance};
 pub use functions::{Closure, Function, Module, Upvalue};
 pub use natives::{
     Dict, List, ListIterator, ModuleContents, NativeClass, NativeFunction, NativeFunctionImpl,
-    NativeMethod, NativeMethodImpl, Set,
+    NativeMethod, NativeMethodImpl, Range, RangeIterator, Set,
 };
 pub use number::{GenericInt, GenericRational, Number};
 
@@ -350,6 +350,26 @@ impl Value {
                 _ => unreachable!("Expected ListIterator, found something else."),
             },
             _ => unreachable!("Expected ListIterator, found `{:?}`", self),
+        }
+    }
+
+    pub(super) fn as_range<'a>(&self, heap: &'a Heap) -> &'a Range {
+        match self {
+            Self::Instance(inst) => match &inst.to_value(heap).backing {
+                Some(NativeClass::Range(range)) => range,
+                _ => unreachable!("Expected Range, found `{:?}`", self),
+            },
+            _ => unreachable!("Expected Range, found `{:?}`", self),
+        }
+    }
+
+    pub(super) fn as_range_iter_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut RangeIterator {
+        match self {
+            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
+                Some(NativeClass::RangeIterator(range_iter)) => range_iter,
+                _ => unreachable!("Expected RangeIterator, found something else."),
+            },
+            _ => unreachable!("Expected RangeIterator, found `{:?}`", self),
         }
     }
 

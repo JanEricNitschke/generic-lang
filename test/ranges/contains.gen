@@ -1,0 +1,5 @@
+print(1 in 1..<5); # expect: true
+print(4 in 1..<5); # expect: true
+print(5 in 1..<5); # expect: false
+
+print(9999999999999999 in 1..<99999999999999999); # expect: true

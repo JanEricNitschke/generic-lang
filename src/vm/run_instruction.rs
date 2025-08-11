@@ -573,6 +573,16 @@ macro_rules! run_instruction {
                     return value;
                 }
             }
+            OpCode::BuildRangeExclusive => {
+                if let Some(value) = $self.build_range(true) {
+                    return value;
+                }
+            }
+            OpCode::BuildRangeInclusive => {
+                if let Some(value) = $self.build_range(false) {
+                    return value;
+                }
+            }
         };
     };
 }

@@ -1,5 +1,6 @@
 use crate::{
     heap::{Heap, StringId},
+    value::GenericInt,
     vm::VM,
 };
 
@@ -85,15 +86,17 @@ pub enum NativeClass {
     ListIterator(ListIterator),
     Set(Set),
     Dict(Dict),
+    Range(Range),
+    RangeIterator(RangeIterator),
 }
 
 impl NativeClass {
     pub(crate) fn new(kind: &str) -> Self {
         match kind {
             "List" => Self::List(List::new()),
-            "ListIterator" => Self::ListIterator(ListIterator::new(None)),
             "Set" => Self::Set(Set::new()),
             "Dict" => Self::Dict(Dict::new()),
+            "Range" => Self::Range(Range::new(GenericInt::Small(0), GenericInt::Small(0))),
             _ => unreachable!("Unknown native class `{}`.", kind),
         }
     }
@@ -104,6 +107,8 @@ impl NativeClass {
             Self::ListIterator(list_iter) => list_iter.to_string(heap),
             Self::Set(set) => set.to_string(heap),
             Self::Dict(dict) => dict.to_string(heap),
+            Self::Range(range) => range.to_string(heap),
+            Self::RangeIterator(range_iter) => range_iter.to_string(heap),
         }
     }
 }
@@ -129,6 +134,18 @@ impl From<Set> for NativeClass {
 impl From<Dict> for NativeClass {
     fn from(dict: Dict) -> Self {
         Self::Dict(dict)
+    }
+}
+
+impl From<Range> for NativeClass {
+    fn from(range: Range) -> Self {
+        Self::Range(range)
+    }
+}
+
+impl From<RangeIterator> for NativeClass {
+    fn from(range_iterator: RangeIterator) -> Self {
+        Self::RangeIterator(range_iterator)
     }
 }
 
@@ -163,39 +180,34 @@ impl std::fmt::Display for List {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Default)]
 pub struct ListIterator {
-    pub(crate) list: Option<InstanceId>,
+    pub(crate) list: InstanceId,
     pub(crate) index: usize,
 }
 
 impl ListIterator {
-    pub(crate) const fn new(list: Option<InstanceId>) -> Self {
+    pub(crate) const fn new(list: InstanceId) -> Self {
         Self { list, index: 0 }
     }
 
-    pub(crate) fn get_list<'a>(&self, heap: &'a Heap) -> Option<&'a List> {
-        self.list
-            .as_ref()
-            .and_then(|item| match &item.to_value(heap).backing {
-                Some(NativeClass::List(list)) => Some(list),
-                _ => None,
-            })
+    pub(crate) fn get_list<'a>(&self, heap: &'a Heap) -> &'a List {
+        match &self.list.to_value(heap).backing {
+            Some(NativeClass::List(list)) => list,
+            _ => unreachable!("Expected a List instance, got {:?}", self.list),
+        }
     }
 
     #[allow(clippy::option_if_let_else)]
     fn to_string(&self, heap: &Heap) -> String {
-        match self.list {
-            Some(list) => format!("<list iterator of {}>", list.to_value(heap).to_string(heap)),
-            None => "<list iterator>".to_string(),
-        }
+        format!(
+            "<list iterator of {}>",
+            self.list.to_value(heap).to_string(heap)
+        )
     }
 }
 
 impl std::fmt::Display for ListIterator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.list {
-            Some(_) => f.pad("<list iterator of Value>"),
-            None => f.pad("<list iterator Value>"),
-        }
+        f.pad("<list iterator of Value>")
     }
 }
 
@@ -331,4 +343,104 @@ fn hash_table_equal<T: PartialEq>(table1: &HashTable<T>, table2: &HashTable<T>) 
     table1
         .iter()
         .all(|item1| table2.iter().any(|item2| item1 == item2))
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Range {
+    start: GenericInt,
+    end: GenericInt,
+}
+
+impl Range {
+    pub fn new(start: GenericInt, end: GenericInt) -> Self {
+        Self { start, end }
+    }
+
+    fn to_string(&self, heap: &Heap) -> String {
+        format!(
+            "{}..<{}",
+            self.start.to_string(heap),
+            self.end.to_string(heap)
+        )
+    }
+
+    pub(crate) fn start(&self) -> GenericInt {
+        self.start
+    }
+
+    pub fn end(&self) -> GenericInt {
+        self.end
+    }
+
+    pub(crate) fn contains(&self, value: &GenericInt, heap: &Heap) -> bool {
+        if self.start.le(&self.end, heap) {
+            // Normal range: start <= end
+            self.start.le(value, heap) && value.lt(&self.end, heap)
+        } else {
+            // Reverse range: start > end
+            self.end.lt(value, heap) && value.le(&self.start, heap)
+        }
+    }
+
+    pub(crate) fn len(&self, heap: &mut Heap) -> GenericInt {
+        self.end().sub(self.start(), heap).abs(heap)
+    }
+
+    pub(crate) fn is_empty(&self, heap: &Heap) -> bool {
+        self.start().eq(&self.end(), heap)
+    }
+
+    pub(crate) fn is_forward(&self, heap: &Heap) -> bool {
+        self.start.le(&self.end, heap)
+    }
+}
+
+impl PartialEq for Range {
+    fn eq(&self, _other: &Self) -> bool {
+        // Two different ranges are never equal (for now).
+        false
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RangeIterator {
+    pub(crate) range: InstanceId,
+    pub(crate) offset: GenericInt,
+}
+
+impl RangeIterator {
+    pub(crate) fn new(range: InstanceId) -> Self {
+        Self {
+            range,
+            offset: GenericInt::Small(0),
+        }
+    }
+
+    pub(crate) fn get_range<'a>(&self, heap: &'a Heap) -> &'a Range {
+        match &self.range.to_value(heap).backing {
+            Some(NativeClass::Range(range)) => range,
+            _ => unreachable!("Expected a Range instance, got {:?}", self.range),
+        }
+    }
+
+    #[allow(clippy::option_if_let_else)]
+    fn to_string(&self, heap: &Heap) -> String {
+        format!(
+            "<range iterator of {}>",
+            self.range.to_value(heap).to_string(heap)
+        )
+    }
+}
+
+impl std::fmt::Display for RangeIterator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad("<range iterator of Value>")
+    }
+}
+
+impl PartialEq for RangeIterator {
+    fn eq(&self, _other: &Self) -> bool {
+        // Two different ranges are never equal (for now).
+        false
+    }
 }

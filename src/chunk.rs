@@ -133,6 +133,8 @@ pub enum OpCode {
     BuildSet,
     BuildDict,
     BuildRational,
+    BuildRangeExclusive,
+    BuildRangeInclusive,
 
     Import,
     ImportFrom,
@@ -343,12 +345,11 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
         std::mem::size_of::<OpCode>()
             + match opcode {
                 Negate | Add | Subtract | Multiply | Divide | Mod | Exp | FloorDiv | BitAnd
-                | BitOr | BitXor | BuildRational | Nil | True | False | StopIteration | Not
-                | Equal | Greater | Less | LessEqual | GreaterEqual | NotEqual | Pop | Dup
-                | CloseUpvalue | Inherit | Return | LoadOne | LoadTwo | LoadZero | LoadMinusOne
-                | LoadOnef | LoadZerof | Swap | PopHandler | CompareException | Throw | Reraise => {
-                    0
-                }
+                | BitOr | BitXor | BuildRational | BuildRangeExclusive | BuildRangeInclusive
+                | Nil | True | False | StopIteration | Not | Equal | Greater | Less | LessEqual
+                | GreaterEqual | NotEqual | Pop | Dup | CloseUpvalue | Inherit | Return
+                | LoadOne | LoadTwo | LoadZero | LoadMinusOne | LoadOnef | LoadZerof | Swap
+                | PopHandler | CompareException | Throw | Reraise => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | GetUpvalue | SetUpvalue | Class | GetProperty
                 | SetProperty | Method | GetSuper | BuildList | BuildSet | BuildDict | DupN => 1,
@@ -788,6 +789,8 @@ impl Debug for InstructionDisassembler<'_, '_> {
                 Exp,
                 FloorDiv,
                 BuildRational,
+                BuildRangeExclusive,
+                BuildRangeInclusive,
                 Negate,
                 Nil,
                 StopIteration,

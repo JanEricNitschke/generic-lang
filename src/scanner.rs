@@ -106,6 +106,9 @@ pub enum TokenKind {
     Catch,
     Finally,
     Throw,
+
+    DotDotLess,
+    DotDotEqual,
 }
 
 impl std::fmt::Display for TokenKind {
@@ -178,7 +181,22 @@ impl<'a> Scanner<'a> {
                 b']' => TK::RightBracket,
                 b';' => TK::Semicolon,
                 b',' => TK::Comma,
-                b'.' => TK::Dot,
+                b'.' => {
+                    // Check for range operators ..= and ..<
+                    if self.match_(b'.') {
+                        if self.match_(b'=') {
+                            TK::DotDotEqual
+                        } else if self.match_(b'<') {
+                            TK::DotDotLess
+                        } else {
+                            // This is an error - we've consumed two dots but can't make a valid token
+                            return self
+                                .error_token("Invalid token '..' - expected '..=' or '..<'");
+                        }
+                    } else {
+                        TK::Dot
+                    }
+                }
                 b'@' => TK::At,
                 b'-' => {
                     if self.match_(b'=') {
