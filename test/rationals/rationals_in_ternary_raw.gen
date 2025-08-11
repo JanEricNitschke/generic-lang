@@ -1,4 +1,4 @@
 # This is parsed as ((((1:3) ? 1 : 4):1):5) --> (1:1):5.
-# But rationals can only be constructed from literaly, not other rationals.
+# But rationals can only be constructed from integers, not other rationals.
 # If you want to divide rationals, use '/'.
 print(1:3 ? 1:4 : 1:5);  # expect runtime error: Invalid operands (1:1, 5) for rational construction.

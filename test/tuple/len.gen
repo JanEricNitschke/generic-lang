@@ -1,0 +1,6 @@
+var my_tuple = (1, 2, 3);
+print(my_tuple.__len__());  # expect: 3
+print(len(my_tuple)); # expect: 3
+my_tuple = ();
+print(len(my_tuple)); # expect: 0
+len("Test"); # expect runtime error: Undefined property '__len__'.

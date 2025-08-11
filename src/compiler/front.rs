@@ -265,7 +265,7 @@ impl Compiler<'_, '_> {
 
             if self.match_(TK::LeftParen) {
                 loop {
-                    self.expression();
+                    self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Comma]);
                     // This compares the exception at STACK[-2] with the class at STACK[-1]
                     // Pops the class and leaves the comparison result above the exception.
                     self.emit_byte(OpCode::CompareException, self.line());

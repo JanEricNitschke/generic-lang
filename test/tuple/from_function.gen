@@ -1,0 +1,4 @@
+fun tuple_return() {
+    return 1, 2;
+}
+print(tuple_return());  # expect: (1, 2)

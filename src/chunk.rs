@@ -130,6 +130,7 @@ pub enum OpCode {
     SuperInvoke,
 
     BuildList,
+    BuildTuple,
     BuildSet,
     BuildDict,
     BuildRational,
@@ -352,7 +353,8 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
                 | PopHandler | CompareException | Throw | Reraise => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | GetUpvalue | SetUpvalue | Class | GetProperty
-                | SetProperty | Method | GetSuper | BuildList | BuildSet | BuildDict | DupN => 1,
+                | SetProperty | Method | GetSuper | BuildList | BuildTuple | BuildSet
+                | BuildDict | DupN => 1,
                 Jump | JumpIfFalse | JumpIfTrue | PopJumpIfFalse | PopJumpIfTrue
                 | JumpIfTrueOrPop | JumpIfFalseOrPop | RegisterCatches | Loop | Invoke | Import
                 | SuperInvoke => 2,
@@ -752,8 +754,8 @@ impl Debug for InstructionDisassembler<'_, '_> {
             import_from(ImportFrom),
             closure(Closure),
             byte(
-                Call, GetUpvalue, SetUpvalue, Class, GetLocal, SetLocal, BuildList, BuildSet,
-                BuildDict, DupN,
+                Call, GetUpvalue, SetUpvalue, Class, GetLocal, SetLocal, BuildList, BuildTuple,
+                BuildSet, BuildDict, DupN,
             ),
             byte_long(GetLocalLong, SetLocalLong),
             jump(

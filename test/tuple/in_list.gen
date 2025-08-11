@@ -1,0 +1,4 @@
+var my_list = [1, 2, 3];
+print(my_list);  # expect: [1, 2, 3]
+var other_list = [4, (1, 2, 3), 6];
+print(other_list);  # expect: [4, (1, 2, 3), 6]

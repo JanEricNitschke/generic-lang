@@ -13,7 +13,7 @@ pub use classes::{BoundMethod, Class, Instance};
 pub use functions::{Closure, Function, Module, Upvalue};
 pub use natives::{
     Dict, List, ListIterator, ModuleContents, NativeClass, NativeFunction, NativeFunctionImpl,
-    NativeMethod, NativeMethodImpl, Range, RangeIterator, Set,
+    NativeMethod, NativeMethodImpl, Range, RangeIterator, Set, Tuple, TupleIterator,
 };
 pub use number::{GenericInt, GenericRational, Number};
 
@@ -350,6 +350,26 @@ impl Value {
                 _ => unreachable!("Expected ListIterator, found something else."),
             },
             _ => unreachable!("Expected ListIterator, found `{:?}`", self),
+        }
+    }
+
+    pub fn as_tuple<'a>(&self, heap: &'a Heap) -> &'a Tuple {
+        match self {
+            Self::Instance(inst) => match &inst.to_value(heap).backing {
+                Some(NativeClass::Tuple(tuple)) => tuple,
+                _ => unreachable!("Expected Tuple, found `{:?}`", self),
+            },
+            _ => unreachable!("Expected Tuple, found `{:?}`", self),
+        }
+    }
+
+    pub fn as_tuple_iter_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut TupleIterator {
+        match self {
+            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
+                Some(NativeClass::TupleIterator(tuple_iter)) => tuple_iter,
+                _ => unreachable!("Expected TupleIterator, found something else."),
+            },
+            _ => unreachable!("Expected TupleIterator, found `{:?}`", self),
         }
     }
 

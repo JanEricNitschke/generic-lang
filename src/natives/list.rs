@@ -242,13 +242,11 @@ pub(super) fn list_add_native(
         Value::Instance(instance) => match &instance.to_value(&vm.heap).backing {
             Some(NativeClass::List(other_list)) => {
                 // Create a new list with combined contents
-                let mut new_list = List::new();
+                let mut items = Vec::new();
+                items.extend_from_slice(&my_list.items);
+                items.extend_from_slice(&other_list.items);
 
-                // Add all items from the receiver list
-                new_list.items.extend_from_slice(&my_list.items);
-
-                // Add all items from the argument list
-                new_list.items.extend_from_slice(&other_list.items);
+                let new_list = List::new(items);
 
                 // Create a new List instance
                 let instance = Instance::new(

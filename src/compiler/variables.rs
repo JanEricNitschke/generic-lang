@@ -2,9 +2,9 @@
 //!
 //! Contains functions for resolving variables ad upvalue, local or global.
 
-use crate::chunk::{ConstantLongIndex, OpCode};
-
 use super::{Compiler, Local, ScopeDepth, Upvalue};
+use crate::chunk::{ConstantLongIndex, OpCode};
+use crate::compiler::rules::Precedence;
 use crate::scanner::{Token, TokenKind as TK};
 
 impl<'scanner> Compiler<'scanner, '_> {
@@ -356,7 +356,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         let mut arg_count = 0;
         if !self.check(TK::RightParen) {
             loop {
-                self.expression();
+                self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Comma]);
 
                 if arg_count == 255 {
                     self.error("Can't have more than 255 arguments.");

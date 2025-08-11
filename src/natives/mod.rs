@@ -7,6 +7,7 @@ mod list;
 mod native_functions;
 mod range;
 mod set;
+mod tuple;
 
 use crate::vm::VM;
 
@@ -23,6 +24,11 @@ use crate::natives::range::{
 
 use crate::natives::set::{
     set_contains_native, set_insert_native, set_len_native, set_remove_native,
+};
+
+use crate::natives::tuple::{
+    tuple_add_native, tuple_bool_native, tuple_contains_native, tuple_get_native,
+    tuple_iter_native, tuple_iter_next_native, tuple_len_native,
 };
 
 use crate::natives::dict::{dict_get_native, dict_len_native, dict_set_native};
@@ -69,6 +75,17 @@ pub fn define(vm: &mut VM) {
 
     vm.define_native_class(&"ListIterator", false);
     vm.define_native_method(&"ListIterator", &"__next__", &[0], list_iter_next_native);
+
+    vm.define_native_class(&"Tuple", true);
+    vm.define_native_method(&"Tuple", &"__getitem__", &[1], tuple_get_native);
+    vm.define_native_method(&"Tuple", &"__len__", &[0], tuple_len_native);
+    vm.define_native_method(&"Tuple", &"__iter__", &[0], tuple_iter_native);
+    vm.define_native_method(&"Tuple", &"__add__", &[1], tuple_add_native);
+    vm.define_native_method(&"Tuple", &"__bool__", &[0], tuple_bool_native);
+    vm.define_native_method(&"Tuple", &"contains", &[1], tuple_contains_native);
+
+    vm.define_native_class(&"TupleIterator", false);
+    vm.define_native_method(&"TupleIterator", &"__next__", &[0], tuple_iter_next_native);
 
     vm.define_native_class(&"Set", true);
     vm.define_native_method(&"Set", &"contains", &[1], set_contains_native);

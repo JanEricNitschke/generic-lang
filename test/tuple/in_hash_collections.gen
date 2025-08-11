@@ -1,0 +1,6 @@
+var my_dict = {1: 2, 3: 4};
+print(my_dict);  # expect: {3: 4, 1: 2}
+var my_set = {1, 2, 3};
+print(my_set);  # expect: {2, 3, 1}
+var my_what = { (1:2), (3:4) };
+print(my_what);  # expect: {1:2, 3:4}
