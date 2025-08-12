@@ -1,5 +1,5 @@
 use super::{InterpretResult, VM};
-use crate::value::Value;
+use crate::{chunk::CodeOffset, value::Value};
 
 #[derive(PartialEq, Eq)]
 pub(super) enum BinaryOpResult {
@@ -65,8 +65,14 @@ macro_rules! binary_op {
                                     BinaryOpResult::Success
                                 }
                                 Err(error) => {
-                                    if let Some(result) = $self.throw_exception("ValueError", &error) {
-                                        return result;
+                                    if $self.create_exception_instance("ValueError", &error) {
+                                        let exception = $self.stack.pop().expect("Exception instance should be on stack");
+                                        if let Some(result) = $self.unwind(exception) {
+                                            return result;
+                                        }
+                                    } else {
+                                        runtime_error!($self, "Failed to create ValueError: {}", error);
+                                        return InterpretResult::RuntimeError;
                                     }
                                     BinaryOpResult::Success // Exception was thrown, continue execution
                                 }
@@ -101,8 +107,14 @@ macro_rules! binary_op {
                     .collect::<Vec<_>>()
                     .join(", ")
             );
-            if let Some(result) = $self.throw_exception("TypeError", &error_msg) {
-                return result;
+            if $self.create_exception_instance("TypeError", &error_msg) {
+                let exception = $self.stack.pop().expect("Exception instance should be on stack");
+                if let Some(result) = $self.unwind(exception) {
+                    return result;
+                }
+            } else {
+                runtime_error!($self, "Failed to create TypeError: {}", error_msg);
+                return InterpretResult::RuntimeError;
             }
         }
     }};
@@ -157,7 +169,13 @@ impl VM {
                     .join(", ")
             );
 
-            return self.throw_exception("TypeError", &error_msg);
+            if self.create_exception_instance("TypeError", &error_msg) {
+                let exception = self.stack.pop().expect("Exception instance should be on stack");
+                return self.unwind(exception);
+            } else {
+                runtime_error!(self, "Failed to create TypeError: {}", error_msg);
+                return Some(InterpretResult::RuntimeError);
+            }
         }
         None
     }
@@ -175,7 +193,13 @@ impl VM {
             let negated = n.neg(&mut self.heap);
             self.stack_push_value(negated.into());
         } else {
-            return self.throw_exception("TypeError", "Operand must be a number.");
+            if self.create_exception_instance("TypeError", "Operand must be a number.") {
+                let exception = self.stack.pop().expect("Exception instance should be on stack");
+                return self.unwind(exception);
+            } else {
+                runtime_error!(self, "Failed to create TypeError: Operand must be a number.");
+                return Some(InterpretResult::RuntimeError);
+            }
         }
         None
     }

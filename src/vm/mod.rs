@@ -16,6 +16,7 @@ mod arithmetics;
 mod run_instruction;
 mod bytecode;
 mod callstack;
+#[macro_use]
 mod exception_handling;
 mod state;
 mod variables;
@@ -34,7 +35,7 @@ use std::path::PathBuf;
 use crate::chunk::InstructionDisassembler;
 use crate::natives;
 use crate::{
-    chunk::OpCode,
+    chunk::{OpCode, CodeOffset},
     compiler::Compiler,
     heap::{Heap, ModuleId, StringId, UpvalueId},
     scanner::Scanner,

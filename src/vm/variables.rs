@@ -1,5 +1,5 @@
 use crate::{
-    chunk::OpCode,
+    chunk::{CodeOffset, OpCode},
     value::Value,
 };
 
@@ -43,7 +43,13 @@ impl VM {
                         self.stack_push(value);
                     } else {
                         let error_msg = format!("Undefined variable '{}'.", self.heap.strings[*name]);
-                        return self.throw_exception("NameError", &error_msg);
+                        if self.create_exception_instance("NameError", &error_msg) {
+                            let exception = self.stack.pop().expect("Exception instance should be on stack");
+                            return self.unwind(exception);
+                        } else {
+                            runtime_error!(self, "Failed to create NameError: {}", error_msg);
+                            return Some(InterpretResult::RuntimeError);
+                        }
                     }
                 }
             }
@@ -71,19 +77,37 @@ impl VM {
             .get_mut(&name)
         {
             if !global.mutable {
-                return self.throw_exception("ValueError", "Reassignment to global 'const'.");
+                if self.create_exception_instance("ValueError", "Reassignment to global 'const'.") {
+                    let exception = self.stack.pop().expect("Exception instance should be on stack");
+                    return self.unwind(exception);
+                } else {
+                    runtime_error!(self, "Failed to create ValueError: Reassignment to global 'const'.");
+                    return Some(InterpretResult::RuntimeError);
+                }
             }
             global.value = stack_top_value;
         } else {
             let maybe_builtin = self.builtins.get_mut(&name);
             if let Some(global) = maybe_builtin {
                 if !global.mutable {
-                    return self.throw_exception("ValueError", "Reassignment to global 'const'.");
+                    if self.create_exception_instance("ValueError", "Reassignment to global 'const'.") {
+                        let exception = self.stack.pop().expect("Exception instance should be on stack");
+                        return self.unwind(exception);
+                    } else {
+                        runtime_error!(self, "Failed to create ValueError: Reassignment to global 'const'.");
+                        return Some(InterpretResult::RuntimeError);
+                    }
                 }
                 global.value = stack_top_value;
             } else {
                 let error_msg = format!("Undefined variable '{}'.", name.to_value(&self.heap));
-                return self.throw_exception("NameError", &error_msg);
+                if self.create_exception_instance("NameError", &error_msg) {
+                    let exception = self.stack.pop().expect("Exception instance should be on stack");
+                    return self.unwind(exception);
+                } else {
+                    runtime_error!(self, "Failed to create NameError: {}", error_msg);
+                    return Some(InterpretResult::RuntimeError);
+                }
             }
         }
 

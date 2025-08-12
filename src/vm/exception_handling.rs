@@ -31,9 +31,9 @@ impl VM {
         self.exception_handlers.pop()
     }
 
-    /// Throw a builtin exception instead of terminating the program.
-    /// This creates an instance of the specified exception class and throws it.
-    pub(super) fn throw_exception(&mut self, exception_name: &str, message: &str) -> Option<InterpretResult> {
+    /// Create an exception instance and push it onto the stack.
+    /// The caller should then call unwind() directly.
+    pub(super) fn create_exception_instance(&mut self, exception_name: &str, message: &str) -> bool {
         let exception_class_id = self.heap.string_id(&exception_name);
         
         // Get the exception class from builtins
@@ -48,14 +48,13 @@ impl VM {
                 
                 let instance_value = self.heap.add_instance(instance);
                 
-                // Throw the exception
-                return self.unwind(instance_value);
+                // Push the exception instance onto the stack
+                self.stack.push(instance_value);
+                return true;
             }
         }
         
-        // Fallback: if we can't find the exception class, use runtime error
-        runtime_error!(self, "Failed to throw {}: {}", exception_name, message);
-        Some(InterpretResult::RuntimeError)
+        false // Failed to create exception
     }
 
     pub(super) fn unwind(&mut self, exception: Value) -> Option<InterpretResult> {
@@ -74,10 +73,22 @@ impl VM {
             self.stack.push(exception);
             None
         } else {
+            // Extract the message from the exception instance if it has one
+            let message = if let Value::Instance(instance_id) = exception {
+                let instance = instance_id.to_value(&self.heap);
+                if let Some(message_value) = instance.fields.get("message") {
+                    message_value.to_string(&self.heap)
+                } else {
+                    exception.to_string(&self.heap)
+                }
+            } else {
+                exception.to_string(&self.heap)
+            };
+            
             runtime_error!(
                 self,
-                "Uncaught exception: {}",
-                exception.to_string(&self.heap)
+                "{}",
+                message
             );
             Some(InterpretResult::RuntimeError)
         }

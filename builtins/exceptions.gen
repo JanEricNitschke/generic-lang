@@ -1,0 +1,50 @@
+// Builtin exception classes
+// These are automatically loaded before user code
+
+class RuntimeError {
+    init(message) {
+        this.message = message;
+    }
+}
+
+class TypeError {
+    init(message) {
+        this.message = message;
+    }
+}
+
+class ValueError {
+    init(message) {
+        this.message = message;
+    }
+}
+
+class NameError {
+    init(message) {
+        this.message = message;
+    }
+}
+
+class AttributeError {
+    init(message) {
+        this.message = message;
+    }
+}
+
+class ZeroDivisionError {
+    init(message) {
+        this.message = message;
+    }
+}
+
+class IndexError {
+    init(message) {
+        this.message = message;
+    }
+}
+
+class KeyError {
+    init(message) {
+        this.message = message;
+    }
+}

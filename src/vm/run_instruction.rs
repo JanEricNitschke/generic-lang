@@ -283,8 +283,14 @@ macro_rules! run_instruction {
                                 "Undefined property '{}'.",
                                 field.to_value(&$self.heap)
                             );
-                            if let Some(result) = $self.throw_exception("AttributeError", &error_msg) {
-                                return result;
+                            if $self.create_exception_instance("AttributeError", &error_msg) {
+                                let exception = $self.stack.pop().expect("Exception instance should be on stack");
+                                if let Some(result) = $self.unwind(exception) {
+                                    return result;
+                                }
+                            } else {
+                                runtime_error!($self, "Failed to create AttributeError: {}", error_msg);
+                                return InterpretResult::RuntimeError;
                             }
                         }
                     }
@@ -298,8 +304,14 @@ macro_rules! run_instruction {
                                 field.to_value(&$self.heap),
                                 module.to_value(&$self.heap).name.to_value(&$self.heap)
                             );
-                            if let Some(result) = $self.throw_exception("AttributeError", &error_msg) {
-                                return result;
+                            if $self.create_exception_instance("AttributeError", &error_msg) {
+                                let exception = $self.stack.pop().expect("Exception instance should be on stack");
+                                if let Some(result) = $self.unwind(exception) {
+                                    return result;
+                                }
+                            } else {
+                                runtime_error!($self, "Failed to create AttributeError: {}", error_msg);
+                                return InterpretResult::RuntimeError;
                             }
                         }
                     }
@@ -309,8 +321,14 @@ macro_rules! run_instruction {
                             field.to_value(&$self.heap),
                             x.to_string(&$self.heap)
                         );
-                        if let Some(result) = $self.throw_exception("AttributeError", &error_msg) {
-                            return result;
+                        if $self.create_exception_instance("AttributeError", &error_msg) {
+                            let exception = $self.stack.pop().expect("Exception instance should be on stack");
+                            if let Some(result) = $self.unwind(exception) {
+                                return result;
+                            }
+                        } else {
+                            runtime_error!($self, "Failed to create AttributeError: {}", error_msg);
+                            return InterpretResult::RuntimeError;
                         }
                     }
                 };
@@ -341,8 +359,14 @@ macro_rules! run_instruction {
                         };
                         
                         if !is_mutable {
-                            if let Some(result) = $self.throw_exception("ValueError", "Reassignment to global 'const'.") {
-                                return result;
+                            if $self.create_exception_instance("ValueError", "Reassignment to global 'const'.") {
+                                let exception = $self.stack.pop().expect("Exception instance should be on stack");
+                                if let Some(result) = $self.unwind(exception) {
+                                    return result;
+                                }
+                            } else {
+                                runtime_error!($self, "Failed to create ValueError: Reassignment to global 'const'.");
+                                return InterpretResult::RuntimeError;
                             }
                         }
                         
@@ -360,8 +384,14 @@ macro_rules! run_instruction {
                             field,
                             x.to_string(&$self.heap)
                         );
-                        if let Some(result) = $self.throw_exception("AttributeError", &error_msg) {
-                            return result;
+                        if $self.create_exception_instance("AttributeError", &error_msg) {
+                            let exception = $self.stack.pop().expect("Exception instance should be on stack");
+                            if let Some(result) = $self.unwind(exception) {
+                                return result;
+                            }
+                        } else {
+                            runtime_error!($self, "Failed to create AttributeError: {}", error_msg);
+                            return InterpretResult::RuntimeError;
                         }
                     }
                 };
@@ -393,17 +423,27 @@ macro_rules! run_instruction {
                 };
                 
                 if !is_class {
-                    if let Some(result) = $self.throw_exception("TypeError", "Superclass must be a class.") {
-                        return result;
+                    if $self.create_exception_instance("TypeError", "Superclass must be a class.") {
+                        let exception = $self.stack.pop().expect("Exception instance should be on stack");
+                        if let Some(result) = $self.unwind(exception) {
+                            return result;
+                        }
+                    } else {
+                        runtime_error!($self, "Failed to create TypeError: Superclass must be a class.");
+                        return InterpretResult::RuntimeError;
                     }
-                    return InterpretResult::Ok; // Exception thrown, continue execution
                 }
                 
                 if is_native {
-                    if let Some(result) = $self.throw_exception("TypeError", "Can not inherit from native classes yet.") {
-                        return result;
+                    if $self.create_exception_instance("TypeError", "Can not inherit from native classes yet.") {
+                        let exception = $self.stack.pop().expect("Exception instance should be on stack");
+                        if let Some(result) = $self.unwind(exception) {
+                            return result;
+                        }
+                    } else {
+                        runtime_error!($self, "Failed to create TypeError: Can not inherit from native classes yet.");
+                        return InterpretResult::RuntimeError;
                     }
-                    return InterpretResult::Ok; // Exception thrown, continue execution  
                 }
                 
                 let superclass = superclass_id.as_class();
@@ -473,8 +513,14 @@ macro_rules! run_instruction {
                             "Value `{}` is not hashable when this is required for items in a set.",
                             value.to_string(&$self.heap)
                         );
-                        if let Some(result) = $self.throw_exception("TypeError", &error_msg) {
-                            return result;
+                        if $self.create_exception_instance("TypeError", &error_msg) {
+                            let exception = $self.stack.pop().expect("Exception instance should be on stack");
+                            if let Some(result) = $self.unwind(exception) {
+                                return result;
+                            }
+                        } else {
+                            runtime_error!($self, "Failed to create TypeError: {}", error_msg);
+                            return InterpretResult::RuntimeError;
                         }
                     }
                 }
