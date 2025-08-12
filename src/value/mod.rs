@@ -163,9 +163,9 @@ impl Value {
 
                         let fun = native_method.to_value(&vm.heap).fun;
                         match fun(vm, &mut self_copy, &mut empty_arg_refs) {
-                            Ok(Self::Number(Number::Integer(
-                                crate::value::GenericInt::Small(n),
-                            ))) if n >= 0 => Ok(u64::try_from(n).unwrap_or_else(|_| {
+                            Ok(Self::Number(Number::Integer(crate::value::GenericInt::Small(
+                                n,
+                            )))) if n >= 0 => Ok(u64::try_from(n).unwrap_or_else(|_| {
                                 // If conversion fails, fallback to object ID
                                 let mut hasher = FxHasher::default();
                                 instance.hash(&mut hasher);
