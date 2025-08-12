@@ -1,0 +1,21 @@
+# Test isinstance with inheritance
+class Animal {}
+
+class Dog < Animal {}
+
+class Cat < Animal {}
+
+var dog = Dog();
+var cat = Cat();
+
+# Test direct class matches
+print(isinstance(dog, Dog)); # expect: true
+print(isinstance(cat, Cat)); # expect: true
+
+# Test inheritance - should be true when checking for parent class
+print(isinstance(dog, Animal)); # expect: true
+print(isinstance(cat, Animal)); # expect: true
+
+# Test negative cases
+print(isinstance(dog, Cat)); # expect: false
+print(isinstance(cat, Dog)); # expect: false

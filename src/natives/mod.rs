@@ -23,7 +23,7 @@ use crate::natives::dict::{dict_get_native, dict_len_native, dict_set_native};
 
 use crate::natives::native_functions::{
     assert_native, clock_native, delattr_native, getattr_native, hasattr_native, input_native,
-    is_int_native, len_native, print_native, rng_native, setattr_native, sleep_native,
+    isinstance_native, is_int_native, len_native, print_native, rng_native, setattr_native, sleep_native,
     to_float_native, to_int_native, to_string_native, type_native,
 };
 
@@ -44,6 +44,16 @@ pub fn define(vm: &mut VM) {
     vm.define_native_function(&"delattr", &[2], delattr_native);
     vm.define_native_function(&"rng", &[2], rng_native);
     vm.define_native_function(&"len", &[1], len_native);
+    vm.define_native_function(&"isinstance", &[2], isinstance_native);
+
+    // Define builtin type classes
+    vm.define_native_class(&"String", true);
+    vm.define_native_class(&"Float", true);
+    vm.define_native_class(&"Integer", true);
+    vm.define_native_class(&"Bool", true);
+    vm.define_native_class(&"Nil", true);
+    vm.define_native_class(&"Function", true);
+    vm.define_native_class(&"Module", true);
 
     // The add to builtins is a bit of a workaround for how native instances
     // are instantiated. Currently we either need a way to instantiate them

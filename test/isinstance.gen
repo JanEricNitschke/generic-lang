@@ -1,0 +1,24 @@
+# Test basic isinstance functionality with builtin types
+
+# Test with basic types
+print(isinstance(5, Integer)); # expect: true
+print(isinstance(5.5, Float)); # expect: true
+print(isinstance(true, Bool)); # expect: true
+print(isinstance(false, Bool)); # expect: true
+print(isinstance(nil, Nil)); # expect: true
+print(isinstance("hello", String)); # expect: true
+
+# Test with incorrect types
+print(isinstance(5, Float)); # expect: false
+print(isinstance(5.5, Integer)); # expect: false
+print(isinstance("hello", Integer)); # expect: false
+print(isinstance(true, String)); # expect: false
+print(isinstance(nil, Bool)); # expect: false
+
+# Test with class instances
+class TestClass {}
+var instance = TestClass();
+print(isinstance(instance, TestClass)); # expect: true
+
+class OtherClass {}
+print(isinstance(instance, OtherClass)); # expect: false

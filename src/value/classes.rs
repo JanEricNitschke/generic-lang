@@ -14,6 +14,7 @@ pub struct Class {
     // Should probably also be String and not StringId?
     pub(crate) methods: HashMap<StringId, Value>,
     pub(crate) is_native: bool,
+    pub(crate) superclass: Option<ClassId>,
 }
 
 impl Class {
@@ -23,6 +24,18 @@ impl Class {
             name,
             methods: HashMap::default(),
             is_native,
+            superclass: None,
+        }
+    }
+
+    #[must_use]
+    #[allow(dead_code)]
+    pub(crate) fn new_with_superclass(name: StringId, is_native: bool, superclass: Option<ClassId>) -> Self {
+        Self {
+            name,
+            methods: HashMap::default(),
+            is_native,
+            superclass,
         }
     }
 

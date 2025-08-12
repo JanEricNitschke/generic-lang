@@ -383,3 +383,18 @@ pub(super) fn len_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, 
 
     Err("Undefined property '__len__'.".into())
 }
+
+/// Check if a value is an instance of a class, including inheritance.
+pub(super) fn isinstance_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+    let obj = &args[0];
+    let class_arg = &args[1];
+
+    if let Value::Class(class_id) = class_arg {
+        Ok(Value::Bool(obj.isinstance(*class_id, &vm.heap)))
+    } else {
+        Err(format!(
+            "isinstance() arg 2 must be a class, not {}",
+            class_arg.to_string(&vm.heap)
+        ))
+    }
+}

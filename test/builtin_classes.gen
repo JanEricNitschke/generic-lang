@@ -1,0 +1,8 @@
+# Test builtin classes exist and can be used
+print(String); # expect: <class String>
+print(Integer); # expect: <class Integer>
+print(Float); # expect: <class Float>
+print(Bool); # expect: <class Bool>
+print(Nil); # expect: <class Nil>
+print(Function); # expect: <class Function>
+print(Module); # expect: <class Module>
