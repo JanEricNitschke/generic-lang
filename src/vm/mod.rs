@@ -260,4 +260,93 @@ impl VM {
         self.stack_push(result.into());
         None
     }
+
+    /// Compute hash for a value, using __hash__ method if available for instances.
+    /// Uses `invoke_and_run_function` to properly handle both native and user-defined `__hash__` methods.
+    #[allow(clippy::unnecessary_wraps)]
+    pub(crate) fn compute_value_hash(&mut self, value: Value) -> Result<u64, String> {
+        if let Value::Instance(instance) = value {
+            let hash_method_id = self.heap.string_id(&"__hash__");
+
+            // Check if this instance has a __hash__ method
+            if let Some(method) = instance
+                .to_value(&self.heap)
+                .get_field_or_method(hash_method_id, &self.heap)
+            {
+                match method {
+                    Value::NativeMethod(_)
+                    | Value::Closure(_)
+                    | Value::Function(_)
+                    | Value::BoundMethod(_) => {
+                        // Use invoke_and_run_function to call the __hash__ method properly
+                        // Push the instance onto the stack
+                        self.stack_push_value(value);
+
+                        // Call the __hash__ method
+                        let result = self.invoke_and_run_function(
+                            hash_method_id,
+                            0,
+                            matches!(method, Value::NativeMethod(_)),
+                        );
+
+                        if result != InterpretResult::Ok {
+                            // If the method call failed, fall back to object ID
+                            use rustc_hash::FxHasher;
+                            use std::hash::{Hash, Hasher};
+                            let mut hasher = FxHasher::default();
+                            instance.hash(&mut hasher);
+                            return Ok(hasher.finish());
+                        }
+
+                        // Get the result from the stack
+                        let hash_result = self
+                            .stack
+                            .pop()
+                            .expect("Stack underflow in compute_value_hash");
+
+                        match hash_result {
+                            Value::Number(Number::Integer(crate::value::GenericInt::Small(n)))
+                                if n >= 0 =>
+                            {
+                                Ok(u64::try_from(n).unwrap_or_else(|_| {
+                                    // If conversion fails, fallback to object ID
+                                    use rustc_hash::FxHasher;
+                                    use std::hash::{Hash, Hasher};
+                                    let mut hasher = FxHasher::default();
+                                    instance.hash(&mut hasher);
+                                    hasher.finish()
+                                }))
+                            }
+                            _ => {
+                                // Invalid return type from __hash__, use object ID
+                                use rustc_hash::FxHasher;
+                                use std::hash::{Hash, Hasher};
+                                let mut hasher = FxHasher::default();
+                                instance.hash(&mut hasher);
+                                Ok(hasher.finish())
+                            }
+                        }
+                    }
+                    _ => {
+                        // Not a callable method, use object ID
+                        use rustc_hash::FxHasher;
+                        use std::hash::{Hash, Hasher};
+                        let mut hasher = FxHasher::default();
+                        instance.hash(&mut hasher);
+                        Ok(hasher.finish())
+                    }
+                }
+            } else {
+                // No __hash__ method, use object ID
+                use rustc_hash::FxHasher;
+                use std::hash::{Hash, Hasher};
+                let mut hasher = FxHasher::default();
+                instance.hash(&mut hasher);
+                Ok(hasher.finish())
+            }
+        } else {
+            // Not an instance, use regular hash
+            Ok(value.to_hash(&self.heap))
+        }
+    }
 }
