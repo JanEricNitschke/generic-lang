@@ -17,7 +17,7 @@ pub(super) fn set_insert_native(
     } else {
         args[0].to_hash(&vm.heap)
     };
-    
+
     let mut set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
     set.add_with_hash(*args[0], hash, &vm.heap);
     *receiver.as_set_mut(&mut vm.heap) = set;
@@ -37,7 +37,7 @@ pub(super) fn set_remove_native(
     } else {
         args[0].to_hash(&vm.heap)
     };
-    
+
     let mut my_set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
     let result = my_set.remove_with_hash(args[0], hash, &vm.heap).into();
     *receiver.as_set_mut(&mut vm.heap) = my_set;
@@ -57,7 +57,7 @@ pub(super) fn set_contains_native(
     } else {
         args[0].to_hash(&vm.heap)
     };
-    
+
     let my_set = receiver.as_set(&vm.heap);
     let result = my_set.contains_with_hash(args[0], hash, &vm.heap);
     Ok(result.into())

@@ -14,8 +14,8 @@ var obj3 = A(43);
 
 my_set.insert(obj1);
 print(my_set.contains(obj1)); # expect: true
-print(my_set.contains(obj2)); # expect: true (same hash)
-print(my_set.contains(obj3)); # expect: false (different hash)
+print(my_set.contains(obj2)); # expect: false
+print(my_set.contains(obj3)); # expect: false
 
 my_set.insert(obj3);
 print(my_set.contains(obj3)); # expect: true

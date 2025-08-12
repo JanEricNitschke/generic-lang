@@ -235,11 +235,10 @@ impl Set {
 
     /// Add an item to the set using a pre-computed hash value
     pub(crate) fn add_with_hash(&mut self, item: Value, hash: u64, heap: &Heap) {
-        if let Entry::Vacant(entry) = self.items.entry(
-            hash,
-            |val| val.eq(&item, heap),
-            |val| val.to_hash(heap),
-        ) {
+        if let Entry::Vacant(entry) =
+            self.items
+                .entry(hash, |val| val.eq(&item, heap), |val| val.to_hash(heap))
+        {
             entry.insert(item);
         }
     }
@@ -273,9 +272,7 @@ impl Set {
 
     /// Check if the set contains an item using a pre-computed hash value
     pub(crate) fn contains_with_hash(&self, item: &Value, hash: u64, heap: &Heap) -> bool {
-        self.items
-            .find(hash, |val| val.eq(item, heap))
-            .is_some()
+        self.items.find(hash, |val| val.eq(item, heap)).is_some()
     }
 }
 
@@ -336,11 +333,10 @@ impl Dict {
 
     /// Add a key-value pair to the dict using a pre-computed hash value
     pub(crate) fn add_with_hash(&mut self, key: Value, value: Value, hash: u64, heap: &Heap) {
-        match self.items.entry(
-            hash,
-            |(k, _v)| k.eq(&key, heap),
-            |(k, _v)| k.to_hash(heap),
-        ) {
+        match self
+            .items
+            .entry(hash, |(k, _v)| k.eq(&key, heap), |(k, _v)| k.to_hash(heap))
+        {
             Entry::Vacant(entry) => {
                 entry.insert((key, value));
             }

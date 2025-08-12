@@ -149,34 +149,38 @@ impl Value {
     pub(crate) fn compute_instance_hash(&self, vm: &mut crate::vm::VM) -> Result<u64, String> {
         if let Self::Instance(instance) = self {
             let hash_method_id = vm.heap.string_id(&"__hash__");
-            
+
             // Check if this instance has a __hash__ method
             if let Some(method) = instance
                 .to_value(&vm.heap)
                 .get_field_or_method(hash_method_id, &vm.heap)
             {
                 match method {
-                    Value::NativeMethod(native_method) => {
+                    Self::NativeMethod(native_method) => {
                         // Call native __hash__ method directly
                         let mut self_copy = *self;
-                        let mut empty_arg_refs: Vec<&mut Value> = Vec::new();
-                        
-                        match native_method.to_value(&vm.heap).fun {
-                            fun => match fun(vm, &mut self_copy, &mut empty_arg_refs) {
-                                Ok(Value::Number(Number::Integer(crate::value::GenericInt::Small(n)))) if n >= 0 => {
-                                    Ok(n as u64)
-                                }
-                                Ok(_) => {
-                                    // Invalid return type from __hash__, use object ID
-                                    let mut hasher = FxHasher::default();
-                                    instance.hash(&mut hasher);
-                                    Ok(hasher.finish())
-                                }
-                                Err(e) => Err(e),
+                        let mut empty_arg_refs: Vec<&mut Self> = Vec::new();
+
+                        let fun = native_method.to_value(&vm.heap).fun;
+                        match fun(vm, &mut self_copy, &mut empty_arg_refs) {
+                            Ok(Self::Number(Number::Integer(
+                                crate::value::GenericInt::Small(n),
+                            ))) if n >= 0 => Ok(u64::try_from(n).unwrap_or_else(|_| {
+                                // If conversion fails, fallback to object ID
+                                let mut hasher = FxHasher::default();
+                                instance.hash(&mut hasher);
+                                hasher.finish()
+                            })),
+                            Ok(_) => {
+                                // Invalid return type from __hash__, use object ID
+                                let mut hasher = FxHasher::default();
+                                instance.hash(&mut hasher);
+                                Ok(hasher.finish())
                             }
+                            Err(e) => Err(e),
                         }
                     }
-                    Value::Closure(_) => {
+                    Self::Closure(_) => {
                         // For closures, we'll fall back to object ID to avoid complexity
                         let mut hasher = FxHasher::default();
                         instance.hash(&mut hasher);
@@ -301,7 +305,7 @@ impl From<ModuleId> for Value {
 
 // Retrieve the inner value
 impl Value {
-    #[allow(dead_code)]
+    #[allow(dead_code, clippy::unused_self)]
     pub(super) const fn is_hasheable(&self) -> bool {
         // All values are now hashable - instances use __hash__ or object ID,
         // other types use their object ID or built-in hash
