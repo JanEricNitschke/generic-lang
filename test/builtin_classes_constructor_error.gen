@@ -1,0 +1,5 @@
+# Test that calling builtin type classes fails appropriately
+# These should all fail with a clear error message
+
+# Float constructor call should fail
+print(Float()); # expect runtime error: Builtin type class 'Float' cannot be called as a constructor. Use it only for isinstance() checks.

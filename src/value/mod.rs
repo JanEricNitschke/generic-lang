@@ -398,15 +398,9 @@ impl Value {
                 Self::is_class_or_subclass(instance.class, class_id, heap)
             }
             // Check if basic types match their corresponding builtin classes
-            Self::Bool(_) => {
-                Self::get_builtin_class_for_type("Bool", heap) == Some(class_id)
-            }
-            Self::Nil => {
-                Self::get_builtin_class_for_type("Nil", heap) == Some(class_id)
-            }
-            Self::String(_) => {
-                Self::get_builtin_class_for_type("String", heap) == Some(class_id)
-            }
+            Self::Bool(_) => Self::get_builtin_class_for_type("Bool", heap) == Some(class_id),
+            Self::Nil => Self::get_builtin_class_for_type("Nil", heap) == Some(class_id),
+            Self::String(_) => Self::get_builtin_class_for_type("String", heap) == Some(class_id),
             Self::Number(Number::Float(_)) => {
                 Self::get_builtin_class_for_type("Float", heap) == Some(class_id)
             }
@@ -416,9 +410,7 @@ impl Value {
             Self::Function(_) => {
                 Self::get_builtin_class_for_type("Function", heap) == Some(class_id)
             }
-            Self::Module(_) => {
-                Self::get_builtin_class_for_type("Module", heap) == Some(class_id)
-            }
+            Self::Module(_) => Self::get_builtin_class_for_type("Module", heap) == Some(class_id),
             // Other types don't have instanceof behavior for now
             _ => false,
         }

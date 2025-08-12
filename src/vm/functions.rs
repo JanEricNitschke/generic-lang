@@ -49,6 +49,14 @@ impl VM {
 
 // Handle a call (generic side)
 impl VM {
+    /// Check if a class name corresponds to a builtin type class that shouldn't be instantiated.
+    fn is_builtin_type_class(class_name: &str) -> bool {
+        matches!(
+            class_name,
+            "String" | "Float" | "Integer" | "Bool" | "Nil" | "Function" | "Module"
+        )
+    }
+
     pub(super) fn call(&mut self) -> Option<InterpretResult> {
         let arg_count = self.read_byte();
         let callee = self.stack[self.stack.len() - 1 - usize::from(arg_count)];
@@ -175,15 +183,25 @@ impl VM {
             Value::NativeFunction(f) => self.execute_native_function_call(f, arg_count),
             Value::Class(class) => {
                 let is_native = class.to_value(&self.heap).is_native;
+                let class_name = class.to_value(&self.heap).name.to_value(&self.heap);
+
+                // Check if this is a builtin type class that shouldn't be instantiated
+                if is_native && Self::is_builtin_type_class(class_name) {
+                    runtime_error!(
+                        self,
+                        "Builtin type class '{}' cannot be called as a constructor. Use it only for isinstance() checks.",
+                        class_name
+                    );
+                    return false;
+                }
+
                 let maybe_initializer = class
                     .to_value(&self.heap)
                     .methods
                     .get(&self.heap.builtin_constants().init_string)
                     .copied();
                 let backing = if is_native {
-                    Some(NativeClass::new(
-                        class.to_value(&self.heap).name.to_value(&self.heap),
-                    ))
+                    Some(NativeClass::new(class_name))
                 } else {
                     None
                 };
