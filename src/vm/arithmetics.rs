@@ -1,12 +1,10 @@
 use super::{InterpretResult, VM};
-use crate::chunk::CodeOffset;
 use crate::value::Value;
 
 #[derive(PartialEq, Eq)]
 pub(super) enum BinaryOpResult {
     Success,
     InvalidOperands,
-    OperationError,
 }
 
 pub(super) trait IntoResultValue {
@@ -67,8 +65,10 @@ macro_rules! binary_op {
                                     BinaryOpResult::Success
                                 }
                                 Err(error) => {
-                                    runtime_error!($self, "{error}");
-                                    BinaryOpResult::OperationError
+                                    if let Some(result) = $self.throw_exception("ValueError", &error) {
+                                        return result;
+                                    }
+                                    BinaryOpResult::Success // Exception was thrown, continue execution
                                 }
                             }
                         }
@@ -92,8 +92,7 @@ macro_rules! binary_op {
         };
 
         if status == BinaryOpResult::InvalidOperands {
-            runtime_error!(
-                $self,
+            let error_msg = format!(
                 "Operands must be {}. Got: [{}]",
                 if $int_only { "integers" } else { "numbers" },
                 $self.stack[slice_start..]
@@ -102,9 +101,9 @@ macro_rules! binary_op {
                     .collect::<Vec<_>>()
                     .join(", ")
             );
-        }
-        if status != BinaryOpResult::Success {
-            return InterpretResult::RuntimeError;
+            if let Some(result) = $self.throw_exception("TypeError", &error_msg) {
+                return result;
+            }
         }
     }};
 }
@@ -149,8 +148,7 @@ impl VM {
         };
 
         if !ok {
-            runtime_error!(
-                self,
+            let error_msg = format!(
                 "Operands must be two numbers or two strings. Got: [{}]",
                 self.stack[slice_start..]
                     .iter()
@@ -159,7 +157,7 @@ impl VM {
                     .join(", ")
             );
 
-            return Some(InterpretResult::RuntimeError);
+            return self.throw_exception("TypeError", &error_msg);
         }
         None
     }
@@ -177,8 +175,7 @@ impl VM {
             let negated = n.neg(&mut self.heap);
             self.stack_push_value(negated.into());
         } else {
-            runtime_error!(self, "Operand must be a number.");
-            return Some(InterpretResult::RuntimeError);
+            return self.throw_exception("TypeError", "Operand must be a number.");
         }
         None
     }

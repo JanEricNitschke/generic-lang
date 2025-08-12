@@ -279,12 +279,13 @@ macro_rules! run_instruction {
                             // instance so that it can later be called separately.
                             // Just using the side effects
                         } else {
-                            runtime_error!(
-                                $self,
+                            let error_msg = format!(
                                 "Undefined property '{}'.",
                                 field.to_value(&$self.heap)
                             );
-                            return InterpretResult::RuntimeError;
+                            if let Some(result) = $self.throw_exception("AttributeError", &error_msg) {
+                                return result;
+                            }
                         }
                     }
                     Value::Module(module) => {
@@ -292,23 +293,25 @@ macro_rules! run_instruction {
                             $self.stack.pop(); // module
                             $self.stack_push(value.value);
                         } else {
-                            runtime_error!(
-                                $self,
+                            let error_msg = format!(
                                 "Undefined name '{}' in module {}.",
                                 field.to_value(&$self.heap),
                                 module.to_value(&$self.heap).name.to_value(&$self.heap)
                             );
-                            return InterpretResult::RuntimeError;
+                            if let Some(result) = $self.throw_exception("AttributeError", &error_msg) {
+                                return result;
+                            }
                         }
                     }
                     x => {
-                        runtime_error!(
-                            $self,
+                        let error_msg = format!(
                             "Tried to get property '{}' of non-instance `{}`.",
                             field.to_value(&$self.heap),
                             x.to_string(&$self.heap)
                         );
-                        return InterpretResult::RuntimeError;
+                        if let Some(result) = $self.throw_exception("AttributeError", &error_msg) {
+                            return result;
+                        }
                     }
                 };
             }
@@ -327,26 +330,39 @@ macro_rules! run_instruction {
                             .insert(field, value);
                     }
                     Value::Module(module) => {
+                        let is_mutable = if let Some(global) = module
+                            .to_value(&$self.heap)
+                            .globals
+                            .get(&field_string_id)
+                        {
+                            global.mutable
+                        } else {
+                            true // Non-existent global, we'll handle this elsewhere
+                        };
+                        
+                        if !is_mutable {
+                            if let Some(result) = $self.throw_exception("ValueError", "Reassignment to global 'const'.") {
+                                return result;
+                            }
+                        }
+                        
                         if let Some(global) = module
                             .to_value_mut(&mut $self.heap)
                             .globals
                             .get_mut(&field_string_id)
                         {
-                            if !global.mutable {
-                                runtime_error!($self, "Reassignment to global 'const'.");
-                                return InterpretResult::RuntimeError;
-                            }
                             global.value = value;
                         }
                     }
                     x => {
-                        runtime_error!(
-                            $self,
+                        let error_msg = format!(
                             "Tried to set property '{}' of non-instance `{}`",
                             field,
                             x.to_string(&$self.heap)
                         );
-                        return InterpretResult::RuntimeError;
+                        if let Some(result) = $self.throw_exception("AttributeError", &error_msg) {
+                            return result;
+                        }
                     }
                 };
                 $self.stack_push(value);
@@ -369,17 +385,28 @@ macro_rules! run_instruction {
             }
             // Stack has (... --- Superclass --- Class)
             OpCode::Inherit => {
-                let superclass_id = $self.peek(1).expect("Stack underflow in OP_INHERIT");
-                let superclass = if let Value::Class(superclass) = &superclass_id {
-                    if superclass.to_value(&$self.heap).is_native {
-                        runtime_error!($self, "Can not inherit from native classes yet.");
-                        return InterpretResult::RuntimeError;
-                    }
-                    superclass
+                let superclass_id = *$self.peek(1).expect("Stack underflow in OP_INHERIT");
+                let (is_native, is_class) = if let Value::Class(superclass) = &superclass_id {
+                    (superclass.to_value(&$self.heap).is_native, true)
                 } else {
-                    runtime_error!($self, "Superclass must be a class.");
-                    return InterpretResult::RuntimeError;
+                    (false, false)
                 };
+                
+                if !is_class {
+                    if let Some(result) = $self.throw_exception("TypeError", "Superclass must be a class.") {
+                        return result;
+                    }
+                    return InterpretResult::Ok; // Exception thrown, continue execution
+                }
+                
+                if is_native {
+                    if let Some(result) = $self.throw_exception("TypeError", "Can not inherit from native classes yet.") {
+                        return result;
+                    }
+                    return InterpretResult::Ok; // Exception thrown, continue execution  
+                }
+                
+                let superclass = superclass_id.as_class();
                 let methods = superclass.to_value(&$self.heap).methods.clone();
                 let mut subclass = $self.stack.pop().expect("Stack underflow in OP_INHERIT");
                 subclass
@@ -438,17 +465,23 @@ macro_rules! run_instruction {
                 let mut set = Set::new();
 
                 let arg_count = $self.read_byte();
+                // First pass: check if all values are hashable
                 for index in (0..arg_count).rev() {
-                    let value = $self.peek(index as usize).unwrap();
+                    let value = *$self.peek(index as usize).unwrap();
                     if !value.is_hasheable() {
-                        runtime_error!(
-                            $self,
+                        let error_msg = format!(
                             "Value `{}` is not hashable when this is required for items in a set.",
                             value.to_string(&$self.heap)
                         );
-                        return InterpretResult::RuntimeError;
+                        if let Some(result) = $self.throw_exception("TypeError", &error_msg) {
+                            return result;
+                        }
                     }
-                    set.add(*value, &$self.heap);
+                }
+                // Second pass: add values to set
+                for index in (0..arg_count).rev() {
+                    let value = *$self.peek(index as usize).unwrap();
+                    set.add(value, &$self.heap);
                 }
                 for _ in 0..arg_count {
                     $self.stack.pop();

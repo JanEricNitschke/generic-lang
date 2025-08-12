@@ -34,7 +34,7 @@ use std::path::PathBuf;
 use crate::chunk::InstructionDisassembler;
 use crate::natives;
 use crate::{
-    chunk::{CodeOffset, OpCode},
+    chunk::OpCode,
     compiler::Compiler,
     heap::{Heap, ModuleId, StringId, UpvalueId},
     scanner::Scanner,

@@ -1,5 +1,5 @@
 use crate::{
-    chunk::{CodeOffset, OpCode},
+    chunk::OpCode,
     value::Value,
 };
 
@@ -42,8 +42,8 @@ impl VM {
                     if let Some(value) = maybe_builtin {
                         self.stack_push(value);
                     } else {
-                        runtime_error!(self, "Undefined variable '{}'.", self.heap.strings[*name]);
-                        return Some(InterpretResult::RuntimeError);
+                        let error_msg = format!("Undefined variable '{}'.", self.heap.strings[*name]);
+                        return self.throw_exception("NameError", &error_msg);
                     }
                 }
             }
@@ -71,21 +71,19 @@ impl VM {
             .get_mut(&name)
         {
             if !global.mutable {
-                runtime_error!(self, "Reassignment to global 'const'.");
-                return Some(InterpretResult::RuntimeError);
+                return self.throw_exception("ValueError", "Reassignment to global 'const'.");
             }
             global.value = stack_top_value;
         } else {
             let maybe_builtin = self.builtins.get_mut(&name);
             if let Some(global) = maybe_builtin {
                 if !global.mutable {
-                    runtime_error!(self, "Reassignment to global 'const'.");
-                    return Some(InterpretResult::RuntimeError);
+                    return self.throw_exception("ValueError", "Reassignment to global 'const'.");
                 }
                 global.value = stack_top_value;
             } else {
-                runtime_error!(self, "Undefined variable '{}'.", name.to_value(&self.heap));
-                return Some(InterpretResult::RuntimeError);
+                let error_msg = format!("Undefined variable '{}'.", name.to_value(&self.heap));
+                return self.throw_exception("NameError", &error_msg);
             }
         }
 

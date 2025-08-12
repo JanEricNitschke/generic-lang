@@ -86,6 +86,21 @@ impl VM {
             .insert(name_id.to_value(&self.heap).clone(), value);
     }
 
+    /// Define a generic (non-native) class by adding it to the heap and VM builtins.
+    /// These classes can be subclassed unlike native classes.
+    pub(crate) fn define_generic_class<T: ToString>(&mut self, name: &T) {
+        let name_id = self.heap.string_id(name);
+        self.heap.strings_by_name.insert(name.to_string(), name_id);
+        let value = self.heap.add_class(Class::new(name_id, false));
+        self.builtins.insert(
+            name_id,
+            Global {
+                value,
+                mutable: true,
+            },
+        );
+    }
+
     /// Define a native method by adding it to the heap and the class.
     pub(crate) fn define_native_method<C: ToString, N: ToString>(
         &mut self,

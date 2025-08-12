@@ -45,6 +45,16 @@ pub fn define(vm: &mut VM) {
     vm.define_native_function(&"rng", &[2], rng_native);
     vm.define_native_function(&"len", &[1], len_native);
 
+    // Define builtin exception classes as generic types (not native) to allow subclassing
+    vm.define_generic_class(&"RuntimeError");
+    vm.define_generic_class(&"TypeError");
+    vm.define_generic_class(&"ValueError");
+    vm.define_generic_class(&"ZeroDivisionError");
+    vm.define_generic_class(&"IndexError");
+    vm.define_generic_class(&"KeyError");
+    vm.define_generic_class(&"AttributeError");
+    vm.define_generic_class(&"NameError");
+
     // The add to builtins is a bit of a workaround for how native instances
     // are instantiated. Currently we either need a way to instantiate them
     // without giving any data or we have to make it so they are not accessible in

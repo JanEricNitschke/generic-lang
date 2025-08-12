@@ -31,6 +31,33 @@ impl VM {
         self.exception_handlers.pop()
     }
 
+    /// Throw a builtin exception instead of terminating the program.
+    /// This creates an instance of the specified exception class and throws it.
+    pub(super) fn throw_exception(&mut self, exception_name: &str, message: &str) -> Option<InterpretResult> {
+        let exception_class_id = self.heap.string_id(&exception_name);
+        
+        // Get the exception class from builtins
+        if let Some(exception_global) = self.builtins.get(&exception_class_id) {
+            if let Value::Class(class_id) = exception_global.value {
+                // Create an instance of the exception class
+                let mut instance = crate::value::Instance::new(Value::Class(class_id), None);
+                
+                // Set the message field
+                let message_value = self.heap.string_id(&message);
+                instance.fields.insert("message".to_string(), message_value.into());
+                
+                let instance_value = self.heap.add_instance(instance);
+                
+                // Throw the exception
+                return self.unwind(instance_value);
+            }
+        }
+        
+        // Fallback: if we can't find the exception class, use runtime error
+        runtime_error!(self, "Failed to throw {}: {}", exception_name, message);
+        Some(InterpretResult::RuntimeError)
+    }
+
     pub(super) fn unwind(&mut self, exception: Value) -> Option<InterpretResult> {
         if !matches!(exception, Value::Instance(_)) {
             runtime_error!(
