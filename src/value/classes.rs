@@ -30,7 +30,11 @@ impl Class {
 
     #[must_use]
     #[allow(dead_code)]
-    pub(crate) fn new_with_superclass(name: StringId, is_native: bool, superclass: Option<ClassId>) -> Self {
+    pub(crate) fn new_with_superclass(
+        name: StringId,
+        is_native: bool,
+        superclass: Option<ClassId>,
+    ) -> Self {
         Self {
             name,
             methods: HashMap::default(),

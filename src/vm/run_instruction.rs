@@ -382,9 +382,7 @@ macro_rules! run_instruction {
                 };
                 let methods = superclass_class_id.to_value(&$self.heap).methods.clone();
                 let mut subclass = $self.stack.pop().expect("Stack underflow in OP_INHERIT");
-                let subclass_obj = subclass
-                    .as_class_mut()
-                    .to_value_mut(&mut $self.heap);
+                let subclass_obj = subclass.as_class_mut().to_value_mut(&mut $self.heap);
                 subclass_obj.methods.extend(methods);
                 subclass_obj.superclass = Some(superclass_class_id);
             }

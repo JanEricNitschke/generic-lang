@@ -23,8 +23,8 @@ use crate::natives::dict::{dict_get_native, dict_len_native, dict_set_native};
 
 use crate::natives::native_functions::{
     assert_native, clock_native, delattr_native, getattr_native, hasattr_native, input_native,
-    isinstance_native, is_int_native, len_native, print_native, rng_native, setattr_native, sleep_native,
-    to_float_native, to_int_native, to_string_native, type_native,
+    is_int_native, isinstance_native, len_native, print_native, rng_native, setattr_native,
+    sleep_native, to_float_native, to_int_native, to_string_native, type_native,
 };
 
 pub fn define(vm: &mut VM) {

@@ -399,70 +399,42 @@ impl Value {
             }
             // Check if basic types match their corresponding builtin classes
             Self::Bool(_) => {
-                if let Some(bool_class) = Self::get_builtin_class_for_type("Bool", heap) {
-                    bool_class == class_id
-                } else {
-                    false
-                }
+                Self::get_builtin_class_for_type("Bool", heap) == Some(class_id)
             }
             Self::Nil => {
-                if let Some(nil_class) = Self::get_builtin_class_for_type("Nil", heap) {
-                    nil_class == class_id
-                } else {
-                    false
-                }
+                Self::get_builtin_class_for_type("Nil", heap) == Some(class_id)
             }
             Self::String(_) => {
-                if let Some(string_class) = Self::get_builtin_class_for_type("String", heap) {
-                    string_class == class_id
-                } else {
-                    false
-                }
+                Self::get_builtin_class_for_type("String", heap) == Some(class_id)
             }
             Self::Number(Number::Float(_)) => {
-                if let Some(float_class) = Self::get_builtin_class_for_type("Float", heap) {
-                    float_class == class_id
-                } else {
-                    false
-                }
+                Self::get_builtin_class_for_type("Float", heap) == Some(class_id)
             }
             Self::Number(Number::Integer(_)) => {
-                if let Some(integer_class) = Self::get_builtin_class_for_type("Integer", heap) {
-                    integer_class == class_id
-                } else {
-                    false
-                }
+                Self::get_builtin_class_for_type("Integer", heap) == Some(class_id)
             }
             Self::Function(_) => {
-                if let Some(function_class) = Self::get_builtin_class_for_type("Function", heap) {
-                    function_class == class_id
-                } else {
-                    false
-                }
+                Self::get_builtin_class_for_type("Function", heap) == Some(class_id)
             }
             Self::Module(_) => {
-                if let Some(module_class) = Self::get_builtin_class_for_type("Module", heap) {
-                    module_class == class_id
-                } else {
-                    false
-                }
+                Self::get_builtin_class_for_type("Module", heap) == Some(class_id)
             }
             // Other types don't have instanceof behavior for now
             _ => false,
         }
     }
 
-    /// Check if a class is the same as or a subclass of target_class.
+    /// Check if a class is the same as or a subclass of `target_class`.
     fn is_class_or_subclass(class_id: ClassId, target_class: ClassId, heap: &Heap) -> bool {
         let mut current_class = Some(class_id);
-        
+
         while let Some(current) = current_class {
             if current == target_class {
                 return true;
             }
             current_class = current.to_value(heap).superclass;
         }
-        
+
         false
     }
 
