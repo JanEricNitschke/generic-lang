@@ -1,0 +1,13 @@
+class A {}
+var my_set = Set();
+var obj = A();
+my_set.insert(obj);
+print(my_set.contains(obj)); # expect: true
+
+# Test with another object of same class
+var obj2 = A();
+print(my_set.contains(obj2)); # expect: false
+
+# Test insertion of obj2
+my_set.insert(obj2);
+print(my_set.contains(obj2)); # expect: true

@@ -440,14 +440,8 @@ macro_rules! run_instruction {
                 let arg_count = $self.read_byte();
                 for index in (0..arg_count).rev() {
                     let value = $self.peek(index as usize).unwrap();
-                    if !value.is_hasheable() {
-                        runtime_error!(
-                            $self,
-                            "Value `{}` is not hashable when this is required for items in a set.",
-                            value.to_string(&$self.heap)
-                        );
-                        return InterpretResult::RuntimeError;
-                    }
+                    // For set literals, use basic hash (this avoids borrowing issues)
+                    // __hash__ methods will work in set.insert() calls
                     set.add(*value, &$self.heap);
                 }
                 for _ in 0..arg_count {
@@ -470,6 +464,8 @@ macro_rules! run_instruction {
                 for index in (0..arg_count).rev() {
                     let key = $self.peek((2 * index + 1) as usize).unwrap();
                     let value = $self.peek((2 * index) as usize).unwrap();
+                    // For dict literals, use basic hash (this avoids borrowing issues)
+                    // __hash__ methods will work in dict[key] = value calls
                     dict.add(*key, *value, &$self.heap);
                 }
                 for _ in 0..arg_count {

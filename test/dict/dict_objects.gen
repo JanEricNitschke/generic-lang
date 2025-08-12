@@ -1,0 +1,11 @@
+class A {}
+var my_dict = Dict();
+var obj = A();
+my_dict[obj] = "value1";
+print(my_dict[obj]); # expect: value1
+
+# Test with another object of same class
+var obj2 = A();
+my_dict[obj2] = "value2";
+print(my_dict[obj2]); # expect: value2
+print(my_dict[obj]); # expect: value1

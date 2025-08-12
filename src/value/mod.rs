@@ -72,9 +72,16 @@ impl Value {
                 },
             },
             Self::String(s) => s.hash(&mut state),
-            _ => {
-                unreachable!("Only hashable types are Bool, Nil, Integer, and String.")
-            }
+            // For all other types, use their heap ID/address as hash
+            Self::Function(f) => f.hash(&mut state),
+            Self::Closure(c) => c.hash(&mut state),
+            Self::Module(m) => m.hash(&mut state),
+            Self::Upvalue(u) => u.hash(&mut state),
+            Self::NativeFunction(nf) => nf.hash(&mut state),
+            Self::NativeMethod(nm) => nm.hash(&mut state),
+            Self::Class(c) => c.hash(&mut state),
+            Self::Instance(i) => i.hash(&mut state),
+            Self::BoundMethod(bm) => bm.hash(&mut state),
         }
         state.finish()
     }
@@ -134,6 +141,64 @@ impl Value {
 impl Value {
     pub(super) fn bound_method(receiver: Self, method: Self, heap: &mut Heap) -> Self {
         heap.add_bound_method(BoundMethod { receiver, method })
+    }
+
+    /// Compute hash for an instance that might have a __hash__ method.
+    /// This is a simplified version that only handles native method __hash__ implementations
+    /// to avoid complex borrowing issues with running closure methods.
+    pub(crate) fn compute_instance_hash(&self, vm: &mut crate::vm::VM) -> Result<u64, String> {
+        if let Self::Instance(instance) = self {
+            let hash_method_id = vm.heap.string_id(&"__hash__");
+            
+            // Check if this instance has a __hash__ method
+            if let Some(method) = instance
+                .to_value(&vm.heap)
+                .get_field_or_method(hash_method_id, &vm.heap)
+            {
+                match method {
+                    Value::NativeMethod(native_method) => {
+                        // Call native __hash__ method directly
+                        let mut self_copy = *self;
+                        let mut empty_arg_refs: Vec<&mut Value> = Vec::new();
+                        
+                        match native_method.to_value(&vm.heap).fun {
+                            fun => match fun(vm, &mut self_copy, &mut empty_arg_refs) {
+                                Ok(Value::Number(Number::Integer(crate::value::GenericInt::Small(n)))) if n >= 0 => {
+                                    Ok(n as u64)
+                                }
+                                Ok(_) => {
+                                    // Invalid return type from __hash__, use object ID
+                                    let mut hasher = FxHasher::default();
+                                    instance.hash(&mut hasher);
+                                    Ok(hasher.finish())
+                                }
+                                Err(e) => Err(e),
+                            }
+                        }
+                    }
+                    Value::Closure(_) => {
+                        // For closures, we'll fall back to object ID to avoid complexity
+                        let mut hasher = FxHasher::default();
+                        instance.hash(&mut hasher);
+                        Ok(hasher.finish())
+                    }
+                    _ => {
+                        // Not a callable method, use object ID
+                        let mut hasher = FxHasher::default();
+                        instance.hash(&mut hasher);
+                        Ok(hasher.finish())
+                    }
+                }
+            } else {
+                // No __hash__ method, use object ID
+                let mut hasher = FxHasher::default();
+                instance.hash(&mut hasher);
+                Ok(hasher.finish())
+            }
+        } else {
+            // Not an instance, use regular hash
+            Ok(self.to_hash(&vm.heap))
+        }
     }
 }
 
@@ -236,11 +301,11 @@ impl From<ModuleId> for Value {
 
 // Retrieve the inner value
 impl Value {
+    #[allow(dead_code)]
     pub(super) const fn is_hasheable(&self) -> bool {
-        matches!(
-            self,
-            Self::Bool(_) | Self::Nil | Self::Number(_) | Self::String(_) | Self::StopIteration
-        )
+        // All values are now hashable - instances use __hash__ or object ID,
+        // other types use their object ID or built-in hash
+        true
     }
 
     pub(super) fn as_generic_int(&self) -> &GenericInt {

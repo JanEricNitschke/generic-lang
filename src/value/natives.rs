@@ -233,6 +233,18 @@ impl Set {
         }
     }
 
+    /// Add an item to the set using a pre-computed hash value
+    pub(crate) fn add_with_hash(&mut self, item: Value, hash: u64, heap: &Heap) {
+        if let Entry::Vacant(entry) = self.items.entry(
+            hash,
+            |val| val.eq(&item, heap),
+            |val| val.to_hash(heap),
+        ) {
+            entry.insert(item);
+        }
+    }
+
+    #[allow(dead_code)]
     pub(crate) fn remove(&mut self, item: &Value, heap: &Heap) -> bool {
         self.items
             .find_entry(item.to_hash(heap), |val| val.eq(item, heap))
@@ -242,9 +254,27 @@ impl Set {
             })
     }
 
+    /// Remove an item from the set using a pre-computed hash value
+    pub(crate) fn remove_with_hash(&mut self, item: &Value, hash: u64, heap: &Heap) -> bool {
+        self.items
+            .find_entry(hash, |val| val.eq(item, heap))
+            .is_ok_and(|entry| {
+                entry.remove();
+                true
+            })
+    }
+
+    #[allow(dead_code)]
     pub(crate) fn contains(&self, item: &Value, heap: &Heap) -> bool {
         self.items
             .find(item.to_hash(heap), |val| val.eq(item, heap))
+            .is_some()
+    }
+
+    /// Check if the set contains an item using a pre-computed hash value
+    pub(crate) fn contains_with_hash(&self, item: &Value, hash: u64, heap: &Heap) -> bool {
+        self.items
+            .find(hash, |val| val.eq(item, heap))
             .is_some()
     }
 }
@@ -304,9 +334,33 @@ impl Dict {
         }
     }
 
+    /// Add a key-value pair to the dict using a pre-computed hash value
+    pub(crate) fn add_with_hash(&mut self, key: Value, value: Value, hash: u64, heap: &Heap) {
+        match self.items.entry(
+            hash,
+            |(k, _v)| k.eq(&key, heap),
+            |(k, _v)| k.to_hash(heap),
+        ) {
+            Entry::Vacant(entry) => {
+                entry.insert((key, value));
+            }
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().1 = value;
+            }
+        }
+    }
+
+    #[allow(dead_code)]
     pub(crate) fn get(&self, key: &Value, heap: &Heap) -> Option<&Value> {
         self.items
             .find(key.to_hash(heap), |(k, _v)| k.eq(key, heap))
+            .map(|(_k, v)| v)
+    }
+
+    /// Get a value from the dict using a pre-computed hash value
+    pub(crate) fn get_with_hash(&self, key: &Value, hash: u64, heap: &Heap) -> Option<&Value> {
+        self.items
+            .find(hash, |(k, _v)| k.eq(key, heap))
             .map(|(_k, v)| v)
     }
 }
