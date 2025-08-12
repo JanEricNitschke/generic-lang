@@ -1,5 +1,21 @@
-# Test that calling builtin type classes fails appropriately
-# These should all fail with a clear error message
+# Test that calling builtin type classes works appropriately
+# These are now working constructors
 
-# Float constructor call should fail
-print(Float()); # expect runtime error: Builtin type class 'Float' cannot be called as a constructor. Use it only for isinstance() checks.
+# Float constructor call should work
+print(Float()); # expect: 0.0
+print(Float(3.14)); # expect: 3.14
+
+# String constructor call should work  
+print(String()); # expect: 
+print(String(42)); # expect: 42
+
+# Integer constructor call should work
+print(Integer()); # expect: 0
+print(Integer("123")); # expect: 123
+
+# Bool constructor call should work
+print(Bool()); # expect: false
+print(Bool(1)); # expect: true
+
+# These should still error as they don't make sense to construct
+print(Nil()); # expect runtime error: Builtin type class 'Nil' cannot be called as a constructor. Use it only for isinstance() checks.

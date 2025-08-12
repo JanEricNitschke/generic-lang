@@ -51,10 +51,12 @@ impl VM {
 impl VM {
     /// Check if a class name corresponds to a builtin type class that shouldn't be instantiated.
     fn is_builtin_type_class(class_name: &str) -> bool {
-        matches!(
-            class_name,
-            "String" | "Float" | "Integer" | "Bool" | "Nil" | "Function" | "Module"
-        )
+        matches!(class_name, "Nil" | "Function" | "Module")
+    }
+
+    /// Check if a class name corresponds to a builtin type class that can be used as a constructor.
+    fn is_builtin_conversion_class(class_name: &str) -> bool {
+        matches!(class_name, "String" | "Float" | "Integer" | "Bool")
     }
 
     pub(super) fn call(&mut self) -> Option<InterpretResult> {
@@ -183,10 +185,15 @@ impl VM {
             Value::NativeFunction(f) => self.execute_native_function_call(f, arg_count),
             Value::Class(class) => {
                 let is_native = class.to_value(&self.heap).is_native;
-                let class_name = class.to_value(&self.heap).name.to_value(&self.heap);
+                let class_name = class.to_value(&self.heap).name.to_value(&self.heap).clone();
+
+                // Handle builtin type constructors that convert values
+                if is_native && Self::is_builtin_conversion_class(&class_name) {
+                    return self.execute_builtin_type_constructor(&class_name, arg_count);
+                }
 
                 // Check if this is a builtin type class that shouldn't be instantiated
-                if is_native && Self::is_builtin_type_class(class_name) {
+                if is_native && Self::is_builtin_type_class(&class_name) {
                     runtime_error!(
                         self,
                         "Builtin type class '{}' cannot be called as a constructor. Use it only for isinstance() checks.",
@@ -201,7 +208,7 @@ impl VM {
                     .get(&self.heap.builtin_constants().init_string)
                     .copied();
                 let backing = if is_native {
-                    Some(NativeClass::new(class_name))
+                    Some(NativeClass::new(&class_name))
                 } else {
                     None
                 };
@@ -567,5 +574,66 @@ impl VM {
         self.stack.truncate(frame.stack_base);
         self.stack_push(result.expect("Stack underflow in OP_RETURN"));
         None
+    }
+
+    /// Execute a builtin type constructor (String, Float, Integer, Bool).
+    ///
+    /// These constructors convert their arguments to the appropriate type.
+    fn execute_builtin_type_constructor(&mut self, class_name: &str, arg_count: u8) -> bool {
+        use crate::natives::native_functions::{to_float_native, to_int_native};
+
+        let start_index = self.stack.len() - usize::from(arg_count);
+        let result = match class_name {
+            "String" => {
+                if arg_count == 0 {
+                    Ok(Value::String(self.heap.string_id(&"")))
+                } else {
+                    let value = self.stack[start_index];
+                    Ok(Value::String(
+                        self.heap.string_id(&value.to_string(&self.heap)),
+                    ))
+                }
+            }
+            "Integer" => {
+                if arg_count == 0 {
+                    Ok(Value::Number(0i64.into()))
+                } else {
+                    let mut args: Vec<Value> = self.stack[start_index..].to_vec();
+                    let mut ref_args: Vec<&mut Value> = args.iter_mut().collect();
+                    to_int_native(self, ref_args.as_mut_slice())
+                }
+            }
+            "Float" => {
+                if arg_count == 0 {
+                    Ok(Value::Number(0.0.into()))
+                } else {
+                    let mut args: Vec<Value> = self.stack[start_index..].to_vec();
+                    let mut ref_args: Vec<&mut Value> = args.iter_mut().collect();
+                    to_float_native(self, ref_args.as_mut_slice())
+                }
+            }
+            "Bool" => {
+                if arg_count == 0 {
+                    Ok(Value::Bool(false))
+                } else {
+                    let value = self.stack[start_index];
+                    Ok(Value::Bool(!self.is_falsey(value)))
+                }
+            }
+            _ => Err(format!("Unknown builtin type constructor: {}", class_name)),
+        };
+
+        match result {
+            Ok(value) => {
+                // Remove the class and arguments from the stack
+                self.stack.truncate(start_index - 1);
+                self.stack_push(value);
+                true
+            }
+            Err(e) => {
+                runtime_error!(self, "{}", e);
+                false
+            }
+        }
     }
 }

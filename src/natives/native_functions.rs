@@ -85,7 +85,7 @@ pub(super) fn input_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
 /// Turn a value into a float.
 /// Works on numbers, bools or sensible strings.
 #[allow(clippy::option_if_let_else)]
-pub(super) fn to_float_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+pub fn to_float_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
         Value::String(string_id) => {
             let string = &vm.heap.strings[*string_id];
@@ -109,7 +109,7 @@ pub(super) fn to_float_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Va
 /// Convert a value into an integer.
 /// Works on numbers, bools or sensible strings.
 #[allow(clippy::option_if_let_else)]
-pub(super) fn to_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+pub fn to_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     match &args[0] {
         Value::String(string_id) => {
             let string = &vm.heap.strings[*string_id];
@@ -157,7 +157,7 @@ pub(super) fn is_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Valu
 
 /// Turn the value into a string.
 /// Fixed implementations for basic types, instances use the `__str__` method if present.
-pub(super) fn to_string_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+pub fn to_string_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
     let value = &args[0];
     let str_id = vm.heap.string_id(&"__str__");
 

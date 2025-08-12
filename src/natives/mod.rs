@@ -4,7 +4,7 @@
 
 mod dict;
 mod list;
-mod native_functions;
+pub mod native_functions;
 mod set;
 
 use crate::vm::VM;

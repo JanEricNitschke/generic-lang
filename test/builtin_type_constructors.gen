@@ -1,0 +1,36 @@
+# Test builtin type constructors
+
+# String constructor
+print(String()); # expect: 
+print(String(42)); # expect: 42
+print(String(3.14)); # expect: 3.14
+print(String(true)); # expect: true
+print(String(nil)); # expect: nil
+
+# Integer constructor  
+print(Integer()); # expect: 0
+print(Integer("123")); # expect: 123
+print(Integer(3.14)); # expect: 3
+print(Integer(true)); # expect: 1
+print(Integer(false)); # expect: 0
+
+# Float constructor
+print(Float()); # expect: 0.0
+print(Float("3.14")); # expect: 3.14
+print(Float(42)); # expect: 42.0
+print(Float(true)); # expect: 1.0
+print(Float(false)); # expect: 0.0
+
+# Bool constructor
+print(Bool()); # expect: false
+print(Bool(0)); # expect: false
+print(Bool(1)); # expect: true
+print(Bool("")); # expect: false
+print(Bool("hello")); # expect: true
+print(Bool(nil)); # expect: false
+
+# These should still work for isinstance
+print(isinstance(String(42), String)); # expect: true
+print(isinstance(Integer(42), Integer)); # expect: true
+print(isinstance(Float(42), Float)); # expect: true
+print(isinstance(Bool(42), Bool)); # expect: true
