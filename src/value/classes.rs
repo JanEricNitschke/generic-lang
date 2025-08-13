@@ -45,9 +45,9 @@ impl Class {
         false
     }
 
-    pub(crate) fn get_native_superclass(&self, heap: &Heap) -> Option<ClassId> {
+    pub(crate) fn get_native_superclass(&self, heap: &Heap, class_id: ClassId) -> Option<ClassId> {
         if self.is_native {
-            return None; // We are the native class
+            return Some(class_id); // We are the native class
         }
 
         if let Some(superclass_id) = self.superclass {
@@ -55,7 +55,7 @@ impl Class {
             if superclass.is_native {
                 return Some(superclass_id);
             }
-            return superclass.get_native_superclass(heap);
+            return superclass.get_native_superclass(heap, superclass_id);
         }
 
         None

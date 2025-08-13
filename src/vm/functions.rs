@@ -181,11 +181,10 @@ impl VM {
                     .methods
                     .get(&self.heap.builtin_constants().init_string)
                     .copied();
-                let backing = if is_native {
-                    Some(NativeClass::new(class_data.name.to_value(&self.heap)))
-                } else if needs_native_backing {
-                    // Inheriting from a native class - get the native superclass
-                    if let Some(native_superclass_id) = class_data.get_native_superclass(&self.heap)
+                let backing = if needs_native_backing {
+                    // Get the native class in the inheritance chain (could be self if native)
+                    if let Some(native_superclass_id) =
+                        class_data.get_native_superclass(&self.heap, class)
                     {
                         let native_superclass = native_superclass_id.to_value(&self.heap);
                         Some(NativeClass::new(

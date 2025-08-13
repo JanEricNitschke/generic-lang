@@ -21,5 +21,5 @@ class D < List {
 
 var d = D();
 d.append(42);
-print(d.__len__()); # expect: 1
+print(len(d)); # expect: 1
 d.custom_method(); # expect: working with inherited list
