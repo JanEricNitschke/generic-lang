@@ -1,0 +1,13 @@
+var empty_set = Set();
+print(empty_set); # expect: {}
+
+var set_with_args = Set(1, 2, 3);
+print(set_with_args); # expect: {2, 3, 1}
+
+# Test that duplicates are handled correctly  
+var set_with_duplicates = Set(1, 2, 2, 3);
+print(set_with_duplicates); # expect: {2, 3, 1}
+
+var explicit_init = set_with_duplicates.__init__(1, 2);
+print(explicit_init); # expect: {2, 1}
+print(set_with_duplicates); # expect: {2, 1}

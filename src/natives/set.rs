@@ -70,3 +70,26 @@ pub(super) fn set_len_native(
     let my_set = receiver.as_set(&vm.heap);
     Ok(Number::from_usize(my_set.items.len(), &mut vm.heap).into())
 }
+
+/// Constructor for Set that accepts variable number of arguments.
+/// `Set()` creates empty set, `Set(1, 2, 3)` creates {1, 2, 3}.
+/// Only hashable values are allowed.
+pub(super) fn set_init_native(
+    vm: &mut VM,
+    receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let mut set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
+    set.items.clear(); // Explicitly clear to ensure it's empty
+    for arg in args {
+        if !arg.is_hasheable() {
+            return Err(format!(
+                "Value `{}` is not hashable.",
+                arg.to_string(&vm.heap)
+            ));
+        }
+        set.add(**arg, &vm.heap);
+    }
+    *receiver.as_set_mut(&mut vm.heap) = set;
+    Ok(*receiver)
+}
