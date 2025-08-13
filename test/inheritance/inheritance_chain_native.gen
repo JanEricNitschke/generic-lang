@@ -14,6 +14,6 @@ class SpecialList < EnhancedList {
 var sl = SpecialList();
 sl.append(1);
 sl.append(2);
-print(sl.__len__()); # expect: 2
+print(len(sl)); # expect: 2
 sl.enhanced_method(); # expect: enhanced
 sl.special_method(); # expect: special

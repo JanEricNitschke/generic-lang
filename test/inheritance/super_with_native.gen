@@ -8,4 +8,4 @@ class SuperList < List {
 
 var sl = SuperList();
 sl.append(42); # expect: Enhanced append
-print(sl.__len__()); # expect: 1
+print(len(sl)); # expect: 1
