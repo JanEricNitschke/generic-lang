@@ -1,1 +1,1 @@
-import "circular/circ2.gen"; # expect runtime error: Circular import of module `import_circular` detected.
+import "circular/circ2.gen"; # expect runtime error: ImportError: Circular import of module `import_circular` detected.

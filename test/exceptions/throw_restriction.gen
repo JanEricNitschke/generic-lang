@@ -13,9 +13,9 @@ try {
 try {
     throw CustomError("custom error works");  
 } catch CustomError {
-    print("Caught CustomError");     # expect: Caught CustomError
+    print("Caught CustomError"); # expect: Caught CustomError
 }
 
 # Cannot throw non-Exception classes (breaking change from name-based checking)
 # This should now cause a runtime error
-throw SomethingError();  # expect runtime error: Can only throw instances of Exception or its subclasses, got instance of: SomethingError
+throw SomethingError();  # expect runtime error: TypeError: Can only throw instances of Exception or its subclasses, got instance of: SomethingError

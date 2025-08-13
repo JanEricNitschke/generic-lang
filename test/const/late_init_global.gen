@@ -1,2 +1,2 @@
 const x;
-x = 3; # expect runtime error: Reassignment to global 'const'.
+x = 3; # expect runtime error: ConstReassignmentError: Cannot reassign const variable.

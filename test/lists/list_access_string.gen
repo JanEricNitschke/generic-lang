@@ -1,2 +1,2 @@
 var my_list = [1, 2, 3];
-var test = my_list["test"]; # expect runtime error: Can only index into list with integer, got `test`.
+var test = my_list["test"]; # expect runtime error: TypeError: Can only index into list with integer, got `test`.

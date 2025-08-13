@@ -1,2 +1,2 @@
 print(3 ^ 4); # expect: 7
-print(3 ^ 4.1); # expect runtime error: Operands must be integers. Got: [3, 4.1]
+print(3 ^ 4.1); # expect runtime error: TypeError: Operands must be integers or support `__bitxor__`. Got: [3, 4.1]

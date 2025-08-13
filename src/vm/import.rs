@@ -1,12 +1,12 @@
-use super::{Global, InterpretResult, VM};
+use super::{Global, VM};
 
 use path_slash::PathBufExt;
 use std::path::PathBuf;
 
 use crate::{
-    chunk::CodeOffset,
     heap::StringId,
     value::{Closure, Module, ModuleContents, NativeFunction},
+    vm::errors::VmError,
 };
 
 impl VM {
@@ -23,25 +23,23 @@ impl VM {
         names_to_import: Option<Vec<StringId>>,
         alias: Option<StringId>,
         local_import: bool,
-    ) -> Option<InterpretResult> {
+    ) -> VmError {
         let file_path = self.clean_filepath(file_path_string_id);
 
         let name = if let Some(stem) = file_path.file_stem() {
             stem.to_str().unwrap().to_string()
         } else {
-            runtime_error!(self, "Import path should have a filestem.");
-            return Some(InterpretResult::RuntimeError);
+            return self.throw_import_error("Import path should have a filestem.");
         };
         let name_id = self.heap.string_id(&name);
 
         for module in &self.modules {
             if module.to_value(&self.heap).path.canonicalize().unwrap() == file_path {
-                runtime_error!(
-                    self,
+                let message = format!(
                     "Circular import of module `{}` detected.",
                     name_id.to_value(&self.heap)
                 );
-                return Some(InterpretResult::RuntimeError);
+                return self.throw_import_error(&message);
             }
         }
 
@@ -58,50 +56,43 @@ impl VM {
 
         // User defined generic module
         if let Ok(contents) = std::fs::read(&file_path) {
-            if let Some(value) = self.import_generic_module(
+            self.import_generic_module(
                 &contents,
                 &name,
                 file_path,
                 names_to_import,
                 alias,
                 local_import,
-            ) {
-                return Some(value);
-            }
+            )?;
         } else if let Ok(contents) = std::fs::read(generic_stdlib_path) {
             // stdlib generic module
-            if let Some(value) = self.import_generic_module(
+            self.import_generic_module(
                 &contents,
                 &name,
                 file_path,
                 names_to_import,
                 alias,
                 local_import,
-            ) {
-                return Some(value);
-            }
+            )?;
         } else if let Some(stdlib_functions) = self.stdlib.get(&file_path_string_id).cloned() {
             // These clones are only necessary because this is extracted into a function.
             // If they cause performance issues this can be inlined or turned into a macro.
-            if let Some(value) = self.import_rust_stdlib(
+            self.import_rust_stdlib(
                 file_path_string_id,
                 file_path,
                 alias,
                 &stdlib_functions,
                 names_to_import,
                 local_import,
-            ) {
-                return Some(value);
-            }
+            )?;
         } else {
-            runtime_error!(
-                self,
+            let message = format!(
                 "Could not find the file to be imported. Attempted path `{:?}` and stdlib.",
                 file_path.to_slash_lossy()
             );
-            return Some(InterpretResult::RuntimeError);
+            return self.throw_import_error(&message);
         }
-        None
+        Ok(())
     }
 
     /// Import a rust native stdlib module.
@@ -113,7 +104,7 @@ impl VM {
         stdlib_functions: &ModuleContents,
         names_to_import: Option<Vec<StringId>>,
         local_import: bool,
-    ) -> Option<InterpretResult> {
+    ) -> VmError {
         let mut module = Module::new(
             string_id,
             file_path,
@@ -152,12 +143,11 @@ impl VM {
                         self.globals().insert(name, global);
                     }
                 } else {
-                    runtime_error!(
-                        self,
+                    let message = format!(
                         "Could not find name to import `{}`.",
                         name.to_value(&self.heap)
                     );
-                    return Some(InterpretResult::RuntimeError);
+                    return self.throw_import_error(&message);
                 }
             }
         } else {
@@ -175,7 +165,7 @@ impl VM {
                 );
             }
         }
-        None
+        Ok(())
     }
 
     /// Import a generic module.
@@ -190,8 +180,13 @@ impl VM {
         names_to_import: Option<Vec<StringId>>,
         alias: Option<StringId>,
         local_import: bool,
-    ) -> Option<InterpretResult> {
-        if let Some(function) = self.compile(contents, name) {
+    ) -> VmError {
+        if let Some(function) = self.compile(
+            contents,
+            name,
+            #[cfg(feature = "print_code")]
+            false,
+        ) {
             let function = self.heap.add_function(function);
             let function_id = function.as_function();
             let closure =
@@ -201,11 +196,10 @@ impl VM {
 
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
-            self.execute_call(value_id, 0);
+            self.execute_call(value_id, 0)
         } else {
-            return Some(InterpretResult::RuntimeError);
+            self.throw_import_error(&format!("Could not compile module to import `{name}`."))
         }
-        None
     }
 
     #[allow(clippy::option_if_let_else)]

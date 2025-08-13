@@ -1,0 +1,23 @@
+class Error < Exception {}
+
+class ThrowOnBool {
+    __bool__() {
+        throw Error();
+    }
+}
+
+try {
+    if ThrowOnBool() {
+        print("Truthy");
+    } else {
+        print("Falsey");
+    }
+} catch Error {
+    print("Caught");  # expect: Caught
+} else {
+    print("No Exception");
+}
+
+if ThrowOnBool() { # expect runtime error: Error
+    print("Truthy");
+}  

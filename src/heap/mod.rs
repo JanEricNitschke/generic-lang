@@ -592,7 +592,9 @@ impl Heap {
                     }
                 }
                 NativeClass::Exception(exception) => {
-                    self.strings.gray.push(exception.message());
+                    if let Some(message_id) = exception.message() {
+                        self.strings.gray.push(message_id);
+                    }
                     self.strings.gray.push(exception.stack_trace());
                 }
                 // Proxy classes don't contain any references to gray

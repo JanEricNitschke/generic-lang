@@ -1,1 +1,1 @@
-print(float(nil)); # expect runtime error: 'float' expected string, number or bool argument, got: nil
+print(float(nil)); # expect runtime error: TypeError: 'float' expected string, number or bool argument, got: nil

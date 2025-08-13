@@ -1,1 +1,1 @@
-true(); # expect runtime error: Can only call functions, classes and instances with a `__call__` method.
+true(); # expect runtime error: TypeError: Can only call functions, classes and instances with a `__call__` method.

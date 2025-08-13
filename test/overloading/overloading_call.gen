@@ -8,4 +8,4 @@ class Call {
 }
 
 print(Call()(5, 10)); # expect: [5, 10]
-print(NoCall()()); # expect runtime error: Can only call functions, classes and instances with a `__call__` method.
+print(NoCall()()); # expect runtime error: TypeError: Can only call functions, classes and instances with a `__call__` method.

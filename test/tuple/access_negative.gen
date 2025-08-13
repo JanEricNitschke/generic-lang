@@ -1,2 +1,2 @@
 var my_tuple = (1, 2, 3);
-print(my_tuple[-2]); # expect runtime error: Can not index into tuple with negative or too large numbers, got `-2`.
+print(my_tuple[-2]); # expect runtime error: ValueError: Number too large to fit in usize

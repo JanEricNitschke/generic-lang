@@ -2,4 +2,4 @@ class Foo {}
 var foo = Foo();
 var field = 23;
 
-print(delattr(foo, field)); # expect runtime error: `delattr` can only index with string indexes, got: `23` (instance: `<Foo instance>`)
+print(delattr(foo, field)); # expect runtime error: TypeError: `delattr` can only index with string indexes, got: `23` (instance: `<Foo instance>`)

@@ -6,4 +6,4 @@ fun test_fib() {
 
 test_fib();
 
-print(fib.fibo(1)); # expect runtime error: Undefined variable 'fib'.
+print(fib.fibo(1)); # expect runtime error: NameError: Undefined variable 'fib'.

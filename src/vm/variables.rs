@@ -1,9 +1,5 @@
-use crate::{
-    chunk::{CodeOffset, OpCode},
-    value::Value,
-};
-
-use super::{Global, InterpretResult, VM};
+use super::{Global, VM, errors::VmError};
+use crate::{chunk::OpCode, value::Value};
 
 impl VM {
     pub(super) fn set_local(&mut self, op: OpCode) {
@@ -24,7 +20,7 @@ impl VM {
         self.stack_push(*self.stack_get(slot));
     }
 
-    pub(super) fn get_global(&mut self, op: OpCode) -> Option<InterpretResult> {
+    pub(super) fn get_global(&mut self, op: OpCode) -> VmError {
         let constant_index = self.read_constant_index(op == OpCode::GetGlobalLong);
         let constant_value = self.read_constant_value(constant_index);
         match &constant_value {
@@ -42,18 +38,18 @@ impl VM {
                     if let Some(value) = maybe_builtin {
                         self.stack_push(value);
                     } else {
-                        runtime_error!(self, "Undefined variable '{}'.", self.heap.strings[*name]);
-                        return Some(InterpretResult::RuntimeError);
+                        let message = format!("Undefined variable '{}'.", self.heap.strings[*name]);
+                        return self.throw_name_error(&message);
                     }
                 }
             }
 
             x => panic!("Internal error: non-string operand to {op:?}: {x:?}"),
         }
-        None
+        Ok(())
     }
 
-    pub(super) fn set_global(&mut self, op: OpCode) -> Option<InterpretResult> {
+    pub(super) fn set_global(&mut self, op: OpCode) -> VmError {
         let constant_index = self.read_constant_index(op == OpCode::SetGlobalLong);
         let constant_value = self.read_constant_value(constant_index);
         let name = match &constant_value {
@@ -71,25 +67,23 @@ impl VM {
             .get_mut(&name)
         {
             if !global.mutable {
-                runtime_error!(self, "Reassignment to global 'const'.");
-                return Some(InterpretResult::RuntimeError);
+                return self.throw_const_reassignment_error("Cannot reassign const variable.");
             }
             global.value = stack_top_value;
         } else {
             let maybe_builtin = self.builtins.get_mut(&name);
             if let Some(global) = maybe_builtin {
                 if !global.mutable {
-                    runtime_error!(self, "Reassignment to global 'const'.");
-                    return Some(InterpretResult::RuntimeError);
+                    return self.throw_const_reassignment_error("Cannot reassign const variable.");
                 }
                 global.value = stack_top_value;
             } else {
-                runtime_error!(self, "Undefined variable '{}'.", name.to_value(&self.heap));
-                return Some(InterpretResult::RuntimeError);
+                let message = format!("Undefined variable '{}'.", name.to_value(&self.heap));
+                return self.throw_name_error(&message);
             }
         }
 
-        None
+        Ok(())
     }
 
     pub(super) fn define_global(&mut self, op: OpCode) {

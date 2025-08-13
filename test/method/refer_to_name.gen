@@ -1,7 +1,7 @@
 class Foo {
   method() {
-    print(method); # expect runtime error: Undefined variable 'method'.
+    print(method); 
   }
 }
 
-Foo().method();
+Foo().method(); # expect runtime error: NameError: Undefined variable 'method'.

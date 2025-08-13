@@ -1,1 +1,1 @@
-rng("string", 1.3); # expect runtime error: 'rng' expected two integers as arguments, got: `string` and `1.3` instead.
+rng("string", 1.3); # expect runtime error: TypeError: 'rng' expected two integers as arguments, got: `string` and `1.3` instead.

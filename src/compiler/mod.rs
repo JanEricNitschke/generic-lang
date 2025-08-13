@@ -179,11 +179,18 @@ pub struct Compiler<'scanner, 'heap> {
 
     nestable_state: Vec<NestableState<'scanner>>,
     class_state: Vec<ClassState>,
+    #[cfg(feature = "print_code")]
+    is_builtin: bool,
 }
 
 impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
     #[must_use]
-    pub(super) fn new(scanner: Scanner<'scanner>, heap: &'heap mut Heap, name: &str) -> Self {
+    pub(super) fn new(
+        scanner: Scanner<'scanner>,
+        heap: &'heap mut Heap,
+        name: &str,
+        #[cfg(feature = "print_code")] is_builtin: bool,
+    ) -> Self {
         let function_name = heap.string_id(&name);
 
         Compiler {
@@ -196,6 +203,8 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             rules: make_rules(),
             nestable_state: vec![NestableState::new(function_name, FunctionType::Script)],
             class_state: vec![],
+            #[cfg(feature = "print_code")]
+            is_builtin,
         }
     }
 

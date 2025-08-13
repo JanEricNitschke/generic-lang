@@ -1,0 +1,36 @@
+# Test that errors in __eq__ are properly handled when multiple objects have identical hash
+
+class HashCollision {
+    __init__(id) {
+        this.id = id;
+    }
+    
+    __hash__() {
+        return 123; # Deliberate hash collision
+    }
+    
+    __eq__(other) {
+        if this.id >= 3 {
+            throw ValueError("Bad");
+        }
+        return false;
+    }
+}
+
+var obj1 = HashCollision(1);
+var obj2 = HashCollision(2);
+var obj3 = HashCollision(3);
+
+var s = {obj1, obj2, obj3};
+
+var obj4 = HashCollision(4);
+
+try {
+    s.insert(obj4);
+} catch ValueError as e {
+    print("Caught ValueError: " + e.message()); # expect: Caught ValueError: Bad
+}
+print(len(s)); # expect: 3
+print("Test completed"); # expect: Test completed
+
+s.insert(obj4);  # expect runtime error: ValueError: Bad

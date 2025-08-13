@@ -1,1 +1,1 @@
-"Test"[2]; # expect runtime error: Only instances have methods.
+"Test"[2]; # expect runtime error: TypeError: Only instances have methods.

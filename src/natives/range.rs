@@ -2,7 +2,7 @@
 
 use crate::{
     value::{GenericInt, Instance, Number, Range, RangeIterator, Value},
-    vm::VM,
+    vm::{VM, errors::VmError},
 };
 
 /// Check if the range contains a value `range.contains(a)`.
@@ -11,7 +11,7 @@ pub(super) fn range_contains_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> Result<Value, String> {
+) -> VmError<Value> {
     let my_range = receiver.as_range(&vm.heap);
     match args[0] {
         Value::Number(Number::Integer(arg)) => Ok(Value::Bool(my_range.contains(arg, &vm.heap))),
@@ -25,7 +25,7 @@ pub(super) fn range_iter_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> Result<Value, String> {
+) -> VmError<Value> {
     let my_range = receiver.as_instance();
     let my_iterator = RangeIterator::new(*my_range);
     let target_class = vm.heap.native_classes.get("RangeIterator").unwrap();
@@ -40,7 +40,7 @@ pub(super) fn range_iter_next_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> Result<Value, String> {
+) -> VmError<Value> {
     let mut my_iter = std::mem::take(receiver.as_range_iter_mut(&mut vm.heap));
     let my_range = my_iter.get_range(&vm.heap);
     let my_range_start = my_range.start();
@@ -69,7 +69,7 @@ pub(super) fn range_len_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> Result<Value, String> {
+) -> VmError<Value> {
     let my_range = *receiver.as_range(&vm.heap);
     let length = my_range.len(&mut vm.heap);
     Ok(Number::Integer(length).into())
@@ -79,7 +79,7 @@ pub(super) fn range_bool_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> Result<Value, String> {
+) -> VmError<Value> {
     let my_range = receiver.as_range(&vm.heap);
     let is_non_empty = !my_range.is_empty(&vm.heap);
     Ok(is_non_empty.into())
@@ -91,15 +91,17 @@ pub(super) fn range_init_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> Result<Value, String> {
+) -> VmError<Value> {
     let (start, end) = match (&args[0], &args[1]) {
         (Value::Number(Number::Integer(s)), Value::Number(Number::Integer(e))) => (*s, *e),
         (s, e) => {
-            return Err(format!(
-                "Range arguments must be integers, got `{}, {}`.",
-                s.to_string(&vm.heap),
-                e.to_string(&vm.heap),
-            ));
+            return Err(vm
+                .throw_type_error(&format!(
+                    "Range arguments must be integers, got `{}, {}`.",
+                    s.to_string(&vm.heap),
+                    e.to_string(&vm.heap),
+                ))
+                .unwrap_err());
         }
     };
 
