@@ -39,6 +39,32 @@ use crate::natives::native_functions::{
     to_float_native, to_int_native, to_string_native, type_native,
 };
 
+/// Helper constants for defining arity specifications
+pub const VARIADIC_ARITY_MARKER: u8 = u8::MAX;
+
+/// Helper function to create an arity specification for variable arguments.
+///
+/// # Arguments
+/// * `min_args` - The minimum number of arguments required
+///
+/// # Returns
+/// A static slice that can be used in native function/method definitions
+///
+/// # Examples
+/// * `variadic_arity(0)` returns `[0, VARIADIC_ARITY_MARKER]` meaning "0 or more arguments"
+/// * `variadic_arity(2)` returns `[2, VARIADIC_ARITY_MARKER]` meaning "2 or more arguments"
+pub const fn variadic_arity(min_args: u8) -> &'static [u8] {
+    match min_args {
+        0 => &[0, VARIADIC_ARITY_MARKER],
+        1 => &[1, VARIADIC_ARITY_MARKER],
+        2 => &[2, VARIADIC_ARITY_MARKER],
+        3 => &[3, VARIADIC_ARITY_MARKER],
+        4 => &[4, VARIADIC_ARITY_MARKER],
+        5 => &[5, VARIADIC_ARITY_MARKER],
+        _ => panic!("Only supports min_args 0-5 for const contexts"),
+    }
+}
+
 pub fn define(vm: &mut VM) {
     vm.define_native_function(&"clock", &[0], clock_native);
     vm.define_native_function(&"assert", &[1], assert_native);
@@ -62,7 +88,7 @@ pub fn define(vm: &mut VM) {
     // without giving any data or we have to make it so they are not accessible in
     // user land.
     vm.define_native_class(&"List", true);
-    vm.define_native_method(&"List", &"__init__", &[0, 255], list_init_native);
+    vm.define_native_method(&"List", &"__init__", variadic_arity(0), list_init_native);
     vm.define_native_method(&"List", &"append", &[1], list_append_native);
     vm.define_native_method(&"List", &"pop", &[0, 1], list_pop_native);
     vm.define_native_method(&"List", &"insert", &[2], list_insert_native);
@@ -78,7 +104,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"ListIterator", &"__next__", &[0], list_iter_next_native);
 
     vm.define_native_class(&"Tuple", true);
-    vm.define_native_method(&"Tuple", &"__init__", &[0, 255], tuple_init_native);
+    vm.define_native_method(&"Tuple", &"__init__", variadic_arity(0), tuple_init_native);
     vm.define_native_method(&"Tuple", &"__getitem__", &[1], tuple_get_native);
     vm.define_native_method(&"Tuple", &"__len__", &[0], tuple_len_native);
     vm.define_native_method(&"Tuple", &"__iter__", &[0], tuple_iter_native);
@@ -90,7 +116,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"TupleIterator", &"__next__", &[0], tuple_iter_next_native);
 
     vm.define_native_class(&"Set", true);
-    vm.define_native_method(&"Set", &"__init__", &[0, 255], set_init_native);
+    vm.define_native_method(&"Set", &"__init__", variadic_arity(0), set_init_native);
     vm.define_native_method(&"Set", &"contains", &[1], set_contains_native);
     vm.define_native_method(&"Set", &"insert", &[1], set_insert_native);
     vm.define_native_method(&"Set", &"remove", &[1], set_remove_native);

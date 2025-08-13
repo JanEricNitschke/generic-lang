@@ -10,11 +10,17 @@ use crate::{
 use super::{Global, InterpretResult, VM};
 use crate::vm::arithmetics::{BinaryOpResult, IntoResultValue};
 
+/// Marker value for variable arity in arity specifications.
+/// This value indicates "N or more arguments" when it appears as the last element
+/// in an arity array, where N is the preceding value.
+/// Example: [0, VARIADIC_ARITY_MARKER] means "0 or more arguments"
+const VARIADIC_ARITY_MARKER: u8 = u8::MAX;
+
 // Helper function to check if arg_count is valid for an arity spec
 // The arity array can contain:
 // - Specific values (e.g., [1, 2] means exactly 1 or 2 args)
-// - Variable args marker: if array ends with 255, it means "N or more"
-//   where N is the previous value (e.g., [0, 255] means 0 or more)
+// - Variable args marker: if array ends with VARIADIC_ARITY_MARKER, it means "N or more"
+//   where N is the previous value (e.g., [0, VARIADIC_ARITY_MARKER] means 0 or more)
 fn check_arity(arity: &[u8], arg_count: u8) -> bool {
     if arity.is_empty() {
         return false;
@@ -24,8 +30,8 @@ fn check_arity(arity: &[u8], arg_count: u8) -> bool {
         return true;
     }
 
-    // Check for variable arity marker (255)
-    if arity.len() >= 2 && arity[arity.len() - 1] == 255 {
+    // Check for variable arity marker
+    if arity.len() >= 2 && arity[arity.len() - 1] == VARIADIC_ARITY_MARKER {
         let min_args = arity[arity.len() - 2];
         return arg_count >= min_args;
     }
@@ -307,7 +313,7 @@ impl VM {
         let arity = f.arity;
         if !check_arity(arity, arg_count) {
             // Check if this has variable arity
-            if arity.len() >= 2 && arity[arity.len() - 1] == 255 {
+            if arity.len() >= 2 && arity[arity.len() - 1] == VARIADIC_ARITY_MARKER {
                 let min_args = arity[arity.len() - 2];
                 runtime_error!(
                     self,
@@ -359,6 +365,11 @@ impl VM {
     /// Checks that the number of arguments matches to the arity of the method.
     /// After the call the stack is truncated to remove the arguments and the receiver
     /// and the result is pushed onto the stack.
+    ///
+    /// Special case: __init__ methods are constructor methods that modify the receiver
+    /// instance and return nil. For these methods, we keep the (modified) receiver
+    /// on the stack instead of the nil return value. This happens automatically
+    /// when native classes are instantiated via call_value().
     #[allow(clippy::branches_sharing_code)]
     fn execute_native_method_call(
         &mut self,
@@ -370,7 +381,7 @@ impl VM {
         let arity = f.arity;
         if !check_arity(arity, arg_count) {
             // Check if this has variable arity
-            if arity.len() >= 2 && arity[arity.len() - 1] == 255 {
+            if arity.len() >= 2 && arity[arity.len() - 1] == VARIADIC_ARITY_MARKER {
                 let min_args = arity[arity.len() - 2];
                 runtime_error!(
                     self,
@@ -410,9 +421,11 @@ impl VM {
         let result = fun(self, receiver, ref_args.as_mut_slice());
         match result {
             Ok(value) => {
-                // Special handling for __init__ methods: if they return nil, keep the receiver on the stack
+                // __init__ methods are special: they modify the receiver instance and return nil
+                // to indicate success. We keep the (modified) receiver on the stack instead
+                // of the nil return value, which is the expected behavior for constructors.
                 if is_init_method && value == Value::Nil {
-                    // For __init__ methods returning nil, just remove the arguments and keep the receiver
+                    // For __init__ methods returning nil, remove arguments but keep the receiver
                     self.stack
                         .truncate(self.stack.len() - usize::from(arg_count));
                 } else {
