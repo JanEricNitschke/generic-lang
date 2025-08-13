@@ -1,0 +1,15 @@
+var empty_tuple = Tuple();
+print(empty_tuple); # expect: ()
+
+var tuple_with_args = Tuple(1, 2, 3);
+print(tuple_with_args); # expect: (1, 2, 3)
+
+var single_tuple = Tuple(42);
+print(single_tuple); # expect: (42,)
+
+var mixed_tuple = Tuple("hello", 42, nil, true);
+print(mixed_tuple); # expect: (hello, 42, nil, true)
+
+var explicit_init = mixed_tuple.__init__("a", 1);
+print(explicit_init); # expect: (a, 1)
+print(mixed_tuple); # expect: (a, 1)

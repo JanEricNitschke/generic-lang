@@ -1,7 +1,7 @@
 //! Methods of the native `Range` class.
 
 use crate::{
-    value::{GenericInt, Instance, Number, RangeIterator, Value},
+    value::{GenericInt, Instance, Number, Range, RangeIterator, Value},
     vm::VM,
 };
 
@@ -83,4 +83,27 @@ pub(super) fn range_bool_native(
     let my_range = receiver.as_range(&vm.heap);
     let is_non_empty = !my_range.is_empty(&vm.heap);
     Ok(is_non_empty.into())
+}
+
+/// Constructor for Range that accepts exactly 2 arguments.
+/// `Range(start, end)` creates a range from start to end (exclusive).
+pub(super) fn range_init_native(
+    vm: &mut VM,
+    receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let (start, end) = match (&args[0], &args[1]) {
+        (Value::Number(Number::Integer(s)), Value::Number(Number::Integer(e))) => (*s, *e),
+        (s, e) => {
+            return Err(format!(
+                "Range arguments must be integers, got `{}, {}`.",
+                s.to_string(&vm.heap),
+                e.to_string(&vm.heap),
+            ));
+        }
+    };
+
+    let range = receiver.as_range_mut(&mut vm.heap);
+    *range = Range::new(start, end);
+    Ok(*receiver)
 }

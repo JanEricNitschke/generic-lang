@@ -363,6 +363,16 @@ impl Value {
         }
     }
 
+    pub(super) fn as_tuple_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Tuple {
+        match self {
+            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
+                Some(NativeClass::Tuple(tuple)) => tuple,
+                _ => unreachable!("Expected Tuple, found something else."),
+            },
+            _ => unreachable!("Expected Tuple, found `{:?}`", self),
+        }
+    }
+
     pub fn as_tuple_iter_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut TupleIterator {
         match self {
             Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
@@ -378,6 +388,16 @@ impl Value {
             Self::Instance(inst) => match &inst.to_value(heap).backing {
                 Some(NativeClass::Range(range)) => range,
                 _ => unreachable!("Expected Range, found `{:?}`", self),
+            },
+            _ => unreachable!("Expected Range, found `{:?}`", self),
+        }
+    }
+
+    pub(super) fn as_range_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Range {
+        match self {
+            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
+                Some(NativeClass::Range(range)) => range,
+                _ => unreachable!("Expected Range, found something else."),
             },
             _ => unreachable!("Expected Range, found `{:?}`", self),
         }

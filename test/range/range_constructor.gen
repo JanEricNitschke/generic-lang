@@ -1,0 +1,12 @@
+var range = Range(1, 5);
+print(range); # expect: 1..<5
+
+var reverse_range = Range(5, 1);
+print(reverse_range); # expect: 5..<1
+
+var zero_range = Range(0, 0);
+print(zero_range); # expect: 0..<0
+
+var explicit_init = zero_range.__init__(0, 5);
+print(explicit_init); # expect: 0..<5
+print(zero_range); # expect: 0..<5
