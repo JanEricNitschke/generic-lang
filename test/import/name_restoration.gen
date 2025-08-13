@@ -1,0 +1,5 @@
+print(__name__); # expect: <script>
+import "moduleA.gen"; # expect: moduleA
+                      # expect: moduleB
+                      # expect: moduleA
+print(__name__); # expect: <script>
