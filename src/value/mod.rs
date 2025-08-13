@@ -267,13 +267,6 @@ impl Value {
         }
     }
 
-    pub(super) fn as_native_method(&self) -> &NativeMethodId {
-        match self {
-            Self::NativeMethod(n) => n,
-            _ => unreachable!("Expected Native, found `{:?}`", self),
-        }
-    }
-
     pub(super) fn as_function(&self) -> &FunctionId {
         match self {
             Self::Function(f) => f,

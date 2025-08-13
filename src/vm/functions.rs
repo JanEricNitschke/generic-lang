@@ -174,31 +174,30 @@ impl VM {
             Value::Closure(_) => self.execute_call(callee, arg_count),
             Value::NativeFunction(f) => self.execute_native_function_call(f, arg_count),
             Value::Class(class) => {
-                let is_native = class.to_value(&self.heap).is_native;
-                let maybe_initializer = class
-                    .to_value(&self.heap)
+                let class_data = class.to_value(&self.heap);
+                let maybe_initializer = class_data
                     .methods
                     .get(&self.heap.builtin_constants().init_string)
                     .copied();
-                let backing = if is_native {
-                    Some(NativeClass::new(
-                        class.to_value(&self.heap).name.to_value(&self.heap),
-                    ))
-                } else {
-                    None
-                };
+
+                let backing = class_data.get_native_superclass(&self.heap, class).map(
+                    |native_superclass_id| {
+                        let native_superclass = native_superclass_id.to_value(&self.heap);
+                        NativeClass::new(native_superclass.name.to_value(&self.heap))
+                    },
+                );
+
                 let mut instance_id = self.heap.add_instance(Instance::new(callee, backing));
                 let stack_index = self.stack.len() - usize::from(arg_count) - 1;
                 self.stack[stack_index] = instance_id;
                 if let Some(initializer) = maybe_initializer {
-                    if is_native {
-                        self.execute_native_method_call(
-                            *initializer.as_native_method(),
+                    match initializer {
+                        Value::NativeMethod(native_method_id) => self.execute_native_method_call(
+                            native_method_id,
                             &mut instance_id,
                             arg_count,
-                        )
-                    } else {
-                        self.execute_call(initializer, arg_count)
+                        ),
+                        _ => self.execute_call(initializer, arg_count),
                     }
                 } else if arg_count != 0 {
                     runtime_error!(self, "Expected 0 arguments but got {arg_count}.");

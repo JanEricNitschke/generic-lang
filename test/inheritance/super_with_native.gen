@@ -1,0 +1,23 @@
+# Test super calls with native class inheritance
+class SuperList < List {
+  __init__(arg) {
+    super.__init__(arg, 1, 2, 3);
+  }
+
+
+  append(item) {
+    print("Enhanced append");
+    super.append(item);
+  }
+}
+
+var sl = SuperList(99);
+sl.append(42); # expect: Enhanced append
+print(len(sl)); # expect: 5
+foreach (var item in sl) {
+  print(item);  # expect: 99
+                # expect: 1
+                # expect: 2
+                # expect: 3
+                # expect: 42
+}
