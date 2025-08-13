@@ -1,0 +1,16 @@
+class Error {}
+
+class ThrowOnToString {
+    __str__() {
+        throw Error();
+    }
+}
+
+try {
+    print(ThrowOnToString());
+} catch Error {
+    print("Caught");  # expect: Caught
+}
+
+print(ThrowOnToString());  # expect runtime error: Uncaught exception: <Error instance>
+
