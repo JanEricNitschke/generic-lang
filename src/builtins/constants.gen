@@ -1,0 +1,18 @@
+# Builtin constants and utility functions
+
+# Mathematical constants
+var PI = 3.141592653589793;
+var E = 2.718281828459045;
+
+# Utility functions
+fun square(x) {
+    return x * x;
+}
+
+fun max(a, b) {
+    return a > b ? a : b;
+}
+
+fun min(a, b) {
+    return a < b ? a : b;
+}

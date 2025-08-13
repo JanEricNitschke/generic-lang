@@ -1,0 +1,8 @@
+# Test that builtin constants are available
+print(PI); # expect: 3.141592653589793
+print(E); # expect: 2.718281828459045
+
+# Test that builtin functions are available
+print(square(5)); # expect: 25
+print(max(10, 20)); # expect: 20
+print(min(10, 20)); # expect: 10
