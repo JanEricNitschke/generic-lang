@@ -336,7 +336,7 @@ impl VM {
     /// Special case: __init__ methods are constructor methods that modify the receiver
     /// instance and return nil. For these methods, we keep the (modified) receiver
     /// on the stack instead of the nil return value. This happens automatically
-    /// when native classes are instantiated via call_value().
+    /// when native classes are instantiated via `call_value()`.
     #[allow(clippy::branches_sharing_code)]
     fn execute_native_method_call(
         &mut self,

@@ -41,9 +41,10 @@ use crate::natives::native_functions::{
 
 /// Static arity arrays for common variadic argument patterns.
 /// These replace the magic marker approach with explicit arrays of all valid argument counts.
-
 /// Arity for "0 or more arguments" (up to 20 for practical purposes)
-const VARIADIC_0_PLUS: &[u8] = &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+const VARIADIC_0_PLUS: &[u8] = &[
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+];
 
 pub fn define(vm: &mut VM) {
     vm.define_native_function(&"clock", &[0], clock_native);
