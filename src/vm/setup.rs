@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
 use crate::{
+    compiler::Compiler,
     heap::StringId,
+    scanner::Scanner,
     value::{
         Class, Closure, Module, NativeFunction, NativeFunctionImpl, NativeMethod, NativeMethodImpl,
     },
-    compiler::Compiler,
-    scanner::Scanner,
 };
 
 use super::{Global, VM};
@@ -134,7 +134,7 @@ impl VM {
     }
 
     /// Get the combined source code of all builtin files.
-    pub(crate) fn get_builtins_source(&self) -> Vec<u8> {
+    fn get_builtins_source() -> Vec<u8> {
         let mut combined_source = Vec::new();
 
         // Get path to builtins directory
@@ -146,13 +146,15 @@ impl VM {
         // Load and combine all builtin files
         if let Ok(entries) = std::fs::read_dir(&builtins_path) {
             for entry in entries.flatten() {
-                if let Some(file_name) = entry.file_name().to_str() {
-                    if file_name.ends_with(".gen") {
-                        let file_path = entry.path();
-                        if let Ok(contents) = std::fs::read(&file_path) {
-                            combined_source.extend_from_slice(&contents);
-                            combined_source.push(b'\n');
-                        }
+                if let Some(file_name) = entry.file_name().to_str()
+                    && std::path::Path::new(file_name)
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("gen"))
+                {
+                    let file_path = entry.path();
+                    if let Ok(contents) = std::fs::read(&file_path) {
+                        combined_source.extend_from_slice(&contents);
+                        combined_source.push(b'\n');
                     }
                 }
             }
@@ -161,13 +163,13 @@ impl VM {
         combined_source
     }
 
-    /// Execute builtins source code and capture their globals into the builtins HashMap.
+    /// Execute builtins source code and capture their globals into the builtins `HashMap`.
     ///
     /// This is called at startup before user code execution to populate the builtins
     /// that will be available globally in user programs.
     pub(super) fn execute_builtins(&mut self) {
-        let builtins_source = self.get_builtins_source();
-        
+        let builtins_source = Self::get_builtins_source();
+
         if builtins_source.is_empty() {
             return;
         }
@@ -178,7 +180,7 @@ impl VM {
         if let Some(function) = compiler.compile() {
             let function_id = self.heap.add_function(function);
             let closure = Closure::new(*function_id.as_function(), true, None, &self.heap);
-            
+
             // Create a temporary module for builtins execution
             let builtin_module_name = self.heap.string_id(&"<builtins>");
             let module_id = self.heap.add_module(Module::new(
@@ -188,29 +190,30 @@ impl VM {
                 builtin_module_name,
                 false,
             ));
-            
+
             // Save current modules state
             let original_modules = self.modules.clone();
             let original_stack_len = self.stack.len();
-            
+
             // Set up for builtins execution
             self.modules.clear();
             self.modules.push(*module_id.as_module());
-            
+
             let value_id = self.heap.add_closure(closure);
             self.stack_push_value(value_id);
             self.execute_call(value_id, 0);
-            
+
             // Execute the builtins
-            if let crate::vm::InterpretResult::Ok = self.run_function() {
+            if self.run_function() == crate::vm::InterpretResult::Ok {
                 // Capture globals from the builtins module
-                let builtin_globals = self.modules
+                let builtin_globals = self
+                    .modules
                     .last()
                     .unwrap()
                     .to_value(&self.heap)
                     .globals
                     .clone();
-                
+
                 // Move all globals (except __name__) to the builtins HashMap
                 let script_name = self.heap.builtin_constants().script_name;
                 for (name, global) in builtin_globals {
@@ -219,7 +222,7 @@ impl VM {
                     }
                 }
             }
-            
+
             // Restore original state
             self.modules = original_modules;
             self.stack.truncate(original_stack_len);
