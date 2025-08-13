@@ -115,11 +115,11 @@ impl VM {
     pub(super) fn interpret(&mut self, source: &[u8]) -> InterpretResult {
         // Collect builtin source code first
         let builtins_source = self.get_builtins_source();
-        
+
         // Combine builtins with user source
         let mut combined_source = builtins_source;
         combined_source.extend_from_slice(source);
-        
+
         let result = if let Some(function) = self.compile(&combined_source, "<script>") {
             let function_id = self.heap.add_function(function);
 

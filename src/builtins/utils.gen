@@ -1,0 +1,15 @@
+# Additional utility functions
+
+fun abs(x) {
+    if (x < 0) {
+        return -x;
+    }
+    return x;
+}
+
+fun clamp(value, min_val, max_val) {
+    return min(max(value, min_val), max_val);
+}
+
+# Global version string
+var VERSION = "1.0.0";

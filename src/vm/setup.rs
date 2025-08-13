@@ -134,13 +134,13 @@ impl VM {
     /// Get the combined source code of all builtin files.
     pub(crate) fn get_builtins_source(&self) -> Vec<u8> {
         let mut combined_source = Vec::new();
-        
+
         // Get path to builtins directory
         let mut builtins_path = std::path::PathBuf::from(file!());
         builtins_path.pop(); // Remove mod.rs
         builtins_path.pop(); // Remove vm
         builtins_path.push("builtins");
-        
+
         // Load and combine all builtin files
         if let Ok(entries) = std::fs::read_dir(&builtins_path) {
             for entry in entries.flatten() {
@@ -155,7 +155,7 @@ impl VM {
                 }
             }
         }
-        
+
         combined_source
     }
 }

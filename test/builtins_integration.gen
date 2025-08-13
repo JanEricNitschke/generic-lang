@@ -1,0 +1,8 @@
+# Test that builtins are available in user programs
+var circle_area = PI * square(5);
+print(circle_area); # expect: 78.53981633974483
+
+var my_max = max(abs(-15), clamp(20, 0, 10));
+print(my_max); # expect: 15
+
+print("Using version: " + VERSION); # expect: Using version: 1.0.0

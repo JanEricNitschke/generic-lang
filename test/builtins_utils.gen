@@ -1,0 +1,7 @@
+# Test additional builtin utilities
+print(abs(-5)); # expect: 5
+print(abs(3)); # expect: 3
+print(clamp(15, 0, 10)); # expect: 10
+print(clamp(-5, 0, 10)); # expect: 0
+print(clamp(5, 0, 10)); # expect: 5
+print(VERSION); # expect: 1.0.0
