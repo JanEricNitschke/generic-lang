@@ -14,6 +14,8 @@ pub struct Class {
     // Should probably also be String and not StringId?
     pub(crate) methods: HashMap<StringId, Value>,
     pub(crate) is_native: bool,
+    #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
+    pub(crate) superclass: Option<ClassId>,
 }
 
 impl Class {
@@ -23,11 +25,28 @@ impl Class {
             name,
             methods: HashMap::default(),
             is_native,
+            superclass: None,
         }
     }
 
     pub(crate) fn to_string(&self, heap: &Heap) -> String {
         format!("<class {}>", *self.name.to_value(heap))
+    }
+
+    pub(crate) fn get_native_superclass(&self, heap: &Heap, class_id: ClassId) -> Option<ClassId> {
+        if self.is_native {
+            return Some(class_id); // We are the native class
+        }
+
+        if let Some(superclass_id) = self.superclass {
+            let superclass = superclass_id.to_value(heap);
+            if superclass.is_native {
+                return Some(superclass_id);
+            }
+            return superclass.get_native_superclass(heap, superclass_id);
+        }
+
+        None
     }
 }
 

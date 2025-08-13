@@ -1,0 +1,14 @@
+# Test inheriting from Set native class
+class MySet < Set {
+  custom_add(item) {
+    this.insert(item);
+  }
+}
+
+var my_set = MySet();
+my_set.custom_add(1);
+my_set.custom_add(2);
+my_set.custom_add(1); # Should not add duplicate
+print(len(my_set)); # expect: 2
+print(1 in my_set); # expect: true
+print(3 in my_set); # expect: false

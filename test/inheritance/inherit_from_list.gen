@@ -1,0 +1,12 @@
+# Test inheriting from List native class
+class MyList < List {
+  custom_method() {
+    print("custom method");
+  }
+}
+
+var my_list = MyList();
+my_list.append(1);
+my_list.append(2);
+print(len(my_list)); # expect: 2
+my_list.custom_method(); # expect: custom method
