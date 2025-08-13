@@ -40,4 +40,4 @@ print(my_object.y); # expect: 4
 class BadClass {}
 
 var bad_object = BadClass();
-bad_object[1] = 2; # expect runtime error: Undefined property '__setitem__'.
+bad_object[1] = 2; # expect runtime error: AttributeError: Undefined property '__setitem__'.

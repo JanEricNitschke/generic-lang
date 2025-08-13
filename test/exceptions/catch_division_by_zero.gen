@@ -1,0 +1,11 @@
+# Test that invalid type operations can now be caught
+try {
+    var result = "hello" + 5; # This should throw TypeError
+    print("This should not print");
+} catch TypeError as e {
+    print("Caught type error"); # expect: Caught type error
+    print(e.message()); # expect: Operands must be two numbers, strings or support `__add__`. Got: [hello, 5]
+} else {
+    print("This should not print");
+}
+print("Done"); # expect: Done

@@ -48,7 +48,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         }
 
         #[cfg(feature = "print_code")]
-        if !self.had_error {
+        if !self.had_error && (cfg!(feature = "print_code_builtin") || !self.is_builtin) {
             println!("{}", self.current_chunk().clone().to_string(self.heap));
         }
     }

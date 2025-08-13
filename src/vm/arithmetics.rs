@@ -1,13 +1,8 @@
-use super::{InterpretResult, VM};
-use crate::chunk::CodeOffset;
-use crate::value::{GenericRational, Number, Value};
-
-#[derive(PartialEq, Eq)]
-pub(super) enum BinaryOpResult {
-    Success,
-    InvalidOperands,
-    OperationError,
-}
+use super::VM;
+use crate::{
+    value::{GenericRational, Number, Value},
+    vm::errors::VmError,
+};
 
 pub(super) trait IntoResultValue {
     fn into_result_value(self) -> Result<Value, String>;
@@ -45,123 +40,88 @@ macro_rules! binary_op_invoke {
 macro_rules! binary_op {
     ($self:ident, $method:ident, $gen_method:tt, $int_only:tt, $heap_toggle:ident) => {{
         let slice_start = $self.stack.len() - 2;
-
         let gen_method_id = $self.heap.string_id(&$gen_method);
 
-        let status = match &$self.stack[slice_start..] {
-            [left, right] => {
-                match (&left, &right) {
-                    (Value::Number(a), Value::Number(b)) => {
-                        if $int_only
-                            & (!matches!(a, Number::Integer(_)) | !matches!(b, Number::Integer(_)))
-                        {
-                            BinaryOpResult::InvalidOperands
-                        } else {
-                            match binary_op_invoke!($self, a, b, $method, $heap_toggle)
-                                .into_result_value()
-                            {
-                                Ok(value) => {
-                                    $self.stack.pop();
-                                    $self.stack.pop();
-                                    $self.stack_push_value(value);
-                                    BinaryOpResult::Success
-                                }
-                                Err(error) => {
-                                    runtime_error!($self, "{error}");
-                                    BinaryOpResult::OperationError
-                                }
-                            }
-                        }
-                    }
-                    (Value::Instance(instance_id), _)
-                        if instance_id
-                            .to_value(&$self.heap)
-                            .has_field_or_method(gen_method_id, &$self.heap) =>
+        let message = format!(
+            "Operands must be {} or support `{}`. Got: [{}]",
+            if $int_only { "integers" } else { "numbers" },
+            $gen_method,
+            $self.stack[slice_start..]
+                .iter()
+                .map(|v| v.to_string(&$self.heap))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        match &$self.stack[slice_start..] {
+            [Value::Number(a), Value::Number(b)] => {
+                if $int_only & (!matches!(a, Number::Integer(_)) | !matches!(b, Number::Integer(_)))
+                {
+                    $self.throw_type_error(&message)
+                } else {
+                    match binary_op_invoke!($self, a, b, $method, $heap_toggle).into_result_value()
                     {
-                        if !$self.invoke(gen_method_id, 1) {
-                            return InterpretResult::RuntimeError;
+                        Ok(value) => {
+                            $self.stack.pop();
+                            $self.stack.pop();
+                            $self.stack_push_value(value);
+                            Ok(())
                         }
-                        // If the invoke succeeds, decide what to return —
-                        // keeping same flow as original code
-                        BinaryOpResult::Success
+                        Err(error) => $self.throw_value_error(&error),
                     }
-                    _ => BinaryOpResult::InvalidOperands,
                 }
             }
-            _ => BinaryOpResult::InvalidOperands,
-        };
-
-        if status == BinaryOpResult::InvalidOperands {
-            runtime_error!(
-                $self,
-                "Operands must be {}. Got: [{}]",
-                if $int_only { "integers" } else { "numbers" },
-                $self.stack[slice_start..]
-                    .iter()
-                    .map(|v| format!("{}", v.to_string(&$self.heap)))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
-        if status != BinaryOpResult::Success {
-            return InterpretResult::RuntimeError;
+            [Value::Instance(instance_id), _]
+                if instance_id
+                    .to_value(&$self.heap)
+                    .has_field_or_method(gen_method_id, &$self.heap) =>
+            {
+                $self.invoke(gen_method_id, 1)
+            }
+            _ => $self.throw_type_error(&message),
         }
     }};
 }
 
 impl VM {
-    pub(super) fn add(&mut self) -> Option<InterpretResult> {
+    pub(super) fn add(&mut self) -> VmError {
         let slice_start = self.stack.len() - 2;
         let gen_method_id = self.heap.string_id(&"__add__");
-        let ok = match &self.stack[slice_start..] {
-            [left, right] => match (&left, &right) {
-                (Value::Number(a), Value::Number(b)) => {
-                    let value = (a.add(*b, &mut self.heap)).into();
-                    self.stack.pop();
-                    self.stack.pop();
-                    self.stack_push_value(value);
-                    true
-                }
-                (Value::String(a), Value::String(b)) => {
-                    // This could be optimized by allowing mutations via the heap
-                    let new_string = format!("{}{}", self.heap.strings[*a], self.heap.strings[*b]);
-                    let new_string_id = self.heap.string_id(&new_string);
-                    self.stack.pop();
-                    self.stack.pop();
-                    self.stack_push_value(new_string_id.into());
-                    true
-                }
-                (Value::Instance(instance_id), _)
-                    if instance_id
-                        .to_value(&self.heap)
-                        .has_field_or_method(gen_method_id, &self.heap) =>
-                {
-                    if !self.invoke(gen_method_id, 1) {
-                        return Some(InterpretResult::RuntimeError);
-                    }
-                    // If the invoke succeeds, decide what to return —
-                    // keeping same flow as original code
-                    true
-                }
-                _ => false,
-            },
-            _ => false,
-        };
-
-        if !ok {
-            runtime_error!(
-                self,
-                "Operands must be two numbers or two strings. Got: [{}]",
-                self.stack[slice_start..]
-                    .iter()
-                    .map(|v| v.to_string(&self.heap))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-
-            return Some(InterpretResult::RuntimeError);
+        match &self.stack[slice_start..] {
+            [Value::Number(a), Value::Number(b)] => {
+                let value = (a.add(*b, &mut self.heap)).into();
+                self.stack.pop();
+                self.stack.pop();
+                self.stack_push_value(value);
+                Ok(())
+            }
+            [Value::String(a), Value::String(b)] => {
+                // This could be optimized by allowing mutations via the heap
+                let new_string = format!("{}{}", self.heap.strings[*a], self.heap.strings[*b]);
+                let new_string_id = self.heap.string_id(&new_string);
+                self.stack.pop();
+                self.stack.pop();
+                self.stack_push_value(new_string_id.into());
+                Ok(())
+            }
+            [Value::Instance(instance_id), _]
+                if instance_id
+                    .to_value(&self.heap)
+                    .has_field_or_method(gen_method_id, &self.heap) =>
+            {
+                self.invoke(gen_method_id, 1)
+            }
+            _ => {
+                let message = format!(
+                    "Operands must be two numbers, strings or support `__add__`. Got: [{}]",
+                    self.stack[slice_start..]
+                        .iter()
+                        .map(|v| v.to_string(&self.heap))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                self.throw_type_error(&message)
+            }
         }
-        None
     }
 
     /// Negate the top value on the stack.
@@ -169,7 +129,7 @@ impl VM {
     /// # Panics
     ///
     /// If the stack is empty. This is an internal error and should never happen.
-    pub(super) fn negate(&mut self) -> Option<InterpretResult> {
+    pub(super) fn negate(&mut self) -> VmError {
         let value_id = *self.peek(0).expect("stack underflow in OP_NEGATE");
         let value = &value_id;
         if let Value::Number(n) = value {
@@ -177,13 +137,12 @@ impl VM {
             let negated = n.neg(&mut self.heap);
             self.stack_push_value(negated.into());
         } else {
-            runtime_error!(self, "Operand must be a number.");
-            return Some(InterpretResult::RuntimeError);
+            return self.throw_type_error("Operand must be a number.");
         }
-        None
+        Ok(())
     }
 
-    pub(crate) fn build_rational(&mut self) -> Option<InterpretResult> {
+    pub(crate) fn build_rational(&mut self) -> VmError {
         let denominator = self
             .stack
             .pop()
@@ -202,15 +161,14 @@ impl VM {
                 self.stack_push_value(Value::Number(Number::Rational(rational)));
             }
             _ => {
-                runtime_error!(
-                    self,
+                let message = format!(
                     "Invalid operands ({}, {}) for rational construction.",
                     numerator.to_string(&self.heap),
                     denominator.to_string(&self.heap)
                 );
-                return Some(InterpretResult::RuntimeError);
+                return self.throw_type_error(&message);
             }
         }
-        None
+        Ok(())
     }
 }

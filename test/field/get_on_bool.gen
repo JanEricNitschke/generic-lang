@@ -1,1 +1,1 @@
-true.foo; # expect runtime error: Tried to get property 'foo' of non-instance `true`.
+true.foo; # expect runtime error: TypeError: Tried to get property 'foo' of non-instance `true`.

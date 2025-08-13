@@ -17,4 +17,4 @@ if __name__ == "<script>" {
     print("good"); # expect: good
 }
 
-fib.Z = 3; # expect runtime error: Reassignment to global 'const'.
+fib.Z = 3; # expect runtime error: ConstReassignmentError: Cannot reassign const variable.

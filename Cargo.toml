@@ -36,11 +36,14 @@ convert_case = "0.8.0"
 num-bigint   = { version = "0.4.6", features = ["rand"] }
 num-traits   = "0.2.19"
 hashbrown    = "0.15.5"
+thiserror = "2.0.15"
 
 [features]
 print_code              = []
+print_code_builtin      = ["print_code"]
 trace_execution         = []
 trace_execution_verbose = ["trace_execution"]
+trace_execution_builtin = ["trace_execution_verbose"]
 log_gc                  = []
 stress_gc               = []
 debug_parser            = []

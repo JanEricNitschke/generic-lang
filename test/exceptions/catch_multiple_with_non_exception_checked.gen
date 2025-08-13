@@ -7,7 +7,7 @@ try {
     print("Try");
 } catch Error1 {
     print("Caught Error1");
-} catch (RegularClass, Error2) { # expect runtime error: Can only catch Exception or its subclasses, got: RegularClass
+} catch (RegularClass, Error2) { # expect runtime error: TypeError: Can only catch Exception or its subclasses, got: RegularClass
     print("Should not reach here");
 }
 print("Done");

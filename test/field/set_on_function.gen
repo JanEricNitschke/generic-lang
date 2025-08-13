@@ -1,3 +1,3 @@
 fun foo() {}
 
-foo.bar = "value"; # expect runtime error: Tried to set property 'bar' of non-instance `<fn foo>`
+foo.bar = "value"; # expect runtime error: TypeError: Tried to set property 'bar' of non-instance `<fn foo>`

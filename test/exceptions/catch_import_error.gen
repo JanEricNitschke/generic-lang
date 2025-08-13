@@ -1,0 +1,11 @@
+# Test that import errors throw ImportError instead of ValueError
+try {
+    import "nonexistent_module";
+    print("This should not print");
+} catch ImportError as e {
+    print("Caught ImportError"); # expect: Caught ImportError
+    print("Import failed as expected"); # expect: Import failed as expected
+} else {
+    print("This should not print");
+}
+print("Done"); # expect: Done

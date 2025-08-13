@@ -1,1 +1,1 @@
-123.foo = "value"; # expect runtime error: Tried to set property 'foo' of non-instance `123`
+123.foo = "value"; # expect runtime error: TypeError: Tried to set property 'foo' of non-instance `123`

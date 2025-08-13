@@ -6,8 +6,8 @@ class Base {
 
 class Derived < Base {
   foo() {
-    super.foo(1); # expect runtime error: Expected 2 arguments but got 1.
+    super.foo(1);
   }
 }
 
-Derived().foo();
+Derived().foo(); # expect runtime error: TypeError: Expected 2 arguments but got 1.

@@ -1,1 +1,1 @@
-print(float("invalid")); # expect runtime error: 'float' could not convert string 'invalid' to a float.
+print(float("invalid")); # expect runtime error: ValueError: 'float' could not convert string 'invalid' to a float.

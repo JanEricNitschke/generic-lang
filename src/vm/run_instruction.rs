@@ -7,8 +7,17 @@
 /// Directly inlining does not work in order to handle dynamic execution
 /// from native functions which need direct access to this.
 macro_rules! run_instruction {
-    ($self:ident) => {
+    ($self:ident) => {{
         #[cfg(feature = "trace_execution")]
+        if cfg!(feature = "trace_execution_builtin")
+            || !$self
+                .modules
+                .last()
+                .unwrap()
+                .to_value(&$self.heap)
+                .path
+                .iter()
+                .any(|comp| comp == "builtins")
         {
             let function = &$self.callstack.function();
             let mut disassembler =
@@ -17,7 +26,7 @@ macro_rules! run_instruction {
             #[cfg(feature = "trace_execution_verbose")]
             {
                 println!(
-                    "Current module: {} at module depth {} and total call depth {}.",
+                    "Current module: {} at module depth {} and Function: {} at total call depth {}.",
                     $self
                         .modules
                         .last()
@@ -26,6 +35,12 @@ macro_rules! run_instruction {
                         .name
                         .to_value(&$self.heap),
                     $self.modules.len(),
+                    $self
+                        .callstack
+                        .function()
+                        .to_value(&$self.heap)
+                        .name
+                        .to_value(&$self.heap),
                     $self.callstack.len()
                 );
             }
@@ -40,13 +55,16 @@ macro_rules! run_instruction {
             );
             print!("{disassembler:?}");
         }
+        $self.handling_exception = false;
         $self.collect_garbage();
         match OpCode::try_from($self.read_byte()).expect("Internal error: unrecognized opcode") {
             OpCode::Pop => {
                 $self.stack.pop().expect("Stack underflow in OP_POP.");
+                Ok(())
             }
             OpCode::Dup => {
                 $self.stack_push_value(*$self.peek(0).expect("Stack underflow in OP_DUP"));
+                Ok(())
             }
             OpCode::DupN => {
                 // -1 because Dup1 should peek at the top most element
@@ -60,50 +78,50 @@ macro_rules! run_instruction {
                     // 1 2 3 4 3 4
                     $self.stack_push_value(*$self.peek(depth).expect("Stack underflow in OP_DUP"));
                 }
+                Ok(())
             }
             OpCode::Swap => {
                 let len = $self.stack.len();
                 $self.stack.swap(len - 1, len - 2);
+                Ok(())
             }
             OpCode::LoadOne => {
                 $self.stack.push(1.into());
+                Ok(())
             }
             OpCode::LoadTwo => {
                 $self.stack.push(2.into());
+                Ok(())
             }
             OpCode::LoadZero => {
                 $self.stack.push(0.into());
+                Ok(())
             }
             OpCode::LoadMinusOne => {
                 $self.stack.push((-1).into());
+                Ok(())
             }
             OpCode::LoadZerof => {
                 $self.stack.push((0.0).into());
+                Ok(())
             }
             OpCode::LoadOnef => {
                 $self.stack.push((1.0).into());
+                Ok(())
             }
             // Grabs index (into the stack) as the operand (next bytecode)
-            op @ (OpCode::GetLocal | OpCode::GetLocalLong) => $self.get_local(op),
+            op @ (OpCode::GetLocal | OpCode::GetLocalLong) => Ok($self.get_local(op)),
             // Index is the operand again, value to set is on the stack
-            op @ (OpCode::SetLocal | OpCode::SetLocalLong) => $self.set_local(op),
+            op @ (OpCode::SetLocal | OpCode::SetLocalLong) => Ok($self.set_local(op)),
             // Global to get passed as operand
-            op @ (OpCode::GetGlobal | OpCode::GetGlobalLong) => {
-                if let Some(value) = $self.get_global(op) {
-                    return value;
-                }
-            }
+            op @ (OpCode::GetGlobal | OpCode::GetGlobalLong) => $self.get_global(op),
             // Global whose value to set is operand, value to use is on the stack
-            op @ (OpCode::SetGlobal | OpCode::SetGlobalLong) => {
-                if let Some(value) = $self.set_global(op) {
-                    return value;
-                }
-            }
+            op @ (OpCode::SetGlobal | OpCode::SetGlobalLong) => $self.set_global(op),
             // Name of the global to define comes from the operand, value
             op @ (OpCode::DefineGlobal
             | OpCode::DefineGlobalLong
             | OpCode::DefineGlobalConst
-            | OpCode::DefineGlobalConstLong) => $self.define_global(op),
+            | OpCode::DefineGlobalConstLong) => Ok($self.define_global(op)),
             OpCode::JumpIfFalse => $self.jump_conditional(JumpCondition::IfFalse),
             OpCode::JumpIfTrue => $self.jump_conditional(JumpCondition::IfTrue),
             OpCode::PopJumpIfFalse => $self.pop_jump_conditional(JumpCondition::IfFalse),
@@ -113,54 +131,36 @@ macro_rules! run_instruction {
             // Arg count is passed as the operand
             // The function to call is on the stack followed by all arguments
             // in order from left to right.
-            OpCode::Call => {
-                if let Some(value) = $self.call() {
-                    return value;
-                }
-            }
+            OpCode::Call => $self.call(),
             // Value to return is on the stack
-            OpCode::Return => {
-                if let Some(value) = $self.return_() {
-                    return value;
-                }
-            }
+            OpCode::Return => match $self.return_() {
+                Ok(Return::Program) => return Ok(()),
+                Ok(Return::Function) => Ok(()),
+                Err(err) => Err(err),
+            },
             // Index of the constant is the operand, value is in the constants table
             OpCode::Constant => {
                 let value = $self.read_constant(false);
                 $self.stack_push(value);
+                Ok(())
             }
             OpCode::ConstantLong => {
                 let value = $self.read_constant(true);
                 $self.stack_push(value);
+                Ok(())
             }
             // `Negate` and `Not` work on the stack value
-            OpCode::Negate => {
-                if let Some(value) = $self.negate() {
-                    return value;
-                }
-            }
+            OpCode::Negate => $self.negate(),
             OpCode::Not => $self.not_(),
-            OpCode::Nil => $self.stack_push(Value::Nil),
-            OpCode::True => $self.stack_push(Value::Bool(true)),
-            OpCode::False => $self.stack_push(Value::Bool(false)),
-            OpCode::StopIteration => $self.stack.push(Value::StopIteration),
-            OpCode::Equal => {
-                if let Some(result) = $self.equal(false) {
-                    return result;
-                }
-            }
-            OpCode::NotEqual => {
-                if let Some(result) = $self.equal(true) {
-                    return result;
-                }
-            }
+            OpCode::Nil => Ok($self.stack_push(Value::Nil)),
+            OpCode::True => Ok($self.stack_push(Value::Bool(true))),
+            OpCode::False => Ok($self.stack_push(Value::Bool(false))),
+            OpCode::StopIteration => Ok($self.stack.push(Value::StopIteration)),
+            OpCode::Equal => $self.equal(false),
+            OpCode::NotEqual => $self.equal(true),
             // All of these work on the top two stack values.
             // Top most is right operand, second is left.
-            OpCode::Add => {
-                if let Some(value) = $self.add() {
-                    return value;
-                }
-            }
+            OpCode::Add => $self.add(),
             OpCode::Subtract => binary_op!($self, sub, "__sub__", false, mut_heap),
             OpCode::Multiply => binary_op!($self, mul, "__mul__", false, mut_heap),
             OpCode::Divide => binary_op!($self, div, "__div__", false, mut_heap),
@@ -177,11 +177,13 @@ macro_rules! run_instruction {
             OpCode::Jump => {
                 let offset = $self.read_16bit_number();
                 $self.callstack.current_mut().ip += offset;
+                Ok(())
             }
             // Offset to jump backwards is the operand(s)
             OpCode::Loop => {
                 let offset = $self.read_16bit_number();
                 $self.callstack.current_mut().ip -= offset;
+                Ok(())
             }
             // Get the function with the actual bytecode as a value from the operand
             // Capture the upvalues and push the closure onto the stack
@@ -210,6 +212,7 @@ macro_rules! run_instruction {
                 }
                 let closure_id = $self.heap.add_closure(closure);
                 $self.stack_push(closure_id);
+                Ok(())
             }
             // Upvalue index is the operand
             // Closure is the one on the callstack
@@ -224,6 +227,7 @@ macro_rules! run_instruction {
                     }
                     Upvalue::Closed(value) => $self.stack_push(value),
                 }
+                Ok(())
             }
             // Upvalue index is the operand, closure is one the callstack,
             // value to set is on the stack
@@ -246,17 +250,20 @@ macro_rules! run_instruction {
                         *value = new_value;
                     }
                 }
+                Ok(())
             }
             // CLose the upvalue on top of the stack
             OpCode::CloseUpvalue => {
                 $self.close_upvalue($self.stack.len() - 1);
                 $self.stack.pop();
+                Ok(())
             }
             // Classname is the operand, create a new class and push it onto the stack
             OpCode::Class => {
                 let class_name = $self.read_string("OP_CLASS");
                 let class = $self.heap.add_class(Class::new(class_name, false));
                 $self.stack_push_value(class);
+                Ok(())
             }
             // Property to get is the operand, instance/module is on the stack
             OpCode::GetProperty => {
@@ -272,45 +279,43 @@ macro_rules! run_instruction {
                         {
                             $self.stack.pop(); // instance
                             $self.stack_push(*value);
+                            Ok(())
                         } else if $self
                             .bind_method(instance.to_value(&$self.heap).class.into(), field)
                         {
                             // Or could be a method that has to be bound to the
                             // instance so that it can later be called separately.
                             // Just using the side effects
+                            Ok(())
                         } else {
-                            runtime_error!(
-                                $self,
-                                "Undefined property '{}'.",
-                                field.to_value(&$self.heap)
-                            );
-                            return InterpretResult::RuntimeError;
+                            let message =
+                                format!("Undefined property '{}'.", field.to_value(&$self.heap));
+                            $self.throw_attribute_error(&message)
                         }
                     }
                     Value::Module(module) => {
                         if let Some(value) = module.to_value(&$self.heap).globals.get(&field) {
                             $self.stack.pop(); // module
                             $self.stack_push(value.value);
+                            Ok(())
                         } else {
-                            runtime_error!(
-                                $self,
+                            let message = format!(
                                 "Undefined name '{}' in module {}.",
                                 field.to_value(&$self.heap),
                                 module.to_value(&$self.heap).name.to_value(&$self.heap)
                             );
-                            return InterpretResult::RuntimeError;
+                            $self.throw_attribute_error(&message)
                         }
                     }
                     x => {
-                        runtime_error!(
-                            $self,
+                        let message = format!(
                             "Tried to get property '{}' of non-instance `{}`.",
                             field.to_value(&$self.heap),
                             x.to_string(&$self.heap)
                         );
-                        return InterpretResult::RuntimeError;
+                        $self.throw_type_error(&message)
                     }
-                };
+                }
             }
             // Property to set is the operand, instance is on the stack
             // as is the value to set.
@@ -319,12 +324,13 @@ macro_rules! run_instruction {
                 let field = field_string_id.to_value(&$self.heap).clone();
                 let value = $self.stack.pop().expect("Stack underflow in SET_PROPERTY");
                 let mut receiver = $self.stack.pop().expect("Stack underflow in SET_PROPERTY");
-                match &mut receiver {
+                let result = match &mut receiver {
                     Value::Instance(instance) => {
                         instance
                             .to_value_mut(&mut $self.heap)
                             .fields
                             .insert(field, value);
+                        Ok(())
                     }
                     Value::Module(module) => {
                         if let Some(global) = module
@@ -333,29 +339,42 @@ macro_rules! run_instruction {
                             .get_mut(&field_string_id)
                         {
                             if !global.mutable {
-                                runtime_error!($self, "Reassignment to global 'const'.");
-                                return InterpretResult::RuntimeError;
+                                $self.throw_const_reassignment_error(
+                                    "Cannot reassign const variable.",
+                                )
+                            } else {
+                                global.value = value;
+                                Ok(())
                             }
-                            global.value = value;
+                        } else {
+                            module.to_value_mut(&mut $self.heap).globals.insert(
+                                field_string_id,
+                                Global {
+                                    value,
+                                    mutable: true,
+                                },
+                            );
+                            Ok(())
                         }
                     }
                     x => {
-                        runtime_error!(
-                            $self,
+                        let message = format!(
                             "Tried to set property '{}' of non-instance `{}`",
                             field,
                             x.to_string(&$self.heap)
                         );
-                        return InterpretResult::RuntimeError;
+                        $self.throw_type_error(&message)
                     }
                 };
                 $self.stack_push(value);
+                result
             }
             // Name of the method is the operand, actual method to is on the stack
             // together with the class (... --- Class --- Method)
             OpCode::Method => {
                 let method_name = $self.read_string("OP_METHOD");
                 $self.define_method(method_name);
+                Ok(())
             }
             // Operands are method name to invoke as well as the number of arguments
             // Stack contains the instance followed by the arguments.
@@ -363,36 +382,37 @@ macro_rules! run_instruction {
             OpCode::Invoke => {
                 let method_name = $self.read_string("OP_INVOKE");
                 let arg_count = $self.read_byte();
-                if !$self.invoke(method_name, arg_count) {
-                    return InterpretResult::RuntimeError;
-                }
+                $self.invoke(method_name, arg_count)
             }
             // Stack has (... --- Superclass --- Class)
             OpCode::Inherit => {
-                let superclass_id = $self.peek(1).expect("Stack underflow in OP_INHERIT");
-                let superclass = if let Value::Class(superclass) = &superclass_id {
-                    *superclass
+                let superclass_id = *$self.peek(1).expect("Stack underflow in OP_INHERIT");
+                if let Value::Class(superclass) = &superclass_id {
+                    let methods = superclass.to_value(&$self.heap).methods.clone();
+                    let subclass = $self
+                        .stack
+                        .pop()
+                        .expect("Stack underflow in OP_INHERIT")
+                        .as_class()
+                        .to_value_mut(&mut $self.heap);
+                    subclass.methods.extend(methods);
+                    subclass.superclass = Some(*superclass);
+                    Ok(())
                 } else {
-                    runtime_error!($self, "Superclass must be a class.");
-                    return InterpretResult::RuntimeError;
-                };
-                let methods = superclass.to_value(&$self.heap).methods.clone();
-                let subclass = $self
-                    .stack
-                    .pop()
-                    .expect("Stack underflow in OP_INHERIT")
-                    .as_class()
-                    .to_value_mut(&mut $self.heap);
-                subclass.methods.extend(methods);
-                subclass.superclass = Some(superclass);
+                    $self.throw_type_error("Superclass must be a class.")
+                }
             }
             // Grab and bind a method from the superclass
             // Operand is the name of the method to get and the stack has the superclass
             OpCode::GetSuper => {
                 let method_name = $self.read_string("OP_GET_SUPER");
                 let superclass = $self.stack.pop().expect("Stack underflow in OP_GET_SUPER");
-                if !$self.bind_method(superclass, method_name) {
-                    return InterpretResult::RuntimeError;
+                if $self.bind_method(superclass, method_name) {
+                    Ok(())
+                } else {
+                    let message =
+                        format!("Undefined property '{}'.", $self.heap.strings[method_name]);
+                    $self.throw_attribute_error(&message)
                 }
             }
             // Invoke a method from the superclass
@@ -405,50 +425,22 @@ macro_rules! run_instruction {
                     .stack
                     .pop()
                     .expect("Stack underflow in OP_SUPER_INVOKE");
-                if !$self.invoke_from_class(superclass, method_name, arg_count) {
-                    return InterpretResult::RuntimeError;
-                }
+                $self.invoke_from_class(superclass, method_name, arg_count)
             }
-            OpCode::BuildList => {
-                $self.build_list();
-            }
-            OpCode::BuildTuple => {
-                $self.build_tuple();
-            }
-            OpCode::BuildSet => {
-                if let Some(value) = $self.build_set() {
-                    return value;
-                }
-            }
-            OpCode::BuildDict => {
-                if let Some(value) = $self.build_dict() {
-                    return value;
-                }
-            }
-            OpCode::BuildRangeExclusive => {
-                if let Some(value) = $self.build_range(true) {
-                    return value;
-                }
-            }
-            OpCode::BuildRangeInclusive => {
-                if let Some(value) = $self.build_range(false) {
-                    return value;
-                }
-            }
-            OpCode::BuildRational => {
-                if let Some(value) = $self.build_rational() {
-                    return value;
-                }
-            }
+            OpCode::BuildList => Ok($self.build_list()),
+            OpCode::BuildTuple => Ok($self.build_tuple()),
+            OpCode::BuildSet => $self.build_set(),
+            OpCode::BuildDict => $self.build_dict(),
+            OpCode::BuildRangeExclusive => $self.build_range(true),
+            OpCode::BuildRangeInclusive => $self.build_range(false),
+            OpCode::BuildRational => $self.build_rational(),
             // Import a module by filepath without qualifiers.
             // Expects either the path to the module or the name of
             // a stdlib module as a string as an operand.
             OpCode::Import => {
                 let file_path = $self.read_string("OP_IMPORT_AS");
                 let local_import = $self.read_byte() == 1;
-                if let Some(value) = $self.import_file(file_path, None, None, local_import) {
-                    return value;
-                }
+                $self.import_file(file_path, None, None, local_import)
             }
             // Import a module by filepath with an alias.
             // Name of the module to import is on the stack, alias is the operand.
@@ -456,9 +448,7 @@ macro_rules! run_instruction {
                 let file_path = $self.read_string("OP_IMPORT_AS");
                 let alias = $self.read_string("OP_IMPORT_AS");
                 let local_import = $self.read_byte() == 1;
-                if let Some(value) = $self.import_file(file_path, None, Some(alias), local_import) {
-                    return value;
-                }
+                $self.import_file(file_path, None, Some(alias), local_import)
             }
             // Import a set of names from a module.
             // Number of names to import are the operand.
@@ -478,12 +468,7 @@ macro_rules! run_instruction {
                 } else {
                     None
                 };
-
-                if let Some(value) =
-                    $self.import_file(file_path, names_to_import, None, local_import)
-                {
-                    return value;
-                }
+                $self.import_file(file_path, names_to_import, None, local_import)
             }
             // Register an exception handler.
             // The operand is the offset from the current instruction right before
@@ -498,32 +483,26 @@ macro_rules! run_instruction {
                 let frames_to_keep = $self.callstack.len();
                 let stack_length = $self.stack.len();
                 $self.register_exception_handler(frames_to_keep, target_ip, stack_length);
+                Ok(())
             }
             // Just pop the top most handler. No operand, no work with the stack.
             OpCode::PopHandler => {
-                $self.pop_exception_handler();
+                $self
+                    .pop_exception_handler()
+                    .expect("Exception handler unflow in OP_POP_HANDLER");
+                Ok(())
             }
             // Throw the exception on the top of the stack.
             // We pop the exception, unwind to the handler and push the exception again.
             OpCode::Throw => {
                 let exception = $self.stack.pop().expect("Stack underflow in OP_THROW.");
-                if let Some(value) = $self.unwind(exception) {
-                    return value;
-                }
+                $self.unwind(exception)
             }
             // Layout is Stack Top: [exception_class_to_catch, exception_value_raised]
-            OpCode::CompareException => {
-                if let Some(value) = $self.compare_exception() {
-                    return value;
-                }
-            }
+            OpCode::CompareException => $self.compare_exception(),
             //  We expect either the exception at the stop of the stack that should be reraised
             // or nil if we handled the exception.
-            OpCode::Reraise => {
-                if let Some(value) = $self.reraise_exception() {
-                    return value;
-                }
-            }
-        };
-    };
+            OpCode::Reraise => $self.reraise_exception(),
+        }
+    }};
 }

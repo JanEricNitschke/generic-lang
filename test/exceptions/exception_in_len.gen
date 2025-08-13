@@ -1,0 +1,15 @@
+class Error < Exception {}
+
+class ThrowOnLen {
+    __len__() {
+        throw Error();
+    }
+}
+
+try {
+    len(ThrowOnLen());
+} catch Error {
+    print("Caught");  # expect: Caught
+}
+
+len(ThrowOnLen());  # expect runtime error: Error

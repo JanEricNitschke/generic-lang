@@ -10,5 +10,5 @@
     print(a); # expect: 6
     a *= 2;
     print(a); # expect: 12
-    a *= "Test"; # expect runtime error: Operands must be numbers. Got: [12, Test]
+    a *= "Test"; # expect runtime error: TypeError: Operands must be numbers or support `__mul__`. Got: [12, Test]
 }

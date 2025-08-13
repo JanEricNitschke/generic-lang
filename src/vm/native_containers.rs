@@ -1,9 +1,9 @@
-use super::{InterpretResult, VM};
-use crate::chunk::CodeOffset;
+use super::VM;
 use crate::value::{Dict, List, Set, Tuple};
 use crate::value::{GenericInt, Instance, Number, Range, Value};
+use crate::vm::errors::VmError;
 impl VM {
-    pub fn build_range(&mut self, was_exclusive: bool) -> Option<InterpretResult> {
+    pub fn build_range(&mut self, was_exclusive: bool) -> VmError {
         let end = self.stack.pop().expect("Stack underflow in OP_BUILD_RANGE");
         let start = self.stack.pop().expect("Stack underflow in OP_BUILD_RANGE");
 
@@ -19,13 +19,12 @@ impl VM {
                     Range::new(start, end.add(GenericInt::Small(1), &mut self.heap))
                 }
             } else {
-                runtime_error!(
-                    self,
+                let message = format!(
                     "Invalid operands ({}, {}) for range construction.",
                     start.to_string(&self.heap),
                     end.to_string(&self.heap)
                 );
-                return Some(InterpretResult::RuntimeError);
+                return self.throw_type_error(&message);
             };
 
         let instance = Instance::new(
@@ -34,7 +33,7 @@ impl VM {
         );
         let instance_value = self.heap.add_instance(instance);
         self.stack_push_value(instance_value);
-        None
+        Ok(())
     }
 
     // Build a list. The number of items is the operand.
@@ -84,17 +83,14 @@ impl VM {
     // Build a set. The number of items is the operand.
     // Items are on the stack in order from left to right
     // (... --- item1 --- item2 --- ... --- itemN)
-    pub(crate) fn build_set(&mut self) -> Option<InterpretResult> {
+    pub(crate) fn build_set(&mut self) -> VmError {
         let mut set = Set::default();
 
         let arg_count = self.read_byte();
         for index in (0..arg_count).rev() {
             let value = *self.peek(usize::from(index)).unwrap();
 
-            if let Err(err) = set.add(value, self) {
-                runtime_error!(self, "{}", err);
-                return Some(InterpretResult::RuntimeError);
-            }
+            set.add(value, self)?;
         }
         // Pop all items from stack at once
         self.stack
@@ -106,13 +102,13 @@ impl VM {
         );
         let instance_value = self.heap.add_instance(instance);
         self.stack_push_value(instance_value);
-        None
+        Ok(())
     }
 
     // Build a dict. The number of key-value-pairs is the operand.
     // Items are on the stack in order from left to right
     // (... --- key1 --- value1 --- key2 --- value2 --- ... --- keyN --- valueN)
-    pub(crate) fn build_dict(&mut self) -> Option<InterpretResult> {
+    pub(crate) fn build_dict(&mut self) -> VmError {
         let mut dict = Dict::default();
         // Number of key, value pairs.
         let arg_count = self.read_byte();
@@ -120,10 +116,7 @@ impl VM {
             let key = *self.peek(usize::from(2 * index + 1)).unwrap();
             let value = *self.peek(usize::from(2 * index)).unwrap();
 
-            if let Err(err) = dict.add(key, value, self) {
-                runtime_error!(self, "{}", err);
-                return Some(InterpretResult::RuntimeError);
-            }
+            dict.add(key, value, self)?;
         }
         // Pop all key-value pairs from stack at once
         self.stack
@@ -134,6 +127,6 @@ impl VM {
         );
         let instance_value = self.heap.add_instance(instance);
         self.stack_push_value(instance_value);
-        None
+        Ok(())
     }
 }

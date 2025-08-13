@@ -1,1 +1,1 @@
-print(int(nil)); # expect runtime error: 'int' expected string, number or bool argument, got: nil
+print(int(nil)); # expect runtime error: TypeError: 'int' expected string, number or bool argument, got: nil

@@ -1,2 +1,2 @@
 class Foo {}
-Foo.bar = "value"; # expect runtime error: Tried to set property 'bar' of non-instance `<class Foo>`
+Foo.bar = "value"; # expect runtime error: TypeError: Tried to set property 'bar' of non-instance `<class Foo>`

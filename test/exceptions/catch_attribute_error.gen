@@ -1,0 +1,14 @@
+# Test that undefined property access throws AttributeError instead of ValueError
+class TestClass {}
+
+var obj = TestClass();
+try {
+    obj.nonexistent_property;
+    print("This should not print");
+} catch AttributeError as e {
+    print("Caught AttributeError"); # expect: Caught AttributeError
+    print(e.message()); # expect: Undefined property 'nonexistent_property'.
+} else {
+    print("This should not print");
+}
+print("Done"); # expect: Done

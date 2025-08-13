@@ -2,4 +2,4 @@ from "math" import sqrt;
 
 print(sqrt(9)); # expect: 3.0
 
-sqrt(true); # expect runtime error: 'sqrt' expected numeric argument, got: true
+sqrt(true); # expect runtime error: TypeError: 'sqrt' expected numeric argument, got: true

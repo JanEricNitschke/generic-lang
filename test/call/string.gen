@@ -1,1 +1,1 @@
-"str"(); # expect runtime error: Can only call functions, classes and instances with a `__call__` method.
+"str"(); # expect runtime error: TypeError: Can only call functions, classes and instances with a `__call__` method.

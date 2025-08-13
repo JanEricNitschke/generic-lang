@@ -1,7 +1,10 @@
 use crate::{
     heap::{Heap, StringId},
     value::GenericInt,
-    vm::VM,
+    vm::{
+        VM,
+        errors::{ExceptionRaisedKind, RuntimeErrorKind, VmErrorKind},
+    },
 };
 
 use hashbrown::HashTable;
@@ -9,6 +12,7 @@ use hashbrown::hash_table::Entry;
 
 use super::Value;
 use crate::heap::InstanceId;
+use crate::vm::errors::VmError;
 use derivative::Derivative;
 
 // Values related to natives
@@ -75,8 +79,8 @@ impl std::fmt::Display for NativeMethod {
     }
 }
 
-pub type NativeFunctionImpl = fn(&mut VM, &mut [&mut Value]) -> Result<Value, String>;
-pub type NativeMethodImpl = fn(&mut VM, &mut Value, &mut [&mut Value]) -> Result<Value, String>;
+pub type NativeFunctionImpl = fn(&mut VM, &mut [&mut Value]) -> VmError<Value>;
+pub type NativeMethodImpl = fn(&mut VM, &mut Value, &mut [&mut Value]) -> VmError<Value>;
 pub type ModuleContents = Vec<(&'static str, &'static [u8], NativeFunctionImpl)>;
 
 // Actual Natives
@@ -285,39 +289,66 @@ impl Set {
         )
     }
 
-    pub(crate) fn add(&mut self, item: Value, vm: &mut VM) -> Result<(), String> {
+    pub(crate) fn add(&mut self, item: Value, vm: &mut VM) -> VmError {
         let hash = vm.compute_hash(item)?;
-        if let Entry::Vacant(entry) = self.items.entry(
+        let entry = self.items.entry(
             hash,
-            |(val, _stored_hash)| vm.compare_values(*val, item).unwrap(),
+            |(val, _stored_hash)| vm.compare_values_for_collections(*val, item),
             |(_val, stored_hash)| *stored_hash,
-        ) {
+        );
+
+        if vm.encountered_hard_exception {
+            return Err(VmErrorKind::Runtime(RuntimeErrorKind));
+        }
+        if vm.handling_exception {
+            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
+        }
+
+        if let Entry::Vacant(entry) = entry {
             entry.insert((item, hash));
         }
         Ok(())
     }
 
-    pub(crate) fn remove(&mut self, item: Value, vm: &mut VM) -> Result<bool, String> {
+    pub(crate) fn remove(&mut self, item: Value, vm: &mut VM) -> VmError<bool> {
         let hash = vm.compute_hash(item)?;
-        Ok(self
+        let found = self
             .items
             .find_entry(hash, |(val, _stored_hash)| {
-                vm.compare_values(*val, item).unwrap()
+                vm.compare_values_for_collections(*val, item)
             })
             .is_ok_and(|entry| {
                 entry.remove();
                 true
-            }))
+            });
+
+        if vm.encountered_hard_exception {
+            return Err(VmErrorKind::Runtime(RuntimeErrorKind));
+        }
+        if vm.handling_exception {
+            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
+        }
+
+        Ok(found)
     }
 
-    pub(crate) fn contains(&self, item: Value, vm: &mut VM) -> Result<bool, String> {
+    pub(crate) fn contains(&self, item: Value, vm: &mut VM) -> VmError<bool> {
         let hash = vm.compute_hash(item)?;
-        Ok(self
+        let found = self
             .items
             .find(hash, |(val, _stored_hash)| {
-                vm.compare_values(*val, item).unwrap()
+                vm.compare_values_for_collections(*val, item)
             })
-            .is_some())
+            .is_some();
+
+        if vm.encountered_hard_exception {
+            return Err(VmErrorKind::Runtime(RuntimeErrorKind));
+        }
+        if vm.handling_exception {
+            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
+        }
+
+        Ok(found)
     }
 }
 
@@ -369,13 +400,22 @@ impl Dict {
         )
     }
 
-    pub(crate) fn add(&mut self, key: Value, value: Value, vm: &mut VM) -> Result<(), String> {
+    pub(crate) fn add(&mut self, key: Value, value: Value, vm: &mut VM) -> VmError {
         let hash = vm.compute_hash(key)?;
-        match self.items.entry(
+        let entry = self.items.entry(
             hash,
-            |(k, _v, _stored_hash)| vm.compare_values(*k, key).unwrap(),
+            |(k, _v, _stored_hash)| vm.compare_values_for_collections(*k, key),
             |(_k, _v, stored_hash)| *stored_hash,
-        ) {
+        );
+
+        if vm.encountered_hard_exception {
+            return Err(VmErrorKind::Runtime(RuntimeErrorKind));
+        }
+        if vm.handling_exception {
+            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
+        }
+
+        match entry {
             Entry::Vacant(entry) => {
                 entry.insert((key, value, hash));
             }
@@ -386,24 +426,41 @@ impl Dict {
         Ok(())
     }
 
-    pub(crate) fn get(&self, key: Value, vm: &mut VM) -> Result<Option<&Value>, String> {
+    pub(crate) fn get(&self, key: Value, vm: &mut VM) -> VmError<Option<&Value>> {
         let hash = vm.compute_hash(key)?;
-        Ok(self
+
+        let result = self
             .items
             .find(hash, |(k, _v, _stored_hash)| {
-                vm.compare_values(*k, key).unwrap()
+                vm.compare_values_for_collections(*k, key)
             })
-            .map(|(_k, v, _stored_hash)| v))
+            .map(|(_k, v, _stored_hash)| v);
+
+        if vm.encountered_hard_exception {
+            return Err(VmErrorKind::Runtime(RuntimeErrorKind));
+        }
+        if vm.handling_exception {
+            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
+        }
+
+        Ok(result)
     }
 
-    pub(crate) fn contains(&self, key: Value, vm: &mut VM) -> Result<bool, String> {
+    pub(crate) fn contains(&self, key: Value, vm: &mut VM) -> VmError<bool> {
         let hash = vm.compute_hash(key)?;
-        Ok(self
+        let result = self
             .items
             .find(hash, |(k, _v, _stored_hash)| {
-                vm.compare_values(*k, key).unwrap()
+                vm.compare_values_for_collections(*k, key)
             })
-            .is_some())
+            .is_some();
+        if vm.encountered_hard_exception {
+            return Err(VmErrorKind::Runtime(RuntimeErrorKind));
+        }
+        if vm.handling_exception {
+            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
+        }
+        Ok(result)
     }
 }
 
@@ -622,20 +679,20 @@ impl std::fmt::Display for TupleIterator {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Exception {
-    message: StringId,
+    message: Option<StringId>,
     stack_trace: StringId,
 }
 
 impl Exception {
     #[must_use]
-    pub(crate) fn new(message: StringId, stack_trace: StringId) -> Self {
+    pub(crate) fn new(message: Option<StringId>, stack_trace: StringId) -> Self {
         Self {
             message,
             stack_trace,
         }
     }
 
-    pub(crate) fn message(&self) -> StringId {
+    pub(crate) fn message(&self) -> Option<StringId> {
         self.message
     }
 
@@ -644,7 +701,10 @@ impl Exception {
     }
 
     pub(crate) fn to_string(&self, heap: &Heap) -> String {
-        let mut result = format!("Exception: {}\n", self.message.to_value(heap));
+        let mut result = match self.message {
+            Some(message) => format!("Exception: {}\n", message.to_value(heap)),
+            None => "Exception\n".to_string(),
+        };
         result.push_str(self.stack_trace.to_value(heap));
         result
     }

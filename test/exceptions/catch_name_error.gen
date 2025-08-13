@@ -1,0 +1,11 @@
+# Test that undefined variables throw NameError instead of ValueError
+try {
+    print(undefined_variable);
+    print("This should not print");
+} catch NameError as e {
+    print("Caught NameError"); # expect: Caught NameError
+    print(e.message()); # expect: Undefined variable 'undefined_variable'.
+} else {
+    print("This should not print");
+}
+print("Done"); # expect: Done

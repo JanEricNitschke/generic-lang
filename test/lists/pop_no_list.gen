@@ -1,1 +1,1 @@
-"Test".pop(); # expect runtime error: Only instances have methods.
+"Test".pop(); # expect runtime error: TypeError: Only instances have methods.

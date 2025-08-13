@@ -1,1 +1,1 @@
-sleep(1.2); # expect runtime error: 'sleep' expected positive integer argument, got: `1.2`
+sleep(1.2); # expect runtime error: TypeError: 'sleep' expected positive integer argument, got: `1.2`

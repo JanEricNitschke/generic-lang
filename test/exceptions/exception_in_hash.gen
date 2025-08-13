@@ -1,0 +1,17 @@
+class Error < Exception {}
+
+class ThrowOnHash {
+    __hash__() {
+        throw Error();
+    }
+}
+
+try {
+    Set(ThrowOnHash());
+} catch Error {
+    print("Caught");  # expect: Caught
+} else {
+    print("No Exception");
+}
+
+Set(ThrowOnHash()); # expect runtime error: Error

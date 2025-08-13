@@ -3,4 +3,4 @@ class Animal {}
 var animal = Animal();
 
 # Second argument must be a class
-isinstance(animal, "not a class");  # expect runtime error: 'isinstance' expected class as second argument, got: not a class
+isinstance(animal, "not a class");  # expect runtime error: TypeError: 'isinstance' expected class as second argument, got: not a class

@@ -1,0 +1,19 @@
+# Test that exceptions from __str__ methods can be caught
+class BadString {
+    __str__() {
+        throw ValueError("String conversion failed");
+    }
+}
+
+var obj = BadString();
+
+try {
+    str(obj); # This should throw ValueError
+    print("This should not print");
+} catch ValueError as e {
+    print("Caught __str__ error"); # expect: Caught __str__ error
+    print(e.message()); # expect: String conversion failed
+} else {
+    print("This should not print");
+}
+print("Done"); # expect: Done
