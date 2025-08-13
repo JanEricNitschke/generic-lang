@@ -1,8 +1,13 @@
 # Test that builtins are available in user programs
-var circle_area = PI * square(5);
-print(circle_area); # expect: 78.53981633974483
+var list_values = [true, false, true];
+var all_true = all(list_values);
+print(all_true); # expect: false
 
-var my_max = max(abs(-15), clamp(20, 0, 10));
-print(my_max); # expect: 15
+var any_true = any(list_values);
+print(any_true); # expect: true
+
+var items = ["first", "second"];
+var indexed = enumerate(items);
+print(indexed[0][1]); # expect: first
 
 print("Using version: " + VERSION); # expect: Using version: 1.0.0

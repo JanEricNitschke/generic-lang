@@ -113,14 +113,10 @@ impl VM {
     /// Works by compiling the source to bytecode and then running it.
     /// Even the main script is compiled as a function.
     pub(super) fn interpret(&mut self, source: &[u8]) -> InterpretResult {
-        // Collect builtin source code first
-        let builtins_source = self.get_builtins_source();
+        // Execute builtins first to populate the builtins HashMap
+        self.execute_builtins();
 
-        // Combine builtins with user source
-        let mut combined_source = builtins_source;
-        combined_source.extend_from_slice(source);
-
-        let result = if let Some(function) = self.compile(&combined_source, "<script>") {
+        let result = if let Some(function) = self.compile(source, "<script>") {
             let function_id = self.heap.add_function(function);
 
             let closure = Closure::new(*function_id.as_function(), true, None, &self.heap);

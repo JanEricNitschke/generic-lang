@@ -1,14 +1,14 @@
 # Additional utility functions
 
-fun abs(x) {
-    if (x < 0) {
-        return -x;
+# Enumerate function that returns a list of [index, value] pairs
+fun enumerate(iterable) {
+    var result = [];
+    var index = 0;
+    foreach (var item in iterable) {
+        result.append([index, item]);
+        index = index + 1;
     }
-    return x;
-}
-
-fun clamp(value, min_val, max_val) {
-    return min(max(value, min_val), max_val);
+    return result;
 }
 
 # Global version string

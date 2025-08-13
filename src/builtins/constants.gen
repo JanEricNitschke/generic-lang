@@ -1,18 +1,21 @@
-# Builtin constants and utility functions
+# Builtin utility functions
 
-# Mathematical constants
-var PI = 3.141592653589793;
-var E = 2.718281828459045;
-
-# Utility functions
-fun square(x) {
-    return x * x;
+# Check if all elements in an iterable are truthy
+fun all(iterable) {
+    foreach (var item in iterable) {
+        if (!item) {
+            return false;
+        }
+    }
+    return true;
 }
 
-fun max(a, b) {
-    return a > b ? a : b;
-}
-
-fun min(a, b) {
-    return a < b ? a : b;
+# Check if any element in an iterable is truthy
+fun any(iterable) {
+    foreach (var item in iterable) {
+        if (item) {
+            return true;
+        }
+    }
+    return false;
 }

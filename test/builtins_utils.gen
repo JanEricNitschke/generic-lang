@@ -1,7 +1,7 @@
-# Test additional builtin utilities
-print(abs(-5)); # expect: 5
-print(abs(3)); # expect: 3
-print(clamp(15, 0, 10)); # expect: 10
-print(clamp(-5, 0, 10)); # expect: 0
-print(clamp(5, 0, 10)); # expect: 5
+# Test enumerate function
+var data = ["a", "b", "c"];
+var enumerated = enumerate(data);
+print(enumerated[0]); # expect: [0, a]
+print(enumerated[1]); # expect: [1, b]
+print(enumerated[2]); # expect: [2, c]
 print(VERSION); # expect: 1.0.0

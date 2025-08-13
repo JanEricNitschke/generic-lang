@@ -5,6 +5,8 @@ use crate::{
     value::{
         Class, Closure, Module, NativeFunction, NativeFunctionImpl, NativeMethod, NativeMethodImpl,
     },
+    compiler::Compiler,
+    scanner::Scanner,
 };
 
 use super::{Global, VM};
@@ -157,5 +159,70 @@ impl VM {
         }
 
         combined_source
+    }
+
+    /// Execute builtins source code and capture their globals into the builtins HashMap.
+    ///
+    /// This is called at startup before user code execution to populate the builtins
+    /// that will be available globally in user programs.
+    pub(super) fn execute_builtins(&mut self) {
+        let builtins_source = self.get_builtins_source();
+        
+        if builtins_source.is_empty() {
+            return;
+        }
+
+        // Compile the builtins source
+        let scanner = Scanner::new(&builtins_source);
+        let compiler = Compiler::new(scanner, &mut self.heap, "<builtins>");
+        if let Some(function) = compiler.compile() {
+            let function_id = self.heap.add_function(function);
+            let closure = Closure::new(*function_id.as_function(), true, None, &self.heap);
+            
+            // Create a temporary module for builtins execution
+            let builtin_module_name = self.heap.string_id(&"<builtins>");
+            let module_id = self.heap.add_module(Module::new(
+                builtin_module_name,
+                PathBuf::from("<builtins>"),
+                None,
+                builtin_module_name,
+                false,
+            ));
+            
+            // Save current modules state
+            let original_modules = self.modules.clone();
+            let original_stack_len = self.stack.len();
+            
+            // Set up for builtins execution
+            self.modules.clear();
+            self.modules.push(*module_id.as_module());
+            
+            let value_id = self.heap.add_closure(closure);
+            self.stack_push_value(value_id);
+            self.execute_call(value_id, 0);
+            
+            // Execute the builtins
+            if let crate::vm::InterpretResult::Ok = self.run_function() {
+                // Capture globals from the builtins module
+                let builtin_globals = self.modules
+                    .last()
+                    .unwrap()
+                    .to_value(&self.heap)
+                    .globals
+                    .clone();
+                
+                // Move all globals (except __name__) to the builtins HashMap
+                let script_name = self.heap.builtin_constants().script_name;
+                for (name, global) in builtin_globals {
+                    if name != script_name {
+                        self.builtins.insert(name, global);
+                    }
+                }
+            }
+            
+            // Restore original state
+            self.modules = original_modules;
+            self.stack.truncate(original_stack_len);
+        }
     }
 }
