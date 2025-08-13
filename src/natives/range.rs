@@ -84,3 +84,42 @@ pub(super) fn range_bool_native(
     let is_non_empty = !my_range.is_empty(&vm.heap);
     Ok(is_non_empty.into())
 }
+
+/// Constructor for Range that accepts exactly 2 arguments.
+/// `Range(start, end)` creates a range from start to end (exclusive).
+pub(super) fn range_init_native(
+    vm: &mut VM,
+    receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err(format!(
+            "Range constructor expects exactly 2 arguments, got {}",
+            args.len()
+        ));
+    }
+
+    let start = match &args[0] {
+        Value::Number(Number::Integer(n)) => *n,
+        x => {
+            return Err(format!(
+                "Range start must be an integer, got `{}`.",
+                x.to_string(&vm.heap)
+            ));
+        }
+    };
+
+    let end = match &args[1] {
+        Value::Number(Number::Integer(n)) => *n,
+        x => {
+            return Err(format!(
+                "Range end must be an integer, got `{}`.",
+                x.to_string(&vm.heap)
+            ));
+        }
+    };
+
+    let range = receiver.as_range_mut(&mut vm.heap);
+    *range = crate::value::Range::new(start, end);
+    Ok(Value::Nil)
+}

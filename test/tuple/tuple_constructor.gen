@@ -1,0 +1,16 @@
+var empty_tuple = Tuple();
+print(empty_tuple); # expect: ()
+
+var tuple_with_args = Tuple(1, 2, 3);
+print(tuple_with_args); # expect: (1, 2, 3)
+
+var single_tuple = Tuple(42);
+print(single_tuple); # expect: (42,)
+
+var mixed_tuple = Tuple("hello", 42, nil, true);
+print(mixed_tuple); # expect: (hello, 42, nil, true)
+
+# Test that the constructed tuple behaves like a normal tuple
+var constructed_tuple = Tuple(1, 2, 3);
+print(constructed_tuple.__len__()); # expect: 3
+print(constructed_tuple[1]); # expect: 2

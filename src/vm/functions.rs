@@ -10,6 +10,29 @@ use crate::{
 use super::{Global, InterpretResult, VM};
 use crate::vm::arithmetics::{BinaryOpResult, IntoResultValue};
 
+// Helper function to check if arg_count is valid for an arity spec
+// The arity array can contain:
+// - Specific values (e.g., [1, 2] means exactly 1 or 2 args)
+// - Variable args marker: if array ends with 255, it means "N or more"
+//   where N is the previous value (e.g., [0, 255] means 0 or more)
+fn check_arity(arity: &[u8], arg_count: u8) -> bool {
+    if arity.is_empty() {
+        return false;
+    }
+
+    if arity.contains(&arg_count) {
+        return true;
+    }
+
+    // Check for variable arity marker (255)
+    if arity.len() >= 2 && arity[arity.len() - 1] == 255 {
+        let min_args = arity[arity.len() - 2];
+        return arg_count >= min_args;
+    }
+
+    false
+}
+
 // Execute a function (rust side)
 impl VM {
     /// Execute and immediately run a function.
@@ -282,8 +305,18 @@ impl VM {
     fn execute_native_function_call(&mut self, f: NativeFunctionId, arg_count: u8) -> bool {
         let f = f.to_value(&self.heap);
         let arity = f.arity;
-        if !arity.contains(&arg_count) {
-            if arity.len() == 1 {
+        if !check_arity(arity, arg_count) {
+            // Check if this has variable arity
+            if arity.len() >= 2 && arity[arity.len() - 1] == 255 {
+                let min_args = arity[arity.len() - 2];
+                runtime_error!(
+                    self,
+                    "Native function '{}' expected {} or more arguments, got {}.",
+                    f.name.to_value(&self.heap),
+                    min_args,
+                    arg_count
+                );
+            } else if arity.len() == 1 {
                 runtime_error!(
                     self,
                     "Native function '{}' expected {} argument{}, got {}.",
@@ -335,8 +368,19 @@ impl VM {
     ) -> bool {
         let f = f.to_value(&self.heap);
         let arity = f.arity;
-        if !arity.contains(&arg_count) {
-            if arity.len() == 1 {
+        if !check_arity(arity, arg_count) {
+            // Check if this has variable arity
+            if arity.len() >= 2 && arity[arity.len() - 1] == 255 {
+                let min_args = arity[arity.len() - 2];
+                runtime_error!(
+                    self,
+                    "Native method '{}' of class {} expected {} or more arguments, got {}.",
+                    f.name.to_value(&self.heap),
+                    *receiver.class_name(&self.heap).to_value(&self.heap),
+                    min_args,
+                    arg_count
+                );
+            } else if arity.len() == 1 {
                 runtime_error!(
                     self,
                     "Native method '{}' of class {} expected {} argument{}, got {}.",
@@ -359,15 +403,24 @@ impl VM {
             return false;
         }
         let fun = f.fun;
+        let is_init_method = f.name == self.heap.builtin_constants().init_string;
         let start_index = self.stack.len() - usize::from(arg_count);
         let mut args: Vec<Value> = self.stack[start_index..].to_vec();
         let mut ref_args: Vec<&mut Value> = args.iter_mut().collect();
         let result = fun(self, receiver, ref_args.as_mut_slice());
         match result {
             Ok(value) => {
-                self.stack
-                    .truncate(self.stack.len() - usize::from(arg_count) - 1);
-                self.stack_push(value);
+                // Special handling for __init__ methods: if they return nil, keep the receiver on the stack
+                if is_init_method && value == Value::Nil {
+                    // For __init__ methods returning nil, just remove the arguments and keep the receiver
+                    self.stack
+                        .truncate(self.stack.len() - usize::from(arg_count));
+                } else {
+                    // Normal method: remove arguments and receiver, push return value
+                    self.stack
+                        .truncate(self.stack.len() - usize::from(arg_count) - 1);
+                    self.stack_push(value);
+                }
                 true
             }
             Err(e) => {

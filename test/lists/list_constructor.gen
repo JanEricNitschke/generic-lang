@@ -1,0 +1,14 @@
+var empty_list = List();
+print(empty_list); # expect: []
+
+var list_with_args = List(1, 2, 3);
+print(list_with_args); # expect: [1, 2, 3]
+
+var mixed_list = List("hello", 42, nil, true);
+print(mixed_list); # expect: [hello, 42, nil, true]
+
+# Test that the constructed list behaves like a normal list
+var constructed_list = List(1, 2, 3);
+print(constructed_list.__len__()); # expect: 3
+constructed_list.append(4);
+print(constructed_list); # expect: [1, 2, 3, 4]
