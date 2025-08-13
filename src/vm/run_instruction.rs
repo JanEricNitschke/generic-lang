@@ -10,6 +10,7 @@ macro_rules! run_instruction {
     ($self:ident) => {
         #[cfg(feature = "trace_execution")]
         {
+            $self.handling_exception = false;
             let function = &$self.callstack.function();
             let mut disassembler =
                 InstructionDisassembler::new(&function.to_value(&$self.heap).chunk, &$self.heap);
