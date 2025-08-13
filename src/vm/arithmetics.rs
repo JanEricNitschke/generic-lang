@@ -192,7 +192,16 @@ impl VM {
         {
             // Value needs to be on top of the stack to invoke this check.
             self.stack_push_value(value);
-            self.invoke_and_run_function(bool_id, 0, matches!(bool_method, Value::NativeMethod(_)));
+            let result = self.invoke_and_run_function(
+                bool_id,
+                0,
+                matches!(bool_method, Value::NativeMethod(_)),
+            );
+            if result != InterpretResult::Ok {
+                // If there's an exception in __bool__, treat it as falsey for now
+                // This is debatable - we could also propagate the exception
+                return true;
+            }
             let result = self.stack.pop().expect("Stack underflow in IS_FALSEY");
             result == Value::Bool(false)
         } else {

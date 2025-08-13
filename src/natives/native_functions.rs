@@ -3,7 +3,7 @@
 use crate::value::GenericInt;
 use crate::{
     value::{Number, Value},
-    vm::VM,
+    vm::{InterpretResult, VM},
 };
 use rand::Rng;
 use std::io;
@@ -170,8 +170,12 @@ pub(super) fn to_string_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<V
             .to_value(&vm.heap)
             .get_field_or_method(str_id, &vm.heap)
     {
-        vm.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)));
-        let returned_value = vm.stack.pop().expect("Stack underflow in print_native");
+        let result =
+            vm.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)));
+        if result != InterpretResult::Ok {
+            return Err("Exception in __str__ method".to_string());
+        }
+        let returned_value = vm.stack.pop().expect("Stack underflow in to_string_native");
         Ok(returned_value)
     } else {
         Ok(Value::String(vm.heap.string_id(&value.to_string(&vm.heap))))
@@ -238,7 +242,11 @@ pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
             .to_value(&vm.heap)
             .get_field_or_method(str_id, &vm.heap)
     {
-        vm.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)));
+        let result =
+            vm.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)));
+        if result != InterpretResult::Ok {
+            return Err("Exception in __str__ method".to_string());
+        }
         let returned_value = vm.stack.pop().expect("Stack underflow in print_native");
         print!("{}{end}", returned_value.to_string(&vm.heap));
     } else {
@@ -377,11 +385,14 @@ pub(super) fn len_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, 
             .to_value(&vm.heap)
             .get_field_or_method(len_method_id, &vm.heap)
     {
-        vm.invoke_and_run_function(
+        let result = vm.invoke_and_run_function(
             len_method_id,
             0,
             matches!(len_method, Value::NativeMethod(_)),
         );
+        if result != InterpretResult::Ok {
+            return Err("Exception in __len__ method".to_string());
+        }
         let result = vm.stack.pop().expect("Stack underflow in len_native");
         return Ok(result);
     }

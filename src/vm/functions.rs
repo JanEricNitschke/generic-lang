@@ -43,7 +43,17 @@ impl VM {
         while self.callstack.len() >= call_depth {
             run_instruction!(self);
         }
-        InterpretResult::Ok
+
+        // When we exit the loop, the call stack should normally be exactly
+        // call_depth - 1 (due to the function return). If it's less than that,
+        // it suggests an exception unwound multiple frames.
+        // However, this heuristic might not be perfect for all cases.
+        if self.callstack.len() < call_depth - 1 {
+            // Stack was unwound more than expected - likely an exception
+            InterpretResult::RuntimeError
+        } else {
+            InterpretResult::Ok
+        }
     }
 }
 
