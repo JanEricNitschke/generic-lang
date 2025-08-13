@@ -371,22 +371,17 @@ macro_rules! run_instruction {
             OpCode::Inherit => {
                 let superclass_id = $self.peek(1).expect("Stack underflow in OP_INHERIT");
                 let superclass = if let Value::Class(superclass) = &superclass_id {
-                    if superclass.to_value(&$self.heap).is_native {
-                        runtime_error!($self, "Can not inherit from native classes yet.");
-                        return InterpretResult::RuntimeError;
-                    }
-                    superclass
+                    *superclass
                 } else {
                     runtime_error!($self, "Superclass must be a class.");
                     return InterpretResult::RuntimeError;
                 };
                 let methods = superclass.to_value(&$self.heap).methods.clone();
-                let mut subclass = $self.stack.pop().expect("Stack underflow in OP_INHERIT");
-                subclass
-                    .as_class_mut()
-                    .to_value_mut(&mut $self.heap)
-                    .methods
-                    .extend(methods);
+                let subclass = $self.stack.pop().expect("Stack underflow in OP_INHERIT");
+                let subclass_id = *subclass.as_class();
+                let subclass_mut = subclass_id.to_value_mut(&mut $self.heap);
+                subclass_mut.methods.extend(methods);
+                subclass_mut.superclass = Some(superclass);
             }
             // Grab and bind a method from the superclass
             // Operand is the name of the method to get and the stack has the superclass
