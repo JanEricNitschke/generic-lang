@@ -10,33 +10,10 @@ use crate::{
 use super::{Global, InterpretResult, VM};
 use crate::vm::arithmetics::{BinaryOpResult, IntoResultValue};
 
-/// Marker value for variable arity in arity specifications.
-/// This value indicates "N or more arguments" when it appears as the last element
-/// in an arity array, where N is the preceding value.
-/// Example: [0, VARIADIC_ARITY_MARKER] means "0 or more arguments"
-const VARIADIC_ARITY_MARKER: u8 = u8::MAX;
-
 // Helper function to check if arg_count is valid for an arity spec
-// The arity array can contain:
-// - Specific values (e.g., [1, 2] means exactly 1 or 2 args)
-// - Variable args marker: if array ends with VARIADIC_ARITY_MARKER, it means "N or more"
-//   where N is the previous value (e.g., [0, VARIADIC_ARITY_MARKER] means 0 or more)
+// The arity array contains all valid argument counts
 fn check_arity(arity: &[u8], arg_count: u8) -> bool {
-    if arity.is_empty() {
-        return false;
-    }
-
-    if arity.contains(&arg_count) {
-        return true;
-    }
-
-    // Check for variable arity marker
-    if arity.len() >= 2 && arity[arity.len() - 1] == VARIADIC_ARITY_MARKER {
-        let min_args = arity[arity.len() - 2];
-        return arg_count >= min_args;
-    }
-
-    false
+    !arity.is_empty() && arity.contains(&arg_count)
 }
 
 // Execute a function (rust side)
@@ -312,17 +289,7 @@ impl VM {
         let f = f.to_value(&self.heap);
         let arity = f.arity;
         if !check_arity(arity, arg_count) {
-            // Check if this has variable arity
-            if arity.len() >= 2 && arity[arity.len() - 1] == VARIADIC_ARITY_MARKER {
-                let min_args = arity[arity.len() - 2];
-                runtime_error!(
-                    self,
-                    "Native function '{}' expected {} or more arguments, got {}.",
-                    f.name.to_value(&self.heap),
-                    min_args,
-                    arg_count
-                );
-            } else if arity.len() == 1 {
+            if arity.len() == 1 {
                 runtime_error!(
                     self,
                     "Native function '{}' expected {} argument{}, got {}.",
@@ -380,18 +347,7 @@ impl VM {
         let f = f.to_value(&self.heap);
         let arity = f.arity;
         if !check_arity(arity, arg_count) {
-            // Check if this has variable arity
-            if arity.len() >= 2 && arity[arity.len() - 1] == VARIADIC_ARITY_MARKER {
-                let min_args = arity[arity.len() - 2];
-                runtime_error!(
-                    self,
-                    "Native method '{}' of class {} expected {} or more arguments, got {}.",
-                    f.name.to_value(&self.heap),
-                    *receiver.class_name(&self.heap).to_value(&self.heap),
-                    min_args,
-                    arg_count
-                );
-            } else if arity.len() == 1 {
+            if arity.len() == 1 {
                 runtime_error!(
                     self,
                     "Native method '{}' of class {} expected {} argument{}, got {}.",

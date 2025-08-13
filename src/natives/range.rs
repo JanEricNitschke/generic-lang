@@ -92,13 +92,6 @@ pub(super) fn range_init_native(
     receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    if args.len() != 2 {
-        return Err(format!(
-            "Range constructor expects exactly 2 arguments, got {}",
-            args.len()
-        ));
-    }
-
     let start = match &args[0] {
         Value::Number(Number::Integer(n)) => *n,
         x => {
