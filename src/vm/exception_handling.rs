@@ -32,6 +32,7 @@ impl VM {
     }
 
     pub(super) fn unwind(&mut self, exception: Value) -> Option<InterpretResult> {
+        self.handling_exception = true;
         if !matches!(exception, Value::Instance(_)) {
             runtime_error!(
                 self,

@@ -89,6 +89,7 @@ pub struct VM {
     path: PathBuf,
     builtins: HashMap<StringId, Global>,
     stdlib: HashMap<StringId, ModuleContents>,
+    handling_exception: bool,
 }
 
 // Core functionality for running a script.
@@ -105,6 +106,7 @@ impl VM {
             path,
             builtins: HashMap::default(),
             stdlib: HashMap::default(),
+            handling_exception: false,
         }
     }
 
