@@ -108,6 +108,24 @@ impl VM {
         }
     }
 
+    /// Capture the current stack trace as a vector of strings.
+    pub(super) fn capture_stack_trace(&self) -> Vec<String> {
+        let mut stack_trace = Vec::new();
+        for frame in self.callstack.iter().rev() {
+            let function = frame.closure(&self.heap).function.to_value(&self.heap);
+            let line = function
+                .chunk
+                .get_line(crate::chunk::CodeOffset(frame.ip.saturating_sub(1)));
+            let trace_line = format!(
+                "  [line {}] in {}",
+                *line,
+                function.name.to_value(&self.heap)
+            );
+            stack_trace.push(trace_line);
+        }
+        stack_trace
+    }
+
     /// Main interpret step for an input of bytes.
     ///
     /// Works by compiling the source to bytecode and then running it.

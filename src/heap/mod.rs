@@ -591,6 +591,9 @@ impl Heap {
                         self.big_ints.gray.push(offset);
                     }
                 }
+                NativeClass::Exception(_) => {
+                    // Exception only contains String data, no heap references to traverse
+                }
             }
         }
         #[cfg(feature = "log_gc")]
