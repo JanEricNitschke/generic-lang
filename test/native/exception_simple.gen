@@ -1,0 +1,6 @@
+# Simple exception creation
+var exc = Exception("Something went wrong");
+print(exc);
+# expect: Exception: Something went wrong
+# expect: Stacktrace (most recent call last):
+# expect:   [line 2] in <script>
