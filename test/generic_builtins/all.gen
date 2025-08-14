@@ -1,0 +1,3 @@
+print(all([true, true, true])); # expect: true
+print(all([true, false, true])); # expect: false
+print(all([])); # expect: true

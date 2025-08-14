@@ -1,0 +1,2 @@
+print(enumerate(["a", "b", "c"])); # expect: [(0, a), (1, b), (2, c)]
+print(enumerate([])); # expect: []
