@@ -174,16 +174,25 @@ impl VM {
             Value::Closure(_) => self.execute_call(callee, arg_count),
             Value::NativeFunction(f) => self.execute_native_function_call(f, arg_count),
             Value::Class(class) => {
-                let is_native = class.to_value(&self.heap).is_native;
-                let maybe_initializer = class
-                    .to_value(&self.heap)
+                let class_data = class.to_value(&self.heap);
+                let is_native = class_data.is_native;
+                let needs_native_backing = class_data.needs_native_backing(&self.heap);
+                let maybe_initializer = class_data
                     .methods
                     .get(&self.heap.builtin_constants().init_string)
                     .copied();
-                let backing = if is_native {
-                    Some(NativeClass::new(
-                        class.to_value(&self.heap).name.to_value(&self.heap),
-                    ))
+                let backing = if needs_native_backing {
+                    // Get the native class in the inheritance chain (could be self if native)
+                    if let Some(native_superclass_id) =
+                        class_data.get_native_superclass(&self.heap, class)
+                    {
+                        let native_superclass = native_superclass_id.to_value(&self.heap);
+                        Some(NativeClass::new(
+                            native_superclass.name.to_value(&self.heap),
+                        ))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 };

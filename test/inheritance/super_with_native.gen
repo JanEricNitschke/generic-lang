@@ -1,0 +1,11 @@
+# Test super calls with native class inheritance
+class SuperList < List {
+  append(item) {
+    print("Enhanced append");
+    super.append(item);
+  }
+}
+
+var sl = SuperList();
+sl.append(42); # expect: Enhanced append
+print(len(sl)); # expect: 1

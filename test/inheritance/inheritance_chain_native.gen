@@ -1,0 +1,19 @@
+# Test inheritance chain: Child < Parent < Native
+class EnhancedList < List {
+  enhanced_method() {
+    print("enhanced");
+  }
+}
+
+class SpecialList < EnhancedList {
+  special_method() {
+    print("special");
+  }
+}
+
+var sl = SpecialList();
+sl.append(1);
+sl.append(2);
+print(len(sl)); # expect: 2
+sl.enhanced_method(); # expect: enhanced
+sl.special_method(); # expect: special

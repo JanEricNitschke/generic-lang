@@ -13,4 +13,13 @@ class B < A {}
 var b = B("value");
 b.test(); # expect: value
 
-class D < List {} # expect runtime error: Can not inherit from native classes yet.
+class D < List {
+  custom_method() {
+    print("working with inherited list");
+  }
+}
+
+var d = D();
+d.append(42);
+print(len(d)); # expect: 1
+d.custom_method(); # expect: working with inherited list
