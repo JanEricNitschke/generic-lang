@@ -41,6 +41,7 @@ use crate::{
     stdlib,
     value::{Class, Closure, Function, ModuleContents, Number, Upvalue, Value},
 };
+use std::fmt::Write;
 
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -106,6 +107,33 @@ impl VM {
             builtins: HashMap::default(),
             stdlib: HashMap::default(),
         }
+    }
+
+    /// Capture the current stack trace directly as a string.
+    pub(super) fn capture_stack_trace(&self) -> String {
+        let mut out = String::with_capacity(64 + self.callstack.len() * 40);
+
+        out.push_str("Stacktrace (most recent call last):");
+
+        for frame in self.callstack.iter() {
+            let line = frame
+                .closure(&self.heap)
+                .function
+                .to_value(&self.heap)
+                .chunk
+                .get_line(CodeOffset(frame.ip.saturating_sub(1)));
+
+            let name = frame
+                .closure(&self.heap)
+                .function
+                .to_value(&self.heap)
+                .name
+                .to_value(&self.heap);
+
+            write!(out, "\n  [line {}] in {}", *line, name).unwrap();
+        }
+
+        out
     }
 
     /// Main interpret step for an input of bytes.

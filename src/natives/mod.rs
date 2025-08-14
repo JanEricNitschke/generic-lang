@@ -3,6 +3,7 @@
 #![allow(clippy::unnecessary_wraps)]
 
 mod dict;
+mod exception;
 mod list;
 mod native_functions;
 mod range;
@@ -32,6 +33,8 @@ use crate::natives::tuple::{
 };
 
 use crate::natives::dict::{dict_get_native, dict_len_native, dict_set_native};
+
+use crate::natives::exception::{exception_init_native, exception_message_native};
 
 use crate::natives::native_functions::{
     assert_native, clock_native, delattr_native, getattr_native, hasattr_native, input_native,
@@ -128,4 +131,8 @@ pub fn define(vm: &mut VM) {
 
     vm.define_native_class(&"RangeIterator", false);
     vm.define_native_method(&"RangeIterator", &"__next__", &[0], range_iter_next_native);
+
+    vm.define_native_class(&"Exception", true);
+    vm.define_native_method(&"Exception", &"__init__", &[1], exception_init_native);
+    vm.define_native_method(&"Exception", &"message", &[0], exception_message_native);
 }
