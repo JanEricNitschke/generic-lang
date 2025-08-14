@@ -89,12 +89,18 @@ pub struct VM {
     path: PathBuf,
     builtins: HashMap<StringId, Global>,
     stdlib: HashMap<StringId, ModuleContents>,
+    load_builtins: bool,
 }
 
 // Core functionality for running a script.
 impl VM {
     #[must_use]
     pub(super) fn new(path: PathBuf) -> Self {
+        Self::new_with_builtins(path, true)
+    }
+
+    #[must_use]
+    fn new_with_builtins(path: PathBuf, load_builtins: bool) -> Self {
         Self {
             heap: Heap::new(),
             stack: Vec::with_capacity(crate::config::STACK_MAX),
@@ -105,6 +111,7 @@ impl VM {
             path,
             builtins: HashMap::default(),
             stdlib: HashMap::default(),
+            load_builtins,
         }
     }
 
@@ -113,6 +120,20 @@ impl VM {
     /// Works by compiling the source to bytecode and then running it.
     /// Even the main script is compiled as a function.
     pub(super) fn interpret(&mut self, source: &[u8]) -> InterpretResult {
+        // Load native functions and classes first
+        natives::define(self);
+
+        // Load generic builtins from .gen files after natives but before main script setup
+        if self.load_builtins {
+            let builtin_result = self.load_generic_builtins_simple();
+            if builtin_result != InterpretResult::Ok {
+                return builtin_result;
+            }
+        }
+
+        // Register stdlib modules
+        stdlib::register(self);
+
         let result = if let Some(function) = self.compile(source, "<script>") {
             let function_id = self.heap.add_function(function);
 
@@ -123,12 +144,6 @@ impl VM {
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
             self.execute_call(value_id, 0);
-
-            // Need to have the first module loaded before defining natives
-            // Probably not actually needed in that order anymore as they are
-            // now defined in the builtins.
-            natives::define(self);
-            stdlib::register(self);
 
             self.run()
         } else {
@@ -145,6 +160,88 @@ impl VM {
         let scanner = Scanner::new(source);
         let compiler = Compiler::new(scanner, &mut self.heap, name);
         compiler.compile()
+    }
+
+    /// Load and execute generic builtin files from the `/builtins` directory.
+    ///
+    /// Each builtin file is compiled and executed to completion. Then its globals
+    /// (excluding `__name__`) are copied to the VM builtins and the module is
+    /// popped from the modules stack.
+    fn load_generic_builtins_simple(&mut self) -> InterpretResult {
+        let builtins_dir = std::path::Path::new("builtins");
+        if !builtins_dir.exists() || !builtins_dir.is_dir() {
+            return InterpretResult::Ok; // No builtins directory, continue normally
+        }
+
+        let entries = match std::fs::read_dir(builtins_dir) {
+            Ok(entries) => entries,
+            Err(_) => return InterpretResult::Ok, // Can't read directory, continue normally
+        };
+
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(_) => continue, // Skip invalid entries
+            };
+
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("gen") {
+                match self.load_builtin_file_simple(&path) {
+                    InterpretResult::Ok => continue,
+                    error => return error,
+                }
+            }
+        }
+
+        InterpretResult::Ok
+    }
+
+    /// Load and execute a single builtin file in the current VM.
+    fn load_builtin_file_simple(&mut self, path: &std::path::Path) -> InterpretResult {
+        let source = match std::fs::read(path) {
+            Ok(source) => source,
+            Err(_) => return InterpretResult::CompileError, // Could not read file
+        };
+
+        let name = format!("<builtin:{}>", path.file_name().unwrap().to_string_lossy());
+
+        // Compile the builtin source
+        let function = match self.compile(&source, &name) {
+            Some(function) => function,
+            None => return InterpretResult::CompileError,
+        };
+
+        // Create and execute the builtin in a temporary module context
+        let function_id = self.heap.add_function(function);
+        let closure = Closure::new(*function_id.as_function(), true, None, &self.heap);
+
+        let builtin_path = PathBuf::from(&name);
+        self.add_closure_to_modules(&closure, builtin_path, None, None, false);
+
+        let value_id = self.heap.add_closure(closure);
+        self.stack_push(value_id);
+        self.execute_call(value_id, 0);
+
+        // Execute the builtin to completion
+        let result = self.run();
+
+        // Copy globals from the completed module to builtins (excluding __name__)
+        if result == InterpretResult::Ok {
+            let script_name_id = self.heap.builtin_constants().script_name;
+            let module_globals = self.globals().clone();
+
+            for (name_id, global) in module_globals {
+                if name_id != script_name_id {
+                    // Exclude __name__
+                    self.builtins.insert(name_id, global);
+                }
+            }
+        }
+
+        // Clean up the builtin module
+        self.modules.pop();
+
+        result
     }
 
     /// Infinite loop over the bytecode.
