@@ -1,4 +1,4 @@
-use super::InterpretResult;
+use super::{InterpretResult, VmError, VmResult};
 use crate::chunk::CodeOffset;
 use crate::value::Value;
 use crate::vm::VM;
@@ -31,32 +31,68 @@ impl VM {
         self.exception_handlers.pop()
     }
 
-    pub(super) fn unwind(&mut self, exception: Value) -> Option<InterpretResult> {
+    pub(super) fn unwind(&mut self, exception: Value) -> VmResult {
         if !matches!(exception, Value::Instance(_)) {
             runtime_error!(
                 self,
                 "Can only throw instances, got: {}",
                 exception.to_string(&self.heap)
             );
-            return Some(InterpretResult::RuntimeError);
+            return Err(VmError::Hard);
         }
         if let Some(handler) = self.pop_exception_handler() {
             self.callstack.truncate(handler.frames_to_keep, &self.heap);
             self.callstack.current_mut().ip = handler.ip;
             self.stack.truncate(handler.stack_length);
             self.stack.push(exception);
-            None
+            Ok(())
         } else {
-            // Keep the exception on the stack for later handling
+            // Keep the exception on the stack for differentiation
             self.stack.push(exception);
-            Some(InterpretResult::UnhandledException)
+            Err(VmError::Exception)
         }
     }
 
-    pub(super) fn reraise_exception(&mut self) -> Option<InterpretResult> {
+    /// Legacy wrapper for unwind that returns Option<InterpretResult>
+    pub(super) fn unwind_legacy(&mut self, exception: Value) -> Option<InterpretResult> {
+        match self.unwind(exception) {
+            Ok(()) => None,
+            Err(VmError::Hard) => Some(InterpretResult::RuntimeError),
+            Err(VmError::Exception) => {
+                // For legacy compatibility, print the error and return RuntimeError
+                let exception = self.stack.last().expect("Exception should be on stack");
+                runtime_error!(
+                    self,
+                    "Uncaught exception: {}",
+                    exception.to_string(&self.heap)
+                );
+                Some(InterpretResult::RuntimeError)
+            }
+        }
+    }
+
+    pub(super) fn reraise_exception(&mut self) -> VmResult {
         match self.stack.pop().expect("Stack underflow in OP_RERAISE") {
-            Value::Nil => None,
+            Value::Nil => Ok(()),
             exception => self.unwind(exception),
+        }
+    }
+
+    /// Legacy wrapper for reraise_exception that returns Option<InterpretResult>
+    pub(super) fn reraise_exception_legacy(&mut self) -> Option<InterpretResult> {
+        match self.reraise_exception() {
+            Ok(()) => None,
+            Err(VmError::Hard) => Some(InterpretResult::RuntimeError),
+            Err(VmError::Exception) => {
+                // For legacy compatibility, print the error and return RuntimeError
+                let exception = self.stack.last().expect("Exception should be on stack");
+                runtime_error!(
+                    self,
+                    "Uncaught exception: {}",
+                    exception.to_string(&self.heap)
+                );
+                Some(InterpretResult::RuntimeError)
+            }
         }
     }
 

@@ -80,7 +80,6 @@ pub fn run_file(file: PathBuf) {
             match vm.interpret(&contents) {
                 InterpretResult::CompileError => std::process::exit(65),
                 InterpretResult::RuntimeError => std::process::exit(70),
-                InterpretResult::UnhandledException => std::process::exit(70), // Same as RuntimeError
                 InterpretResult::Ok => {}
             }
         }

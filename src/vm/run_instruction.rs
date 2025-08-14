@@ -509,7 +509,7 @@ macro_rules! run_instruction {
             // We pop the exception, unwind to the handler and push the exception again.
             OpCode::Throw => {
                 let exception = $self.stack.pop().expect("Stack underflow in OP_THROW.");
-                if let Some(value) = $self.unwind(exception) {
+                if let Some(value) = $self.unwind_legacy(exception) {
                     return value;
                 }
             }
@@ -522,7 +522,7 @@ macro_rules! run_instruction {
             //  We expect either the exception at the stop of the stack that should be reraised
             // or nil if we handled the exception.
             OpCode::Reraise => {
-                if let Some(value) = $self.reraise_exception() {
+                if let Some(value) = $self.reraise_exception_legacy() {
                     return value;
                 }
             }

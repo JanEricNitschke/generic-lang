@@ -22,6 +22,9 @@ mod native_containers;
 mod state;
 mod variables;
 
+#[cfg(test)]
+mod tests;
+
 use arithmetics::{BinaryOpResult, IntoResultValue};
 use callstack::CallStack;
 use exception_handling::ExceptionHandler;
@@ -48,8 +51,19 @@ pub enum InterpretResult {
     Ok,
     CompileError,
     RuntimeError,
-    UnhandledException,
 }
+
+/// Error types for VM execution with Result-based error handling
+#[derive(Debug, PartialEq, Eq)]
+pub enum VmError {
+    /// Hard runtime error (e.g., compilation failure, type error)
+    Hard,
+    /// Unhandled exception (thrown but not caught)
+    Exception,
+}
+
+/// Result type for VM operations that enables ? operator usage
+pub type VmResult<T = ()> = Result<T, VmError>;
 
 /// Wrapper around a global value to store whether it is mutable or not.
 #[derive(Debug, Clone, Copy)] // , PartialEq, Eq, PartialOrd
@@ -131,19 +145,7 @@ impl VM {
             natives::define(self);
             stdlib::register(self);
 
-            let result = self.run();
-            // Convert UnhandledException to RuntimeError for main interpreter
-            if result == InterpretResult::UnhandledException {
-                let exception = self.stack.last().expect("Exception should be on stack");
-                runtime_error!(
-                    self,
-                    "Uncaught exception: {}",
-                    exception.to_string(&self.heap)
-                );
-                InterpretResult::RuntimeError
-            } else {
-                result
-            }
+            self.run()
         } else {
             InterpretResult::CompileError
         };

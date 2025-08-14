@@ -7,7 +7,7 @@ use crate::{
     value::{Class, Closure, Instance, Number, Upvalue, Value},
 };
 
-use super::{Global, InterpretResult, VM};
+use super::{Global, InterpretResult, VmError, VmResult, VM};
 use crate::vm::arithmetics::{BinaryOpResult, IntoResultValue};
 
 // Execute a function (rust side)
@@ -25,17 +25,12 @@ impl VM {
         arg_count: u8,
         method_is_native: bool,
     ) -> InterpretResult {
-        if !self.invoke(method_name, arg_count) {
-            return InterpretResult::RuntimeError;
-        }
-
-        if method_is_native {
-            InterpretResult::Ok
-        } else {
-            // Now we can properly differentiate between exceptions and hard errors
-            let result = self.run_function();
-            if result == InterpretResult::UnhandledException {
-                // Print uncaught exception as runtime error for invoke_and_run_function
+        // Use the Result-based version and convert to InterpretResult
+        match self.invoke_and_run_function_with_result(method_name, arg_count, method_is_native) {
+            Ok(()) => InterpretResult::Ok,
+            Err(VmError::Hard) => InterpretResult::RuntimeError,
+            Err(VmError::Exception) => {
+                // Print uncaught exception as runtime error for top-level
                 let exception = self.stack.last().expect("Exception should be on stack");
                 runtime_error!(
                     self,
@@ -43,8 +38,46 @@ impl VM {
                     exception.to_string(&self.heap)
                 );
                 InterpretResult::RuntimeError
-            } else {
-                result
+            }
+        }
+    }
+
+    /// Execute and immediately run a function with Result-based error handling.
+    ///
+    /// This enables differentiation between hard errors and unhandled exceptions using ? operator.
+    pub(crate) fn invoke_and_run_function_with_result(
+        &mut self,
+        method_name: StringId,
+        arg_count: u8,
+        method_is_native: bool,
+    ) -> VmResult {
+        if !self.invoke(method_name, arg_count) {
+            return Err(VmError::Hard);
+        }
+
+        if method_is_native {
+            Ok(())
+        } else {
+            // For now, use the regular run_function and post-process the result
+            // We'll detect unhandled exceptions by checking if there's an exception on the stack
+            // after a RuntimeError that didn't get handled
+            let initial_handlers = self.exception_handlers.len();
+            let result = self.run_function();
+            
+            match result {
+                InterpretResult::Ok => Ok(()),
+                InterpretResult::CompileError => Err(VmError::Hard),
+                InterpretResult::RuntimeError => {
+                    // Check if this was an unhandled exception
+                    if self.exception_handlers.len() == initial_handlers
+                        && !self.stack.is_empty()
+                        && matches!(self.stack.last(), Some(Value::Instance(_)))
+                    {
+                        Err(VmError::Exception)
+                    } else {
+                        Err(VmError::Hard)
+                    }
+                }
             }
         }
     }
