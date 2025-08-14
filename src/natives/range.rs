@@ -114,5 +114,5 @@ pub(super) fn range_init_native(
 
     let range = receiver.as_range_mut(&mut vm.heap);
     *range = crate::value::Range::new(start, end);
-    Ok(Value::Nil)
+    Ok(*receiver)
 }

@@ -156,5 +156,5 @@ pub(super) fn tuple_init_native(
     let items: Vec<Value> = args.iter().map(|arg| **arg).collect();
     let tuple = receiver.as_tuple_mut(&mut vm.heap);
     *tuple = Tuple::new(items);
-    Ok(Value::Nil)
+    Ok(*receiver)
 }

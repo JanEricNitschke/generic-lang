@@ -332,11 +332,6 @@ impl VM {
     /// Checks that the number of arguments matches to the arity of the method.
     /// After the call the stack is truncated to remove the arguments and the receiver
     /// and the result is pushed onto the stack.
-    ///
-    /// Special case: __init__ methods are constructor methods that modify the receiver
-    /// instance and return nil. For these methods, we keep the (modified) receiver
-    /// on the stack instead of the nil return value. This happens automatically
-    /// when native classes are instantiated via `call_value()`.
     #[allow(clippy::branches_sharing_code)]
     fn execute_native_method_call(
         &mut self,
@@ -370,26 +365,16 @@ impl VM {
             return false;
         }
         let fun = f.fun;
-        let is_init_method = f.name == self.heap.builtin_constants().init_string;
         let start_index = self.stack.len() - usize::from(arg_count);
         let mut args: Vec<Value> = self.stack[start_index..].to_vec();
         let mut ref_args: Vec<&mut Value> = args.iter_mut().collect();
         let result = fun(self, receiver, ref_args.as_mut_slice());
         match result {
             Ok(value) => {
-                // __init__ methods are special: they modify the receiver instance and return nil
-                // to indicate success. We keep the (modified) receiver on the stack instead
-                // of the nil return value, which is the expected behavior for constructors.
-                if is_init_method && value == Value::Nil {
-                    // For __init__ methods returning nil, remove arguments but keep the receiver
-                    self.stack
-                        .truncate(self.stack.len() - usize::from(arg_count));
-                } else {
-                    // Normal method: remove arguments and receiver, push return value
-                    self.stack
-                        .truncate(self.stack.len() - usize::from(arg_count) - 1);
-                    self.stack_push(value);
-                }
+                // Remove arguments and receiver, push return value
+                self.stack
+                    .truncate(self.stack.len() - usize::from(arg_count) - 1);
+                self.stack_push(value);
                 true
             }
             Err(e) => {

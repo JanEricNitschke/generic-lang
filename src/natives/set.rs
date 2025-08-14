@@ -80,6 +80,7 @@ pub(super) fn set_init_native(
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
     let mut set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
+    set.items.clear(); // Explicitly clear to ensure it's empty
     for arg in args {
         if !arg.is_hasheable() {
             return Err(format!(
@@ -90,5 +91,5 @@ pub(super) fn set_init_native(
         set.add(**arg, &vm.heap);
     }
     *receiver.as_set_mut(&mut vm.heap) = set;
-    Ok(Value::Nil)
+    Ok(*receiver)
 }

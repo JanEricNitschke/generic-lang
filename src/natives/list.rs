@@ -295,5 +295,5 @@ pub(super) fn list_init_native(
     let items: Vec<Value> = args.iter().map(|arg| **arg).collect();
     let list = receiver.as_list_mut(&mut vm.heap);
     list.items = items;
-    Ok(Value::Nil)
+    Ok(*receiver)
 }
