@@ -1,0 +1,23 @@
+# Test Exception propagation through nested calls with catch
+fun level3() {
+    throw Exception("Deep error");
+}
+
+fun level2() {
+    return level3();
+}
+
+fun level1() {
+    return level2();
+}
+
+try {
+    level1();
+    print("This should not print");
+} catch Exception as e {
+    print("Caught nested exception:");  # expect: Caught nested exception:
+    print(e.message());  # expect: Deep error
+} else {
+    print("This should not print");
+}
+print("Done");  # expect: Done

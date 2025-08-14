@@ -589,11 +589,6 @@ impl Exception {
         &self.message
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn stack_trace(&self) -> &[String] {
-        &self.stack_trace
-    }
-
     pub(crate) fn to_string(&self, _heap: &Heap) -> String {
         let mut result = format!("Exception: {}", self.message);
         if !self.stack_trace.is_empty() {
