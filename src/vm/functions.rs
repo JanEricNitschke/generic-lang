@@ -32,7 +32,20 @@ impl VM {
         if method_is_native {
             InterpretResult::Ok
         } else {
-            self.run_function()
+            // Now we can properly differentiate between exceptions and hard errors
+            let result = self.run_function();
+            if result == InterpretResult::UnhandledException {
+                // Print uncaught exception as runtime error for invoke_and_run_function
+                let exception = self.stack.last().expect("Exception should be on stack");
+                runtime_error!(
+                    self,
+                    "Uncaught exception: {}",
+                    exception.to_string(&self.heap)
+                );
+                InterpretResult::RuntimeError
+            } else {
+                result
+            }
         }
     }
 

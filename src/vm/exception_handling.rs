@@ -47,12 +47,9 @@ impl VM {
             self.stack.push(exception);
             None
         } else {
-            runtime_error!(
-                self,
-                "Uncaught exception: {}",
-                exception.to_string(&self.heap)
-            );
-            Some(InterpretResult::RuntimeError)
+            // Keep the exception on the stack for later handling
+            self.stack.push(exception);
+            Some(InterpretResult::UnhandledException)
         }
     }
 

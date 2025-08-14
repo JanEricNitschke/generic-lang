@@ -89,11 +89,15 @@ macro_rules! run_instruction {
             op @ (OpCode::SetLocal | OpCode::SetLocalLong) => $self.set_local(op),
             // Global to get passed as operand
             op @ (OpCode::GetGlobal | OpCode::GetGlobalLong) => {
-                try_interpret_result!($self, $self.get_global(op));
+                if let Some(value) = $self.get_global(op) {
+                    return value;
+                }
             }
             // Global whose value to set is operand, value to use is on the stack
             op @ (OpCode::SetGlobal | OpCode::SetGlobalLong) => {
-                try_interpret_result!($self, $self.set_global(op));
+                if let Some(value) = $self.set_global(op) {
+                    return value;
+                }
             }
             // Name of the global to define comes from the operand, value
             op @ (OpCode::DefineGlobal
@@ -110,11 +114,15 @@ macro_rules! run_instruction {
             // The function to call is on the stack followed by all arguments
             // in order from left to right.
             OpCode::Call => {
-                try_interpret_result!($self, $self.call());
+                if let Some(value) = $self.call() {
+                    return value;
+                }
             }
             // Value to return is on the stack
             OpCode::Return => {
-                try_interpret_result!($self, $self.return_());
+                if let Some(value) = $self.return_() {
+                    return value;
+                }
             }
             // Index of the constant is the operand, value is in the constants table
             OpCode::Constant => {
@@ -127,7 +135,9 @@ macro_rules! run_instruction {
             }
             // `Negate` and `Not` work on the stack value
             OpCode::Negate => {
-                try_interpret_result!($self, $self.negate());
+                if let Some(value) = $self.negate() {
+                    return value;
+                }
             }
             OpCode::Not => $self.not_(),
             OpCode::Nil => $self.stack_push(Value::Nil),
@@ -135,15 +145,21 @@ macro_rules! run_instruction {
             OpCode::False => $self.stack_push(Value::Bool(false)),
             OpCode::StopIteration => $self.stack.push(Value::StopIteration),
             OpCode::Equal => {
-                try_interpret_result!($self, $self.equal(false));
+                if let Some(result) = $self.equal(false) {
+                    return result;
+                }
             }
             OpCode::NotEqual => {
-                try_interpret_result!($self, $self.equal(true));
+                if let Some(result) = $self.equal(true) {
+                    return result;
+                }
             }
             // All of these work on the top two stack values.
             // Top most is right operand, second is left.
             OpCode::Add => {
-                try_interpret_result!($self, $self.add());
+                if let Some(value) = $self.add() {
+                    return value;
+                }
             }
             OpCode::Subtract => binary_op!($self, sub, "__sub__", false, mut_heap),
             OpCode::Multiply => binary_op!($self, mul, "__mul__", false, mut_heap),
@@ -268,7 +284,7 @@ macro_rules! run_instruction {
                                 "Undefined property '{}'.",
                                 field.to_value(&$self.heap)
                             );
-                            return Err($crate::vm::VmError::RuntimeError);
+                            return InterpretResult::RuntimeError;
                         }
                     }
                     Value::Module(module) => {
@@ -282,7 +298,7 @@ macro_rules! run_instruction {
                                 field.to_value(&$self.heap),
                                 module.to_value(&$self.heap).name.to_value(&$self.heap)
                             );
-                            return Err($crate::vm::VmError::RuntimeError);
+                            return InterpretResult::RuntimeError;
                         }
                     }
                     x => {
@@ -292,7 +308,7 @@ macro_rules! run_instruction {
                             field.to_value(&$self.heap),
                             x.to_string(&$self.heap)
                         );
-                        return Err($crate::vm::VmError::RuntimeError);
+                        return InterpretResult::RuntimeError;
                     }
                 };
             }
@@ -318,7 +334,7 @@ macro_rules! run_instruction {
                         {
                             if !global.mutable {
                                 runtime_error!($self, "Reassignment to global 'const'.");
-                                return Err($crate::vm::VmError::RuntimeError);
+                                return InterpretResult::RuntimeError;
                             }
                             global.value = value;
                         }
@@ -330,7 +346,7 @@ macro_rules! run_instruction {
                             field,
                             x.to_string(&$self.heap)
                         );
-                        return Err($crate::vm::VmError::RuntimeError);
+                        return InterpretResult::RuntimeError;
                     }
                 };
                 $self.stack_push(value);
@@ -348,7 +364,7 @@ macro_rules! run_instruction {
                 let method_name = $self.read_string("OP_INVOKE");
                 let arg_count = $self.read_byte();
                 if !$self.invoke(method_name, arg_count) {
-                    return Err($crate::vm::VmError::RuntimeError);
+                    return InterpretResult::RuntimeError;
                 }
             }
             // Stack has (... --- Superclass --- Class)
@@ -357,12 +373,12 @@ macro_rules! run_instruction {
                 let superclass = if let Value::Class(superclass) = &superclass_id {
                     if superclass.to_value(&$self.heap).is_native {
                         runtime_error!($self, "Can not inherit from native classes yet.");
-                        return Err($crate::vm::VmError::RuntimeError);
+                        return InterpretResult::RuntimeError;
                     }
                     superclass
                 } else {
                     runtime_error!($self, "Superclass must be a class.");
-                    return Err($crate::vm::VmError::RuntimeError);
+                    return InterpretResult::RuntimeError;
                 };
                 let methods = superclass.to_value(&$self.heap).methods.clone();
                 let mut subclass = $self.stack.pop().expect("Stack underflow in OP_INHERIT");
@@ -378,7 +394,7 @@ macro_rules! run_instruction {
                 let method_name = $self.read_string("OP_GET_SUPER");
                 let superclass = $self.stack.pop().expect("Stack underflow in OP_GET_SUPER");
                 if !$self.bind_method(superclass, method_name) {
-                    return Err($crate::vm::VmError::RuntimeError);
+                    return InterpretResult::RuntimeError;
                 }
             }
             // Invoke a method from the superclass
@@ -392,7 +408,7 @@ macro_rules! run_instruction {
                     .pop()
                     .expect("Stack underflow in OP_SUPER_INVOKE");
                 if !$self.invoke_from_class(superclass, method_name, arg_count) {
-                    return Err($crate::vm::VmError::RuntimeError);
+                    return InterpretResult::RuntimeError;
                 }
             }
             OpCode::BuildList => {
@@ -402,19 +418,29 @@ macro_rules! run_instruction {
                 $self.build_tuple();
             }
             OpCode::BuildSet => {
-                try_interpret_result!($self, $self.build_set());
+                if let Some(value) = $self.build_set() {
+                    return value;
+                }
             }
             OpCode::BuildDict => {
-                try_interpret_result!($self, $self.build_dict());
+                if let Some(value) = $self.build_dict() {
+                    return value;
+                }
             }
             OpCode::BuildRangeExclusive => {
-                try_interpret_result!($self, $self.build_range(true));
+                if let Some(value) = $self.build_range(true) {
+                    return value;
+                }
             }
             OpCode::BuildRangeInclusive => {
-                try_interpret_result!($self, $self.build_range(false));
+                if let Some(value) = $self.build_range(false) {
+                    return value;
+                }
             }
             OpCode::BuildRational => {
-                try_interpret_result!($self, $self.build_rational());
+                if let Some(value) = $self.build_rational() {
+                    return value;
+                }
             }
             // Import a module by filepath without qualifiers.
             // Expects either the path to the module or the name of
@@ -422,10 +448,9 @@ macro_rules! run_instruction {
             OpCode::Import => {
                 let file_path = $self.read_string("OP_IMPORT_AS");
                 let local_import = $self.read_byte() == 1;
-                try_interpret_result!(
-                    $self,
-                    $self.import_file(file_path, None, None, local_import)
-                );
+                if let Some(value) = $self.import_file(file_path, None, None, local_import) {
+                    return value;
+                }
             }
             // Import a module by filepath with an alias.
             // Name of the module to import is on the stack, alias is the operand.
@@ -433,10 +458,9 @@ macro_rules! run_instruction {
                 let file_path = $self.read_string("OP_IMPORT_AS");
                 let alias = $self.read_string("OP_IMPORT_AS");
                 let local_import = $self.read_byte() == 1;
-                try_interpret_result!(
-                    $self,
-                    $self.import_file(file_path, None, Some(alias), local_import)
-                );
+                if let Some(value) = $self.import_file(file_path, None, Some(alias), local_import) {
+                    return value;
+                }
             }
             // Import a set of names from a module.
             // Number of names to import are the operand.
@@ -457,10 +481,11 @@ macro_rules! run_instruction {
                     None
                 };
 
-                try_interpret_result!(
-                    $self,
+                if let Some(value) =
                     $self.import_file(file_path, names_to_import, None, local_import)
-                );
+                {
+                    return value;
+                }
             }
             // Register an exception handler.
             // The operand is the offset from the current instruction right before
@@ -484,16 +509,22 @@ macro_rules! run_instruction {
             // We pop the exception, unwind to the handler and push the exception again.
             OpCode::Throw => {
                 let exception = $self.stack.pop().expect("Stack underflow in OP_THROW.");
-                $self.unwind(exception)?;
+                if let Some(value) = $self.unwind(exception) {
+                    return value;
+                }
             }
             // Layout is Stack Top: [exception_class_to_catch, exception_value_raised]
             OpCode::CompareException => {
-                $self.compare_exception()?;
+                if let Some(value) = $self.compare_exception() {
+                    return value;
+                }
             }
             //  We expect either the exception at the stop of the stack that should be reraised
             // or nil if we handled the exception.
             OpCode::Reraise => {
-                $self.reraise_exception()?;
+                if let Some(value) = $self.reraise_exception() {
+                    return value;
+                }
             }
         };
     };

@@ -48,6 +48,7 @@ pub enum InterpretResult {
     Ok,
     CompileError,
     RuntimeError,
+    UnhandledException,
 }
 
 /// Wrapper around a global value to store whether it is mutable or not.
@@ -130,7 +131,19 @@ impl VM {
             natives::define(self);
             stdlib::register(self);
 
-            self.run()
+            let result = self.run();
+            // Convert UnhandledException to RuntimeError for main interpreter
+            if result == InterpretResult::UnhandledException {
+                let exception = self.stack.last().expect("Exception should be on stack");
+                runtime_error!(
+                    self,
+                    "Uncaught exception: {}",
+                    exception.to_string(&self.heap)
+                );
+                InterpretResult::RuntimeError
+            } else {
+                result
+            }
         } else {
             InterpretResult::CompileError
         };
