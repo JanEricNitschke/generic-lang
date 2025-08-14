@@ -1,0 +1,14 @@
+var range = Range(1, 5);
+print(range); # expect: 1..<5
+
+var reverse_range = Range(5, 1);
+print(reverse_range); # expect: 5..<1
+
+var zero_range = Range(0, 0);
+print(zero_range); # expect: 0..<0
+
+# Test that the constructed range behaves like a normal range
+var constructed_range = Range(1, 5);
+print(constructed_range.__len__()); # expect: 4
+print(constructed_range.contains(3)); # expect: true
+print(constructed_range.contains(5)); # expect: false

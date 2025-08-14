@@ -10,6 +10,12 @@ use crate::{
 use super::{Global, InterpretResult, VM};
 use crate::vm::arithmetics::{BinaryOpResult, IntoResultValue};
 
+// Helper function to check if arg_count is valid for an arity spec
+// The arity array contains all valid argument counts
+fn check_arity(arity: &[u8], arg_count: u8) -> bool {
+    !arity.is_empty() && arity.contains(&arg_count)
+}
+
 // Execute a function (rust side)
 impl VM {
     /// Execute and immediately run a function.
@@ -282,7 +288,7 @@ impl VM {
     fn execute_native_function_call(&mut self, f: NativeFunctionId, arg_count: u8) -> bool {
         let f = f.to_value(&self.heap);
         let arity = f.arity;
-        if !arity.contains(&arg_count) {
+        if !check_arity(arity, arg_count) {
             if arity.len() == 1 {
                 runtime_error!(
                     self,
@@ -335,7 +341,7 @@ impl VM {
     ) -> bool {
         let f = f.to_value(&self.heap);
         let arity = f.arity;
-        if !arity.contains(&arg_count) {
+        if !check_arity(arity, arg_count) {
             if arity.len() == 1 {
                 runtime_error!(
                     self,
@@ -365,6 +371,7 @@ impl VM {
         let result = fun(self, receiver, ref_args.as_mut_slice());
         match result {
             Ok(value) => {
+                // Remove arguments and receiver, push return value
                 self.stack
                     .truncate(self.stack.len() - usize::from(arg_count) - 1);
                 self.stack_push(value);

@@ -1,0 +1,15 @@
+var empty_set = Set();
+print(empty_set); # expect: {}
+
+var set_with_args = Set(1, 2, 3);
+print(set_with_args); # expect: {2, 3, 1}
+
+# Test that duplicates are handled correctly  
+var set_with_duplicates = Set(1, 2, 2, 3);
+print(set_with_duplicates); # expect: {2, 3, 1}
+
+# Test that the constructed set behaves like a normal set
+var constructed_set = Set(1, 2, 3);
+print(constructed_set.__len__()); # expect: 3
+constructed_set.insert(4);
+print(constructed_set.__len__()); # expect: 4

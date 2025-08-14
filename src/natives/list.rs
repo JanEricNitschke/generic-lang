@@ -284,3 +284,16 @@ pub(super) fn list_bool_native(
     let is_empty = receiver.as_list(&vm.heap).items.is_empty();
     Ok((!is_empty).into())
 }
+
+/// Constructor for List that accepts variable number of arguments.
+/// `List()` creates empty list, `List(1, 2, 3)` creates [1, 2, 3].
+pub(super) fn list_init_native(
+    vm: &mut VM,
+    receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let items: Vec<Value> = args.iter().map(|arg| **arg).collect();
+    let list = receiver.as_list_mut(&mut vm.heap);
+    list.items = items;
+    Ok(*receiver)
+}

@@ -13,22 +13,22 @@ use crate::vm::VM;
 
 use crate::natives::list::{
     list_add_native, list_append_native, list_bool_native, list_contains_native, list_get_native,
-    list_insert_native, list_iter_native, list_iter_next_native, list_len_native, list_pop_native,
-    list_set_native,
+    list_init_native, list_insert_native, list_iter_native, list_iter_next_native, list_len_native,
+    list_pop_native, list_set_native,
 };
 
 use crate::natives::range::{
-    range_bool_native, range_contains_native, range_iter_native, range_iter_next_native,
-    range_len_native,
+    range_bool_native, range_contains_native, range_init_native, range_iter_native,
+    range_iter_next_native, range_len_native,
 };
 
 use crate::natives::set::{
-    set_contains_native, set_insert_native, set_len_native, set_remove_native,
+    set_contains_native, set_init_native, set_insert_native, set_len_native, set_remove_native,
 };
 
 use crate::natives::tuple::{
     tuple_add_native, tuple_bool_native, tuple_contains_native, tuple_get_native,
-    tuple_iter_native, tuple_iter_next_native, tuple_len_native,
+    tuple_init_native, tuple_iter_native, tuple_iter_next_native, tuple_len_native,
 };
 
 use crate::natives::dict::{dict_get_native, dict_len_native, dict_set_native};
@@ -38,6 +38,13 @@ use crate::natives::native_functions::{
     is_int_native, len_native, print_native, rng_native, setattr_native, sleep_native,
     to_float_native, to_int_native, to_string_native, type_native,
 };
+
+use std::sync::LazyLock;
+
+/// Static arity arrays for common variadic argument patterns.
+/// These replace the magic marker approach with explicit arrays of all valid argument counts.
+/// Arity for "0 or more arguments" (up to 255 for maximum u8 range)
+static VARIADIC_0_PLUS: LazyLock<Vec<u8>> = LazyLock::new(|| (0..=255).collect());
 
 pub fn define(vm: &mut VM) {
     vm.define_native_function(&"clock", &[0], clock_native);
@@ -62,6 +69,7 @@ pub fn define(vm: &mut VM) {
     // without giving any data or we have to make it so they are not accessible in
     // user land.
     vm.define_native_class(&"List", true);
+    vm.define_native_method(&"List", &"__init__", &VARIADIC_0_PLUS, list_init_native);
     vm.define_native_method(&"List", &"append", &[1], list_append_native);
     vm.define_native_method(&"List", &"pop", &[0, 1], list_pop_native);
     vm.define_native_method(&"List", &"insert", &[2], list_insert_native);
@@ -77,6 +85,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"ListIterator", &"__next__", &[0], list_iter_next_native);
 
     vm.define_native_class(&"Tuple", true);
+    vm.define_native_method(&"Tuple", &"__init__", &VARIADIC_0_PLUS, tuple_init_native);
     vm.define_native_method(&"Tuple", &"__getitem__", &[1], tuple_get_native);
     vm.define_native_method(&"Tuple", &"__len__", &[0], tuple_len_native);
     vm.define_native_method(&"Tuple", &"__iter__", &[0], tuple_iter_native);
@@ -88,6 +97,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"TupleIterator", &"__next__", &[0], tuple_iter_next_native);
 
     vm.define_native_class(&"Set", true);
+    vm.define_native_method(&"Set", &"__init__", &VARIADIC_0_PLUS, set_init_native);
     vm.define_native_method(&"Set", &"contains", &[1], set_contains_native);
     vm.define_native_method(&"Set", &"insert", &[1], set_insert_native);
     vm.define_native_method(&"Set", &"remove", &[1], set_remove_native);
@@ -98,7 +108,8 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"Dict", &"__setitem__", &[2], dict_set_native);
     vm.define_native_method(&"Dict", &"__len__", &[0], dict_len_native);
 
-    vm.define_native_class(&"Range", false);
+    vm.define_native_class(&"Range", true);
+    vm.define_native_method(&"Range", &"__init__", &[2], range_init_native);
     vm.define_native_method(&"Range", &"contains", &[1], range_contains_native);
     vm.define_native_method(&"Range", &"__iter__", &[0], range_iter_native);
     vm.define_native_method(&"Range", &"__len__", &[0], range_len_native);
