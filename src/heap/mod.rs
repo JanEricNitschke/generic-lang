@@ -591,6 +591,10 @@ impl Heap {
                         self.big_ints.gray.push(offset);
                     }
                 }
+                NativeClass::Exception(exception) => {
+                    self.strings.gray.push(exception.message());
+                    self.strings.gray.push(exception.stack_trace());
+                }
             }
         }
         #[cfg(feature = "log_gc")]

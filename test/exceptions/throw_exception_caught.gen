@@ -1,0 +1,11 @@
+# Test throwing Exception that gets caught
+try {
+    throw Exception("This error gets caught");
+    print("This should not print");
+} catch Exception as e {
+    print("Caught exception:");  # expect: Caught exception:
+    print(e.message());  # expect: This error gets caught
+} else {
+    print("This should not print");
+}
+print("Done");  # expect: Done

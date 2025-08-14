@@ -1,0 +1,16 @@
+# Access just the message
+fun level3() {
+    return Exception("Deep error");
+}
+
+fun level2() {
+    return level3();
+}
+
+fun level1() {
+    return level2();
+}
+
+var err = level1();
+print(err.message());
+# expect: Deep error
