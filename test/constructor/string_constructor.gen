@@ -1,0 +1,15 @@
+# Test String constructor with various inputs
+
+# Basic values
+print(String(42)); # expect: 42
+print(String(3.14)); # expect: 3.14
+print(String(true)); # expect: true
+print(String(false)); # expect: false
+print(String(nil)); # expect: nil
+
+# String from string
+print(String("hello")); # expect: hello
+print(String("")); # expect: 
+
+# No arguments (should default to nil)
+print(String()); # expect: nil

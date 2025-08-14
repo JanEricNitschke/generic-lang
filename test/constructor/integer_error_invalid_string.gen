@@ -1,0 +1,4 @@
+# Test Integer constructor error cases
+
+# Invalid string
+print(Integer("not_a_number")); # expect runtime error: Integer() could not convert string 'not_a_number' to an integer
