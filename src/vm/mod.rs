@@ -109,6 +109,122 @@ impl VM {
         }
     }
 
+    /// Main interpret step for an input of bytes.
+    ///
+    /// Works by compiling the source to bytecode and then running it.
+    /// Even the main script is compiled as a function.
+    pub(super) fn interpret(&mut self, source: &[u8]) -> InterpretResult {
+        // Load native functions and classes first
+        natives::define(self);
+
+        // Load generic builtins from .gen files after natives but before main script setup
+        self.load_generic_builtins();
+
+        // Register stdlib modules
+        stdlib::register(self);
+
+        let result = if let Some(function) = self.compile(source, "<script>") {
+            let function_id = self.heap.add_function(function);
+
+            let closure = Closure::new(*function_id.as_function(), true, None, &self.heap);
+
+            self.add_closure_to_modules(&closure, self.path.clone(), None, None, false);
+
+            let value_id = self.heap.add_closure(closure);
+            self.stack_push(value_id);
+            self.execute_call(value_id, 0);
+
+            self.run()
+        } else {
+            InterpretResult::CompileError
+        };
+
+        if result == InterpretResult::Ok {
+            assert_eq!(self.stack.len(), 0);
+        }
+        result
+    }
+
+    fn compile(&mut self, source: &[u8], name: &str) -> Option<Function> {
+        let scanner = Scanner::new(source);
+        let compiler = Compiler::new(scanner, &mut self.heap, name);
+        compiler.compile()
+    }
+
+    /// Load and execute generic builtin files from the `src/builtins` directory.
+    ///
+    /// Each builtin file is compiled and executed to completion. Then its globals
+    /// (excluding `__name__`) are copied to the VM builtins and the module is
+    /// popped from the modules stack.
+    ///
+    /// Panics if builtin loading fails, as this indicates an internal error.
+    fn load_generic_builtins(&mut self) {
+        // Use path relative to the rust file, consistent with stdlib handling
+        let builtins_dir = std::path::Path::new(file!())
+            .parent()
+            .unwrap() // drop mod.rs
+            .parent()
+            .unwrap() // drop vm/
+            .join("builtins");
+
+        std::fs::read_dir(&builtins_dir)
+            .expect("Failed to read builtins directory")
+            .map(|entry| entry.expect("Failed to read directory entry").path())
+            .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("gen"))
+            .for_each(|path| self.load_builtin_file(&path));
+    }
+
+    /// Load and execute a single builtin file in the current VM.
+    fn load_builtin_file(&mut self, path: &std::path::Path) {
+        let source = std::fs::read(path).expect("Failed to read builtin file");
+
+        let name = format!("<builtin:{}>", path.file_name().unwrap().to_string_lossy());
+
+        let function = self
+            .compile(&source, &name)
+            .expect("Failed to compile builtin file");
+
+        let function_id = self.heap.add_function(function);
+        let closure = Closure::new(*function_id.as_function(), true, None, &self.heap);
+
+        self.add_closure_to_modules(&closure, path.to_path_buf(), None, None, false);
+
+        let value_id = self.heap.add_closure(closure);
+        self.stack_push(value_id);
+        self.execute_call(value_id, 0);
+
+        // Execute the builtin to completion
+        let result = self.run();
+
+        // Copy globals from the completed module to builtins (excluding __name__)
+        if result == InterpretResult::Ok {
+            let module_globals = std::mem::take(self.globals());
+            // Extend builtins with all globals from the module
+            self.builtins.extend(module_globals);
+            // Remove __name__ from builtins
+            self.builtins
+                .remove(&self.heap.builtin_constants().script_name);
+        } else {
+            panic!(
+                "Failed to execute builtin file {}: {result:?}",
+                path.display()
+            );
+        }
+
+        // Clean up the builtin module
+        self.modules.pop();
+    }
+
+    /// Infinite loop over the bytecode.
+    ///
+    /// Returns when a return instruction is hit at the top level.
+    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+    fn run(&mut self) -> InterpretResult {
+        loop {
+            run_instruction!(self);
+        }
+    }
+
     /// Capture the current stack trace directly as a string.
     pub(super) fn capture_stack_trace(&self) -> String {
         let mut out = String::with_capacity(64 + self.callstack.len() * 40);
@@ -134,55 +250,6 @@ impl VM {
         }
 
         out
-    }
-
-    /// Main interpret step for an input of bytes.
-    ///
-    /// Works by compiling the source to bytecode and then running it.
-    /// Even the main script is compiled as a function.
-    pub(super) fn interpret(&mut self, source: &[u8]) -> InterpretResult {
-        let result = if let Some(function) = self.compile(source, "<script>") {
-            let function_id = self.heap.add_function(function);
-
-            let closure = Closure::new(*function_id.as_function(), true, None, &self.heap);
-
-            self.add_closure_to_modules(&closure, self.path.clone(), None, None, false);
-
-            let value_id = self.heap.add_closure(closure);
-            self.stack_push(value_id);
-            self.execute_call(value_id, 0);
-
-            // Need to have the first module loaded before defining natives
-            // Probably not actually needed in that order anymore as they are
-            // now defined in the builtins.
-            natives::define(self);
-            stdlib::register(self);
-
-            self.run()
-        } else {
-            InterpretResult::CompileError
-        };
-
-        if result == InterpretResult::Ok {
-            assert_eq!(self.stack.len(), 0);
-        }
-        result
-    }
-
-    fn compile(&mut self, source: &[u8], name: &str) -> Option<Function> {
-        let scanner = Scanner::new(source);
-        let compiler = Compiler::new(scanner, &mut self.heap, name);
-        compiler.compile()
-    }
-
-    /// Infinite loop over the bytecode.
-    ///
-    /// Returns when a return instruction is hit at the top level.
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn run(&mut self) -> InterpretResult {
-        loop {
-            run_instruction!(self);
-        }
     }
 }
 
