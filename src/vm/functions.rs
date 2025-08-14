@@ -7,7 +7,7 @@ use crate::{
     value::{Class, Closure, Instance, Number, Upvalue, Value},
 };
 
-use super::{Global, InterpretResult, VM};
+use super::{Global, InterpretResult, VM, VmError, VmResult};
 use crate::vm::arithmetics::{BinaryOpResult, IntoResultValue};
 
 // Execute a function (rust side)
@@ -32,18 +32,31 @@ impl VM {
         if method_is_native {
             InterpretResult::Ok
         } else {
-            self.run_function()
+            // Convert VmResult to InterpretResult for compatibility
+            match self.run_function() {
+                Ok(()) => InterpretResult::Ok,
+                Err(VmError::RuntimeError) => InterpretResult::RuntimeError,
+                Err(VmError::UnhandledException(exception)) => {
+                    // Handle uncaught exception as runtime error
+                    runtime_error!(
+                        self,
+                        "Uncaught exception: {}",
+                        exception.to_string(&self.heap)
+                    );
+                    InterpretResult::RuntimeError
+                }
+            }
         }
     }
 
     /// Run the closure currently on top of the callstack.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    pub(super) fn run_function(&mut self) -> InterpretResult {
+    pub(super) fn run_function(&mut self) -> VmResult<()> {
         let call_depth = self.callstack.len();
         while self.callstack.len() >= call_depth {
             run_instruction!(self);
         }
-        InterpretResult::Ok
+        Ok(())
     }
 }
 

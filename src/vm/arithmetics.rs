@@ -79,7 +79,7 @@ macro_rules! binary_op {
                             .has_field_or_method(gen_method_id, &$self.heap) =>
                     {
                         if !$self.invoke(gen_method_id, 1) {
-                            return InterpretResult::RuntimeError;
+                            return Err($crate::vm::VmError::RuntimeError);
                         }
                         // If the invoke succeeds, decide what to return —
                         // keeping same flow as original code
@@ -104,7 +104,7 @@ macro_rules! binary_op {
             );
         }
         if status != BinaryOpResult::Success {
-            return InterpretResult::RuntimeError;
+            return Err($crate::vm::VmError::RuntimeError);
         }
     }};
 }

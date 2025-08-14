@@ -50,6 +50,19 @@ pub enum InterpretResult {
     RuntimeError,
 }
 
+/// Unified error type for VM execution that can represent both
+/// hard runtime errors and unhandled exceptions.
+#[derive(Debug, Clone)]
+pub enum VmError {
+    /// A hard runtime error has occurred (error message already printed)
+    RuntimeError,
+    /// An unhandled exception that needs to be propagated
+    UnhandledException(Value),
+}
+
+/// Result type for VM operations that can fail
+pub type VmResult<T = ()> = Result<T, VmError>;
+
 /// Wrapper around a global value to store whether it is mutable or not.
 #[derive(Debug, Clone, Copy)] // , PartialEq, Eq, PartialOrd
 pub struct Global {
@@ -130,7 +143,20 @@ impl VM {
             natives::define(self);
             stdlib::register(self);
 
-            self.run()
+            // Convert VmResult to InterpretResult
+            match self.run() {
+                Ok(()) => InterpretResult::Ok,
+                Err(VmError::RuntimeError) => InterpretResult::RuntimeError,
+                Err(VmError::UnhandledException(exception)) => {
+                    // Print uncaught exception as runtime error
+                    runtime_error!(
+                        self,
+                        "Uncaught exception: {}",
+                        exception.to_string(&self.heap)
+                    );
+                    InterpretResult::RuntimeError
+                }
+            }
         } else {
             InterpretResult::CompileError
         };
@@ -151,7 +177,7 @@ impl VM {
     ///
     /// Returns when a return instruction is hit at the top level.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn run(&mut self) -> InterpretResult {
+    fn run(&mut self) -> VmResult<()> {
         loop {
             run_instruction!(self);
         }
