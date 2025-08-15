@@ -1,0 +1,21 @@
+# Exception in nested function calls
+fun level3() {
+    return Exception("Deep error");
+}
+
+fun level2() {
+    return level3();
+}
+
+fun level1() {
+    return level2();
+}
+
+var err = level1();
+print(err);
+# expect: Exception: Deep error
+# expect: Stacktrace (most recent call last):
+# expect:   [line 14] in <script>
+# expect:   [line 11] in level1
+# expect:   [line 7] in level2
+# expect:   [line 3] in level3

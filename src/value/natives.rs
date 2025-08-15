@@ -90,6 +90,7 @@ pub enum NativeClass {
     RangeIterator(RangeIterator),
     Tuple(Tuple),
     TupleIterator(TupleIterator),
+    Exception(Exception),
 }
 
 impl NativeClass {
@@ -100,6 +101,7 @@ impl NativeClass {
             "Dict" => Self::Dict(Dict::default()),
             "Range" => Self::Range(Range::default()),
             "Tuple" => Self::Tuple(Tuple::default()),
+            "Exception" => Self::Exception(Exception::default()),
             _ => unreachable!("Unknown native class `{}`.", kind),
         }
     }
@@ -114,6 +116,7 @@ impl NativeClass {
             Self::RangeIterator(range_iter) => range_iter.to_string(heap),
             Self::Tuple(tuple) => tuple.to_string(heap),
             Self::TupleIterator(tuple_iter) => tuple_iter.to_string(heap),
+            Self::Exception(exception) => exception.to_string(heap),
         }
     }
 }
@@ -163,6 +166,12 @@ impl From<Range> for NativeClass {
 impl From<RangeIterator> for NativeClass {
     fn from(range_iterator: RangeIterator) -> Self {
         Self::RangeIterator(range_iterator)
+    }
+}
+
+impl From<Exception> for NativeClass {
+    fn from(exception: Exception) -> Self {
+        Self::Exception(exception)
     }
 }
 
@@ -558,5 +567,49 @@ impl TupleIterator {
 impl std::fmt::Display for TupleIterator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.pad("<tuple iterator of Value>")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Exception {
+    message: String,
+    stack_trace: Vec<String>,
+}
+
+impl Exception {
+    #[must_use]
+    pub(crate) fn new(message: String, stack_trace: Vec<String>) -> Self {
+        Self {
+            message,
+            stack_trace,
+        }
+    }
+
+    pub(crate) fn message(&self) -> &String {
+        &self.message
+    }
+
+    pub(crate) fn to_string(&self, _heap: &Heap) -> String {
+        let mut result = format!("Exception: {}", self.message);
+        if !self.stack_trace.is_empty() {
+            result.push_str("\nStacktrace (most recent call last):");
+            for trace_line in &self.stack_trace {
+                result.push('\n');
+                result.push_str(trace_line);
+            }
+        }
+        result
+    }
+}
+
+impl Default for Exception {
+    fn default() -> Self {
+        Self::new(String::new(), Vec::new())
+    }
+}
+
+impl std::fmt::Display for Exception {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad("<Exception Value>")
     }
 }

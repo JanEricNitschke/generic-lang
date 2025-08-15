@@ -591,6 +591,9 @@ impl Heap {
                         self.big_ints.gray.push(offset);
                     }
                 }
+                NativeClass::Exception(_) => {
+                    // Exception uses String, no GC marking needed
+                }
             }
         }
         #[cfg(feature = "log_gc")]
