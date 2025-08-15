@@ -47,13 +47,10 @@ pub fn parse_string_to_integer(vm: &mut VM, string: &str) -> Result<Value, Strin
 }
 
 /// Parse a string to float.
-/// This function is shared between value constructors and the compiler.
+/// This function uses parse_float_compiler internally and is shared between value constructors.
 pub fn parse_string_to_float(string: &str) -> Result<Value, String> {
-    let converted: Result<f64, _> = string.parse();
-    match converted {
-        Ok(result) => Ok(Value::Number(result.into())),
-        Err(_) => Err(format!("Could not convert string '{}' to a float.", string)),
-    }
+    let float_value = parse_float_compiler(string)?;
+    Ok(Value::Number(float_value.into()))
 }
 
 /// Convert a value to string, handling instances with __str__ methods.

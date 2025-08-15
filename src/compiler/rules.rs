@@ -8,7 +8,7 @@ use super::{Compiler, FunctionType};
 use crate::chunk::OpCode;
 use crate::config::LAMBDA_NAME;
 use crate::scanner::TokenKind as TK;
-use crate::value::utils::{parse_float_compiler, parse_integer_compiler, ParsedInteger};
+use crate::value::utils::{ParsedInteger, parse_float_compiler, parse_integer_compiler};
 
 // The precedence of the different operators in the language
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromPrimitive, IntoPrimitive)]
