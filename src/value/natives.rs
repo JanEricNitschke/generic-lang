@@ -570,7 +570,7 @@ impl std::fmt::Display for TupleIterator {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exception {
     message: String,
     stack_trace: Vec<String>,
