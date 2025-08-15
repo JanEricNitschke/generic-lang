@@ -117,10 +117,7 @@ impl VM {
         natives::define(self);
 
         // Load generic builtins from .gen files after natives but before main script setup
-        let builtin_result = self.load_generic_builtins();
-        if builtin_result != InterpretResult::Ok {
-            return builtin_result;
-        }
+        self.load_generic_builtins();
 
         // Register stdlib modules
         stdlib::register(self);
@@ -153,44 +150,38 @@ impl VM {
         compiler.compile()
     }
 
-    /// Load and execute generic builtin files from the `/builtins` directory.
+    /// Load and execute generic builtin files from the `src/builtins` directory.
     ///
     /// Each builtin file is compiled and executed to completion. Then its globals
     /// (excluding `__name__`) are copied to the VM builtins and the module is
     /// popped from the modules stack.
-    fn load_generic_builtins(&mut self) -> InterpretResult {
+    ///
+    /// Panics if builtin loading fails, as this indicates an internal error.
+    fn load_generic_builtins(&mut self) {
         // Use path relative to the rust file, consistent with stdlib handling
         let mut builtins_dir = std::path::PathBuf::from(file!());
         builtins_dir.pop(); // Remove mod.rs
         builtins_dir.pop(); // Remove vm/
-        builtins_dir.pop(); // Remove src/
         builtins_dir.push("builtins");
 
         if !builtins_dir.exists() || !builtins_dir.is_dir() {
-            return InterpretResult::RuntimeError; // Missing builtins directory is an error
+            panic!("Missing builtins directory at {:?}", builtins_dir);
         }
 
-        let entries = match std::fs::read_dir(&builtins_dir) {
-            Ok(entries) => entries,
-            Err(_) => return InterpretResult::RuntimeError, // Failed to read existing builtins directory
-        };
+        let entries = std::fs::read_dir(&builtins_dir)
+            .unwrap_or_else(|_| panic!("Failed to read builtins directory at {:?}", builtins_dir));
 
         for entry in entries {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(_) => continue, // Skip invalid entries
-            };
+            let entry = entry.unwrap_or_else(|_| panic!("Failed to read directory entry"));
 
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("gen") {
                 match self.load_builtin_file(&path) {
                     InterpretResult::Ok => continue,
-                    error => return error,
+                    error => panic!("Failed to load builtin file {:?}: {:?}", path, error),
                 }
             }
         }
-
-        InterpretResult::Ok
     }
 
     /// Load and execute a single builtin file in the current VM.
