@@ -17,7 +17,7 @@ pub(super) fn bool_init_native(
     let arg = if args.is_empty() {
         Value::Nil
     } else {
-        **args.first().unwrap()
+        *args[0]
     };
 
     // Use VM's is_falsey logic to determine the bool value
@@ -36,7 +36,7 @@ pub(super) fn string_init_native(
     let arg = if args.is_empty() {
         Value::Nil
     } else {
-        **args.first().unwrap()
+        *args[0]
     };
 
     // Use the default to_string for any value
@@ -51,7 +51,7 @@ pub(super) fn integer_init_native(
     _receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    let arg = **args.first().unwrap();
+    let arg = *args[0];
 
     match arg {
         Value::String(string_id) => {
@@ -96,7 +96,7 @@ pub(super) fn float_init_native(
     _receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    let arg = **args.first().unwrap();
+    let arg = *args[0];
 
     match arg {
         Value::String(string_id) => {
@@ -127,8 +127,8 @@ pub(super) fn rational_init_native(
     _receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    let numerator_arg = **args.first().unwrap();
-    let denominator_arg = **args.get(1).unwrap();
+    let numerator_arg = *args[0];
+    let denominator_arg = *args[1];
 
     // Extract integer values
     let Value::Number(Number::Integer(numerator)) = numerator_arg else {
