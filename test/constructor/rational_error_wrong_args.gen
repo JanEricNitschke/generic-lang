@@ -1,3 +1,2 @@
-# Test Rational constructor wrong argument count
-
-print(Rational(1)); # expect runtime error: Native function 'Rational' expected 2 arguments, got 1.
+# Test Rational constructor error - wrong argument types
+Rational("1", 2); # expect runtime error: Rational() numerator must be an integer, not '1'

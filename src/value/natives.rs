@@ -90,6 +90,12 @@ pub enum NativeClass {
     RangeIterator(RangeIterator),
     Tuple(Tuple),
     TupleIterator(TupleIterator),
+    // Value type proxy classes (no backing data needed)
+    Bool,
+    String,
+    Integer,
+    Float,
+    Rational,
 }
 
 impl NativeClass {
@@ -100,6 +106,11 @@ impl NativeClass {
             "Dict" => Self::Dict(Dict::default()),
             "Range" => Self::Range(Range::default()),
             "Tuple" => Self::Tuple(Tuple::default()),
+            "Bool" => Self::Bool,
+            "String" => Self::String,
+            "Integer" => Self::Integer,
+            "Float" => Self::Float,
+            "Rational" => Self::Rational,
             _ => unreachable!("Unknown native class `{}`.", kind),
         }
     }
@@ -114,6 +125,11 @@ impl NativeClass {
             Self::RangeIterator(range_iter) => range_iter.to_string(heap),
             Self::Tuple(tuple) => tuple.to_string(heap),
             Self::TupleIterator(tuple_iter) => tuple_iter.to_string(heap),
+            Self::Bool => "Bool".to_string(),
+            Self::String => "String".to_string(),
+            Self::Integer => "Integer".to_string(),
+            Self::Float => "Float".to_string(),
+            Self::Rational => "Rational".to_string(),
         }
     }
 }

@@ -591,6 +591,12 @@ impl Heap {
                         self.big_ints.gray.push(offset);
                     }
                 }
+                // Value type proxy classes have no internal references to gray
+                NativeClass::Bool
+                | NativeClass::String
+                | NativeClass::Integer
+                | NativeClass::Float
+                | NativeClass::Rational => {}
             }
         }
         #[cfg(feature = "log_gc")]

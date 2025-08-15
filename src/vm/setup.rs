@@ -118,6 +118,8 @@ impl VM {
     }
 
     /// Register a rust native stdlib module by its name and exported functions.
+    ///
+    /// Add the name of the module to the heap and add the exported functions
     /// to the stdlib map so that they can be loaded into the globals when the module is imported.
     pub(crate) fn register_stdlib_module<T: ToString>(
         &mut self,

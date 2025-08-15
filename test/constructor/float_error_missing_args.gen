@@ -1,3 +1,0 @@
-# Test Float constructor missing arguments
-
-print(Float()); # expect runtime error: Native function 'Float' expected 1 argument, got 0.

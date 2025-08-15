@@ -113,10 +113,19 @@ pub fn define(vm: &mut VM) {
     vm.define_native_class(&"RangeIterator", false);
     vm.define_native_method(&"RangeIterator", &"__next__", &[0], range_iter_next_native);
 
-    // Additional type constructor functions
-    vm.define_native_function(&"Bool", &[0, 1], bool_init_native);
-    vm.define_native_function(&"String", &[0, 1], string_init_native);
-    vm.define_native_function(&"Integer", &[1], integer_init_native);
-    vm.define_native_function(&"Float", &[1], float_init_native);
-    vm.define_native_function(&"Rational", &[2], rational_init_native);
+    // Value type constructor proxy classes
+    vm.define_native_class(&"Bool", true);
+    vm.define_native_method(&"Bool", &"__init__", &[0, 1], bool_init_native);
+
+    vm.define_native_class(&"String", true);
+    vm.define_native_method(&"String", &"__init__", &[0, 1], string_init_native);
+
+    vm.define_native_class(&"Integer", true);
+    vm.define_native_method(&"Integer", &"__init__", &[1], integer_init_native);
+
+    vm.define_native_class(&"Float", true);
+    vm.define_native_method(&"Float", &"__init__", &[1], float_init_native);
+
+    vm.define_native_class(&"Rational", true);
+    vm.define_native_method(&"Rational", &"__init__", &[2], rational_init_native);
 }

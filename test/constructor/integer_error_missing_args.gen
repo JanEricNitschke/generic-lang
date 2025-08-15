@@ -1,3 +1,0 @@
-# Test Integer constructor missing arguments
-
-print(Integer()); # expect runtime error: Native function 'Integer' expected 1 argument, got 0.

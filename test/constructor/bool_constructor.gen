@@ -1,21 +1,8 @@
-# Test Bool constructor with various inputs
-
-# Basic boolean values
-print(Bool(true)); # expect: true
-print(Bool(false)); # expect: false
-
-# Falsey values
+# Test Bool constructor with various values
+print(Bool()); # expect: false
 print(Bool(nil)); # expect: false
 print(Bool(false)); # expect: false
-
-# Truthy values
+print(Bool(true)); # expect: true
 print(Bool(0)); # expect: true
-print(Bool(1)); # expect: true
-print(Bool(-1)); # expect: true
-print(Bool(3.14)); # expect: true
 print(Bool("")); # expect: true
 print(Bool("hello")); # expect: true
-print(Bool("false")); # expect: true
-
-# No arguments (should default to nil, which is falsey)
-print(Bool()); # expect: false

@@ -1,4 +1,4 @@
-//! Native constructor functions for value types to allow instantiation.
+//! Native classes for value type constructors.
 
 use crate::{
     value::{GenericRational, Number, Value},
@@ -6,9 +6,14 @@ use crate::{
 };
 use num_bigint::BigInt;
 
-/// Bool constructor function.
+/// Bool.__init__ method.
 /// Accepts any argument and uses the VM's `is_falsey` to determine true/false.
-pub(super) fn bool_init_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+/// Returns the boolean value, replacing the receiver on the stack.
+pub(super) fn bool_init_native(
+    vm: &mut VM,
+    _receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
     let arg = if args.is_empty() {
         Value::Nil
     } else {
@@ -20,9 +25,14 @@ pub(super) fn bool_init_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<V
     Ok(Value::Bool(!is_false))
 }
 
-/// String constructor function.
+/// String.__init__ method.
 /// Accepts any argument and converts it to string.
-pub(super) fn string_init_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+/// Returns the string value, replacing the receiver on the stack.
+pub(super) fn string_init_native(
+    vm: &mut VM,
+    _receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
     let arg = if args.is_empty() {
         Value::Nil
     } else {
@@ -33,9 +43,14 @@ pub(super) fn string_init_native(vm: &mut VM, args: &mut [&mut Value]) -> Result
     Ok(Value::String(vm.heap.string_id(&arg.to_string(&vm.heap))))
 }
 
-/// Integer constructor function.
+/// Integer.__init__ method.
 /// Accepts a single argument and converts it to integer.
-pub(super) fn integer_init_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+/// Returns the integer value, replacing the receiver on the stack.
+pub(super) fn integer_init_native(
+    vm: &mut VM,
+    _receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
     let arg = **args.first().unwrap();
 
     match arg {
@@ -73,9 +88,14 @@ pub(super) fn integer_init_native(vm: &mut VM, args: &mut [&mut Value]) -> Resul
     }
 }
 
-/// Float constructor function.
+/// Float.__init__ method.
 /// Accepts a single argument and converts it to float.
-pub(super) fn float_init_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+/// Returns the float value, replacing the receiver on the stack.
+pub(super) fn float_init_native(
+    vm: &mut VM,
+    _receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
     let arg = **args.first().unwrap();
 
     match arg {
@@ -99,9 +119,14 @@ pub(super) fn float_init_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<
     }
 }
 
-/// Rational constructor function.
+/// Rational.__init__ method.
 /// Accepts exactly two integer arguments: numerator and denominator.
-pub(super) fn rational_init_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+/// Returns the rational value, replacing the receiver on the stack.
+pub(super) fn rational_init_native(
+    vm: &mut VM,
+    _receiver: &mut Value,
+    args: &mut [&mut Value],
+) -> Result<Value, String> {
     let numerator_arg = **args.first().unwrap();
     let denominator_arg = **args.get(1).unwrap();
 

@@ -1,4 +1,2 @@
-# Test Rational constructor error cases
-
-# Zero denominator
-print(Rational(1, 0)); # expect runtime error: Rational() denominator cannot be zero
+# Test Rational constructor error - zero denominator
+Rational(1, 0); # expect runtime error: Rational() denominator cannot be zero

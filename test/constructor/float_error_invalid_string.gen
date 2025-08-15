@@ -1,4 +1,2 @@
 # Test Float constructor error cases
-
-# Invalid string
-print(Float("not_a_number")); # expect runtime error: Float() could not convert string 'not_a_number' to a float
+Float("abc"); # expect runtime error: Float() could not convert string 'abc' to a float
