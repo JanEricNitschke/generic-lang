@@ -16,4 +16,4 @@ print(String(nil)); # expect: nil
 
 # Test String with collections
 print(String(List())); # expect: []
-print(String(Dict())); # expect: {}
+print(String(Dict())); # expect: {:}
