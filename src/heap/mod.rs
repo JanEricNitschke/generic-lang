@@ -592,11 +592,11 @@ impl Heap {
                     }
                 }
                 // Proxy classes don't contain any references to gray
-                NativeClass::BoolProxy(())
-                | NativeClass::StringProxy(())
-                | NativeClass::IntegerProxy(())
-                | NativeClass::FloatProxy(())
-                | NativeClass::RationalProxy(()) => {}
+                NativeClass::BoolProxy
+                | NativeClass::StringProxy
+                | NativeClass::IntegerProxy
+                | NativeClass::FloatProxy
+                | NativeClass::RationalProxy => {}
             }
         }
         #[cfg(feature = "log_gc")]

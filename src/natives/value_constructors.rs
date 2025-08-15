@@ -1,54 +1,8 @@
 //! Module containing native constructor methods for value types.
 
+use crate::value::utils::{parse_string_to_float, parse_string_to_integer, value_to_string};
 use crate::value::{GenericInt, Number, Value};
 use crate::vm::VM;
-
-/// Helper function to parse a string to integer, supporting BigInt
-fn parse_string_to_integer(vm: &mut VM, string: &str) -> Result<Value, String> {
-    let converted: Result<i64, _> = string.parse();
-    match converted {
-        Ok(result) => Ok(Value::Number(result.into())),
-        Err(_) => {
-            // Try parsing as BigInt if i64 parsing fails
-            match string.parse::<num_bigint::BigInt>() {
-                Ok(bigint) => {
-                    let bigint_value = vm.heap.add_big_int(bigint);
-                    Ok(Value::Number((*bigint_value.as_generic_int()).into()))
-                }
-                Err(_) => Err(format!(
-                    "Could not convert string '{}' to an integer.",
-                    string
-                )),
-            }
-        }
-    }
-}
-
-/// Helper function to convert a value to string, handling instances with __str__ methods
-fn parse_string_to_float(string: &str) -> Result<Value, String> {
-    let converted: Result<f64, _> = string.parse();
-    match converted {
-        Ok(result) => Ok(Value::Number(result.into())),
-        Err(_) => Err(format!("Could not convert string '{}' to a float.", string)),
-    }
-}
-fn value_to_string(vm: &mut VM, value: &Value) -> Result<Value, String> {
-    let str_id = vm.heap.string_id(&"__str__");
-
-    if let Value::Instance(instance) = value
-        && let Some(str_method) = instance
-            .to_value(&vm.heap)
-            .get_field_or_method(str_id, &vm.heap)
-    {
-        // Push the value onto the stack temporarily so invoke_and_run_function can access it
-        vm.stack.push(*value);
-        vm.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)));
-        let returned_value = vm.stack.pop().expect("Stack underflow in value_to_string");
-        Ok(returned_value)
-    } else {
-        Ok(Value::String(vm.heap.string_id(&value.to_string(&vm.heap))))
-    }
-}
 
 /// Bool.__init__(value) - Convert any value to boolean using is_falsey logic
 pub(super) fn bool_init_native(
