@@ -100,6 +100,12 @@ impl NativeClass {
             "Dict" => Self::Dict(Dict::default()),
             "Range" => Self::Range(Range::default()),
             "Tuple" => Self::Tuple(Tuple::default()),
+            // Special proxy classes - they don't need backing data
+            "Bool" | "String" | "Integer" | "Float" | "Rational" => {
+                // These are proxy classes that don't need actual backing
+                // We'll use List as a placeholder since they should never be accessed
+                Self::List(List::default())
+            }
             _ => unreachable!("Unknown native class `{}`.", kind),
         }
     }
