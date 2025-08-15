@@ -89,18 +89,12 @@ pub struct VM {
     path: PathBuf,
     builtins: HashMap<StringId, Global>,
     stdlib: HashMap<StringId, ModuleContents>,
-    load_builtins: bool,
 }
 
 // Core functionality for running a script.
 impl VM {
     #[must_use]
     pub(super) fn new(path: PathBuf) -> Self {
-        Self::new_with_builtins(path, true)
-    }
-
-    #[must_use]
-    fn new_with_builtins(path: PathBuf, load_builtins: bool) -> Self {
         Self {
             heap: Heap::new(),
             stack: Vec::with_capacity(crate::config::STACK_MAX),
@@ -111,7 +105,6 @@ impl VM {
             path,
             builtins: HashMap::default(),
             stdlib: HashMap::default(),
-            load_builtins,
         }
     }
 
@@ -124,11 +117,9 @@ impl VM {
         natives::define(self);
 
         // Load generic builtins from .gen files after natives but before main script setup
-        if self.load_builtins {
-            let builtin_result = self.load_generic_builtins_simple();
-            if builtin_result != InterpretResult::Ok {
-                return builtin_result;
-            }
+        let builtin_result = self.load_generic_builtins_simple();
+        if builtin_result != InterpretResult::Ok {
+            return builtin_result;
         }
 
         // Register stdlib modules
@@ -230,12 +221,10 @@ impl VM {
             let script_name_id = self.heap.builtin_constants().script_name;
             let module_globals = self.globals().clone();
 
-            for (name_id, global) in module_globals {
-                if name_id != script_name_id {
-                    // Exclude __name__
-                    self.builtins.insert(name_id, global);
-                }
-            }
+            // Extend builtins with all globals from the module
+            self.builtins.extend(module_globals);
+            // Remove __name__ from builtins
+            self.builtins.remove(&script_name_id);
         }
 
         // Clean up the builtin module
