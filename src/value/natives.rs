@@ -101,7 +101,7 @@ impl NativeClass {
             "Dict" => Self::Dict(Dict::default()),
             "Range" => Self::Range(Range::default()),
             "Tuple" => Self::Tuple(Tuple::default()),
-            "Exception" => Self::Exception(Exception::new_empty()),
+            "Exception" => Self::Exception(Exception::default()),
             _ => unreachable!("Unknown native class `{}`.", kind),
         }
     }
@@ -572,7 +572,7 @@ impl std::fmt::Display for TupleIterator {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exception {
-    message: Option<String>,
+    message: String,
     stack_trace: Vec<String>,
 }
 
@@ -580,32 +580,17 @@ impl Exception {
     #[must_use]
     pub(crate) fn new(message: String, stack_trace: Vec<String>) -> Self {
         Self {
-            message: Some(message),
+            message,
             stack_trace,
         }
     }
 
-    #[must_use]
-    pub(crate) fn new_empty() -> Self {
-        // Create a placeholder Exception with no message
-        // This will be replaced when the actual constructor is called
-        Self {
-            message: None,
-            stack_trace: Vec::new(),
-        }
-    }
-
-    pub(crate) fn message(&self) -> Option<&String> {
-        self.message.as_ref()
+    pub(crate) fn message(&self) -> &String {
+        &self.message
     }
 
     pub(crate) fn to_string(&self, _heap: &Heap) -> String {
-        let message_str = if let Some(message) = &self.message {
-            message.clone()
-        } else {
-            "<uninitialized>".to_string()
-        };
-        let mut result = format!("Exception: {message_str}");
+        let mut result = format!("Exception: {}", self.message);
         if !self.stack_trace.is_empty() {
             result.push_str("\nStacktrace (most recent call last):");
             for trace_line in &self.stack_trace {
@@ -617,11 +602,11 @@ impl Exception {
     }
 }
 
-// impl Default for Exception {
-//     fn default() -> Self {
-//         Self::new(String::new(), Vec::new())
-//     }
-// }
+impl Default for Exception {
+    fn default() -> Self {
+        Self::new(String::new(), Vec::new())
+    }
+}
 
 impl std::fmt::Display for Exception {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

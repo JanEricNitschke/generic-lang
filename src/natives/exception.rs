@@ -43,10 +43,6 @@ pub(super) fn exception_message_native(
     receiver: &mut Value,
     _args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    if let Some(message_string) = receiver.as_exception(&vm.heap).message() {
-        let message_clone = message_string.clone();
-        Ok(Value::String(vm.heap.string_id(&message_clone)))
-    } else {
-        Err("Exception not properly initialized".to_string())
-    }
+    let message_clone = receiver.as_exception(&vm.heap).message().clone();
+    Ok(Value::String(vm.heap.string_id(&message_clone)))
 }
