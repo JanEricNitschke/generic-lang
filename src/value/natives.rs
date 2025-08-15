@@ -91,6 +91,12 @@ pub enum NativeClass {
     Tuple(Tuple),
     TupleIterator(TupleIterator),
     Exception(Exception),
+    // Proxy classes for value type constructors
+    BoolProxy,
+    StringProxy,
+    IntegerProxy,
+    FloatProxy,
+    RationalProxy,
 }
 
 impl NativeClass {
@@ -102,6 +108,12 @@ impl NativeClass {
             "Range" => Self::Range(Range::default()),
             "Tuple" => Self::Tuple(Tuple::default()),
             "Exception" => Self::Exception(Exception::default()),
+            // Proxy classes for value type constructors
+            "Bool" => Self::BoolProxy,
+            "String" => Self::StringProxy,
+            "Integer" => Self::IntegerProxy,
+            "Float" => Self::FloatProxy,
+            "Rational" => Self::RationalProxy,
             _ => unreachable!("Unknown native class `{}`.", kind),
         }
     }
@@ -117,6 +129,12 @@ impl NativeClass {
             Self::Tuple(tuple) => tuple.to_string(heap),
             Self::TupleIterator(tuple_iter) => tuple_iter.to_string(heap),
             Self::Exception(exception) => exception.to_string(heap),
+            // Proxy classes should never be accessed for string conversion
+            Self::BoolProxy => "<BoolProxy>".to_string(),
+            Self::StringProxy => "<StringProxy>".to_string(),
+            Self::IntegerProxy => "<IntegerProxy>".to_string(),
+            Self::FloatProxy => "<FloatProxy>".to_string(),
+            Self::RationalProxy => "<RationalProxy>".to_string(),
         }
     }
 }

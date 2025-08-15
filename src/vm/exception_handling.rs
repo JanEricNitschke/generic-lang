@@ -49,8 +49,8 @@ impl VM {
         } else {
             runtime_error!(
                 self,
-                "Uncaught exception: {}",
-                exception.to_string(&self.heap)
+                "{}",
+                self.value_to_string(&exception).to_string(&self.heap)
             );
             Some(InterpretResult::RuntimeError)
         }

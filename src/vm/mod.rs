@@ -5,6 +5,7 @@
 
 #[macro_use]
 mod runtime_error;
+mod dunder;
 mod garbage_collection;
 mod import;
 mod setup;

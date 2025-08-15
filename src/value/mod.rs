@@ -4,6 +4,7 @@ mod classes;
 mod functions;
 mod natives;
 mod number;
+pub mod utils;
 
 use crate::heap::{
     BigIntId, BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ModuleId,

@@ -23,4 +23,4 @@ try {
     first();
 } catch Error2 as e {
     print(e);
-}  # expect runtime error: Uncaught exception: <Error1 instance>
+}  # expect runtime error: <Error1 instance>

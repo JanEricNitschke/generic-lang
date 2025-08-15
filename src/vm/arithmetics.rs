@@ -183,23 +183,6 @@ impl VM {
         None
     }
 
-    pub(crate) fn is_falsey(&mut self, value: Value) -> bool {
-        let bool_id = self.heap.string_id(&"__bool__");
-        if let Value::Instance(instance) = value
-            && let Some(bool_method) = instance
-                .to_value(&self.heap)
-                .get_field_or_method(bool_id, &self.heap)
-        {
-            // Value needs to be on top of the stack to invoke this check.
-            self.stack_push_value(value);
-            self.invoke_and_run_function(bool_id, 0, matches!(bool_method, Value::NativeMethod(_)));
-            let result = self.stack.pop().expect("Stack underflow in IS_FALSEY");
-            result == Value::Bool(false)
-        } else {
-            matches!(value, Value::Nil | Value::Bool(false))
-        }
-    }
-
     pub(crate) fn build_rational(&mut self) -> Option<InterpretResult> {
         let denominator = self
             .stack
