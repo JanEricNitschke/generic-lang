@@ -167,7 +167,7 @@ impl VM {
         builtins_dir.push("builtins");
 
         if !builtins_dir.exists() || !builtins_dir.is_dir() {
-            return InterpretResult::Ok; // No builtins directory, continue normally
+            return InterpretResult::RuntimeError; // Missing builtins directory is an error
         }
 
         let entries = match std::fs::read_dir(&builtins_dir) {
