@@ -591,8 +591,11 @@ impl Heap {
                         self.big_ints.gray.push(offset);
                     }
                 }
-                NativeClass::Exception(_) => {
-                    // Exception only contains String data, no heap references to traverse
+                NativeClass::Exception(exception) => {
+                    // Mark the message StringId for Exception if it exists
+                    if let Some(message_id) = exception.message() {
+                        self.strings.gray.push(message_id);
+                    }
                 }
             }
         }
