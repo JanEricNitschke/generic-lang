@@ -164,15 +164,10 @@ impl VM {
         builtins_dir.pop(); // Remove vm/
         builtins_dir.push("builtins");
 
-        assert!(builtins_dir.exists() && builtins_dir.is_dir(), "Missing builtins directory at {}", builtins_dir.display());
-
-        let entries = std::fs::read_dir(&builtins_dir)
-            .expect("Failed to read builtins directory");
+        let entries = std::fs::read_dir(&builtins_dir).expect("Failed to read builtins directory");
 
         for entry in entries {
-            let entry = entry.expect("Failed to read directory entry");
-            let path = entry.path();
-            
+            let path = entry.expect("Failed to read directory entry").path();
             if path.extension().and_then(|s| s.to_str()) == Some("gen") {
                 self.load_builtin_file(&path);
             }
@@ -181,21 +176,20 @@ impl VM {
 
     /// Load and execute a single builtin file in the current VM.
     fn load_builtin_file(&mut self, path: &std::path::Path) {
-        let source = std::fs::read(path)
-            .expect("Failed to read builtin file");
+        let source = std::fs::read(path).expect("Failed to read builtin file");
 
         let name = format!("<builtin:{}>", path.file_name().unwrap().to_string_lossy());
 
         // Compile the builtin source
-        let function = self.compile(&source, &name)
+        let function = self
+            .compile(&source, &name)
             .expect("Failed to compile builtin file");
 
         // Create and execute the builtin in a temporary module context
         let function_id = self.heap.add_function(function);
         let closure = Closure::new(*function_id.as_function(), true, None, &self.heap);
 
-        let builtin_path = PathBuf::from(&name);
-        self.add_closure_to_modules(&closure, builtin_path, None, None, false);
+        self.add_closure_to_modules(&closure, path.to_path_buf(), None, None, false);
 
         let value_id = self.heap.add_closure(closure);
         self.stack_push(value_id);
@@ -215,7 +209,10 @@ impl VM {
             // Remove __name__ from builtins
             self.builtins.remove(&script_name_id);
         } else {
-            panic!("Failed to execute builtin file {}: {result:?}", path.display());
+            panic!(
+                "Failed to execute builtin file {}: {result:?}",
+                path.display()
+            );
         }
 
         // Clean up the builtin module
