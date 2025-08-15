@@ -112,14 +112,21 @@ impl VM {
     pub(super) fn capture_stack_trace(&self) -> Vec<String> {
         let mut stack_trace = Vec::new();
         for frame in self.callstack.iter() {
-            let function = frame.closure(&self.heap).function.to_value(&self.heap);
-            let line = function
+            let line = frame
+                .closure(&self.heap)
+                .function
+                .to_value(&self.heap)
                 .chunk
                 .get_line(crate::chunk::CodeOffset(frame.ip.saturating_sub(1)));
             let trace_line = format!(
                 "  [line {}] in {}",
                 *line,
-                function.name.to_value(&self.heap)
+                frame
+                    .closure(&self.heap)
+                    .function
+                    .to_value(&self.heap)
+                    .name
+                    .to_value(&self.heap)
             );
             stack_trace.push(trace_line);
         }
