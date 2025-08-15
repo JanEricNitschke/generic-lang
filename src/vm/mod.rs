@@ -113,6 +113,15 @@ impl VM {
     /// Works by compiling the source to bytecode and then running it.
     /// Even the main script is compiled as a function.
     pub(super) fn interpret(&mut self, source: &[u8]) -> InterpretResult {
+        // Load native functions and classes first
+        natives::define(self);
+
+        // Load generic builtins from .gen files after natives but before main script setup
+        self.load_generic_builtins();
+
+        // Register stdlib modules
+        stdlib::register(self);
+
         let result = if let Some(function) = self.compile(source, "<script>") {
             let function_id = self.heap.add_function(function);
 
@@ -123,12 +132,6 @@ impl VM {
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
             self.execute_call(value_id, 0);
-
-            // Need to have the first module loaded before defining natives
-            // Probably not actually needed in that order anymore as they are
-            // now defined in the builtins.
-            natives::define(self);
-            stdlib::register(self);
 
             self.run()
         } else {
@@ -145,6 +148,73 @@ impl VM {
         let scanner = Scanner::new(source);
         let compiler = Compiler::new(scanner, &mut self.heap, name);
         compiler.compile()
+    }
+
+    /// Load and execute generic builtin files from the `src/builtins` directory.
+    ///
+    /// Each builtin file is compiled and executed to completion. Then its globals
+    /// (excluding `__name__`) are copied to the VM builtins and the module is
+    /// popped from the modules stack.
+    ///
+    /// Panics if builtin loading fails, as this indicates an internal error.
+    fn load_generic_builtins(&mut self) {
+        // Use path relative to the rust file, consistent with stdlib handling
+        let mut builtins_dir = std::path::PathBuf::from(file!());
+        builtins_dir.pop(); // Remove mod.rs
+        builtins_dir.pop(); // Remove vm/
+        builtins_dir.push("builtins");
+
+        let entries = std::fs::read_dir(&builtins_dir).expect("Failed to read builtins directory");
+
+        entries
+            .map(|entry| entry.expect("Failed to read directory entry").path())
+            .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("gen"))
+            .for_each(|path| self.load_builtin_file(&path));
+    }
+
+    /// Load and execute a single builtin file in the current VM.
+    fn load_builtin_file(&mut self, path: &std::path::Path) {
+        let source = std::fs::read(path).expect("Failed to read builtin file");
+
+        let name = format!("<builtin:{}>", path.file_name().unwrap().to_string_lossy());
+
+        // Compile the builtin source
+        let function = self
+            .compile(&source, &name)
+            .expect("Failed to compile builtin file");
+
+        // Create and execute the builtin in a temporary module context
+        let function_id = self.heap.add_function(function);
+        let closure = Closure::new(*function_id.as_function(), true, None, &self.heap);
+
+        self.add_closure_to_modules(&closure, path.to_path_buf(), None, None, false);
+
+        let value_id = self.heap.add_closure(closure);
+        self.stack_push(value_id);
+        self.execute_call(value_id, 0);
+
+        // Execute the builtin to completion
+        let result = self.run();
+
+        // Copy globals from the completed module to builtins (excluding __name__)
+        if result == InterpretResult::Ok {
+            let script_name_id = self.heap.builtin_constants().script_name;
+            // Take ownership of the module's globals instead of cloning
+            let module_globals = std::mem::take(self.globals());
+
+            // Extend builtins with all globals from the module
+            self.builtins.extend(module_globals);
+            // Remove __name__ from builtins
+            self.builtins.remove(&script_name_id);
+        } else {
+            panic!(
+                "Failed to execute builtin file {}: {result:?}",
+                path.display()
+            );
+        }
+
+        // Clean up the builtin module
+        self.modules.pop();
     }
 
     /// Infinite loop over the bytecode.
