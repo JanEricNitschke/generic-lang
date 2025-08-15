@@ -1,5 +1,3 @@
 var my_dict = {1: "a", 2: "b", 3: "c"};
 print(2 in my_dict); # expect: true
 print(4 in my_dict); # expect: false
-class A {}
-print(A() in my_dict); # expect runtime error: Value `<A instance>` is not hashable.

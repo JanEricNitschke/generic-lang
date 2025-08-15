@@ -6,27 +6,19 @@ use crate::{
 };
 
 /// Insert an item into the set `set.insert(item)`.
-/// Only works on hasheable values.
+/// Supports all value types that implement hashable functionality.
 pub(super) fn set_insert_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
     let mut set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
-    if !args[0].is_hasheable() {
-        return Err(format!(
-            "Value `{}` is not hashable.",
-            args[0].to_string(&vm.heap)
-        ));
-    }
-    set.add(*args[0], &vm.heap);
+    set.add(*args[0], vm)?;
     *receiver.as_set_mut(&mut vm.heap) = set;
     Ok(Value::Nil)
 }
 
 /// Remove a value from the set `set.remove(val)`.
-/// The value has to be able to actually be in the set, meaning that it
-/// has to be hasheable.
 /// Returns whether the value was originally in the set.
 pub(super) fn set_remove_native(
     vm: &mut VM,
@@ -34,13 +26,7 @@ pub(super) fn set_remove_native(
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
     let mut my_set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
-    if !args[0].is_hasheable() {
-        return Err(format!(
-            "Value `{}` is not hashable.",
-            args[0].to_string(&vm.heap)
-        ));
-    }
-    let result = my_set.remove(args[0], &vm.heap).into();
+    let result = my_set.remove(*args[0], vm)?.into();
     *receiver.as_set_mut(&mut vm.heap) = my_set;
     Ok(result)
 }
@@ -52,14 +38,12 @@ pub(super) fn set_contains_native(
     receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    let my_set = receiver.as_set(&vm.heap);
-    if !args[0].is_hasheable() {
-        return Err(format!(
-            "Value `{}` is not hashable.",
-            args[0].to_string(&vm.heap)
-        ));
-    }
-    Ok(my_set.contains(args[0], &vm.heap).into())
+    // Create a temporary set to avoid borrowing conflicts
+    let set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
+    let result = set.contains(*args[0], vm)?.into();
+    // Restore the set
+    *receiver.as_set_mut(&mut vm.heap) = set;
+    Ok(result)
 }
 
 pub(super) fn set_len_native(
@@ -92,13 +76,7 @@ pub(super) fn set_init_native(
     let mut set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
     set.items.clear(); // Explicitly clear to ensure it's empty
     for arg in args {
-        if !arg.is_hasheable() {
-            return Err(format!(
-                "Value `{}` is not hashable.",
-                arg.to_string(&vm.heap)
-            ));
-        }
-        set.add(**arg, &vm.heap);
+        set.add(**arg, vm)?;
     }
     *receiver.as_set_mut(&mut vm.heap) = set;
     Ok(*receiver)

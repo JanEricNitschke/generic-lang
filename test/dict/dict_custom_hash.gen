@@ -1,0 +1,19 @@
+class Point {
+    __init__(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    __eq__(other) {
+        return this.x == other.x and this.y == other.y;
+    }
+    
+    __hash__() {
+        return this.x * 100 + this.y;
+    }
+}
+
+var p = Point(3, 4);
+var point_dict = {p: "coordinates"};
+print("Dict with custom hash method created"); # expect: Dict with custom hash method created
+print(Point(3, 4) in point_dict); # expect: true

@@ -3,4 +3,4 @@ print(my_set.remove(3)); # expect: true
 print(my_set.remove(4)); # expect: false
 print(my_set); # expect: {2, 1}
 class A {}
-my_set.remove(A()); # expect runtime error: Value `<A instance>` is not hashable.
+print(my_set.remove(A())); # expect: false

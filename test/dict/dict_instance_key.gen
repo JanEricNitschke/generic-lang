@@ -1,0 +1,3 @@
+class A {}
+var my_dict = {A(): "instance_key"};
+print("Dict with instance key created successfully"); # expect: Dict with instance key created successfully

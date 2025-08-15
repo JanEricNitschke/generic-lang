@@ -265,12 +265,12 @@ impl std::fmt::Display for ListIterator {
 
 #[derive(Debug, Clone)]
 pub struct Set {
-    pub(crate) items: HashTable<Value>,
+    pub(crate) items: HashTable<(Value, u64)>,
 }
 
 impl Set {
     #[must_use]
-    pub(crate) fn new(items: HashTable<Value>) -> Self {
+    pub(crate) fn new(items: HashTable<(Value, u64)>) -> Self {
         Self { items }
     }
 
@@ -279,35 +279,45 @@ impl Set {
             "{{{}}}",
             self.items
                 .iter()
-                .map(|item| item.to_string(heap))
+                .map(|(item, _hash)| item.to_string(heap))
                 .collect::<Vec<_>>()
                 .join(", ")
         )
     }
 
-    pub(crate) fn add(&mut self, item: Value, heap: &Heap) {
+    pub(crate) fn add(&mut self, item: Value, vm: &mut VM) -> Result<(), String> {
+        let hash = vm.compute_hash(item)?;
         if let Entry::Vacant(entry) = self.items.entry(
-            item.to_hash(heap),
-            |val| val.eq(&item, heap),
-            |val| val.to_hash(heap),
+            hash,
+            |(val, _stored_hash)| vm.compare_values(*val, item).unwrap(),
+            |(_val, stored_hash)| *stored_hash,
         ) {
-            entry.insert(item);
+            entry.insert((item, hash));
         }
+        Ok(())
     }
 
-    pub(crate) fn remove(&mut self, item: &Value, heap: &Heap) -> bool {
-        self.items
-            .find_entry(item.to_hash(heap), |val| val.eq(item, heap))
+    pub(crate) fn remove(&mut self, item: Value, vm: &mut VM) -> Result<bool, String> {
+        let hash = vm.compute_hash(item)?;
+        Ok(self
+            .items
+            .find_entry(hash, |(val, _stored_hash)| {
+                vm.compare_values(*val, item).unwrap()
+            })
             .is_ok_and(|entry| {
                 entry.remove();
                 true
-            })
+            }))
     }
 
-    pub(crate) fn contains(&self, item: &Value, heap: &Heap) -> bool {
-        self.items
-            .find(item.to_hash(heap), |val| val.eq(item, heap))
-            .is_some()
+    pub(crate) fn contains(&self, item: Value, vm: &mut VM) -> Result<bool, String> {
+        let hash = vm.compute_hash(item)?;
+        Ok(self
+            .items
+            .find(hash, |(val, _stored_hash)| {
+                vm.compare_values(*val, item).unwrap()
+            })
+            .is_some())
     }
 }
 
@@ -331,12 +341,12 @@ impl PartialEq for Set {
 
 #[derive(Debug, Clone)]
 pub struct Dict {
-    pub(crate) items: HashTable<(Value, Value)>,
+    pub(crate) items: HashTable<(Value, Value, u64)>,
 }
 
 impl Dict {
     #[must_use]
-    pub(crate) fn new(items: HashTable<(Value, Value)>) -> Self {
+    pub(crate) fn new(items: HashTable<(Value, Value, u64)>) -> Self {
         Self { items }
     }
 
@@ -349,37 +359,51 @@ impl Dict {
             "{{{}}}",
             self.items
                 .iter()
-                .map(|(key, value)| format!("{}: {}", key.to_string(heap), value.to_string(heap)))
+                .map(|(key, value, _hash)| format!(
+                    "{}: {}",
+                    key.to_string(heap),
+                    value.to_string(heap)
+                ))
                 .collect::<Vec<_>>()
                 .join(", ")
         )
     }
 
-    pub(crate) fn add(&mut self, key: Value, value: Value, heap: &Heap) {
+    pub(crate) fn add(&mut self, key: Value, value: Value, vm: &mut VM) -> Result<(), String> {
+        let hash = vm.compute_hash(key)?;
         match self.items.entry(
-            key.to_hash(heap),
-            |(k, _v)| k.eq(&key, heap),
-            |(k, _v)| k.to_hash(heap),
+            hash,
+            |(k, _v, _stored_hash)| vm.compare_values(*k, key).unwrap(),
+            |(_k, _v, stored_hash)| *stored_hash,
         ) {
             Entry::Vacant(entry) => {
-                entry.insert((key, value));
+                entry.insert((key, value, hash));
             }
             Entry::Occupied(mut entry) => {
                 entry.get_mut().1 = value;
             }
         }
+        Ok(())
     }
 
-    pub(crate) fn get(&self, key: &Value, heap: &Heap) -> Option<&Value> {
-        self.items
-            .find(key.to_hash(heap), |(k, _v)| k.eq(key, heap))
-            .map(|(_k, v)| v)
+    pub(crate) fn get(&self, key: Value, vm: &mut VM) -> Result<Option<&Value>, String> {
+        let hash = vm.compute_hash(key)?;
+        Ok(self
+            .items
+            .find(hash, |(k, _v, _stored_hash)| {
+                vm.compare_values(*k, key).unwrap()
+            })
+            .map(|(_k, v, _stored_hash)| v))
     }
 
-    pub(crate) fn contains(&self, item: &Value, heap: &Heap) -> bool {
-        self.items
-            .find(item.to_hash(heap), |(key, _val)| key.eq(item, heap))
-            .is_some()
+    pub(crate) fn contains(&self, key: Value, vm: &mut VM) -> Result<bool, String> {
+        let hash = vm.compute_hash(key)?;
+        Ok(self
+            .items
+            .find(hash, |(k, _v, _stored_hash)| {
+                vm.compare_values(*k, key).unwrap()
+            })
+            .is_some())
     }
 }
 
