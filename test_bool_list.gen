@@ -1,1 +1,0 @@
-var l = List(); if (l) { print("true"); } else { print("false"); }
