@@ -1,2 +1,0 @@
-class A {}
-var my_set = {1, A()}; # expect runtime error: Value `<A instance>` is not hashable when this is required for items in a set.

@@ -200,6 +200,115 @@ impl VM {
         }
     }
 
+    pub(crate) fn compute_hash(&mut self, value: Value) -> Result<u64, String> {
+        use crate::value::{GenericInt, Number};
+        use num_bigint::BigInt;
+        use rustc_hash::FxHasher;
+        use std::hash::Hash;
+        use std::hash::Hasher;
+
+        let mut state = FxHasher::default();
+
+        match value {
+            // For instances, try __hash__ method first, then fall back to object ID
+            Value::Instance(instance_id) => {
+                let hash_method_id = self.heap.string_id(&"__hash__");
+
+                if let Some(hash_method) = instance_id
+                    .to_value(&self.heap)
+                    .get_field_or_method(hash_method_id, &self.heap)
+                {
+                    // Push the instance onto the stack for method call
+                    self.stack.push(value);
+
+                    let invoke_result = self.invoke_and_run_function(
+                        hash_method_id,
+                        0,
+                        matches!(hash_method, Value::NativeMethod(_)),
+                    );
+
+                    if invoke_result != crate::vm::InterpretResult::Ok {
+                        return Err("__hash__ method failed".to_string());
+                    }
+
+                    let result = self.stack.pop().expect("Stack underflow in compute_hash");
+                    return match result {
+                        Value::Number(Number::Integer(GenericInt::Small(n))) => Ok(n as u64),
+                        _ => Err(format!(
+                            "__hash__ method must return an integer, got: {}",
+                            result.to_string(&self.heap)
+                        )),
+                    };
+                } else {
+                    // Fall back to object ID hashing
+                    instance_id.hash(&mut state);
+                }
+            }
+            // Basic types use their original hashing logic
+            Value::Bool(b) => {
+                b.hash(&mut state);
+            }
+            Value::Nil => {
+                state.write_u8(0);
+            }
+            Value::StopIteration => {
+                state.write_u8(1);
+            }
+            Value::Number(n) => {
+                match n {
+                    Number::Float(f) => {
+                        let f = if f == 0.0 { 0.0 } else { f };
+                        // If f has no fractional part, we treat it like an integer.
+                        if f.fract() == 0.0 {
+                            // Convert to an integer if the float has no fractional part
+                            #[allow(clippy::cast_possible_truncation)]
+                            BigInt::from(f as i64).hash(&mut state);
+                        } else {
+                            f.to_bits().hash(&mut state); // Otherwise, hash the float as is
+                        }
+                    }
+                    Number::Integer(i) => match i {
+                        GenericInt::Small(n) => BigInt::from(n).hash(&mut state),
+                        GenericInt::Big(n) => (n.to_value(&self.heap)).hash(&mut state),
+                    },
+                    Number::Rational(rational) => {
+                        rational.hash(&mut state, &self.heap);
+                    }
+                }
+            }
+            Value::String(s) => {
+                s.hash(&mut state);
+            }
+            // For other object types, use their object ID as hash
+            Value::Function(id) => {
+                id.hash(&mut state);
+            }
+            Value::Closure(id) => {
+                id.hash(&mut state);
+            }
+            Value::Module(id) => {
+                id.hash(&mut state);
+            }
+            Value::Upvalue(id) => {
+                id.hash(&mut state);
+            }
+            Value::NativeFunction(id) => {
+                id.hash(&mut state);
+            }
+            Value::NativeMethod(id) => {
+                id.hash(&mut state);
+            }
+            Value::Class(id) => {
+                id.hash(&mut state);
+            }
+            Value::BoundMethod(id) => {
+                id.hash(&mut state);
+            }
+        }
+
+        Ok(state.finish())
+    }
+
     pub(crate) fn build_rational(&mut self) -> Option<InterpretResult> {
         let denominator = self
             .stack

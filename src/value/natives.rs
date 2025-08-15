@@ -10,6 +10,56 @@ use hashbrown::hash_table::Entry;
 use super::Value;
 use crate::heap::InstanceId;
 use derivative::Derivative;
+use rustc_hash::FxHasher;
+use std::hash::{Hash, Hasher};
+
+/// Fallback hash function for rehashing when we can't access the VM.
+/// This only handles basic types that don't require __hash__ method calls.
+/// For object types, we use the object ID directly.
+fn fallback_hash(value: &Value, heap: &Heap) -> u64 {
+    let mut state = FxHasher::default();
+    match value {
+        Value::Bool(b) => b.hash(&mut state),
+        Value::Nil => state.write_u8(0),
+        Value::StopIteration => state.write_u8(1),
+        Value::Number(n) => {
+            match n {
+                crate::value::Number::Float(f) => {
+                    let f = if *f == 0.0 { 0.0 } else { *f };
+                    // If f has no fractional part, we treat it like an integer.
+                    if f.fract() == 0.0 {
+                        #[allow(clippy::cast_possible_truncation)]
+                        (num_bigint::BigInt::from(f as i64)).hash(&mut state);
+                    } else {
+                        f.to_bits().hash(&mut state); // Otherwise, hash the float as is
+                    }
+                }
+                crate::value::Number::Integer(i) => match i {
+                    crate::value::GenericInt::Small(n) => {
+                        num_bigint::BigInt::from(*n).hash(&mut state)
+                    }
+                    &crate::value::GenericInt::Big(n) => (n.to_value(heap)).hash(&mut state),
+                },
+                crate::value::Number::Rational(rational) => {
+                    // For rationals, use a simplified hash based on their parts
+                    rational.hash(&mut state, heap);
+                }
+            }
+        }
+        Value::String(s) => s.hash(&mut state),
+        // For object types, use the object ID directly
+        Value::Instance(id) => id.hash(&mut state),
+        Value::Function(id) => id.hash(&mut state),
+        Value::Closure(id) => id.hash(&mut state),
+        Value::Module(id) => id.hash(&mut state),
+        Value::Upvalue(id) => id.hash(&mut state),
+        Value::NativeFunction(id) => id.hash(&mut state),
+        Value::NativeMethod(id) => id.hash(&mut state),
+        Value::Class(id) => id.hash(&mut state),
+        Value::BoundMethod(id) => id.hash(&mut state),
+    }
+    state.finish()
+}
 
 // Values related to natives
 #[derive(Derivative)]
@@ -256,29 +306,35 @@ impl Set {
         )
     }
 
-    pub(crate) fn add(&mut self, item: Value, heap: &Heap) {
+    pub(crate) fn add(&mut self, item: Value, vm: &mut VM) -> Result<(), String> {
+        let hash = vm.compute_hash(item)?;
         if let Entry::Vacant(entry) = self.items.entry(
-            item.to_hash(heap),
-            |val| val.eq(&item, heap),
-            |val| val.to_hash(heap),
+            hash,
+            |val| val.eq(&item, &vm.heap),
+            |val| fallback_hash(val, &vm.heap),
         ) {
             entry.insert(item);
         }
+        Ok(())
     }
 
-    pub(crate) fn remove(&mut self, item: &Value, heap: &Heap) -> bool {
-        self.items
-            .find_entry(item.to_hash(heap), |val| val.eq(item, heap))
+    pub(crate) fn remove(&mut self, item: &Value, vm: &mut VM) -> Result<bool, String> {
+        let hash = vm.compute_hash(*item)?;
+        Ok(self
+            .items
+            .find_entry(hash, |val| val.eq(item, &vm.heap))
             .is_ok_and(|entry| {
                 entry.remove();
                 true
-            })
+            }))
     }
 
-    pub(crate) fn contains(&self, item: &Value, heap: &Heap) -> bool {
-        self.items
-            .find(item.to_hash(heap), |val| val.eq(item, heap))
-            .is_some()
+    pub(crate) fn contains(&self, item: &Value, vm: &mut VM) -> Result<bool, String> {
+        let hash = vm.compute_hash(*item)?;
+        Ok(self
+            .items
+            .find(hash, |val| val.eq(item, &vm.heap))
+            .is_some())
     }
 }
 
@@ -326,11 +382,12 @@ impl Dict {
         )
     }
 
-    pub(crate) fn add(&mut self, key: Value, value: Value, heap: &Heap) {
+    pub(crate) fn add(&mut self, key: Value, value: Value, vm: &mut VM) -> Result<(), String> {
+        let hash = vm.compute_hash(key)?;
         match self.items.entry(
-            key.to_hash(heap),
-            |(k, _v)| k.eq(&key, heap),
-            |(k, _v)| k.to_hash(heap),
+            hash,
+            |(k, _v)| k.eq(&key, &vm.heap),
+            |(k, _v)| fallback_hash(k, &vm.heap),
         ) {
             Entry::Vacant(entry) => {
                 entry.insert((key, value));
@@ -339,12 +396,15 @@ impl Dict {
                 entry.get_mut().1 = value;
             }
         }
+        Ok(())
     }
 
-    pub(crate) fn get(&self, key: &Value, heap: &Heap) -> Option<&Value> {
-        self.items
-            .find(key.to_hash(heap), |(k, _v)| k.eq(key, heap))
-            .map(|(_k, v)| v)
+    pub(crate) fn get(&self, key: &Value, vm: &mut VM) -> Result<Option<&Value>, String> {
+        let hash = vm.compute_hash(*key)?;
+        Ok(self
+            .items
+            .find(hash, |(k, _v)| k.eq(key, &vm.heap))
+            .map(|(_k, v)| v))
     }
 }
 
