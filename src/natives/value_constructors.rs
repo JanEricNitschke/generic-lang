@@ -32,7 +32,7 @@ pub(super) fn integer_init_native(
 ) -> Result<Value, String> {
     match &args[0] {
         Value::String(string_id) => {
-            let string = vm.heap.strings[*string_id].clone();
+            let string = string_id.to_value(&vm.heap).clone();
             parse_string_to_integer(vm, &string)
         }
         Value::Number(n) => match n {
@@ -67,7 +67,7 @@ pub(super) fn float_init_native(
 ) -> Result<Value, String> {
     match &args[0] {
         Value::String(string_id) => {
-            let string = vm.heap.strings[*string_id].clone();
+            let string = string_id.to_value(&vm.heap).clone();
             parse_string_to_float(&string)
         }
         Value::Number(n) => Ok(Value::Number(n.to_f64(&vm.heap).into())),

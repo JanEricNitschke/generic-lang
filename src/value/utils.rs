@@ -4,14 +4,21 @@ use crate::value::Value;
 use crate::vm::VM;
 use num_bigint::BigInt;
 
+/// Result type for integer parsing that can be either a small i64 or a BigInt.
+#[derive(Debug, Clone)]
+pub enum ParsedInteger {
+    Small(i64),
+    Big(BigInt),
+}
+
 /// Parse a string to integer for the compiler (without VM heap access).
-/// Returns Ok(i64) for small integers, or Ok(BigInt) for large ones.
-pub fn parse_integer_compiler(string: &str) -> Result<Result<i64, BigInt>, String> {
+/// Returns a ParsedInteger enum to indicate whether it's a small i64 or a BigInt.
+pub fn parse_integer_compiler(string: &str) -> Result<ParsedInteger, String> {
     if let Ok(value) = string.parse::<i64>() {
-        Ok(Ok(value))
+        Ok(ParsedInteger::Small(value))
     } else {
         match string.parse::<BigInt>() {
-            Ok(bigint) => Ok(Err(bigint)),
+            Ok(bigint) => Ok(ParsedInteger::Big(bigint)),
             Err(_) => Err(format!(
                 "Could not convert string '{}' to an integer.",
                 string
@@ -28,23 +35,13 @@ pub fn parse_float_compiler(string: &str) -> Result<f64, String> {
 }
 
 /// Parse a string to integer, supporting BigInt for large numbers.
-/// This function is shared between value constructors and the compiler.
+/// This function uses parse_integer_compiler internally and is shared between value constructors.
 pub fn parse_string_to_integer(vm: &mut VM, string: &str) -> Result<Value, String> {
-    let converted: Result<i64, _> = string.parse();
-    match converted {
-        Ok(result) => Ok(Value::Number(result.into())),
-        Err(_) => {
-            // Try parsing as BigInt if i64 parsing fails
-            match string.parse::<BigInt>() {
-                Ok(bigint) => {
-                    let bigint_value = vm.heap.add_big_int(bigint);
-                    Ok(Value::Number((*bigint_value.as_generic_int()).into()))
-                }
-                Err(_) => Err(format!(
-                    "Could not convert string '{}' to an integer.",
-                    string
-                )),
-            }
+    match parse_integer_compiler(string)? {
+        ParsedInteger::Small(value) => Ok(Value::Number(value.into())),
+        ParsedInteger::Big(bigint) => {
+            let bigint_value = vm.heap.add_big_int(bigint);
+            Ok(Value::Number((*bigint_value.as_generic_int()).into()))
         }
     }
 }

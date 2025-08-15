@@ -8,7 +8,7 @@ use super::{Compiler, FunctionType};
 use crate::chunk::OpCode;
 use crate::config::LAMBDA_NAME;
 use crate::scanner::TokenKind as TK;
-use crate::value::utils::{parse_float_compiler, parse_integer_compiler};
+use crate::value::utils::{parse_float_compiler, parse_integer_compiler, ParsedInteger};
 
 // The precedence of the different operators in the language
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromPrimitive, IntoPrimitive)]
@@ -486,8 +486,8 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     fn integer(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let integer_str = self.previous.as_ref().unwrap().as_str();
         match parse_integer_compiler(integer_str).unwrap() {
-            Ok(value) => self.emit_constant(value),
-            Err(bigint) => {
+            ParsedInteger::Small(value) => self.emit_constant(value),
+            ParsedInteger::Big(bigint) => {
                 let bigint_id = self.heap.add_big_int(bigint);
                 self.emit_constant(bigint_id);
             }
