@@ -1,0 +1,1 @@
+print("Testing error cases:"); Rational(1, 0);

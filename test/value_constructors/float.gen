@@ -1,0 +1,15 @@
+# Test Float constructor with numbers
+print(Float(42)); # expect: 42.0
+print(Float(3.14)); # expect: 3.14
+print(Float(0)); # expect: 0.0
+print(Float(-2.5)); # expect: -2.5
+
+# Test Float with strings
+print(Float("3.14")); # expect: 3.14
+print(Float("42")); # expect: 42.0
+print(Float("-1.5")); # expect: -1.5
+print(Float("0.0")); # expect: 0.0
+
+# Test Float with booleans
+print(Float(true)); # expect: 1.0
+print(Float(false)); # expect: 0.0

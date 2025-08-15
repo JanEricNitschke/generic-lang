@@ -15,8 +15,8 @@ pub(super) fn bool_init_native(
             args.len()
         ));
     }
-    
-    let value = args[0].clone();
+
+    let value = *args[0];
     let is_falsey = vm.is_falsey(value);
     Ok(Value::Bool(!is_falsey))
 }
@@ -33,7 +33,7 @@ pub(super) fn string_init_native(
             args.len()
         ));
     }
-    
+
     let value = &args[0];
     let str_id = vm.heap.string_id(&"__str__");
 
@@ -43,9 +43,12 @@ pub(super) fn string_init_native(
             .get_field_or_method(str_id, &vm.heap)
     {
         // Push the value onto the stack temporarily so invoke_and_run_function can access it
-        vm.stack.push((*value).clone());
+        vm.stack.push(**value);
         vm.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)));
-        let returned_value = vm.stack.pop().expect("Stack underflow in string_init_native");
+        let returned_value = vm
+            .stack
+            .pop()
+            .expect("Stack underflow in string_init_native");
         Ok(returned_value)
     } else {
         Ok(Value::String(vm.heap.string_id(&value.to_string(&vm.heap))))
@@ -64,7 +67,7 @@ pub(super) fn integer_init_native(
             args.len()
         ));
     }
-    
+
     match &args[0] {
         Value::String(string_id) => {
             let string = &vm.heap.strings[*string_id];
@@ -97,7 +100,9 @@ pub(super) fn integer_init_native(
             Number::Integer(_) => Ok(Value::Number(*n)),
             Number::Rational(rational) => match rational.to_int(&vm.heap) {
                 Ok(i) => Ok(Value::Number(i.into())),
-                Err(_) => Err("Integer.__init__() could not convert rational to an integer.".to_string()),
+                Err(_) => {
+                    Err("Integer.__init__() could not convert rational to an integer.".to_string())
+                }
             },
         },
         Value::Bool(value) => Ok(Value::Number(i64::from(*value).into())),
@@ -120,7 +125,7 @@ pub(super) fn float_init_native(
             args.len()
         ));
     }
-    
+
     match &args[0] {
         Value::String(string_id) => {
             let string = &vm.heap.strings[*string_id];
@@ -154,16 +159,20 @@ pub(super) fn rational_init_native(
             args.len()
         ));
     }
-    
+
     match (&args[0], &args[1]) {
-        (Value::Number(Number::Integer(numerator)), Value::Number(Number::Integer(denominator))) => {
+        (
+            Value::Number(Number::Integer(numerator)),
+            Value::Number(Number::Integer(denominator)),
+        ) => {
             if denominator.is_zero(&vm.heap) {
                 return Err("Rational.__init__() denominator cannot be zero".to_string());
             }
-            
-            let rational = crate::value::GenericRational::new(*numerator, *denominator, &mut vm.heap)
-                .map_err(|e| format!("Rational.__init__() failed to create rational: {}", e))?;
-            
+
+            let rational =
+                crate::value::GenericRational::new(*numerator, *denominator, &mut vm.heap)
+                    .map_err(|e| format!("Rational.__init__() failed to create rational: {}", e))?;
+
             Ok(Value::Number(Number::Rational(rational)))
         }
         (a, b) => Err(format!(

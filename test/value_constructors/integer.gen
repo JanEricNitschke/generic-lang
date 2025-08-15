@@ -1,0 +1,21 @@
+# Test Integer constructor with numbers
+print(Integer(42)); # expect: 42
+print(Integer(0)); # expect: 0
+print(Integer(-15)); # expect: -15
+
+# Test Integer with floats (truncation)
+print(Integer(3.14)); # expect: 3
+print(Integer(3.99)); # expect: 3
+print(Integer(-2.7)); # expect: -2
+
+# Test Integer with strings
+print(Integer("123")); # expect: 123
+print(Integer("-456")); # expect: -456
+print(Integer("0")); # expect: 0
+
+# Test Integer with booleans
+print(Integer(true)); # expect: 1
+print(Integer(false)); # expect: 0
+
+# Test Integer with large numbers (BigInt)
+print(Integer("123456789012345678901234567890")); # expect: 123456789012345678901234567890
