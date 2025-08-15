@@ -19,10 +19,6 @@ pub use natives::{
 };
 pub use number::{GenericInt, GenericRational, Number};
 
-use num_bigint::BigInt;
-use rustc_hash::FxHasher;
-use std::hash::{Hash, Hasher};
-
 /// Central enum for the types of runtime values that exist in generic.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Value {
@@ -50,40 +46,6 @@ pub enum Value {
 // This is fake btw. But it is only used for hash,
 // which throws unreachable for all the variants where it doesnt actually hold.
 impl Value {
-    pub(crate) fn to_hash(&self, heap: &Heap) -> u64 {
-        let mut state = FxHasher::default();
-        match self {
-            Self::Bool(b) => b.hash(&mut state),
-            Self::Nil => state.write_u8(0),
-            Self::StopIteration => state.write_u8(1),
-            Self::Number(n) => match n {
-                Number::Float(f) => {
-                    let f = if *f == 0.0 { 0.0 } else { *f };
-                    // If f has no fractional part, we treat it like an integer.
-                    if f.fract() == 0.0 {
-                        // Convert to an integer if the float has no fractional part
-                        #[allow(clippy::cast_possible_truncation)]
-                        (BigInt::from(f as i64)).hash(&mut state);
-                    } else {
-                        f.to_bits().hash(&mut state); // Otherwise, hash the float as is
-                    }
-                }
-                Number::Integer(i) => match i {
-                    GenericInt::Small(n) => BigInt::from(*n).hash(&mut state),
-                    &GenericInt::Big(n) => (n.to_value(heap)).hash(&mut state),
-                },
-                Number::Rational(rational) => {
-                    rational.hash(&mut state, heap);
-                }
-            },
-            Self::String(s) => s.hash(&mut state),
-            _ => {
-                unreachable!("Only hashable types are Bool, Nil, Integer, and String.")
-            }
-        }
-        state.finish()
-    }
-
     pub(crate) fn eq(&self, other: &Self, heap: &Heap) -> bool {
         match (self, other) {
             (Self::Bool(a), Self::Bool(b)) => a == b,
@@ -241,13 +203,6 @@ impl From<ModuleId> for Value {
 
 // Retrieve the inner value
 impl Value {
-    pub(super) const fn is_hasheable(&self) -> bool {
-        matches!(
-            self,
-            Self::Bool(_) | Self::Nil | Self::Number(_) | Self::String(_) | Self::StopIteration
-        )
-    }
-
     pub(super) fn as_generic_int(&self) -> &GenericInt {
         match self {
             Self::Number(Number::Integer(n)) => n,

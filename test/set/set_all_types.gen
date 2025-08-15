@@ -1,0 +1,8 @@
+fun my_function() {
+    return "hello";
+}
+
+class MyClass {}
+
+var all_types_set = {my_function, MyClass, MyClass()};
+print("Set with all hashable types created"); # expect: Set with all hashable types created

@@ -2,4 +2,5 @@ var my_set = Set();
 my_set.insert(3);
 print(my_set); # expect: {3}
 class A {}
-my_set.insert(A()); # expect runtime error: Value `<A instance>` is not hashable.
+my_set.insert(A());
+print("Instance inserted successfully"); # expect: Instance inserted successfully

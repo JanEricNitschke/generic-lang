@@ -329,19 +329,23 @@ impl VM {
     fn equal(&mut self, negate: bool) -> Option<InterpretResult> {
         let eq_id = self.heap.string_id(&"__eq__");
         let left_id = self.peek(1).expect("Stack underflow in OP EQUAL (left)");
+
+        // Check if left value is an instance with __eq__ method
         if let Value::Instance(instance) = left_id
             && instance
                 .to_value(&self.heap)
                 .has_field_or_method(eq_id, &self.heap)
         {
             // If the left value is an instance, use its __eq__ method
+            // Values are already on stack in correct order for method call
             return if self.invoke(eq_id, 1) {
-                None
+                None // Continue execution - method will handle result
             } else {
                 Some(InterpretResult::RuntimeError)
             };
         }
 
+        // No custom __eq__ method, fall back to heap equality
         let right_id = self
             .stack
             .pop()
@@ -350,6 +354,7 @@ impl VM {
             .stack
             .pop()
             .expect("stack underflow in OP_EQUAL (left)");
+
         let result = left_id.eq(&right_id, &self.heap) != negate;
         self.stack_push(result.into());
         None
