@@ -162,20 +162,7 @@ pub(super) fn is_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Valu
 /// Turn the value into a string.
 /// Fixed implementations for basic types, instances use the `__str__` method if present.
 pub(super) fn to_string_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
-    let value = &args[0];
-    let str_id = vm.heap.string_id(&"__str__");
-
-    if let Value::Instance(instance) = value
-        && let Some(str_method) = instance
-            .to_value(&vm.heap)
-            .get_field_or_method(str_id, &vm.heap)
-    {
-        vm.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)));
-        let returned_value = vm.stack.pop().expect("Stack underflow in print_native");
-        Ok(returned_value)
-    } else {
-        Ok(Value::String(vm.heap.string_id(&value.to_string(&vm.heap))))
-    }
+    Ok(vm.value_to_string(args[0]))
 }
 
 /// Return the type of the value as a string.
@@ -215,10 +202,10 @@ pub(super) fn type_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value,
 }
 
 /// Print the value to stdout.
+///
 /// Optionally supply a string to be printed at the end of the value.
 /// Defaults to `\n`.
 pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
-    let str_id = vm.heap.string_id(&"__str__");
     let end = if args.len() == 2 {
         match &args[1] {
             Value::String(string_id) => &string_id.to_value(&vm.heap).clone(),
@@ -232,18 +219,10 @@ pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
     } else {
         "\n"
     };
-    let value = &args[0];
-    if let Value::Instance(instance) = **value
-        && let Some(str_method) = instance
-            .to_value(&vm.heap)
-            .get_field_or_method(str_id, &vm.heap)
-    {
-        vm.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)));
-        let returned_value = vm.stack.pop().expect("Stack underflow in print_native");
-        print!("{}{end}", returned_value.to_string(&vm.heap));
-    } else {
-        print!("{}{end}", value.to_string(&vm.heap));
-    }
+
+    // Use the shared value_to_string utility for consistent behavior
+    let string_value = vm.value_to_string(args[0]);
+    print!("{}{end}", string_value.to_string(&vm.heap));
 
     Ok(Value::Nil)
 }

@@ -1,0 +1,23 @@
+# Test Bool constructor with various inputs
+print(Bool(true)); # expect: true
+print(Bool(false)); # expect: false
+
+# Test Bool with numbers
+print(Bool(1)); # expect: true
+print(Bool(0)); # expect: true
+print(Bool(42)); # expect: true
+print(Bool(-1)); # expect: true
+
+# Test Bool with strings
+print(Bool("hello")); # expect: true
+print(Bool("")); # expect: true
+print(Bool("false")); # expect: true
+
+# Test Bool with nil
+print(Bool(nil)); # expect: false
+
+# Test Bool with empty collections (should be false according to is_falsey)
+var empty_list = List();
+print(Bool(empty_list)); # expect: false
+var empty_dict = Dict();
+print(Bool(empty_dict)); # expect: true

@@ -3,5 +3,5 @@ fun throwError() {
     throw Exception("Uncaught error from function");
 }
 
-throwError();  # expect runtime error: Uncaught exception: Exception: Uncaught error from function
+throwError();  # expect runtime error: Exception: Uncaught error from function
 print("This should not print");

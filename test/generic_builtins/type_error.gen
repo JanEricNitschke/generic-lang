@@ -8,4 +8,4 @@ try {
                # expect:   [line 2] in <script>
 }
 
-throw TypeError("Wrong again!");  # expect runtime error: Uncaught exception: Exception: Wrong again!
+throw TypeError("Wrong again!");  # expect runtime error: TypeError: Wrong again!

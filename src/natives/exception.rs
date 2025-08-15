@@ -47,7 +47,7 @@ pub(super) fn exception_stack_trace_native(
 }
 
 /// Get the the full string representation of the Exception.
-/// 
+///
 /// This will be inherited by all exceptions and properly display their name.
 pub(super) fn exception_str_native(
     vm: &mut VM,

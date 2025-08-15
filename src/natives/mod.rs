@@ -9,6 +9,7 @@ mod native_functions;
 mod range;
 mod set;
 mod tuple;
+mod value_constructors;
 
 use crate::vm::VM;
 
@@ -43,6 +44,11 @@ use crate::natives::native_functions::{
     assert_native, clock_native, delattr_native, getattr_native, hasattr_native, input_native,
     is_int_native, len_native, print_native, rng_native, setattr_native, sleep_native,
     to_float_native, to_int_native, to_string_native, type_native,
+};
+
+use crate::natives::value_constructors::{
+    bool_init_native, float_init_native, integer_init_native, rational_init_native,
+    string_init_native,
 };
 
 /// Static arity arrays for common variadic argument patterns.
@@ -145,4 +151,20 @@ pub fn define(vm: &mut VM) {
         exception_stack_trace_native,
     );
     vm.define_native_method(&"Exception", &"__str__", &[0], exception_str_native);
+
+    // Value type proxy classes (native classes with special __init__ methods)
+    vm.define_native_class(&"Bool", true);
+    vm.define_native_method(&"Bool", &"__init__", &[1], bool_init_native);
+
+    vm.define_native_class(&"String", true);
+    vm.define_native_method(&"String", &"__init__", &[1], string_init_native);
+
+    vm.define_native_class(&"Integer", true);
+    vm.define_native_method(&"Integer", &"__init__", &[1], integer_init_native);
+
+    vm.define_native_class(&"Float", true);
+    vm.define_native_method(&"Float", &"__init__", &[1], float_init_native);
+
+    vm.define_native_class(&"Rational", true);
+    vm.define_native_method(&"Rational", &"__init__", &[2], rational_init_native);
 }

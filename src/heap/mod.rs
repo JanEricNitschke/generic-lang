@@ -595,6 +595,12 @@ impl Heap {
                     self.strings.gray.push(exception.message());
                     self.strings.gray.push(exception.stack_trace());
                 }
+                // Proxy classes don't contain any references to gray
+                NativeClass::BoolProxy
+                | NativeClass::StringProxy
+                | NativeClass::IntegerProxy
+                | NativeClass::FloatProxy
+                | NativeClass::RationalProxy => {}
             }
         }
         #[cfg(feature = "log_gc")]
