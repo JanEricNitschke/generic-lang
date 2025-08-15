@@ -4,7 +4,7 @@ use crate::value::utils::{parse_string_to_float, parse_string_to_integer, value_
 use crate::value::{GenericInt, Number, Value};
 use crate::vm::VM;
 
-/// Bool.__init__(value) - Convert any value to boolean using is_falsey logic
+/// Bool.__init__(value) - Convert any value to boolean using `is_falsey` logic
 pub(super) fn bool_init_native(
     vm: &mut VM,
     _receiver: &mut Value,
@@ -15,13 +15,13 @@ pub(super) fn bool_init_native(
     Ok(Value::Bool(!is_falsey))
 }
 
-/// String.__init__(value) - Convert any value to string using to_string_native logic
+/// String.__init__(value) - Convert any value to string using `to_string_native` logic
 pub(super) fn string_init_native(
     vm: &mut VM,
     _receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    value_to_string(vm, args[0])
+    Ok(value_to_string(vm, args[0]))
 }
 
 /// Integer.__init__(value) - Convert string or number to integer
@@ -39,8 +39,7 @@ pub(super) fn integer_init_native(
             Number::Float(f) => match GenericInt::try_from_f64(*f, &mut vm.heap) {
                 Ok(i) => Ok(Value::Number(i.into())),
                 Err(_) => Err(format!(
-                    "Integer.__init__() could not convert float '{}' to an integer.",
-                    f
+                    "Integer.__init__() could not convert float '{f}' to an integer."
                 )),
             },
             Number::Integer(_) => Ok(Value::Number(*n)),
@@ -96,7 +95,7 @@ pub(super) fn rational_init_native(
 
             let rational =
                 crate::value::GenericRational::new(*numerator, *denominator, &mut vm.heap)
-                    .map_err(|e| format!("Rational.__init__() failed to create rational: {}", e))?;
+                    .map_err(|e| format!("Rational.__init__() failed to create rational: {e}"))?;
 
             Ok(Value::Number(Number::Rational(rational)))
         }

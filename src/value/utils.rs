@@ -4,7 +4,7 @@ use crate::value::Value;
 use crate::vm::VM;
 use num_bigint::BigInt;
 
-/// Result type for integer parsing that can be either a small i64 or a BigInt.
+/// Result type for integer parsing that can be either a small i64 or a `BigInt`.
 #[derive(Debug, Clone)]
 pub enum ParsedInteger {
     Small(i64),
@@ -12,7 +12,7 @@ pub enum ParsedInteger {
 }
 
 /// Parse a string to integer for the compiler (without VM heap access).
-/// Returns a ParsedInteger enum to indicate whether it's a small i64 or a BigInt.
+/// Returns a `ParsedInteger` enum to indicate whether it's a small i64 or a `BigInt`.
 pub fn parse_integer_compiler(string: &str) -> Result<ParsedInteger, String> {
     if let Ok(value) = string.parse::<i64>() {
         Ok(ParsedInteger::Small(value))
@@ -20,8 +20,7 @@ pub fn parse_integer_compiler(string: &str) -> Result<ParsedInteger, String> {
         match string.parse::<BigInt>() {
             Ok(bigint) => Ok(ParsedInteger::Big(bigint)),
             Err(_) => Err(format!(
-                "Could not convert string '{}' to an integer.",
-                string
+                "Could not convert string '{string}' to an integer."
             )),
         }
     }
@@ -31,11 +30,11 @@ pub fn parse_integer_compiler(string: &str) -> Result<ParsedInteger, String> {
 pub fn parse_float_compiler(string: &str) -> Result<f64, String> {
     string
         .parse()
-        .map_err(|_| format!("Could not convert string '{}' to a float.", string))
+        .map_err(|_| format!("Could not convert string '{string}' to a float."))
 }
 
-/// Parse a string to integer, supporting BigInt for large numbers.
-/// This function uses parse_integer_compiler internally and is shared between value constructors.
+/// Parse a string to integer, supporting `BigInt` for large numbers.
+/// This function uses `parse_integer_compiler` internally and is shared between value constructors.
 pub fn parse_string_to_integer(vm: &mut VM, string: &str) -> Result<Value, String> {
     match parse_integer_compiler(string)? {
         ParsedInteger::Small(value) => Ok(Value::Number(value.into())),
@@ -47,15 +46,15 @@ pub fn parse_string_to_integer(vm: &mut VM, string: &str) -> Result<Value, Strin
 }
 
 /// Parse a string to float.
-/// This function uses parse_float_compiler internally and is shared between value constructors.
+/// This function uses `parse_float_compiler` internally and is shared between value constructors.
 pub fn parse_string_to_float(string: &str) -> Result<Value, String> {
     let float_value = parse_float_compiler(string)?;
     Ok(Value::Number(float_value.into()))
 }
 
 /// Convert a value to string, handling instances with __str__ methods.
-/// This function is shared between value constructors, to_string_native, and print_native.
-pub fn value_to_string(vm: &mut VM, value: &Value) -> Result<Value, String> {
+/// This function is shared between value constructors, `to_string_native`, and `print_native`.
+pub fn value_to_string(vm: &mut VM, value: &Value) -> Value {
     let str_id = vm.heap.string_id(&"__str__");
 
     if let Value::Instance(instance) = value
@@ -66,9 +65,8 @@ pub fn value_to_string(vm: &mut VM, value: &Value) -> Result<Value, String> {
         // Push the value onto the stack temporarily so invoke_and_run_function can access it
         vm.stack.push(*value);
         vm.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)));
-        let returned_value = vm.stack.pop().expect("Stack underflow in value_to_string");
-        Ok(returned_value)
+        vm.stack.pop().expect("Stack underflow in value_to_string")
     } else {
-        Ok(Value::String(vm.heap.string_id(&value.to_string(&vm.heap))))
+        Value::String(vm.heap.string_id(&value.to_string(&vm.heap)))
     }
 }
