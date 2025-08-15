@@ -117,7 +117,7 @@ impl VM {
         natives::define(self);
 
         // Load generic builtins from .gen files after natives but before main script setup
-        let builtin_result = self.load_generic_builtins_simple();
+        let builtin_result = self.load_generic_builtins();
         if builtin_result != InterpretResult::Ok {
             return builtin_result;
         }
@@ -158,13 +158,24 @@ impl VM {
     /// Each builtin file is compiled and executed to completion. Then its globals
     /// (excluding `__name__`) are copied to the VM builtins and the module is
     /// popped from the modules stack.
-    fn load_generic_builtins_simple(&mut self) -> InterpretResult {
-        let builtins_dir = std::path::Path::new("builtins");
+    fn load_generic_builtins(&mut self) -> InterpretResult {
+        // Try to find builtins directory, first in current working directory,
+        // then relative to the current executable
+        let mut builtins_dir = std::path::PathBuf::from("builtins");
+        
+        if !builtins_dir.exists() || !builtins_dir.is_dir() {
+            if let Ok(exe_path) = std::env::current_exe() {
+                if let Some(exe_dir) = exe_path.parent() {
+                    builtins_dir = exe_dir.join("builtins");
+                }
+            }
+        }
+
         if !builtins_dir.exists() || !builtins_dir.is_dir() {
             return InterpretResult::Ok; // No builtins directory, continue normally
         }
 
-        let entries = match std::fs::read_dir(builtins_dir) {
+        let entries = match std::fs::read_dir(&builtins_dir) {
             Ok(entries) => entries,
             Err(_) => return InterpretResult::Ok, // Can't read directory, continue normally
         };
@@ -177,7 +188,7 @@ impl VM {
 
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("gen") {
-                match self.load_builtin_file_simple(&path) {
+                match self.load_builtin_file(&path) {
                     InterpretResult::Ok => continue,
                     error => return error,
                 }
@@ -188,10 +199,10 @@ impl VM {
     }
 
     /// Load and execute a single builtin file in the current VM.
-    fn load_builtin_file_simple(&mut self, path: &std::path::Path) -> InterpretResult {
+    fn load_builtin_file(&mut self, path: &std::path::Path) -> InterpretResult {
         let source = match std::fs::read(path) {
             Ok(source) => source,
-            Err(_) => return InterpretResult::CompileError, // Could not read file
+            Err(_) => return InterpretResult::CompileError, // Could not read builtin file
         };
 
         let name = format!("<builtin:{}>", path.file_name().unwrap().to_string_lossy());
@@ -219,7 +230,8 @@ impl VM {
         // Copy globals from the completed module to builtins (excluding __name__)
         if result == InterpretResult::Ok {
             let script_name_id = self.heap.builtin_constants().script_name;
-            let module_globals = self.globals().clone();
+            // Take ownership of the module's globals instead of cloning
+            let module_globals = std::mem::take(self.globals());
 
             // Extend builtins with all globals from the module
             self.builtins.extend(module_globals);
