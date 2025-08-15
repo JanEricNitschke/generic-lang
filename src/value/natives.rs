@@ -572,13 +572,13 @@ impl std::fmt::Display for TupleIterator {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exception {
-    message: Option<StringId>,
+    message: Option<String>,
     stack_trace: Vec<String>,
 }
 
 impl Exception {
     #[must_use]
-    pub(crate) fn new(message: StringId, stack_trace: Vec<String>) -> Self {
+    pub(crate) fn new(message: String, stack_trace: Vec<String>) -> Self {
         Self {
             message: Some(message),
             stack_trace,
@@ -595,17 +595,17 @@ impl Exception {
         }
     }
 
-    pub(crate) fn message(&self) -> Option<StringId> {
-        self.message
+    pub(crate) fn message(&self) -> Option<&String> {
+        self.message.as_ref()
     }
 
-    pub(crate) fn to_string(&self, heap: &Heap) -> String {
-        let message_str = if let Some(message_id) = self.message {
-            message_id.to_value(heap).clone()
+    pub(crate) fn to_string(&self, _heap: &Heap) -> String {
+        let message_str = if let Some(message) = &self.message {
+            message.clone()
         } else {
             "<uninitialized>".to_string()
         };
-        let mut result = format!("Exception: {}", message_str);
+        let mut result = format!("Exception: {message_str}");
         if !self.stack_trace.is_empty() {
             result.push_str("\nStacktrace (most recent call last):");
             for trace_line in &self.stack_trace {

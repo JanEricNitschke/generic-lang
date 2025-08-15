@@ -591,11 +591,8 @@ impl Heap {
                         self.big_ints.gray.push(offset);
                     }
                 }
-                NativeClass::Exception(exception) => {
-                    // Mark the message StringId for Exception if it exists
-                    if let Some(message_id) = exception.message() {
-                        self.strings.gray.push(message_id);
-                    }
+                NativeClass::Exception(_exception) => {
+                    // Exception now uses String instead of StringId, no GC marking needed
                 }
             }
         }

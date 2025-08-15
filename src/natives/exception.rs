@@ -12,7 +12,7 @@ pub(super) fn exception_init_native(
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
     let message = match &args[0] {
-        Value::String(string_id) => *string_id,
+        Value::String(string_id) => string_id.to_value(&vm.heap).clone(),
         _ => return Err("Exception message must be a string".to_string()),
     };
 
@@ -43,8 +43,9 @@ pub(super) fn exception_message_native(
     receiver: &mut Value,
     _args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    if let Some(message_string_id) = receiver.as_exception(&vm.heap).message() {
-        Ok(Value::String(message_string_id))
+    if let Some(message_string) = receiver.as_exception(&vm.heap).message() {
+        let message_clone = message_string.clone();
+        Ok(Value::String(vm.heap.string_id(&message_clone)))
     } else {
         Err("Exception not properly initialized".to_string())
     }
