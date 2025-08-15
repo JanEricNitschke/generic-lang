@@ -159,16 +159,12 @@ impl VM {
     /// (excluding `__name__`) are copied to the VM builtins and the module is
     /// popped from the modules stack.
     fn load_generic_builtins(&mut self) -> InterpretResult {
-        // Try to find builtins directory, first in current working directory,
-        // then relative to the current executable
-        let mut builtins_dir = std::path::PathBuf::from("builtins");
-
-        if (!builtins_dir.exists() || !builtins_dir.is_dir())
-            && let Ok(exe_path) = std::env::current_exe()
-            && let Some(exe_dir) = exe_path.parent()
-        {
-            builtins_dir = exe_dir.join("builtins");
-        }
+        // Use path relative to the rust file, consistent with stdlib handling
+        let mut builtins_dir = std::path::PathBuf::from(file!());
+        builtins_dir.pop(); // Remove mod.rs
+        builtins_dir.pop(); // Remove vm/
+        builtins_dir.pop(); // Remove src/
+        builtins_dir.push("builtins");
 
         if !builtins_dir.exists() || !builtins_dir.is_dir() {
             return InterpretResult::Ok; // No builtins directory, continue normally
