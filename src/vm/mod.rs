@@ -166,12 +166,10 @@ impl VM {
 
         let entries = std::fs::read_dir(&builtins_dir).expect("Failed to read builtins directory");
 
-        for entry in entries {
-            let path = entry.expect("Failed to read directory entry").path();
-            if path.extension().and_then(|s| s.to_str()) == Some("gen") {
-                self.load_builtin_file(&path);
-            }
-        }
+        entries
+            .map(|entry| entry.expect("Failed to read directory entry").path())
+            .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("gen"))
+            .for_each(|path| self.load_builtin_file(&path));
     }
 
     /// Load and execute a single builtin file in the current VM.
