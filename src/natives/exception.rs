@@ -43,6 +43,6 @@ pub(super) fn exception_message_native(
     receiver: &mut Value,
     _args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    let message_clone = receiver.as_exception(&vm.heap).message().clone();
-    Ok(Value::String(vm.heap.string_id(&message_clone)))
+    let message = receiver.as_exception(&vm.heap).message().clone();
+    Ok(Value::String(vm.heap.string_id(&message)))
 }

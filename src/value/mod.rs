@@ -443,15 +443,4 @@ impl Value {
             _ => unreachable!("Expected Exception, found `{:?}`", self),
         }
     }
-
-    #[allow(dead_code)]
-    pub(super) fn as_exception_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Exception {
-        match self {
-            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
-                Some(NativeClass::Exception(exception)) => exception,
-                _ => unreachable!("Expected Exception, found something else."),
-            },
-            _ => unreachable!("Expected Exception, found `{:?}`", self),
-        }
-    }
 }
