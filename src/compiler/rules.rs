@@ -2,13 +2,13 @@
 //!
 //! Uses Vaughan Pratt's "top-down operator precedence parsing".
 
-use num_bigint::BigInt;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use super::{Compiler, FunctionType};
 use crate::chunk::OpCode;
 use crate::config::LAMBDA_NAME;
 use crate::scanner::TokenKind as TK;
+use crate::value::utils::{ParsedInteger, parse_float_compiler, parse_integer_compiler};
 
 // The precedence of the different operators in the language
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromPrimitive, IntoPrimitive)]
@@ -475,7 +475,8 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// and the index is pushed after the corresponding `OpCode`.
     /// The VM then loads the constant from the constant table using that index.
     fn float(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
-        let value: f64 = self.previous.as_ref().unwrap().as_str().parse().unwrap();
+        let string = self.previous.as_ref().unwrap().as_str();
+        let value = parse_float_compiler(string).unwrap();
         self.emit_constant(value);
     }
 
@@ -484,13 +485,12 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Works equivalent to [`Compiler::float`].
     fn integer(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let integer_str = self.previous.as_ref().unwrap().as_str();
-        if let Ok(value) = integer_str.parse::<i64>() {
-            self.emit_constant(value);
-        } else {
-            let bigint_id = self
-                .heap
-                .add_big_int(integer_str.parse::<BigInt>().unwrap());
-            self.emit_constant(bigint_id);
+        match parse_integer_compiler(integer_str).unwrap() {
+            ParsedInteger::Small(value) => self.emit_constant(value),
+            ParsedInteger::Big(bigint) => {
+                let bigint_id = self.heap.add_big_int(bigint);
+                self.emit_constant(bigint_id);
+            }
         }
     }
 

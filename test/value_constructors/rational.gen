@@ -1,0 +1,13 @@
+# Test Rational constructor with basic inputs
+print(Rational(1, 2)); # expect: 1:2
+print(Rational(3, 4)); # expect: 3:4
+print(Rational(-1, 2)); # expect: -1:2
+print(Rational(1, -2)); # expect: -1:2
+
+# Test Rational with simplification
+print(Rational(2, 4)); # expect: 1:2
+print(Rational(6, 8)); # expect: 3:4
+print(Rational(10, 5)); # expect: 2:1
+
+# Test Rational with zero numerator
+print(Rational(0, 5)); # expect: 0:1

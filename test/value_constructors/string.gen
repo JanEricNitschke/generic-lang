@@ -1,0 +1,19 @@
+# Test String constructor with various inputs
+print(String("hello")); # expect: hello
+print(String("")); # expect: 
+
+# Test String with numbers
+print(String(42)); # expect: 42
+print(String(3.14)); # expect: 3.14
+print(String(0)); # expect: 0
+
+# Test String with booleans
+print(String(true)); # expect: true
+print(String(false)); # expect: false
+
+# Test String with nil
+print(String(nil)); # expect: nil
+
+# Test String with collections
+print(String(List())); # expect: []
+print(String(Dict())); # expect: {:}
