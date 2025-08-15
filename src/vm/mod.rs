@@ -177,7 +177,7 @@ impl VM {
 
         let entries = match std::fs::read_dir(&builtins_dir) {
             Ok(entries) => entries,
-            Err(_) => return InterpretResult::Ok, // Can't read directory, continue normally
+            Err(_) => return InterpretResult::RuntimeError, // Failed to read existing builtins directory
         };
 
         for entry in entries {
