@@ -164,40 +164,31 @@ impl VM {
         builtins_dir.pop(); // Remove vm/
         builtins_dir.push("builtins");
 
-        if !builtins_dir.exists() || !builtins_dir.is_dir() {
-            panic!("Missing builtins directory at {:?}", builtins_dir);
-        }
+        assert!(builtins_dir.exists() && builtins_dir.is_dir(), "Missing builtins directory at {}", builtins_dir.display());
 
         let entries = std::fs::read_dir(&builtins_dir)
-            .unwrap_or_else(|_| panic!("Failed to read builtins directory at {:?}", builtins_dir));
+            .expect("Failed to read builtins directory");
 
         for entry in entries {
-            let entry = entry.unwrap_or_else(|_| panic!("Failed to read directory entry"));
-
+            let entry = entry.expect("Failed to read directory entry");
             let path = entry.path();
+            
             if path.extension().and_then(|s| s.to_str()) == Some("gen") {
-                match self.load_builtin_file(&path) {
-                    InterpretResult::Ok => continue,
-                    error => panic!("Failed to load builtin file {:?}: {:?}", path, error),
-                }
+                self.load_builtin_file(&path);
             }
         }
     }
 
     /// Load and execute a single builtin file in the current VM.
-    fn load_builtin_file(&mut self, path: &std::path::Path) -> InterpretResult {
-        let source = match std::fs::read(path) {
-            Ok(source) => source,
-            Err(_) => return InterpretResult::CompileError, // Could not read builtin file
-        };
+    fn load_builtin_file(&mut self, path: &std::path::Path) {
+        let source = std::fs::read(path)
+            .expect("Failed to read builtin file");
 
         let name = format!("<builtin:{}>", path.file_name().unwrap().to_string_lossy());
 
         // Compile the builtin source
-        let function = match self.compile(&source, &name) {
-            Some(function) => function,
-            None => return InterpretResult::CompileError,
-        };
+        let function = self.compile(&source, &name)
+            .expect("Failed to compile builtin file");
 
         // Create and execute the builtin in a temporary module context
         let function_id = self.heap.add_function(function);
@@ -223,12 +214,12 @@ impl VM {
             self.builtins.extend(module_globals);
             // Remove __name__ from builtins
             self.builtins.remove(&script_name_id);
+        } else {
+            panic!("Failed to execute builtin file {}: {result:?}", path.display());
         }
 
         // Clean up the builtin module
         self.modules.pop();
-
-        result
     }
 
     /// Infinite loop over the bytecode.
