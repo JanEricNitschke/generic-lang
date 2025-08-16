@@ -52,6 +52,6 @@ pub(super) fn set_len_native(
     _args: &mut [&mut Value],
 ) -> Result<Value, String> {
     let my_set = receiver.as_set(&vm.heap);
-    let total_len: usize = my_set.items.values().map(Vec::len).sum();
+    let total_len = my_set.items.len();
     Ok(Number::from_usize(total_len, &mut vm.heap).into())
 }

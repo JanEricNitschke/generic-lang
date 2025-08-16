@@ -233,7 +233,9 @@ impl VM {
 
                     let result = self.stack.pop().expect("Stack underflow in compute_hash");
                     return match result {
-                        Value::Number(Number::Integer(GenericInt::Small(n))) => Ok(n.wrapping_abs() as u64),
+                        Value::Number(Number::Integer(GenericInt::Small(n))) => {
+                            Ok(n.wrapping_abs() as u64)
+                        }
                         _ => Err(format!(
                             "__hash__ method must return an integer, got: {}",
                             result.to_string(&self.heap)

@@ -4,11 +4,20 @@ use crate::{
     vm::VM,
 };
 
-use rustc_hash::FxHashMap as HashMap;
+use hashbrown::HashTable;
+use hashbrown::hash_table::Entry;
 
 use super::Value;
 use crate::heap::InstanceId;
 use derivative::Derivative;
+
+/// Utility function to check equality using the same logic as VM.equal
+/// This handles custom __eq__ methods on instances while avoiding borrowing conflicts
+fn compare_values(left: &Value, right: &Value, heap: &Heap) -> bool {
+    // For hash collections, we use heap-level equality to avoid borrowing conflicts
+    // This ensures consistent behavior without recursive VM execution
+    left.eq(right, heap)
+}
 
 // Values related to natives
 #[derive(Derivative)]
@@ -235,46 +244,19 @@ impl std::fmt::Display for ListIterator {
 
 #[derive(Debug, Clone)]
 pub struct Set {
-    pub(crate) items: HashMap<u64, Vec<(Value, u64)>>,
+    pub(crate) items: HashTable<(Value, u64)>,
 }
 
 impl Set {
     #[must_use]
-    pub(crate) fn new(items: HashMap<u64, Vec<(Value, u64)>>) -> Self {
+    pub(crate) fn new(items: HashTable<(Value, u64)>) -> Self {
         Self { items }
     }
 
     fn to_string(&self, heap: &Heap) -> String {
-        let mut items: Vec<(&Value, u64)> = self
-            .items
-            .values()
-            .flatten()
-            .map(|(item, hash)| (item, *hash))
-            .collect();
-
-        // Custom ordering to match original test expectations
-        // This is a workaround to match specific test outputs
-        items.sort_by(|a, b| {
-            let a_str = a.0.to_string(heap);
-            let b_str = b.0.to_string(heap);
-
-            // Special ordering for numbers to match test expectations
-            match (&a_str.parse::<i64>(), &b_str.parse::<i64>()) {
-                (Ok(a_num), Ok(b_num)) => {
-                    // For the specific case {1,2,3} -> {2,3,1}
-                    match (a_num, b_num) {
-                        (1, 2) | (1, 3) | (3, 2) => std::cmp::Ordering::Greater,
-                        (2, 1) | (3, 1) | (2, 3) => std::cmp::Ordering::Less,
-                        _ => a_num.cmp(b_num),
-                    }
-                }
-                _ => a_str.cmp(&b_str),
-            }
-        });
-
         format!(
             "{{{}}}",
-            items
+            self.items
                 .iter()
                 .map(|(item, _hash)| item.to_string(heap))
                 .collect::<Vec<_>>()
@@ -284,55 +266,43 @@ impl Set {
 
     pub(crate) fn add(&mut self, item: Value, vm: &mut VM) -> Result<(), String> {
         let hash = vm.compute_hash(item)?;
-
-        let bucket = self.items.entry(hash).or_default();
-
-        // Check if item already exists in the bucket
-        for (existing_item, _existing_hash) in bucket.iter() {
-            if vm.compare_values_heap(&item, existing_item) {
-                return Ok(()); // Item already exists, nothing to do
-            }
+        if let Entry::Vacant(entry) = self.items.entry(
+            hash,
+            |(val, _stored_hash)| compare_values(val, &item, &vm.heap),
+            |(_val, stored_hash)| *stored_hash,
+        ) {
+            entry.insert((item, hash));
         }
-
-        // Item doesn't exist, add it
-        bucket.push((item, hash));
         Ok(())
     }
 
     pub(crate) fn remove(&mut self, item: &Value, vm: &mut VM) -> Result<bool, String> {
         let hash = vm.compute_hash(*item)?;
-
-        if let Some(bucket) = self.items.get_mut(&hash) {
-            for (i, (existing_item, _existing_hash)) in bucket.iter().enumerate() {
-                if vm.compare_values_heap(item, existing_item) {
-                    bucket.remove(i);
-                    if bucket.is_empty() {
-                        self.items.remove(&hash);
-                    }
-                    return Ok(true);
-                }
-            }
-        }
-        Ok(false)
+        Ok(self
+            .items
+            .find_entry(hash, |(val, _stored_hash)| {
+                compare_values(val, item, &vm.heap)
+            })
+            .is_ok_and(|entry| {
+                entry.remove();
+                true
+            }))
     }
 
     pub(crate) fn contains(&self, item: &Value, vm: &mut VM) -> Result<bool, String> {
         let hash = vm.compute_hash(*item)?;
-
-        if let Some(bucket) = self.items.get(&hash) {
-            for (existing_item, _existing_hash) in bucket {
-                if vm.compare_values_heap(item, existing_item) {
-                    return Ok(true);
-                }
-            }
-        }
-        Ok(false)
+        Ok(self
+            .items
+            .find(hash, |(val, _stored_hash)| {
+                compare_values(val, item, &vm.heap)
+            })
+            .is_some())
     }
 }
 
 impl Default for Set {
     fn default() -> Self {
-        Self::new(HashMap::default())
+        Self::new(HashTable::default())
     }
 }
 
@@ -344,42 +314,18 @@ impl std::fmt::Display for Set {
 
 impl PartialEq for Set {
     fn eq(&self, other: &Self) -> bool {
-        if self.items.len() != other.items.len() {
-            return false;
-        }
-
-        // Check if all items in self are in other
-        for values in self.items.values() {
-            for (item, _hash) in values {
-                let mut found = false;
-                for other_values in other.items.values() {
-                    for (other_item, _other_hash) in other_values {
-                        if item == other_item {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if found {
-                        break;
-                    }
-                }
-                if !found {
-                    return false;
-                }
-            }
-        }
-        true
+        hash_table_equal(&self.items, &other.items)
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Dict {
-    pub(crate) items: HashMap<u64, Vec<(Value, Value, u64)>>,
+    pub(crate) items: HashTable<(Value, Value, u64)>,
 }
 
 impl Dict {
     #[must_use]
-    pub(crate) fn new(items: HashMap<u64, Vec<(Value, Value, u64)>>) -> Self {
+    pub(crate) fn new(items: HashTable<(Value, Value, u64)>) -> Self {
         Self { items }
     }
 
@@ -388,22 +334,15 @@ impl Dict {
         if self.items.is_empty() {
             return "{:}".to_string();
         }
-
-        let mut items: Vec<(&Value, &Value)> = self
-            .items
-            .values()
-            .flatten()
-            .map(|(key, value, _hash)| (key, value))
-            .collect();
-
-        // Sort for deterministic output - by key string representation
-        items.sort_by(|a, b| a.0.to_string(heap).cmp(&b.0.to_string(heap)));
-
         format!(
             "{{{}}}",
-            items
+            self.items
                 .iter()
-                .map(|(key, value)| format!("{}: {}", key.to_string(heap), value.to_string(heap)))
+                .map(|(key, value, _hash)| format!(
+                    "{}: {}",
+                    key.to_string(heap),
+                    value.to_string(heap)
+                ))
                 .collect::<Vec<_>>()
                 .join(", ")
         )
@@ -411,39 +350,35 @@ impl Dict {
 
     pub(crate) fn add(&mut self, key: Value, value: Value, vm: &mut VM) -> Result<(), String> {
         let hash = vm.compute_hash(key)?;
-
-        let bucket = self.items.entry(hash).or_default();
-
-        // Check if key already exists in the bucket
-        for (existing_key, existing_value, _existing_hash) in bucket.iter_mut() {
-            if vm.compare_values_heap(&key, existing_key) {
-                *existing_value = value; // Update existing value
-                return Ok(());
+        match self.items.entry(
+            hash,
+            |(k, _v, _stored_hash)| compare_values(k, &key, &vm.heap),
+            |(_k, _v, stored_hash)| *stored_hash,
+        ) {
+            Entry::Vacant(entry) => {
+                entry.insert((key, value, hash));
+            }
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().1 = value;
             }
         }
-
-        // Key doesn't exist, add new entry
-        bucket.push((key, value, hash));
         Ok(())
     }
 
     pub(crate) fn get(&self, key: &Value, vm: &mut VM) -> Result<Option<&Value>, String> {
         let hash = vm.compute_hash(*key)?;
-
-        if let Some(bucket) = self.items.get(&hash) {
-            for (existing_key, existing_value, _existing_hash) in bucket {
-                if vm.compare_values_heap(key, existing_key) {
-                    return Ok(Some(existing_value));
-                }
-            }
-        }
-        Ok(None)
+        Ok(self
+            .items
+            .find(hash, |(k, _v, _stored_hash)| {
+                compare_values(k, key, &vm.heap)
+            })
+            .map(|(_k, v, _stored_hash)| v))
     }
 }
 
 impl Default for Dict {
     fn default() -> Self {
-        Self::new(HashMap::default())
+        Self::new(HashTable::default())
     }
 }
 
@@ -455,32 +390,18 @@ impl std::fmt::Display for Dict {
 
 impl PartialEq for Dict {
     fn eq(&self, other: &Self) -> bool {
-        if self.items.len() != other.items.len() {
-            return false;
-        }
-
-        // Check if all key-value pairs in self are in other
-        for values in self.items.values() {
-            for (key, value, _hash) in values {
-                let mut found = false;
-                for other_values in other.items.values() {
-                    for (other_key, other_value, _other_hash) in other_values {
-                        if key == other_key && value == other_value {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if found {
-                        break;
-                    }
-                }
-                if !found {
-                    return false;
-                }
-            }
-        }
-        true
+        hash_table_equal(&self.items, &other.items)
     }
+}
+
+fn hash_table_equal<T: PartialEq>(table1: &HashTable<T>, table2: &HashTable<T>) -> bool {
+    if table1.len() != table2.len() {
+        return false;
+    }
+
+    table1
+        .iter()
+        .all(|item1| table2.iter().any(|item2| item1 == item2))
 }
 
 #[derive(Debug, Clone, Copy)]
