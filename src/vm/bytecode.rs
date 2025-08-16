@@ -1,6 +1,5 @@
 use super::VM;
-use crate::heap::StringId;
-use crate::value::Value;
+use crate::{enums::ConstantSize, heap::StringId, value::Value};
 
 impl VM {
     /// Read the next byte from the current frame's bytecode.
@@ -29,9 +28,9 @@ impl VM {
 
     /// Read a constant index from the current frame's bytecode.
     ///
-    /// If `long` is true then a 24 bit number is read, otherwise a single byte.
-    pub(super) fn read_constant_index(&mut self, long: bool) -> usize {
-        if long {
+    /// If `size` is `Long` then a 24 bit number is read, otherwise a single byte.
+    pub(super) fn read_constant_index(&mut self, size: ConstantSize) -> usize {
+        if size == ConstantSize::Long {
             self.read_24bit_number()
         } else {
             usize::from(self.read_byte())
@@ -51,14 +50,14 @@ impl VM {
     ///
     /// First reads the index of the constant from the bytecode.
     /// Then grabs the value corresponding to that index from the current function's constants.
-    pub(super) fn read_constant(&mut self, long: bool) -> Value {
-        let index = self.read_constant_index(long);
+    pub(super) fn read_constant(&mut self, size: ConstantSize) -> Value {
+        let index = self.read_constant_index(size);
         self.read_constant_value(index)
     }
 
     /// Read the value of the string constant specified by the next byte.
     pub(super) fn read_string(&mut self, opcode_name: &str) -> StringId {
-        let constant = self.read_constant(false);
+        let constant = self.read_constant(ConstantSize::Short);
         match &constant {
             Value::String(string_id) => *string_id,
             x => {

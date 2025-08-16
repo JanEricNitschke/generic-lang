@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::{
-    enums::ImportType,
+    enums::{ClassType, ImportType},
     heap::StringId,
     value::{
         Class, Closure, Module, NativeFunction, NativeFunctionImpl, NativeMethod, NativeMethodImpl,
@@ -72,7 +72,7 @@ impl VM {
     pub(crate) fn define_native_class<T: ToString>(&mut self, name: &T, add_to_builtins: bool) {
         let name_id = self.heap.string_id(name);
         self.heap.strings_by_name.insert(name.to_string(), name_id);
-        let value = self.heap.add_class(Class::new(name_id, true));
+        let value = self.heap.add_class(Class::new(name_id, ClassType::Native));
         if add_to_builtins {
             self.builtins.insert(
                 name_id,

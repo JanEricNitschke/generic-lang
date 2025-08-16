@@ -3,9 +3,12 @@
 //! Contains functions for resolving variables ad upvalue, local or global.
 
 use super::{Compiler, Local, ScopeDepth, Upvalue};
-use crate::chunk::{ConstantLongIndex, OpCode};
-use crate::compiler::rules::Precedence;
-use crate::scanner::{Token, TokenKind as TK};
+use crate::{
+    chunk::{ConstantLongIndex, OpCode},
+    compiler::rules::Precedence,
+    enums::{ConstantSize, Mutability},
+    scanner::{Token, TokenKind as TK},
+};
 
 impl<'scanner> Compiler<'scanner, '_> {
     /// Start a new scope.
@@ -81,12 +84,12 @@ impl<'scanner> Compiler<'scanner, '_> {
         let arg = arg.unwrap();
 
         // Support for more than u8::MAX variables in a scope
-        let long = if arg > u8::MAX.into() {
+        let size = if arg > u8::MAX.into() {
             get_op = get_op.to_long();
             set_op = set_op.to_long();
-            true
+            ConstantSize::Long
         } else {
-            false
+            ConstantSize::Short
         };
 
         // Get or set?
@@ -106,7 +109,7 @@ impl<'scanner> Compiler<'scanner, '_> {
                 self.expression();
             } else {
                 self.emit_byte(get_op, line);
-                if !self.emit_number(arg, long) {
+                if !self.emit_number(arg, size) {
                     self.error(&format!("Too many globals in {get_op:?}"));
                 }
                 self.expression();
@@ -133,7 +136,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         // Generate the code.
         self.emit_byte(op, line);
 
-        if !self.emit_number(arg, long) {
+        if !self.emit_number(arg, size) {
             self.error(&format!("Too many globals in {op:?}"));
         }
     }
@@ -191,7 +194,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         retval
     }
 
-    pub(super) fn add_local(&mut self, name: Token<'scanner>, mutable: bool) {
+    pub(super) fn add_local(&mut self, name: Token<'scanner>, mutability: Mutability) {
         if self.locals().len() > usize::pow(2, 24) - 1 {
             self.error("Too many local variables in function.");
             return;
@@ -200,7 +203,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         self.locals_mut().push(Local {
             name,
             depth: ScopeDepth(-1),
-            mutable,
+            mutable: bool::from(mutability),
             is_captured: false,
         });
     }
@@ -268,7 +271,7 @@ impl<'scanner> Compiler<'scanner, '_> {
     /// Otherwise it is checked if there already is an exiting local
     /// with that name. If so, an error is reported.
     /// Otherwise, the variable is added to the list of locals.
-    pub(super) fn declare_variable(&mut self, mutable: bool) {
+    pub(super) fn declare_variable(&mut self, mutability: Mutability) {
         if *self.scope_depth() == 0 {
             return;
         }
@@ -285,15 +288,15 @@ impl<'scanner> Compiler<'scanner, '_> {
             self.error("Already a variable with this name in this scope.");
         }
 
-        self.add_local(name, mutable);
+        self.add_local(name, mutability);
     }
 
     /// Parse a variable. If it is local, it gets declared normally.
     /// Otherwise, it is added as a global.
-    pub(super) fn parse_variable(&mut self, msg: &str, mutable: bool) -> Option<ConstantLongIndex> {
+    pub(super) fn parse_variable(&mut self, msg: &str, mutability: Mutability) -> Option<ConstantLongIndex> {
         self.consume(TK::Identifier, msg);
 
-        self.declare_variable(mutable);
+        self.declare_variable(mutability);
         if *self.scope_depth() > 0 {
             None
         } else {
@@ -321,7 +324,7 @@ impl<'scanner> Compiler<'scanner, '_> {
     /// If it is local it just gets marked as initialized.
     /// Otherwise, the `OpCode` matching the mutability and index size of the global index
     /// is emitted.
-    pub(super) fn define_variable(&mut self, global: Option<ConstantLongIndex>, mutable: bool) {
+    pub(super) fn define_variable(&mut self, global: Option<ConstantLongIndex>, mutability: Mutability) {
         if *self.scope_depth() > 0 {
             self.mark_initialized();
             return;
@@ -330,14 +333,14 @@ impl<'scanner> Compiler<'scanner, '_> {
         let global = global.unwrap();
 
         if let Ok(short) = u8::try_from(*global) {
-            if mutable {
+            if mutability == Mutability::Mutable {
                 self.emit_byte(OpCode::DefineGlobal, self.line());
             } else {
                 self.emit_byte(OpCode::DefineGlobalConst, self.line());
             }
             self.emit_byte(short, self.line());
         } else {
-            if mutable {
+            if mutability == Mutability::Mutable {
                 self.emit_byte(OpCode::DefineGlobalLong, self.line());
             } else {
                 self.emit_byte(OpCode::DefineGlobalConstLong, self.line());

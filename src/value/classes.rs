@@ -1,4 +1,7 @@
-use crate::heap::{ClassId, Heap, StringId};
+use crate::{
+    enums::ClassType,
+    heap::{ClassId, Heap, StringId},
+};
 
 use derivative::Derivative;
 use rustc_hash::FxHashMap as HashMap;
@@ -13,16 +16,16 @@ pub struct Class {
     // Have to be general Value because it can be a nativemethod(how?) or a closure
     // Should probably also be String and not StringId?
     pub(crate) methods: HashMap<StringId, Value>,
-    pub(crate) is_native: bool,
+    pub(crate) is_native: ClassType,
 }
 
 impl Class {
     #[must_use]
-    pub(crate) fn new(name: StringId, is_native: bool) -> Self {
+    pub(crate) fn new(name: StringId, class_type: ClassType) -> Self {
         Self {
             name,
             methods: HashMap::default(),
-            is_native,
+            is_native: class_type,
         }
     }
 

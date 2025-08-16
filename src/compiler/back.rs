@@ -2,6 +2,7 @@
 
 use crate::{
     chunk::{CodeOffset, OpCode},
+    enums::ConstantSize,
     scanner::{Token, TokenKind},
     types::Line,
     value::{GenericInt, Number, Value},
@@ -132,8 +133,8 @@ impl<'scanner> Compiler<'scanner, '_> {
         self.emit_byte(offset as u8, line);
     }
 
-    pub(super) fn emit_number(&mut self, n: usize, long: bool) -> bool {
-        if long {
+    pub(super) fn emit_number(&mut self, n: usize, size: ConstantSize) -> bool {
+        if size == ConstantSize::Long {
             self.emit_24bit_number(n)
         } else if let Ok(n) = u8::try_from(n) {
             self.emit_byte(n, self.line());

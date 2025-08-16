@@ -6,9 +6,12 @@ use num_bigint::BigInt;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use super::{Compiler, FunctionType};
-use crate::chunk::OpCode;
-use crate::config::LAMBDA_NAME;
-use crate::scanner::TokenKind as TK;
+use crate::{
+    chunk::OpCode,
+    config::LAMBDA_NAME,
+    enums::ConstantSize,
+    scanner::TokenKind as TK,
+};
 
 // The precedence of the different operators in the language
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromPrimitive, IntoPrimitive)]
@@ -407,7 +410,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             } else {
                 self.emit_byte(OpCode::Dup, line);
                 self.emit_byte(OpCode::GetProperty, line);
-                if !self.emit_number(name_constant.0, false) {
+                if !self.emit_number(name_constant.0, ConstantSize::Short) {
                     self.error("Too many constants created for OP_GET_PROPERTY.");
                 }
                 self.expression();
@@ -424,19 +427,19 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 }
             }
             self.emit_byte(OpCode::SetProperty, line);
-            if !self.emit_number(name_constant.0, false) {
+            if !self.emit_number(name_constant.0, ConstantSize::Short) {
                 self.error("Too many constants created for OP_SET_PROPERTY");
             }
         } else if self.match_(TK::LeftParen) {
             let arg_count = self.argument_list();
             self.emit_byte(OpCode::Invoke, line);
-            if !self.emit_number(name_constant.0, false) {
+            if !self.emit_number(name_constant.0, ConstantSize::Short) {
                 self.error("Too many constants created for OP_INVOKE");
             }
             self.emit_byte(arg_count, line);
         } else {
             self.emit_byte(OpCode::GetProperty, line);
-            if !self.emit_number(name_constant.0, false) {
+            if !self.emit_number(name_constant.0, ConstantSize::Short) {
                 self.error("Too many constants created for OP_GET_PROPERTY.");
             }
         }
@@ -759,14 +762,14 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             let arg_count = self.argument_list();
             self.named_variable(&self.synthetic_token(TK::Super).as_str(), false);
             self.emit_byte(OpCode::SuperInvoke, line);
-            if !self.emit_number(*name, false) {
+            if !self.emit_number(*name, ConstantSize::Short) {
                 self.error("Too many constants while compiling OP_SUPER_INVOKE");
             }
             self.emit_byte(arg_count, line);
         } else {
             self.named_variable(&self.synthetic_token(TK::Super).as_str(), false);
             self.emit_byte(OpCode::GetSuper, self.line());
-            if !self.emit_number(*name, false) {
+            if !self.emit_number(*name, ConstantSize::Short) {
                 self.error("Too many constants while compiling OP_SUPER_INVOKE");
             }
         }
@@ -777,7 +780,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         let name_constant = self.identifier_constant(name);
         let line = self.line();
         self.emit_byte(OpCode::Invoke, line);
-        if !self.emit_number(name_constant.0, false) {
+        if !self.emit_number(name_constant.0, ConstantSize::Short) {
             self.error(error_message);
         }
         self.emit_byte(arg_count, line);

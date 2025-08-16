@@ -126,11 +126,11 @@ macro_rules! run_instruction {
             }
             // Index of the constant is the operand, value is in the constants table
             OpCode::Constant => {
-                let value = $self.read_constant(false);
+                let value = $self.read_constant(crate::enums::ConstantSize::Short);
                 $self.stack_push(value);
             }
             OpCode::ConstantLong => {
-                let value = $self.read_constant(true);
+                let value = $self.read_constant(crate::enums::ConstantSize::Long);
                 $self.stack_push(value);
             }
             // `Negate` and `Not` work on the stack value
@@ -186,7 +186,7 @@ macro_rules! run_instruction {
             // Get the function with the actual bytecode as a value from the operand
             // Capture the upvalues and push the closure onto the stack
             OpCode::Closure => {
-                let value = $self.read_constant(false);
+                let value = $self.read_constant(crate::enums::ConstantSize::Short);
                 let function = value.as_function();
                 let mut closure =
                     Closure::new(*function, false, $self.modules.last().copied(), &$self.heap);
@@ -255,7 +255,7 @@ macro_rules! run_instruction {
             // Classname is the operand, create a new class and push it onto the stack
             OpCode::Class => {
                 let class_name = $self.read_string("OP_CLASS");
-                let class = $self.heap.add_class(Class::new(class_name, false));
+                let class = $self.heap.add_class(Class::new(class_name, crate::enums::ClassType::UserDefined));
                 $self.stack_push_value(class);
             }
             // Property to get is the operand, instance/module is on the stack
@@ -371,7 +371,7 @@ macro_rules! run_instruction {
             OpCode::Inherit => {
                 let superclass_id = $self.peek(1).expect("Stack underflow in OP_INHERIT");
                 let superclass = if let Value::Class(superclass) = &superclass_id {
-                    if superclass.to_value(&$self.heap).is_native {
+                    if superclass.to_value(&$self.heap).is_native == crate::enums::ClassType::Native {
                         runtime_error!($self, "Can not inherit from native classes yet.");
                         return InterpretResult::RuntimeError;
                     }

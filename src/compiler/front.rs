@@ -7,6 +7,7 @@ use super::{ClassState, Compiler, FunctionType, LoopState, rules::Precedence};
 
 use crate::{
     chunk::{CodeOffset, ConstantIndex, ConstantLongIndex, OpCode},
+    enums::{ConstantSize, Mutability},
     scanner::{Token, TokenKind as TK},
     types::Line,
     utils::get_file_stem,
@@ -79,9 +80,9 @@ impl Compiler<'_, '_> {
 
     pub(super) fn declaration(&mut self) {
         if self.match_(TK::Var) {
-            self.var_declaration(true);
+            self.var_declaration(Mutability::Mutable);
         } else if self.match_(TK::Const) {
-            self.var_declaration(false);
+            self.var_declaration(Mutability::Immutable);
         } else if self.check(TK::Fun) || self.check(TK::At) {
             // We use `check` instead of `match_` here because
             // `fun_declaration` will handle the advance for us
@@ -97,8 +98,8 @@ impl Compiler<'_, '_> {
         }
     }
 
-    fn var_declaration(&mut self, mutable: bool) {
-        let global = self.parse_variable("Expect variable name.", mutable);
+    fn var_declaration(&mut self, mutability: Mutability) {
+        let global = self.parse_variable("Expect variable name.", mutability);
 
         if self.match_(TK::Equal) {
             self.expression();
@@ -108,12 +109,12 @@ impl Compiler<'_, '_> {
 
         self.consume(TK::Semicolon, "Expect ';' after variable declaration.");
 
-        self.define_variable(global, mutable);
+        self.define_variable(global, mutability);
     }
 
     fn fun_declaration(&mut self) {
         let global = self.fun_definition();
-        self.define_variable(global, true);
+        self.define_variable(global, Mutability::Mutable);
     }
 
     fn fun_definition(&mut self) -> Option<ConstantLongIndex> {
@@ -142,7 +143,7 @@ impl Compiler<'_, '_> {
     }
 
     fn undecorated_fun_definition(&mut self) -> Option<ConstantLongIndex> {
-        let global = self.parse_variable("Expect function name.", true);
+        let global = self.parse_variable("Expect function name.", Mutability::Mutable);
         self.mark_initialized();
         self.named_function(FunctionType::Function);
         global
@@ -152,14 +153,14 @@ impl Compiler<'_, '_> {
         self.consume(TK::Identifier, "Expect class name.");
         let class_name = self.previous.as_ref().unwrap().as_str().to_string();
         let name_constant = self.identifier_constant(&class_name);
-        self.declare_variable(true);
+        self.declare_variable(Mutability::Mutable);
         self.emit_bytes(
             OpCode::Class,
             ConstantIndex::try_from(name_constant)
                 .expect("Too many constants when declaring class."),
             self.line(),
         );
-        self.define_variable(Some(name_constant), true);
+        self.define_variable(Some(name_constant), Mutability::Mutable);
         self.class_state.push(ClassState::new());
 
         if self.match_(TK::Less) {
@@ -171,8 +172,8 @@ impl Compiler<'_, '_> {
             }
 
             self.begin_scope();
-            self.add_local(self.synthetic_token(TK::Super), true);
-            self.define_variable(None, true);
+            self.add_local(self.synthetic_token(TK::Super), Mutability::Mutable);
+            self.define_variable(None, Mutability::Mutable);
 
             self.named_variable(&class_name, true);
             self.emit_byte(OpCode::Inherit, self.line());
@@ -253,9 +254,9 @@ impl Compiler<'_, '_> {
             // Declare space for where the exception variable will be sitting on the stack.
             self.add_local(
                 self.synthetic_identifier_token(exception_var_name.as_bytes()),
-                false,
+                Mutability::Immutable,
             );
-            self.define_variable(None, false);
+            self.define_variable(None, Mutability::Immutable);
 
             if let Some(jump) = jump_to_next_catch {
                 self.patch_jump(jump);
@@ -289,9 +290,9 @@ impl Compiler<'_, '_> {
             }
 
             if self.match_(TK::As) {
-                let global = self.parse_variable("Expect exception variable name.", false);
+                let global = self.parse_variable("Expect exception variable name.", Mutability::Immutable);
                 self.named_variable(&exception_var_name, false);
-                self.define_variable(global, false);
+                self.define_variable(global, Mutability::Immutable);
             }
 
             self.consume(TK::LeftBrace, "Expect '{' after catch clause");
@@ -516,7 +517,7 @@ impl Compiler<'_, '_> {
         } else if self.match_(TK::Var) || self.match_(TK::Const) {
             let name = self.current.clone().unwrap();
             let is_mutable = self.check_previous(TK::Var);
-            self.var_declaration(is_mutable);
+            self.var_declaration(is_mutable.into());
             // Challenge 25/2: alias loop variables
             u8::try_from(self.locals().len() - 1).map_or_else(
                 |_| {
@@ -562,7 +563,7 @@ impl Compiler<'_, '_> {
             if let Some((loop_var, loop_var_name, is_mutable)) = loop_var_name_mutable {
                 self.begin_scope();
                 self.emit_bytes(OpCode::GetLocal, loop_var, line);
-                self.add_local(loop_var_name, is_mutable);
+                self.add_local(loop_var_name, is_mutable.into());
                 self.mark_initialized();
                 u8::try_from(self.locals().len() - 1).map_or_else(
                     |_| {
@@ -630,10 +631,10 @@ impl Compiler<'_, '_> {
         // Define loop variable
         let name = self.current.clone().unwrap(); // Needed for aliasing
         let is_mutable = self.check_previous(TK::Var);
-        let global = self.parse_variable("Expect variable name.", is_mutable);
+        let global = self.parse_variable("Expect variable name.", is_mutable.into());
         self.emit_byte(OpCode::Nil, self.line());
         self.consume(TK::In, "Expect 'in' after variable declaration.");
-        self.define_variable(global, is_mutable);
+        self.define_variable(global, is_mutable.into());
         // Challenge 25/2: alias loop variables
         let loop_var = u8::try_from(self.locals().len() - 1)
             .expect("Creating loop variable led to too many locals.");
@@ -645,14 +646,14 @@ impl Compiler<'_, '_> {
         // Define the iterator
         self.emit_byte(OpCode::Invoke, line);
         let iter_constant = self.identifier_constant(&"__iter__");
-        if !self.emit_number(iter_constant.0, false) {
+        if !self.emit_number(iter_constant.0, ConstantSize::Short) {
             self.error("Too many constants created for OP_FOREACH.");
         }
         self.emit_byte(0, line);
 
         // Do i even need this? This never actually needs a name.
-        self.add_local(self.synthetic_identifier_token(b"@iter"), true);
-        self.define_variable(None, true);
+        self.add_local(self.synthetic_identifier_token(b"@iter"), Mutability::Mutable);
+        self.define_variable(None, Mutability::Mutable);
         let iter_var = u8::try_from(self.locals().len() - 1)
             .expect("Creating loop iterator led to too many locals.");
 
@@ -670,7 +671,7 @@ impl Compiler<'_, '_> {
         self.emit_bytes(OpCode::GetLocal, iter_var, line);
         self.emit_byte(OpCode::Invoke, line);
         let next_constant = self.identifier_constant(&"__next__");
-        if !self.emit_number(next_constant.0, false) {
+        if !self.emit_number(next_constant.0, ConstantSize::Short) {
             self.error("Too many constants created for OP_FOREACH.");
         }
         self.emit_byte(0, line);
@@ -683,7 +684,7 @@ impl Compiler<'_, '_> {
         // Alias loop variable for this iteration of the loop
         self.begin_scope();
         self.emit_bytes(OpCode::GetLocal, loop_var, line);
-        self.add_local(name, is_mutable);
+        self.add_local(name, is_mutable.into());
         self.mark_initialized();
         let inner_var = u8::try_from(self.locals().len() - 1)
             .expect("Aliasing loop variable led to too many locals.");
@@ -798,15 +799,15 @@ impl Compiler<'_, '_> {
             let name = name_token.as_str().to_string();
             let name_constant = self.identifier_constant(&name);
             if is_local {
-                self.add_local(name_token.clone(), true);
+                self.add_local(name_token.clone(), Mutability::Mutable);
                 self.mark_initialized();
             }
             self.consume(TK::Semicolon, "Expect ';' after import alias");
             self.emit_byte(OpCode::ImportAs, self.line());
-            if !self.emit_number(path_constant.0, false) {
+            if !self.emit_number(path_constant.0, ConstantSize::Short) {
                 self.error("Too many constants created for OP_IMPORT_AS.");
             }
-            if !self.emit_number(name_constant.0, false) {
+            if !self.emit_number(name_constant.0, ConstantSize::Short) {
                 self.error("Too many constants created for OP_IMPORT_AS.");
             }
         } else {
@@ -825,14 +826,14 @@ impl Compiler<'_, '_> {
                         lexeme: name,
                         line: path_token.line,
                     },
-                    true,
+                    Mutability::Mutable,
                 );
 
                 self.mark_initialized();
             }
             self.consume(TK::Semicolon, "Expect ';' after imported file path.");
             self.emit_byte(OpCode::Import, self.line());
-            if !self.emit_number(path_constant.0, false) {
+            if !self.emit_number(path_constant.0, ConstantSize::Short) {
                 self.error("Too many constants created for OP_IMPORT.");
             }
         }
@@ -862,11 +863,11 @@ impl Compiler<'_, '_> {
         }
         self.consume(TK::Semicolon, "Expect ';' after names to import name.");
         self.emit_byte(OpCode::ImportFrom, self.line());
-        if !self.emit_number(path_constant.0, false) {
+        if !self.emit_number(path_constant.0, ConstantSize::Short) {
             self.error("Too many constants created for OP_IMPORT_FROM.");
         }
         self.emit_byte(is_local, self.line());
-        if !self.emit_number(import_tokens.len(), false) {
+        if !self.emit_number(import_tokens.len(), ConstantSize::Short) {
             self.error("Too many constants created for OP_IMPORT_FROM.");
         }
         for constant in import_tokens {
@@ -877,7 +878,7 @@ impl Compiler<'_, '_> {
                 self.error("Too many names to import from module.");
             }
             if is_local {
-                self.add_local(constant, true);
+                self.add_local(constant, Mutability::Mutable);
                 self.mark_initialized();
             }
         }
@@ -914,8 +915,8 @@ impl Compiler<'_, '_> {
                     } else {
                         compiler.current_function_mut().arity += 1;
                     }
-                    let constant = compiler.parse_variable("Expect parameter name.", true);
-                    compiler.define_variable(constant, true);
+                    let constant = compiler.parse_variable("Expect parameter name.", Mutability::Mutable);
+                    compiler.define_variable(constant, Mutability::Mutable);
                     if !compiler.match_(TK::Comma) {
                         break;
                     }

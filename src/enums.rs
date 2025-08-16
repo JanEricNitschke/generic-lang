@@ -174,7 +174,7 @@ impl From<CollectionType> for bool {
 }
 
 /// Enum for distinguishing class types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd)]
 pub enum ClassType {
     /// Native (built-in) class
     Native,
