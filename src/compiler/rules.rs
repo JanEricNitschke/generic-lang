@@ -10,6 +10,13 @@ use crate::chunk::OpCode;
 use crate::config::LAMBDA_NAME;
 use crate::scanner::TokenKind as TK;
 
+/// Represents a part of an f-string - either a literal string or an expression
+#[derive(Debug)]
+enum FStringPart {
+    String(String),
+    Expression(String),
+}
+
 // The precedence of the different operators in the language
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
@@ -177,15 +184,15 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Await         = [None,            None,      None      ],
         Async         = [None,            None,      None      ],
         StopIteration = [literal,         None,      None      ],
+        FStringStart  = [fstring,         None,      None      ],
+        FStringPart   = [None,            None,      None      ],
+        FStringEnd    = [None,            None,      None      ],
         Try           = [None,            None,      None      ],
         Catch         = [None,            None,      None      ],
         Finally       = [None,            None,      None      ],
         Throw         = [None,            None,      None      ],
         DotDotLess    = [None,            binary,    Range     ],
         DotDotEqual   = [None,            binary,    Range     ],
-        FStringStart  = [fstring,         None,      None      ],
-        FStringPart   = [None,            None,      None      ],
-        FStringEnd    = [None,            None,      None      ],
     )
 }
 
@@ -788,53 +795,122 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
 
     /// Parse an f-string literal (f"text ${expr} more text").
     /// 
-    /// This handles the complex parsing of f-string tokens and expressions,
-    /// converting expressions to strings and emitting BuildFString.
+    /// The FStringStart token contains the entire f-string content.
+    /// We need to parse it and extract string parts and expressions.
     fn fstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
-        let mut part_count: u8 = 0;
+        let lexeme = self.previous.as_ref().unwrap().as_str();
         
-        // We start with FStringStart already consumed
-        // Parse alternating string parts and expressions until FStringEnd
-        loop {
-            // Check what comes next
-            match self.current.as_ref().unwrap().kind {
-                TK::FStringPart => {
-                    // This is a literal string part
-                    let lexeme = self.current.as_ref().unwrap().as_str();
-                    // Process escapes: \$ -> $ and \{ -> {
-                    let value = lexeme.replace("\\$", "$").replace("\\{", "{");
-                    let string_id = self.heap.string_id(&value);
-                    self.emit_constant(string_id);
-                    part_count += 1;
-                    self.advance();
+        // Remove f" and " from the lexeme to get the content
+        let content = &lexeme[2..lexeme.len() - 1];
+        
+        if !content.contains("${") {
+            // Simple f-string with no interpolations - just treat as regular string
+            let value = content.replace("\\$", "$").replace("\\{", "{");
+            let string_id = self.heap.string_id(&value);
+            self.emit_constant(string_id);
+            return;
+        }
+        
+        // Complex f-string with interpolations
+        let mut parts = Vec::new();
+        let mut chars = content.chars().peekable();
+        let mut current_part = String::new();
+        
+        while let Some(ch) = chars.next() {
+            if ch == '$' && chars.peek() == Some(&'{') {
+                // Found start of interpolation
+                chars.next(); // consume '{'
+                
+                // Add current string part if any
+                if !current_part.is_empty() {
+                    let processed = current_part.replace("\\$", "$").replace("\\{", "{");
+                    parts.push(FStringPart::String(processed));
+                    current_part.clear();
                 }
-                TK::FStringEnd => {
-                    // End of f-string
-                    self.advance(); // consume FStringEnd
-                    break;
-                }
-                _ => {
-                    // This should be the start of an interpolated expression
-                    // Parse the expression
-                    self.parse_precedence(Precedence::None);
-                    
-                    // Convert the expression result to string by calling str()
-                    let str_name = self.identifier_constant(&"str".to_string());
-                    let line = self.line();
-                    self.emit_byte(OpCode::Invoke, line);
-                    if !self.emit_number(str_name.0, false) {
-                        self.error("Too many constants while compiling f-string str() call");
+                
+                // Extract expression until matching '}'
+                let mut expr = String::new();
+                let mut brace_count = 1;
+                
+                while brace_count > 0 {
+                    match chars.next() {
+                        Some('{') => {
+                            brace_count += 1;
+                            expr.push('{');
+                        }
+                        Some('}') => {
+                            brace_count -= 1;
+                            if brace_count > 0 {
+                                expr.push('}');
+                            }
+                        }
+                        Some(c) => expr.push(c),
+                        None => {
+                            self.error("Unterminated interpolation in f-string");
+                            return;
+                        }
                     }
-                    self.emit_byte(1, line); // 1 argument (the value to convert)
+                }
+                
+                parts.push(FStringPart::Expression(expr));
+            } else if ch == '\\' {
+                // Handle escaping
+                current_part.push(ch);
+                if let Some(escaped) = chars.next() {
+                    current_part.push(escaped);
+                }
+            } else {
+                current_part.push(ch);
+            }
+        }
+        
+        // Add final string part if any
+        if !current_part.is_empty() {
+            let processed = current_part.replace("\\$", "$").replace("\\{", "{");
+            parts.push(FStringPart::String(processed));
+        }
+        
+        // Now compile each part
+        for part in &parts {
+            match part {
+                FStringPart::String(s) => {
+                    // Emit string constant
+                    let string_id = self.heap.string_id(s);
+                    self.emit_constant(string_id);
+                }
+                FStringPart::Expression(expr) => {
+                    // Load the str function
+                    let str_name = "str".to_string();
+                    self.named_variable(&str_name, false);
                     
-                    part_count += 1;
+                    // Parse and compile the expression
+                    self.compile_expression(expr);
+                    
+                    // Call str() with the expression result
+                    let line = self.line();
+                    self.emit_bytes(OpCode::Call, 1, line); // 1 argument
                 }
             }
         }
         
-        // Emit BuildFString with the number of parts
+        // Emit BuildFString to concatenate all parts
         let line = self.line();
         self.emit_byte(OpCode::BuildFString, line);
-        self.emit_byte(part_count, line);
+        self.emit_byte(parts.len() as u8, line);
+    }
+    
+    /// Compile an expression from a string.
+    /// This creates a temporary scanner and parser to compile the expression.
+    fn compile_expression(&mut self, expr: &str) {
+        // For now, just handle simple identifiers
+        let trimmed = expr.trim();
+        if trimmed.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            // Simple identifier - emit variable access
+            let name_str = trimmed.to_string();
+            self.named_variable(&name_str, false);
+        } else {
+            // Complex expression - for now, error out
+            self.error(&format!("Complex expressions in f-strings not yet supported: {}", trimmed));
+        }
     }
 }
