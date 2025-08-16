@@ -296,9 +296,8 @@ impl VM {
                         return Err("__eq__ method failed with compile error".to_string());
                     }
                 }
-            } else {
-                return Err("Failed to invoke __eq__ method".to_string());
             }
+            return Err("Failed to invoke __eq__ method".to_string());
         }
 
         // Fall back to heap-level equality
