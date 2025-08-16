@@ -231,10 +231,7 @@ impl VM {
                     let result = self.stack.pop().expect("Stack underflow in compute_hash");
                     return match result {
                         Value::Number(Number::Integer(GenericInt::Small(n))) => {
-                            // Convert to u64, using absolute value for consistent hashing
-                            #[allow(clippy::cast_sign_loss)]
-                            let hash_val = n.wrapping_abs() as u64;
-                            Ok(hash_val)
+                            Ok(n.unsigned_abs())
                         }
                         _ => Err(format!(
                             "__hash__ method must return an integer, got: {}",
