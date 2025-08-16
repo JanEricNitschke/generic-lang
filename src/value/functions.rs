@@ -1,5 +1,6 @@
 use crate::{
     chunk::Chunk,
+    enums::ImportType,
     heap::{FunctionId, Heap, ModuleId, StringId, UpvalueId},
     vm::Global,
 };
@@ -117,7 +118,7 @@ pub struct Module {
     pub(crate) globals: HashMap<StringId, Global>,
     pub(crate) names_to_import: Option<Vec<StringId>>,
     pub(crate) alias: StringId,
-    pub(crate) local_import: bool,
+    pub(crate) local_import: ImportType,
 }
 
 impl Module {
@@ -126,7 +127,7 @@ impl Module {
         path: PathBuf,
         names_to_import: Option<Vec<StringId>>,
         alias: StringId,
-        local_import: bool,
+        local_import: ImportType,
     ) -> Self {
         Self {
             name,

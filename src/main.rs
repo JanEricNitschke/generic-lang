@@ -18,6 +18,7 @@ mod bitwise;
 mod chunk;
 mod compiler;
 mod config;
+mod enums;
 mod heap;
 mod natives;
 mod scanner;

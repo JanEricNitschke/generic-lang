@@ -36,6 +36,7 @@ use crate::natives;
 use crate::{
     chunk::{CodeOffset, OpCode},
     compiler::Compiler,
+    enums::{EqualityOperation, ImportType, JumpCondition},
     heap::{Heap, ModuleId, StringId, UpvalueId},
     scanner::Scanner,
     stdlib,
@@ -118,7 +119,7 @@ impl VM {
 
             let closure = Closure::new(*function_id.as_function(), true, None, &self.heap);
 
-            self.add_closure_to_modules(&closure, self.path.clone(), None, None, false);
+            self.add_closure_to_modules(&closure, self.path.clone(), None, None, ImportType::Global);
 
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
@@ -160,19 +161,19 @@ impl VM {
 
 // Remaining opcode handlers
 impl VM {
-    fn jump_conditional(&mut self, if_true: bool) {
+    fn jump_conditional(&mut self, condition: JumpCondition) {
         let offset = self.read_16bit_number();
-        // if_true = True -> jump_if_true
+        // JumpCondition::IfTrue -> jump_if_true
         // -> ! (is_falsey())
-        // if_true - is_falsey() ->:
-        // true ^ false = true
-        // true ^ true = false
-        // if_true = False -> jump_if_false
+        // condition - is_falsey() ->:
+        // IfTrue ^ false = true
+        // IfTrue ^ true = false
+        // JumpCondition::IfFalse -> jump_if_false
         // -> is_falsey
-        // if_true - is_falsey() ->:
-        // false ^ true = true
-        // false ^ false = false
-        if self.is_falsey(*self.peek(0).expect("Stack underflow in JUMP_IF_FALSE")) ^ if_true {
+        // condition - is_falsey() ->:
+        // IfFalse ^ true = true
+        // IfFalse ^ false = false
+        if self.is_falsey(*self.peek(0).expect("Stack underflow in JUMP_IF_FALSE")) ^ bool::from(condition) {
             self.callstack.current_mut().ip += offset;
         }
     }
@@ -182,12 +183,12 @@ impl VM {
     /// Similar to `jump_conditional` but pops the condition value from the stack
     /// before checking if it should jump. This combines the common pattern of
     /// conditional jump followed by pop.
-    fn pop_jump_conditional(&mut self, if_true: bool) {
+    fn pop_jump_conditional(&mut self, condition: JumpCondition) {
         let offset = self.read_16bit_number();
-        let condition = self.stack.pop().expect("Stack underflow in POP_JUMP_IF");
+        let condition_value = self.stack.pop().expect("Stack underflow in POP_JUMP_IF");
 
         // Same logic as jump_conditional but with the popped condition
-        if self.is_falsey(condition) ^ if_true {
+        if self.is_falsey(condition_value) ^ bool::from(condition) {
             self.callstack.current_mut().ip += offset;
         }
     }
@@ -197,11 +198,11 @@ impl VM {
     ///
     /// This is useful for and/or operators where we want to preserve
     /// the operand value when short-circuiting.
-    fn jump_if_or_pop(&mut self, if_true: bool) {
+    fn jump_if_or_pop(&mut self, condition: JumpCondition) {
         let offset = self.read_16bit_number();
-        let condition = *self.peek(0).expect("Stack underflow in JUMP_IF_OR_POP");
+        let condition_value = *self.peek(0).expect("Stack underflow in JUMP_IF_OR_POP");
 
-        if self.is_falsey(condition) ^ if_true {
+        if self.is_falsey(condition_value) ^ bool::from(condition) {
             // Condition matches, jump and leave value on stack
             self.callstack.current_mut().ip += offset;
         } else {
@@ -225,12 +226,12 @@ impl VM {
 
     /// Check if the top two values on the stack are equal.
     ///
-    /// If `negate` is true then the result is negated.
+    /// If `operation` is `NotEqual` then the result is negated.
     ///
     /// # Panics
     ///
     /// If the stack does not have two values. This is an internal error and should never happen.
-    fn equal(&mut self, negate: bool) -> Option<InterpretResult> {
+    fn equal(&mut self, operation: EqualityOperation) -> Option<InterpretResult> {
         let eq_id = self.heap.string_id(&"__eq__");
         let left_id = self.peek(1).expect("Stack underflow in OP EQUAL (left)");
         if let Value::Instance(instance) = left_id
@@ -254,7 +255,7 @@ impl VM {
             .stack
             .pop()
             .expect("stack underflow in OP_EQUAL (left)");
-        let result = left_id.eq(&right_id, &self.heap) != negate;
+        let result = left_id.eq(&right_id, &self.heap) != bool::from(operation);
         self.stack_push(result.into());
         None
     }

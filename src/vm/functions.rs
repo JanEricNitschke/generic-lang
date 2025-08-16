@@ -508,13 +508,13 @@ impl VM {
                         );
                         return Some(InterpretResult::RuntimeError);
                     };
-                    if was_local_import {
+                    if bool::from(was_local_import) {
                         self.stack_push(value.value);
                     } else {
                         self.globals().insert(name, value);
                     }
                 }
-            } else if was_local_import {
+            } else if bool::from(was_local_import) {
                 self.stack_push(last_module.into());
             } else {
                 self.globals().insert(

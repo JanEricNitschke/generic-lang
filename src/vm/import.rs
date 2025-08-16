@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use crate::{
     chunk::CodeOffset,
+    enums::ImportType,
     heap::StringId,
     value::{Closure, Module, ModuleContents, NativeFunction},
 };
@@ -89,7 +90,7 @@ impl VM {
                 alias,
                 &stdlib_functions,
                 names_to_import,
-                local_import,
+                local_import.into(),
             ) {
                 return Some(value);
             }
@@ -112,7 +113,7 @@ impl VM {
         alias: Option<StringId>,
         stdlib_functions: &ModuleContents,
         names_to_import: Option<Vec<StringId>>,
-        local_import: bool,
+        local_import: ImportType,
     ) -> Option<InterpretResult> {
         let mut module = Module::new(
             string_id,
@@ -146,7 +147,7 @@ impl VM {
         if let Some(names_to_import) = names_to_import {
             for name in names_to_import {
                 if let Some(global) = module.globals.remove(&name) {
-                    if local_import {
+                    if bool::from(local_import) {
                         self.stack_push(global.value);
                     } else {
                         self.globals().insert(name, global);
@@ -163,7 +164,7 @@ impl VM {
         } else {
             // Otherwise we add the whole module to the current globals.
             let module_id = self.heap.add_module(module);
-            if local_import {
+            if bool::from(local_import) {
                 self.stack_push(module_id);
             } else {
                 self.globals().insert(
@@ -197,7 +198,7 @@ impl VM {
             let closure =
                 Closure::new(*function_id, true, self.modules.last().copied(), &self.heap);
 
-            self.add_closure_to_modules(&closure, file_path, names_to_import, alias, local_import);
+            self.add_closure_to_modules(&closure, file_path, names_to_import, alias, local_import.into());
 
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);

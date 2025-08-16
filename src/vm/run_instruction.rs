@@ -104,12 +104,12 @@ macro_rules! run_instruction {
             | OpCode::DefineGlobalLong
             | OpCode::DefineGlobalConst
             | OpCode::DefineGlobalConstLong) => $self.define_global(op),
-            OpCode::JumpIfFalse => $self.jump_conditional(false),
-            OpCode::JumpIfTrue => $self.jump_conditional(true),
-            OpCode::PopJumpIfFalse => $self.pop_jump_conditional(false),
-            OpCode::PopJumpIfTrue => $self.pop_jump_conditional(true),
-            OpCode::JumpIfTrueOrPop => $self.jump_if_or_pop(true),
-            OpCode::JumpIfFalseOrPop => $self.jump_if_or_pop(false),
+            OpCode::JumpIfFalse => $self.jump_conditional(crate::enums::JumpCondition::IfFalse),
+            OpCode::JumpIfTrue => $self.jump_conditional(crate::enums::JumpCondition::IfTrue),
+            OpCode::PopJumpIfFalse => $self.pop_jump_conditional(crate::enums::JumpCondition::IfFalse),
+            OpCode::PopJumpIfTrue => $self.pop_jump_conditional(crate::enums::JumpCondition::IfTrue),
+            OpCode::JumpIfTrueOrPop => $self.jump_if_or_pop(crate::enums::JumpCondition::IfTrue),
+            OpCode::JumpIfFalseOrPop => $self.jump_if_or_pop(crate::enums::JumpCondition::IfFalse),
             // Arg count is passed as the operand
             // The function to call is on the stack followed by all arguments
             // in order from left to right.
@@ -145,12 +145,12 @@ macro_rules! run_instruction {
             OpCode::False => $self.stack_push(Value::Bool(false)),
             OpCode::StopIteration => $self.stack.push(Value::StopIteration),
             OpCode::Equal => {
-                if let Some(result) = $self.equal(false) {
+                if let Some(result) = $self.equal(crate::enums::EqualityOperation::Equal) {
                     return result;
                 }
             }
             OpCode::NotEqual => {
-                if let Some(result) = $self.equal(true) {
+                if let Some(result) = $self.equal(crate::enums::EqualityOperation::NotEqual) {
                     return result;
                 }
             }

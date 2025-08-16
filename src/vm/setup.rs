@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::{
+    enums::ImportType,
     heap::StringId,
     value::{
         Class, Closure, Module, NativeFunction, NativeFunctionImpl, NativeMethod, NativeMethodImpl,
@@ -19,7 +20,7 @@ impl VM {
         file_path: PathBuf,
         names_to_import: Option<Vec<StringId>>,
         alias: Option<StringId>,
-        local_import: bool,
+        local_import: ImportType,
     ) {
         if closure.is_module {
             let value_id = closure.function.to_value(&self.heap).name;
