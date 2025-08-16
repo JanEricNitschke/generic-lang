@@ -25,9 +25,9 @@ pub enum ConditionType {
 impl From<bool> for ConditionType {
     fn from(value: bool) -> Self {
         if value {
-            ConditionType::If
+            Self::If
         } else {
-            ConditionType::Unless
+            Self::Unless
         }
     }
 }
@@ -79,9 +79,9 @@ pub enum CollectionType {
 impl From<bool> for CollectionType {
     fn from(value: bool) -> Self {
         if value {
-            CollectionType::Dict
+            Self::Dict
         } else {
-            CollectionType::Set
+            Self::Set
         }
     }
 }

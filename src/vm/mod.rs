@@ -168,9 +168,8 @@ impl VM {
         // condition = IfFalse -> jump_if_false
         // -> is_falsey
         let is_falsey = self.is_falsey(*self.peek(0).expect("Stack underflow in JUMP"));
-        let should_jump = Into::<bool>::into(condition) ^ is_falsey;
 
-        if should_jump {
+        if is_falsey ^ bool::from(condition) {
             self.callstack.current_mut().ip += offset;
         }
     }
@@ -185,12 +184,7 @@ impl VM {
         let condition_value = self.stack.pop().expect("Stack underflow in POP_JUMP_IF");
 
         // Same logic as jump_conditional but with the popped condition
-        let should_jump = match condition {
-            JumpCondition::IfTrue => !self.is_falsey(condition_value),
-            JumpCondition::IfFalse => self.is_falsey(condition_value),
-        };
-
-        if should_jump {
+        if self.is_falsey(condition_value) ^ bool::from(condition) {
             self.callstack.current_mut().ip += offset;
         }
     }
@@ -204,12 +198,7 @@ impl VM {
         let offset = self.read_16bit_number();
         let condition_value = *self.peek(0).expect("Stack underflow in JUMP_IF_OR_POP");
 
-        let should_jump = match condition {
-            JumpCondition::IfTrue => !self.is_falsey(condition_value),
-            JumpCondition::IfFalse => self.is_falsey(condition_value),
-        };
-
-        if should_jump {
+        if self.is_falsey(condition_value) ^ bool::from(condition) {
             // Condition matches, jump and leave value on stack
             self.callstack.current_mut().ip += offset;
         } else {
