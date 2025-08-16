@@ -240,23 +240,74 @@ impl VM {
             .pop()
             .expect("stack underflow in OP_EQUAL (left)");
 
-        match self.compare_values_equal(left_id, right_id) {
-            Ok(result) => {
-                let final_result = result != negate;
-                self.stack_push(final_result.into());
-                None
+        // Values already on stack, try instance equality first
+        self.stack_push(left_id);
+        self.stack_push(right_id);
+
+        if let Some(equality_result) = self.try_instance_equality(left_id) {
+            match equality_result {
+                Ok(result) => {
+                    let final_result = result != negate;
+                    self.stack_push(final_result.into());
+                    return None;
+                }
+                Err(_) => {
+                    // Method call failed, manually pop and fall back to heap equality
+                    // Note: try_instance_equality already popped the result, just fall through
+                }
             }
-            Err(_) => {
-                // Comparison failed, fall back to heap equality
-                let result = left_id.eq(&right_id, &self.heap) != negate;
-                self.stack_push(result.into());
-                None
+        } else {
+            // No custom __eq__ method, manually pop the values we pushed
+            self.stack.pop(); // right
+            self.stack.pop(); // left
+        }
+
+        // Fall back to heap equality
+        let result = left_id.eq(&right_id, &self.heap) != negate;
+        self.stack_push(result.into());
+        None
+    }
+
+    /// Core equality comparison logic extracted for sharing between VM.equal and hash collections.
+    /// Assumes values are already set up appropriately on stack for instance method calls.
+    /// Returns None if no custom __eq__ method should be called, Some(result) if method was called.
+    fn try_instance_equality(&mut self, left: Value) -> Option<Result<bool, String>> {
+        let eq_id = self.heap.string_id(&"__eq__");
+
+        // Check if left value is an instance with __eq__ method
+        if let Value::Instance(instance) = left
+            && instance
+                .to_value(&self.heap)
+                .has_field_or_method(eq_id, &self.heap)
+        {
+            // Call the __eq__ method (assumes stack is already set up with [left, right])
+            if self.invoke(eq_id, 1) {
+                // Method call succeeded, run it and get result
+                match self.run_function() {
+                    InterpretResult::Ok => {
+                        let result = self
+                            .stack
+                            .pop()
+                            .expect("Stack underflow in try_instance_equality");
+                        return Some(Ok(!self.is_falsey(result)));
+                    }
+                    InterpretResult::RuntimeError => {
+                        return Some(Err("__eq__ method failed with runtime error".to_string()));
+                    }
+                    InterpretResult::CompileError => {
+                        return Some(Err("__eq__ method failed with compile error".to_string()));
+                    }
+                }
+            } else {
+                return Some(Err("Failed to invoke __eq__ method".to_string()));
             }
         }
+
+        None // No custom __eq__ method found
     }
 
     /// Compare two values for equality, with support for custom __eq__ methods.
-    /// This is the public version of the equality logic used by VM.equal.
+    /// Optimized for use by hash collections - only pushes to stack when needed.
     pub fn compare_values_equal(&mut self, left: Value, right: Value) -> Result<bool, String> {
         let eq_id = self.heap.string_id(&"__eq__");
 
@@ -266,35 +317,17 @@ impl VM {
                 .to_value(&self.heap)
                 .has_field_or_method(eq_id, &self.heap)
         {
-            // Set up stack for method call: [left, right]
-            let original_stack_len = self.stack.len();
+            // Only push to stack if we have an instance with __eq__ method
             self.stack_push(left);
             self.stack_push(right);
 
-            // Call the __eq__ method
-            if self.invoke(eq_id, 1) {
-                // Method call succeeded, run it and get result
-                match self.run_function() {
-                    InterpretResult::Ok => {
-                        let result = self
-                            .stack
-                            .pop()
-                            .expect("Stack underflow in compare_values_equal");
-                        return Ok(!self.is_falsey(result));
-                    }
-                    InterpretResult::RuntimeError => {
-                        // Restore stack and fall back to heap equality
-                        self.stack.truncate(original_stack_len);
-                    }
-                    InterpretResult::CompileError => {
-                        // Restore stack and fall back to heap equality
-                        self.stack.truncate(original_stack_len);
-                    }
-                }
-            } else {
-                // Method call setup failed, restore stack
-                self.stack.truncate(original_stack_len);
+            if let Some(result) = self.try_instance_equality(left) {
+                return result;
             }
+
+            // If try_instance_equality returned None, pop the values we pushed
+            self.stack.pop();
+            self.stack.pop();
         }
 
         // Fall back to heap-level equality
