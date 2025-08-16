@@ -1,0 +1,18 @@
+# Test string interpolation edge cases
+
+# Empty interpolation should show placeholder
+print("Empty: ${}"); # expect: Empty: ${}
+
+# Nested braces should show placeholder for now
+print("Nested: ${a{b}}"); # expect: Nested: ${a{b}}
+
+# Multiple interpolations in one string
+var a = 10;
+var b = 20;
+print("${a} + ${b} = ${a + b}"); # expect: 10 + 20 = 30
+
+# String with no interpolation should work as before
+print("No interpolation here"); # expect: No interpolation here
+
+# Mixed literal and variable interpolation
+print("Result: ${42 + a}"); # expect: Result: 52

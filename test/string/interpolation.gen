@@ -1,0 +1,13 @@
+print("Basic interpolation: ${42}"); # expect: Basic interpolation: 42
+
+var var_name = "test";
+print("Variable: ${var_name}"); # expect: Variable: test
+
+var x = 10;
+var y = 5;
+print("Variables: ${x} and ${y}"); # expect: Variables: 10 and 5
+print("Simple addition: ${x + y}"); # expect: Simple addition: 15
+print("Subtraction: ${x - y}"); # expect: Subtraction: 5
+print("Multiplication: ${x * y}"); # expect: Multiplication: 50
+print("Division: ${x / y}"); # expect: Division: 2:1
+print("With literals: ${x + 3}"); # expect: With literals: 13

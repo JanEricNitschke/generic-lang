@@ -508,7 +508,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     fn string(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let lexeme = self.previous.as_ref().unwrap().as_str();
         let content = lexeme[1..lexeme.len() - 1].to_string(); // Strip quotes and own the string
-        
+
         // Check if the string contains interpolation
         if content.contains("${") {
             self.parse_interpolated_string(&content);
@@ -518,72 +518,68 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             self.emit_constant(string_id);
         }
     }
-    
+
     /// Parse an interpolated string and emit code to concatenate parts and expressions
     fn parse_interpolated_string(&mut self, content: &str) {
         let mut parts = Vec::new();
         let mut current_part = String::new();
         let mut chars = content.chars().peekable();
-        
+
         while let Some(ch) = chars.next() {
             if ch == '$' && chars.peek() == Some(&'{') {
                 chars.next(); // consume '{'
-                
+
                 // Save the current string part if any
                 if !current_part.is_empty() {
                     parts.push(InterpolationPart::String(current_part.clone()));
                     current_part.clear();
                 }
-                
+
                 // Extract the expression inside ${}
                 let mut expr = String::new();
                 let mut brace_count = 1;
-                
-                while let Some(ch) = chars.next() {
+
+                for ch in chars.by_ref() {
                     if ch == '{' {
                         brace_count += 1;
-                        expr.push(ch);
                     } else if ch == '}' {
                         brace_count -= 1;
                         if brace_count == 0 {
                             break;
-                        } else {
-                            expr.push(ch);
                         }
-                    } else {
-                        expr.push(ch);
                     }
+                    expr.push(ch);
                 }
-                
+
                 if brace_count > 0 {
                     self.error("Unterminated interpolation in string.");
                     return;
                 }
-                
+
                 parts.push(InterpolationPart::Expression(expr));
             } else {
                 current_part.push(ch);
             }
         }
-        
+
         // Add remaining string part
         if !current_part.is_empty() {
             parts.push(InterpolationPart::String(current_part));
         }
-        
+
         // Emit code to build the interpolated string
-        self.emit_interpolation_parts(parts);
+        self.emit_interpolation_parts(&parts);
     }
-    
+
     /// Emit bytecode for interpolated string parts
-    fn emit_interpolation_parts(&mut self, parts: Vec<InterpolationPart>) {
+    fn emit_interpolation_parts(&mut self, parts: &[InterpolationPart]) {
         if parts.is_empty() {
             // Empty string
             let string_id = self.heap.string_id(&String::new());
             self.emit_constant(string_id);
             return;
         }
-        
+
         // Emit the first part
         match &parts[0] {
             InterpolationPart::String(s) => {
@@ -596,7 +592,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 self.emit_str_call();
             }
         }
-        
+
         // Emit remaining parts with concatenation
         for part in &parts[1..] {
             match part {
@@ -614,40 +610,44 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             self.emit_byte(OpCode::Add, self.line());
         }
     }
-    
-    /// Emit a call to the str() function to convert a value to string
+
+    /// Emit a call to the `str()` function to convert a value to string
     fn emit_str_call(&mut self) {
         // The expression value is already on the stack
         // We need to put the str function on the stack, then swap
-        
+
         // Get the str function identifier constant
         let str_constant = self.identifier_constant(&"str".to_string());
-        
+
         // Check if we need long form
         let long = str_constant.0 > usize::from(u8::MAX);
-        let get_op = if long { OpCode::GetGlobalLong } else { OpCode::GetGlobal };
-        
+        let get_op = if long {
+            OpCode::GetGlobalLong
+        } else {
+            OpCode::GetGlobal
+        };
+
         // Emit the get global instruction for str function
         self.emit_byte(get_op, self.line());
         if !self.emit_number(str_constant.0, long) {
             self.error("Too many globals in GetGlobal for str()");
             return;
         }
-        
+
         // Now the stack has: [expression_value, str_function]
         // We need to swap them so str_function is on top for the call
         self.emit_byte(OpCode::Swap, self.line());
-        
+
         // Call with 1 argument (the expression value)
         self.emit_byte(OpCode::Call, self.line());
         self.emit_byte(1, self.line()); // argument count
     }
-    
+
     /// Compile an expression within string interpolation
     fn compile_interpolation_expression(&mut self, expr: &str) {
         let trimmed = expr.trim();
-        
-        // Handle simple cases first
+
+        // Handle simple cases first for better performance
         if trimmed.chars().all(|c| c.is_ascii_digit()) {
             // Integer literal
             if let Ok(int_val) = trimmed.parse::<i64>() {
@@ -655,29 +655,118 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 return;
             }
         }
-        
+
         if trimmed.parse::<f64>().is_ok() {
-            // Float literal  
+            // Float literal
             if let Ok(float_val) = trimmed.parse::<f64>() {
                 self.emit_constant(float_val);
                 return;
             }
         }
-        
+
         // Check for simple identifiers (variables)
-        if trimmed.chars().all(|c| c.is_alphanumeric() || c == '_') && 
-           trimmed.chars().next().map_or(false, |c| c.is_alphabetic() || c == '_') {
+        if trimmed.chars().all(|c| c.is_alphanumeric() || c == '_')
+            && trimmed
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphabetic() || c == '_')
+        {
             // This looks like a variable name - emit variable access code
             let var_name = trimmed.to_string();
             self.named_variable(&var_name, false);
             return;
         }
-        
-        // For more complex expressions, emit a placeholder for now
-        // TODO: Implement full expression parsing with scanner context
-        let placeholder = format!("${{{}}}", expr);
+
+        // Try to parse simple binary expressions (variable + variable, etc.)
+        if let Some(result) = self.try_parse_simple_binary_expression(trimmed)
+            && result
+        {
+            return;
+        }
+
+        // Fallback: emit a placeholder string
+        let placeholder = format!("${{{expr}}}");
         let string_id = self.heap.string_id(&placeholder);
         self.emit_constant(string_id);
+    }
+
+    /// Try to parse simple binary expressions like "x + y", "a - b", etc.
+    fn try_parse_simple_binary_expression(&mut self, expr: &str) -> Option<bool> {
+        // Look for simple patterns: identifier op identifier/literal
+        let operators = ['+', '-', '*', '/', '%', '&', '|', '^'];
+
+        for op in operators {
+            if let Some(op_pos) = expr.find(op) {
+                let left_part = expr[..op_pos].trim();
+                let right_part = expr[op_pos + 1..].trim();
+
+                // Check if both parts are simple identifiers or literals
+                if Self::is_simple_operand(left_part) && Self::is_simple_operand(right_part) {
+                    // Emit left operand
+                    self.emit_simple_operand(left_part);
+                    // Emit right operand
+                    self.emit_simple_operand(right_part);
+                    // Emit operation
+                    self.emit_binary_operation(op);
+                    return Some(true);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Check if a string is a simple operand (identifier or literal)
+    fn is_simple_operand(operand: &str) -> bool {
+        if operand.chars().all(|c| c.is_ascii_digit()) {
+            return true; // Integer literal
+        }
+
+        if operand.parse::<f64>().is_ok() {
+            return true; // Float literal
+        }
+
+        // Check for identifier
+        operand.chars().all(|c| c.is_alphanumeric() || c == '_')
+            && operand
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphabetic() || c == '_')
+    }
+
+    /// Emit a simple operand (identifier or literal)
+    fn emit_simple_operand(&mut self, operand: &str) {
+        if operand.chars().all(|c| c.is_ascii_digit())
+            && let Ok(int_val) = operand.parse::<i64>()
+        {
+            self.emit_constant(int_val);
+            return;
+        }
+
+        if let Ok(float_val) = operand.parse::<f64>() {
+            self.emit_constant(float_val);
+            return;
+        }
+
+        // Must be an identifier
+        self.named_variable(&operand.to_string(), false);
+    }
+
+    /// Emit the appropriate binary operation opcode
+    fn emit_binary_operation(&mut self, op: char) {
+        let opcode = match op {
+            '+' => OpCode::Add,
+            '-' => OpCode::Subtract,
+            '*' => OpCode::Multiply,
+            '/' => OpCode::Divide,
+            '%' => OpCode::Mod,
+            '&' => OpCode::BitAnd,
+            '|' => OpCode::BitOr,
+            '^' => OpCode::BitXor,
+            _ => return, // Should not happen
+        };
+
+        self.emit_byte(opcode, self.line());
     }
 
     /// Parse a list literal ([a, b, c(,)])
