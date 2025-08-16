@@ -39,6 +39,7 @@ use crate::{
     heap::{Heap, ModuleId, StringId, UpvalueId},
     scanner::Scanner,
     stdlib,
+    types::JumpCondition,
     value::{Class, Closure, Function, ModuleContents, Number, Upvalue, Value},
 };
 
@@ -160,19 +161,28 @@ impl VM {
 
 // Remaining opcode handlers
 impl VM {
-    fn jump_conditional(&mut self, if_true: bool) {
+    fn jump_conditional(&mut self, condition: JumpCondition) {
         let offset = self.read_16bit_number();
-        // if_true = True -> jump_if_true
+        // condition = IfTrue -> jump_if_true
         // -> ! (is_falsey())
-        // if_true - is_falsey() ->:
+        // condition - is_falsey() ->:
         // true ^ false = true
         // true ^ true = false
-        // if_true = False -> jump_if_false
+        // condition = IfFalse -> jump_if_false
         // -> is_falsey
-        // if_true - is_falsey() ->:
+        // condition - is_falsey() ->:
         // false ^ true = true
         // false ^ false = false
-        if self.is_falsey(*self.peek(0).expect("Stack underflow in JUMP_IF_FALSE")) ^ if_true {
+        let should_jump = match condition {
+            JumpCondition::IfTrue => {
+                !self.is_falsey(*self.peek(0).expect("Stack underflow in JUMP_IF_TRUE"))
+            }
+            JumpCondition::IfFalse => {
+                self.is_falsey(*self.peek(0).expect("Stack underflow in JUMP_IF_FALSE"))
+            }
+        };
+
+        if should_jump {
             self.callstack.current_mut().ip += offset;
         }
     }
@@ -182,12 +192,17 @@ impl VM {
     /// Similar to `jump_conditional` but pops the condition value from the stack
     /// before checking if it should jump. This combines the common pattern of
     /// conditional jump followed by pop.
-    fn pop_jump_conditional(&mut self, if_true: bool) {
+    fn pop_jump_conditional(&mut self, condition: JumpCondition) {
         let offset = self.read_16bit_number();
-        let condition = self.stack.pop().expect("Stack underflow in POP_JUMP_IF");
+        let condition_value = self.stack.pop().expect("Stack underflow in POP_JUMP_IF");
 
         // Same logic as jump_conditional but with the popped condition
-        if self.is_falsey(condition) ^ if_true {
+        let should_jump = match condition {
+            JumpCondition::IfTrue => !self.is_falsey(condition_value),
+            JumpCondition::IfFalse => self.is_falsey(condition_value),
+        };
+
+        if should_jump {
             self.callstack.current_mut().ip += offset;
         }
     }
@@ -197,11 +212,16 @@ impl VM {
     ///
     /// This is useful for and/or operators where we want to preserve
     /// the operand value when short-circuiting.
-    fn jump_if_or_pop(&mut self, if_true: bool) {
+    fn jump_if_or_pop(&mut self, condition: JumpCondition) {
         let offset = self.read_16bit_number();
-        let condition = *self.peek(0).expect("Stack underflow in JUMP_IF_OR_POP");
+        let condition_value = *self.peek(0).expect("Stack underflow in JUMP_IF_OR_POP");
 
-        if self.is_falsey(condition) ^ if_true {
+        let should_jump = match condition {
+            JumpCondition::IfTrue => !self.is_falsey(condition_value),
+            JumpCondition::IfFalse => self.is_falsey(condition_value),
+        };
+
+        if should_jump {
             // Condition matches, jump and leave value on stack
             self.callstack.current_mut().ip += offset;
         } else {

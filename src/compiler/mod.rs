@@ -17,7 +17,7 @@ use crate::{
     compiler::rules::{Rules, make_rules},
     heap::{Heap, StringId},
     scanner::{Scanner, Token, TokenKind},
-    types::Line,
+    types::{Line, ReturnType},
     value::Function,
 };
 
@@ -209,7 +209,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             self.declaration();
         }
 
-        self.end(false);
+        self.end(ReturnType::Normal);
         if self.had_error {
             None
         } else {
