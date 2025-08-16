@@ -1,0 +1,2 @@
+var x = f"test";
+print(x); # expect: test

@@ -93,7 +93,7 @@ macro_rules! make_rules {
     }};
 }
 
-pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 84];
+pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 87];
 
 // Can't be static because the associated function types include lifetimes
 #[rustfmt::skip]
@@ -139,6 +139,9 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Identifier    = [variable,        None,      None      ],
         In            = [None,            binary,    In        ],
         String        = [string,          None,      None      ],
+        StringPart    = [None,            None,      None      ],
+        FStringStart  = [fstring,         None,      None      ],
+        FStringEnd    = [None,            None,      None      ],
         Float         = [float,           None,      None      ],
         Integer       = [integer,         None,      None      ],
         And           = [None,            and,       And       ],
@@ -502,6 +505,18 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         let lexeme = self.previous.as_ref().unwrap().as_str();
         let value = lexeme[1..lexeme.len() - 1].to_string();
         let string_id = self.heap.string_id(&value);
+        self.emit_constant(string_id);
+    }
+
+    /// Parse an f-string literal - simplified version for now
+    fn fstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
+        // For now, just treat f-strings like regular strings
+        // TODO: Add proper interpolation parsing later
+        let lexeme = self.previous.as_ref().unwrap().as_str();
+        
+        // Remove f" and " to get the content
+        let content = &lexeme[2..lexeme.len() - 1];
+        let string_id = self.heap.string_id(&content.to_string());
         self.emit_constant(string_id);
     }
 
