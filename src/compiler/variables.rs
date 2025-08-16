@@ -201,7 +201,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         self.locals_mut().push(Local {
             name,
             depth: ScopeDepth(-1),
-            mutable: matches!(mutability, Mutability::Mutable),
+            mutability,
             is_captured: false,
         });
     }
@@ -382,7 +382,7 @@ impl<'scanner> Compiler<'scanner, '_> {
 
     fn check_local_const(&mut self, local_index: usize) {
         let local = &self.locals()[local_index];
-        if *local.depth != -1 && !local.mutable {
+        if *local.depth != -1 && local.mutability == crate::types::Mutability::Immutable {
             self.error("Reassignment to local 'const'.");
         }
     }

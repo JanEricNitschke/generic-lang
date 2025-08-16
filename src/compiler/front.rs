@@ -8,7 +8,7 @@ use super::{ClassState, Compiler, FunctionType, LoopState, rules::Precedence};
 use crate::{
     chunk::{CodeOffset, ConstantIndex, ConstantLongIndex, OpCode},
     scanner::{Token, TokenKind as TK},
-    types::{ConditionType, Line, LoopType, Mutability, NumberEncoding, ReturnType},
+    types::{ConditionType, Line, LoopType, Mutability, NumberEncoding, ReturnMode},
     utils::get_file_stem,
 };
 
@@ -196,11 +196,7 @@ impl Compiler<'_, '_> {
 
     fn statement(&mut self) {
         if self.match_(TK::If) || self.match_(TK::Unless) {
-            let condition_type = if self.check_previous(TK::If) {
-                ConditionType::If
-            } else {
-                ConditionType::Unless
-            };
+            let condition_type = self.check_previous(TK::If).into();
             self.conditional_statement(condition_type);
         } else if self.match_(TK::Try) {
             self.try_statement();
@@ -947,10 +943,10 @@ impl Compiler<'_, '_> {
 
             if compiler.match_(TK::LeftBrace) {
                 compiler.block();
-                compiler.end(ReturnType::Normal);
+                compiler.end(ReturnMode::Normal);
             } else if allow_expression_body {
                 compiler.expression();
-                compiler.end(ReturnType::Raw);
+                compiler.end(ReturnMode::Raw);
             } else {
                 compiler.error_at_current("Expect '{' before function body.");
             }

@@ -3,7 +3,7 @@
 use crate::{
     chunk::{CodeOffset, OpCode},
     scanner::{Token, TokenKind},
-    types::{Line, NumberEncoding, ReturnType},
+    types::{Line, NumberEncoding, ReturnMode},
     value::{GenericInt, Number, Value},
 };
 
@@ -41,10 +41,10 @@ impl<'scanner> Compiler<'scanner, '_> {
         self.emit_byte(OpCode::Return, line);
     }
 
-    pub(super) fn end(&mut self, return_type: ReturnType) {
-        match return_type {
-            ReturnType::Raw => self.emit_byte(OpCode::Return, self.line()),
-            ReturnType::Normal => self.emit_return(),
+    pub(super) fn end(&mut self, return_mode: ReturnMode) {
+        match return_mode {
+            ReturnMode::Raw => self.emit_byte(OpCode::Return, self.line()),
+            ReturnMode::Normal => self.emit_return(),
         }
 
         #[cfg(feature = "print_code")]

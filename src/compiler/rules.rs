@@ -608,11 +608,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             }
         }
 
-        let collection_type = if is_dict {
-            CollectionType::Dict
-        } else {
-            CollectionType::Set
-        };
+        let collection_type = is_dict.into();
         self.finish_hash_collection(collection_type, item_count);
     }
 

@@ -104,16 +104,12 @@ macro_rules! run_instruction {
             | OpCode::DefineGlobalLong
             | OpCode::DefineGlobalConst
             | OpCode::DefineGlobalConstLong) => $self.define_global(op),
-            OpCode::JumpIfFalse => $self.jump_conditional(crate::types::JumpCondition::IfFalse),
-            OpCode::JumpIfTrue => $self.jump_conditional(crate::types::JumpCondition::IfTrue),
-            OpCode::PopJumpIfFalse => {
-                $self.pop_jump_conditional(crate::types::JumpCondition::IfFalse)
-            }
-            OpCode::PopJumpIfTrue => {
-                $self.pop_jump_conditional(crate::types::JumpCondition::IfTrue)
-            }
-            OpCode::JumpIfTrueOrPop => $self.jump_if_or_pop(crate::types::JumpCondition::IfTrue),
-            OpCode::JumpIfFalseOrPop => $self.jump_if_or_pop(crate::types::JumpCondition::IfFalse),
+            OpCode::JumpIfFalse => $self.jump_conditional(JumpCondition::IfFalse),
+            OpCode::JumpIfTrue => $self.jump_conditional(JumpCondition::IfTrue),
+            OpCode::PopJumpIfFalse => $self.pop_jump_conditional(JumpCondition::IfFalse),
+            OpCode::PopJumpIfTrue => $self.pop_jump_conditional(JumpCondition::IfTrue),
+            OpCode::JumpIfTrueOrPop => $self.jump_if_or_pop(JumpCondition::IfTrue),
+            OpCode::JumpIfFalseOrPop => $self.jump_if_or_pop(JumpCondition::IfFalse),
             // Arg count is passed as the operand
             // The function to call is on the stack followed by all arguments
             // in order from left to right.

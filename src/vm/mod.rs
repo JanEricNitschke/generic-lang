@@ -165,22 +165,11 @@ impl VM {
         let offset = self.read_16bit_number();
         // condition = IfTrue -> jump_if_true
         // -> ! (is_falsey())
-        // condition - is_falsey() ->:
-        // true ^ false = true
-        // true ^ true = false
         // condition = IfFalse -> jump_if_false
         // -> is_falsey
-        // condition - is_falsey() ->:
-        // false ^ true = true
-        // false ^ false = false
-        let should_jump = match condition {
-            JumpCondition::IfTrue => {
-                !self.is_falsey(*self.peek(0).expect("Stack underflow in JUMP_IF_TRUE"))
-            }
-            JumpCondition::IfFalse => {
-                self.is_falsey(*self.peek(0).expect("Stack underflow in JUMP_IF_FALSE"))
-            }
-        };
+        let condition_bool: bool = condition.into();
+        let is_falsey = self.is_falsey(*self.peek(0).expect("Stack underflow in JUMP"));
+        let should_jump = condition_bool ^ is_falsey;
 
         if should_jump {
             self.callstack.current_mut().ip += offset;

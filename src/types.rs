@@ -22,6 +22,16 @@ pub enum ConditionType {
     Unless,
 }
 
+impl From<bool> for ConditionType {
+    fn from(value: bool) -> Self {
+        if value {
+            ConditionType::If
+        } else {
+            ConditionType::Unless
+        }
+    }
+}
+
 /// Enum for loop statement types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoopType {
@@ -36,6 +46,15 @@ pub enum JumpCondition {
     IfFalse,
 }
 
+impl From<JumpCondition> for bool {
+    fn from(condition: JumpCondition) -> Self {
+        match condition {
+            JumpCondition::IfTrue => true,
+            JumpCondition::IfFalse => false,
+        }
+    }
+}
+
 /// Enum for number encoding types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NumberEncoding {
@@ -43,9 +62,9 @@ pub enum NumberEncoding {
     Long,
 }
 
-/// Enum for function return types
+/// Enum for function return modes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReturnType {
+pub enum ReturnMode {
     Normal,
     Raw,
 }
@@ -55,4 +74,14 @@ pub enum ReturnType {
 pub enum CollectionType {
     Dict,
     Set,
+}
+
+impl From<bool> for CollectionType {
+    fn from(value: bool) -> Self {
+        if value {
+            CollectionType::Dict
+        } else {
+            CollectionType::Set
+        }
+    }
 }
