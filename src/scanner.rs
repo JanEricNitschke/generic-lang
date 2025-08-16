@@ -60,6 +60,11 @@ pub enum TokenKind {
     Nil,
     StopIteration,
 
+    // F-string tokens.
+    FStringStart,
+    FStringPart,
+    FStringEnd,
+
     // Keywords.
     And,
     Or,
@@ -143,6 +148,8 @@ pub struct Scanner<'a> {
     /// Always points at the next character to be consumed.
     current: usize,
     line: Line,
+    /// Tracks if we're inside an f-string and the nesting depth of braces
+    fstring_brace_depth: Option<usize>,
 }
 
 impl<'a> Scanner<'a> {
@@ -153,6 +160,7 @@ impl<'a> Scanner<'a> {
             start: 0,
             current: 0,
             line: Line(1),
+            fstring_brace_depth: None,
         }
     }
 
@@ -175,8 +183,23 @@ impl<'a> Scanner<'a> {
                 b':' => TK::Colon,
                 b'(' => TK::LeftParen,
                 b')' => TK::RightParen,
-                b'{' => TK::LeftBrace,
-                b'}' => TK::RightBrace,
+                b'{' => {
+                    if let Some(depth) = self.fstring_brace_depth.as_mut() {
+                        *depth += 1;
+                    }
+                    TK::LeftBrace
+                }
+                b'}' => {
+                    if let Some(depth) = self.fstring_brace_depth.as_mut() {
+                        if *depth > 0 {
+                            *depth -= 1;
+                        } else {
+                            // This closes an interpolation expression, return to f-string mode
+                            return self.fstring_part();
+                        }
+                    }
+                    TK::RightBrace
+                }
                 b'[' => TK::LeftBracket,
                 b']' => TK::RightBracket,
                 b';' => TK::Semicolon,
@@ -288,7 +311,22 @@ impl<'a> Scanner<'a> {
                         TK::Greater
                     }
                 }
-                b'"' => return self.string(),
+                b'"' => {
+                    if self.fstring_brace_depth.is_some() {
+                        // This should be the end of an f-string, but let fstring_part handle it
+                        return self.fstring_part();
+                    } else {
+                        return self.string();
+                    }
+                }
+                b'f' => {
+                    // Check if this is an f-string (f followed by ")
+                    if self.peek() == Some(&b'"') {
+                        return self.fstring_start();
+                    } else {
+                        return self.identifier();
+                    }
+                }
                 c if c.is_ascii_digit() => return self.number(),
                 c if c.is_ascii_alphabetic() || c == &b'_' => return self.identifier(),
                 _ => return self.error_token("Unexpected character."),
@@ -347,6 +385,91 @@ impl<'a> Scanner<'a> {
         }
 
         self.make_token(TokenKind::String)
+    }
+
+    /// Parse the start of an f-string (f").
+    /// Consumes the 'f"' and enters f-string mode.
+    fn fstring_start(&mut self) -> Token<'a> {
+        // Skip the opening quote (we already consumed 'f')
+        self.advance(); // consume the '"'
+        self.fstring_brace_depth = Some(0);
+        
+        // Immediately start parsing the first string part
+        self.fstring_part()
+    }
+
+    /// Parse a string part inside an f-string until we hit ${ or ".
+    /// Handles escaping of \$ and \{.
+    fn fstring_part(&mut self) -> Token<'a> {
+        // Mark the start of this string part
+        self.start = self.current;
+        
+        while let Some(c) = self.peek() {
+            match c {
+                b'"' => {
+                    // End of f-string - this string part is done
+                    break;
+                }
+                b'$' => {
+                    if self.peek_next() == Some(&b'{') {
+                        // Start of interpolation - this string part is done
+                        break;
+                    } else {
+                        self.advance();
+                    }
+                }
+                b'\\' => {
+                    // Handle escaping
+                    self.advance(); // consume backslash
+                    if let Some(_escaped) = self.peek() {
+                        self.advance(); // consume escaped character
+                    }
+                }
+                b'\n' => {
+                    *self.line += 1;
+                    self.advance();
+                }
+                _ => {
+                    self.advance();
+                }
+            }
+        }
+        
+        // Check what ended the string part
+        if self.peek() == Some(&b'$') && self.peek_next() == Some(&b'{') {
+            // Next will be an expression - if this part is empty, handle ${ now
+            if self.start == self.current {
+                self.advance(); // consume '$'
+                self.advance(); // consume '{'
+                // Reset f-string mode to allow normal expression parsing
+                self.fstring_brace_depth = Some(0);
+                // Continue scanning normally for the expression
+                self.scan()
+            } else {
+                // Return the string part we accumulated
+                self.make_token(TokenKind::FStringPart)
+            }
+        } else if self.peek() == Some(&b'"') {
+            // End of f-string
+            if self.start == self.current {
+                // Empty part before closing quote - return FStringEnd
+                self.fstring_end()
+            } else {
+                // Return the final string part
+                self.make_token(TokenKind::FStringPart)
+            }
+        } else {
+            // Should not happen - unterminated f-string
+            self.error_token("Unterminated f-string.")
+        }
+    }
+
+    /// Parse the end of an f-string (").
+    /// Exits f-string mode.
+    fn fstring_end(&mut self) -> Token<'a> {
+        self.advance(); // consume the '"'
+        self.fstring_brace_depth = None;
+        self.make_token(TokenKind::FStringEnd)
     }
 
     /// Numbers are any sequence of ascii digits with an optional decimal point in the middle.

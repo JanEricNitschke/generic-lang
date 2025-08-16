@@ -427,6 +427,11 @@ macro_rules! run_instruction {
                     return value;
                 }
             }
+            OpCode::BuildFString => {
+                if let Some(value) = $self.build_fstring() {
+                    return value;
+                }
+            }
             OpCode::BuildRangeExclusive => {
                 if let Some(value) = $self.build_range(true) {
                     return value;

@@ -144,4 +144,40 @@ impl VM {
         self.stack_push_value(instance_value);
         None
     }
+
+    // Build an f-string by concatenating strings from the stack.
+    // The number of string parts is the operand.
+    // String parts are on the stack in order from left to right
+    // (... --- part1 --- part2 --- ... --- partN)
+    pub(crate) fn build_fstring(&mut self) -> Option<InterpretResult> {
+        let arg_count = self.read_byte();
+        let mut result = String::new();
+        
+        // Collect string parts from the stack (in reverse order to get them left-to-right)
+        for index in (0..arg_count).rev() {
+            let value = self.peek(usize::from(index)).unwrap();
+            match value {
+                Value::String(string_id) => {
+                    result.push_str(&string_id.to_value(&self.heap));
+                }
+                _ => {
+                    runtime_error!(
+                        self,
+                        "Expected string in f-string interpolation, got: {}",
+                        value.to_string(&self.heap)
+                    );
+                    return Some(InterpretResult::RuntimeError);
+                }
+            }
+        }
+        
+        // Pop all string parts from stack at once
+        self.stack
+            .truncate(self.stack.len() - usize::from(arg_count));
+            
+        // Create the result string
+        let string_id = self.heap.string_id(&result);
+        self.stack_push_value(Value::String(string_id));
+        None
+    }
 }

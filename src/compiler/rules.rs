@@ -93,7 +93,7 @@ macro_rules! make_rules {
     }};
 }
 
-pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 84];
+pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 87];
 
 // Can't be static because the associated function types include lifetimes
 #[rustfmt::skip]
@@ -183,6 +183,9 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Throw         = [None,            None,      None      ],
         DotDotLess    = [None,            binary,    Range     ],
         DotDotEqual   = [None,            binary,    Range     ],
+        FStringStart  = [fstring,         None,      None      ],
+        FStringPart   = [None,            None,      None      ],
+        FStringEnd    = [None,            None,      None      ],
     )
 }
 
@@ -781,5 +784,57 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             self.error(error_message);
         }
         self.emit_byte(arg_count, line);
+    }
+
+    /// Parse an f-string literal (f"text ${expr} more text").
+    /// 
+    /// This handles the complex parsing of f-string tokens and expressions,
+    /// converting expressions to strings and emitting BuildFString.
+    fn fstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
+        let mut part_count: u8 = 0;
+        
+        // We start with FStringStart already consumed
+        // Parse alternating string parts and expressions until FStringEnd
+        loop {
+            // Check what comes next
+            match self.current.as_ref().unwrap().kind {
+                TK::FStringPart => {
+                    // This is a literal string part
+                    let lexeme = self.current.as_ref().unwrap().as_str();
+                    // Process escapes: \$ -> $ and \{ -> {
+                    let value = lexeme.replace("\\$", "$").replace("\\{", "{");
+                    let string_id = self.heap.string_id(&value);
+                    self.emit_constant(string_id);
+                    part_count += 1;
+                    self.advance();
+                }
+                TK::FStringEnd => {
+                    // End of f-string
+                    self.advance(); // consume FStringEnd
+                    break;
+                }
+                _ => {
+                    // This should be the start of an interpolated expression
+                    // Parse the expression
+                    self.parse_precedence(Precedence::None);
+                    
+                    // Convert the expression result to string by calling str()
+                    let str_name = self.identifier_constant(&"str".to_string());
+                    let line = self.line();
+                    self.emit_byte(OpCode::Invoke, line);
+                    if !self.emit_number(str_name.0, false) {
+                        self.error("Too many constants while compiling f-string str() call");
+                    }
+                    self.emit_byte(1, line); // 1 argument (the value to convert)
+                    
+                    part_count += 1;
+                }
+            }
+        }
+        
+        // Emit BuildFString with the number of parts
+        let line = self.line();
+        self.emit_byte(OpCode::BuildFString, line);
+        self.emit_byte(part_count, line);
     }
 }
