@@ -231,21 +231,6 @@ impl VM {
     ///
     /// If the stack does not have two values. This is an internal error and should never happen.
     fn equal(&mut self, negate: bool) -> Option<InterpretResult> {
-        let eq_id = self.heap.string_id(&"__eq__");
-        let left_id = self.peek(1).expect("Stack underflow in OP EQUAL (left)");
-        if let Value::Instance(instance) = left_id
-            && instance
-                .to_value(&self.heap)
-                .has_field_or_method(eq_id, &self.heap)
-        {
-            // If the left value is an instance, use its __eq__ method
-            return if self.invoke(eq_id, 1) {
-                None
-            } else {
-                Some(InterpretResult::RuntimeError)
-            };
-        }
-
         let right_id = self
             .stack
             .pop()
@@ -254,8 +239,65 @@ impl VM {
             .stack
             .pop()
             .expect("stack underflow in OP_EQUAL (left)");
-        let result = left_id.eq(&right_id, &self.heap) != negate;
-        self.stack_push(result.into());
-        None
+
+        match self.compare_values_equal(left_id, right_id) {
+            Ok(result) => {
+                let final_result = result != negate;
+                self.stack_push(final_result.into());
+                None
+            }
+            Err(_) => {
+                // Comparison failed, fall back to heap equality
+                let result = left_id.eq(&right_id, &self.heap) != negate;
+                self.stack_push(result.into());
+                None
+            }
+        }
+    }
+
+    /// Compare two values for equality, with support for custom __eq__ methods.
+    /// This is the public version of the equality logic used by VM.equal.
+    pub fn compare_values_equal(&mut self, left: Value, right: Value) -> Result<bool, String> {
+        let eq_id = self.heap.string_id(&"__eq__");
+
+        // Check if left value is an instance with __eq__ method
+        if let Value::Instance(instance) = left
+            && instance
+                .to_value(&self.heap)
+                .has_field_or_method(eq_id, &self.heap)
+        {
+            // Set up stack for method call: [left, right]
+            let original_stack_len = self.stack.len();
+            self.stack_push(left);
+            self.stack_push(right);
+
+            // Call the __eq__ method
+            if self.invoke(eq_id, 1) {
+                // Method call succeeded, run it and get result
+                match self.run_function() {
+                    InterpretResult::Ok => {
+                        let result = self
+                            .stack
+                            .pop()
+                            .expect("Stack underflow in compare_values_equal");
+                        return Ok(!self.is_falsey(result));
+                    }
+                    InterpretResult::RuntimeError => {
+                        // Restore stack and fall back to heap equality
+                        self.stack.truncate(original_stack_len);
+                    }
+                    InterpretResult::CompileError => {
+                        // Restore stack and fall back to heap equality
+                        self.stack.truncate(original_stack_len);
+                    }
+                }
+            } else {
+                // Method call setup failed, restore stack
+                self.stack.truncate(original_stack_len);
+            }
+        }
+
+        // Fall back to heap-level equality
+        Ok(left.eq(&right, &self.heap))
     }
 }

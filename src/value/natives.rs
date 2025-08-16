@@ -12,9 +12,12 @@ use crate::heap::InstanceId;
 use derivative::Derivative;
 
 /// Utility function to check equality using the same logic as VM.equal
-/// Uses heap-level equality for consistency with hash collection operations
-fn compare_values(left: &Value, right: &Value, heap: &Heap) -> bool {
-    left.eq(right, heap)
+/// Calls custom __eq__ methods when available for instances  
+fn compare_values(left: &Value, right: &Value, vm: &mut VM) -> bool {
+    vm.compare_values_equal(*left, *right).unwrap_or_else(|_| {
+        // If comparison fails, fall back to heap equality
+        left.eq(right, &vm.heap)
+    })
 }
 
 // Values related to natives
@@ -266,7 +269,7 @@ impl Set {
         let hash = vm.compute_hash(item)?;
         if let Entry::Vacant(entry) = self.items.entry(
             hash,
-            |(val, _stored_hash)| compare_values(val, &item, &vm.heap),
+            |(val, _stored_hash)| compare_values(val, &item, vm),
             |(_val, stored_hash)| *stored_hash,
         ) {
             entry.insert((item, hash));
@@ -278,9 +281,7 @@ impl Set {
         let hash = vm.compute_hash(*item)?;
         Ok(self
             .items
-            .find_entry(hash, |(val, _stored_hash)| {
-                compare_values(val, item, &vm.heap)
-            })
+            .find_entry(hash, |(val, _stored_hash)| compare_values(val, item, vm))
             .is_ok_and(|entry| {
                 entry.remove();
                 true
@@ -291,9 +292,7 @@ impl Set {
         let hash = vm.compute_hash(*item)?;
         Ok(self
             .items
-            .find(hash, |(val, _stored_hash)| {
-                compare_values(val, item, &vm.heap)
-            })
+            .find(hash, |(val, _stored_hash)| compare_values(val, item, vm))
             .is_some())
     }
 }
@@ -350,7 +349,7 @@ impl Dict {
         let hash = vm.compute_hash(key)?;
         match self.items.entry(
             hash,
-            |(k, _v, _stored_hash)| compare_values(k, &key, &vm.heap),
+            |(k, _v, _stored_hash)| compare_values(k, &key, vm),
             |(_k, _v, stored_hash)| *stored_hash,
         ) {
             Entry::Vacant(entry) => {
@@ -367,9 +366,7 @@ impl Dict {
         let hash = vm.compute_hash(*key)?;
         Ok(self
             .items
-            .find(hash, |(k, _v, _stored_hash)| {
-                compare_values(k, key, &vm.heap)
-            })
+            .find(hash, |(k, _v, _stored_hash)| compare_values(k, key, vm))
             .map(|(_k, v, _stored_hash)| v))
     }
 }
