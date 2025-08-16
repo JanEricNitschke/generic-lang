@@ -1,5 +1,5 @@
 //! Dedicated enums to replace boolean parameters in function signatures.
-//! 
+//!
 //! This module contains enums that provide better type safety and clarity
 //! compared to raw boolean parameters.
 
@@ -14,11 +14,7 @@ pub enum JumpCondition {
 
 impl From<bool> for JumpCondition {
     fn from(value: bool) -> Self {
-        if value {
-            Self::IfTrue
-        } else {
-            Self::IfFalse
-        }
+        if value { Self::IfTrue } else { Self::IfFalse }
     }
 }
 
@@ -109,11 +105,7 @@ pub enum ImportType {
 
 impl From<bool> for ImportType {
     fn from(value: bool) -> Self {
-        if value {
-            Self::Local
-        } else {
-            Self::Global
-        }
+        if value { Self::Local } else { Self::Global }
     }
 }
 
@@ -134,11 +126,7 @@ pub enum ConstantSize {
 
 impl From<bool> for ConstantSize {
     fn from(value: bool) -> Self {
-        if value {
-            Self::Long
-        } else {
-            Self::Short
-        }
+        if value { Self::Long } else { Self::Short }
     }
 }
 
@@ -159,11 +147,7 @@ pub enum CollectionType {
 
 impl From<bool> for CollectionType {
     fn from(value: bool) -> Self {
-        if value {
-            Self::Dictionary
-        } else {
-            Self::Set
-        }
+        if value { Self::Dictionary } else { Self::Set }
     }
 }
 
@@ -234,11 +218,7 @@ pub enum EqualityOperation {
 
 impl From<bool> for EqualityOperation {
     fn from(value: bool) -> Self {
-        if value {
-            Self::NotEqual
-        } else {
-            Self::Equal
-        }
+        if value { Self::NotEqual } else { Self::Equal }
     }
 }
 
@@ -259,11 +239,7 @@ pub enum CompilationEndMode {
 
 impl From<bool> for CompilationEndMode {
     fn from(value: bool) -> Self {
-        if value {
-            Self::Raw
-        } else {
-            Self::Standard
-        }
+        if value { Self::Raw } else { Self::Standard }
     }
 }
 
@@ -284,11 +260,7 @@ pub enum UpvalueType {
 
 impl From<bool> for UpvalueType {
     fn from(value: bool) -> Self {
-        if value {
-            Self::Local
-        } else {
-            Self::Nested
-        }
+        if value { Self::Local } else { Self::Nested }
     }
 }
 

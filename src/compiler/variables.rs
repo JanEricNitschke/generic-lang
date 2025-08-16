@@ -6,7 +6,7 @@ use super::{Compiler, Local, ScopeDepth, Upvalue};
 use crate::{
     chunk::{ConstantLongIndex, OpCode},
     compiler::rules::Precedence,
-    enums::{ConstantSize, Mutability},
+    enums::{AssignmentCapability, ConstantSize, Mutability},
     scanner::{Token, TokenKind as TK},
 };
 
@@ -43,10 +43,14 @@ impl<'scanner> Compiler<'scanner, '_> {
     }
 
     /// Handle a named variable based on the identifier of the last token.
-    pub(super) fn variable(&mut self, can_assign: bool, _ignore_operators: &[TK]) {
+    pub(super) fn variable(
+        &mut self,
+        assignment_capability: AssignmentCapability,
+        _ignore_operators: &[TK],
+    ) {
         self.named_variable(
             &self.previous.as_ref().unwrap().as_str().to_string(),
-            can_assign,
+            assignment_capability,
         );
     }
 
@@ -57,8 +61,11 @@ impl<'scanner> Compiler<'scanner, '_> {
     /// belong to a global variable.
     ///
     /// Also handles whether the variable is to be gotten or set.
-    pub(super) fn named_variable<S>(&mut self, name: &S, can_assign: bool)
-    where
+    pub(super) fn named_variable<S>(
+        &mut self,
+        name: &S,
+        assignment_capability: AssignmentCapability,
+    ) where
         S: ToString,
     {
         let line = self.line();
@@ -93,7 +100,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         };
 
         // Get or set?
-        let op = if can_assign
+        let op = if assignment_capability == AssignmentCapability::CanAssign
             && (self.match_(TK::Equal)
                 | self.match_(TK::PlusEqual)
                 | self.match_(TK::MinusEqual)
@@ -293,7 +300,11 @@ impl<'scanner> Compiler<'scanner, '_> {
 
     /// Parse a variable. If it is local, it gets declared normally.
     /// Otherwise, it is added as a global.
-    pub(super) fn parse_variable(&mut self, msg: &str, mutability: Mutability) -> Option<ConstantLongIndex> {
+    pub(super) fn parse_variable(
+        &mut self,
+        msg: &str,
+        mutability: Mutability,
+    ) -> Option<ConstantLongIndex> {
         self.consume(TK::Identifier, msg);
 
         self.declare_variable(mutability);
@@ -324,7 +335,11 @@ impl<'scanner> Compiler<'scanner, '_> {
     /// If it is local it just gets marked as initialized.
     /// Otherwise, the `OpCode` matching the mutability and index size of the global index
     /// is emitted.
-    pub(super) fn define_variable(&mut self, global: Option<ConstantLongIndex>, mutability: Mutability) {
+    pub(super) fn define_variable(
+        &mut self,
+        global: Option<ConstantLongIndex>,
+        mutability: Mutability,
+    ) {
         if *self.scope_depth() > 0 {
             self.mark_initialized();
             return;

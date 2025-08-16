@@ -106,8 +106,12 @@ macro_rules! run_instruction {
             | OpCode::DefineGlobalConstLong) => $self.define_global(op),
             OpCode::JumpIfFalse => $self.jump_conditional(crate::enums::JumpCondition::IfFalse),
             OpCode::JumpIfTrue => $self.jump_conditional(crate::enums::JumpCondition::IfTrue),
-            OpCode::PopJumpIfFalse => $self.pop_jump_conditional(crate::enums::JumpCondition::IfFalse),
-            OpCode::PopJumpIfTrue => $self.pop_jump_conditional(crate::enums::JumpCondition::IfTrue),
+            OpCode::PopJumpIfFalse => {
+                $self.pop_jump_conditional(crate::enums::JumpCondition::IfFalse)
+            }
+            OpCode::PopJumpIfTrue => {
+                $self.pop_jump_conditional(crate::enums::JumpCondition::IfTrue)
+            }
             OpCode::JumpIfTrueOrPop => $self.jump_if_or_pop(crate::enums::JumpCondition::IfTrue),
             OpCode::JumpIfFalseOrPop => $self.jump_if_or_pop(crate::enums::JumpCondition::IfFalse),
             // Arg count is passed as the operand
@@ -255,7 +259,9 @@ macro_rules! run_instruction {
             // Classname is the operand, create a new class and push it onto the stack
             OpCode::Class => {
                 let class_name = $self.read_string("OP_CLASS");
-                let class = $self.heap.add_class(Class::new(class_name, crate::enums::ClassType::UserDefined));
+                let class = $self
+                    .heap
+                    .add_class(Class::new(class_name, crate::enums::ClassType::UserDefined));
                 $self.stack_push_value(class);
             }
             // Property to get is the operand, instance/module is on the stack
@@ -371,7 +377,8 @@ macro_rules! run_instruction {
             OpCode::Inherit => {
                 let superclass_id = $self.peek(1).expect("Stack underflow in OP_INHERIT");
                 let superclass = if let Value::Class(superclass) = &superclass_id {
-                    if superclass.to_value(&$self.heap).is_native == crate::enums::ClassType::Native {
+                    if superclass.to_value(&$self.heap).is_native == crate::enums::ClassType::Native
+                    {
                         runtime_error!($self, "Can not inherit from native classes yet.");
                         return InterpretResult::RuntimeError;
                     }

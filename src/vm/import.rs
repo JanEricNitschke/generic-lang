@@ -198,7 +198,13 @@ impl VM {
             let closure =
                 Closure::new(*function_id, true, self.modules.last().copied(), &self.heap);
 
-            self.add_closure_to_modules(&closure, file_path, names_to_import, alias, local_import.into());
+            self.add_closure_to_modules(
+                &closure,
+                file_path,
+                names_to_import,
+                alias,
+                local_import.into(),
+            );
 
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);

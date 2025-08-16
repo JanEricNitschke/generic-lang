@@ -7,7 +7,7 @@ use super::{ClassState, Compiler, FunctionType, LoopState, rules::Precedence};
 
 use crate::{
     chunk::{CodeOffset, ConstantIndex, ConstantLongIndex, OpCode},
-    enums::{ConstantSize, Mutability},
+    enums::{AssignmentCapability, ConstantSize, Mutability},
     scanner::{Token, TokenKind as TK},
     types::Line,
     utils::get_file_stem,
@@ -165,7 +165,7 @@ impl Compiler<'_, '_> {
 
         if self.match_(TK::Less) {
             self.consume(TK::Identifier, "Expect superclass name.");
-            self.variable(false, &[]);
+            self.variable(AssignmentCapability::CannotAssign, &[]);
 
             if class_name == self.previous.as_ref().unwrap().as_str() {
                 self.error("A class can't inherit from itself.");
@@ -175,12 +175,12 @@ impl Compiler<'_, '_> {
             self.add_local(self.synthetic_token(TK::Super), Mutability::Mutable);
             self.define_variable(None, Mutability::Mutable);
 
-            self.named_variable(&class_name, true);
+            self.named_variable(&class_name, AssignmentCapability::CanAssign);
             self.emit_byte(OpCode::Inherit, self.line());
             self.current_class_mut().unwrap().has_superclass = true;
         }
 
-        self.named_variable(&class_name, true);
+        self.named_variable(&class_name, AssignmentCapability::CanAssign);
         self.consume(TK::LeftBrace, "Expect '{' before class body.");
         while !self.check(TK::RightBrace) && !self.check(TK::Eof) {
             self.method();
@@ -290,8 +290,9 @@ impl Compiler<'_, '_> {
             }
 
             if self.match_(TK::As) {
-                let global = self.parse_variable("Expect exception variable name.", Mutability::Immutable);
-                self.named_variable(&exception_var_name, false);
+                let global =
+                    self.parse_variable("Expect exception variable name.", Mutability::Immutable);
+                self.named_variable(&exception_var_name, AssignmentCapability::CannotAssign);
                 self.define_variable(global, Mutability::Immutable);
             }
 
@@ -652,7 +653,10 @@ impl Compiler<'_, '_> {
         self.emit_byte(0, line);
 
         // Do i even need this? This never actually needs a name.
-        self.add_local(self.synthetic_identifier_token(b"@iter"), Mutability::Mutable);
+        self.add_local(
+            self.synthetic_identifier_token(b"@iter"),
+            Mutability::Mutable,
+        );
         self.define_variable(None, Mutability::Mutable);
         let iter_var = u8::try_from(self.locals().len() - 1)
             .expect("Creating loop iterator led to too many locals.");
@@ -915,7 +919,8 @@ impl Compiler<'_, '_> {
                     } else {
                         compiler.current_function_mut().arity += 1;
                     }
-                    let constant = compiler.parse_variable("Expect parameter name.", Mutability::Mutable);
+                    let constant =
+                        compiler.parse_variable("Expect parameter name.", Mutability::Mutable);
                     compiler.define_variable(constant, Mutability::Mutable);
                     if !compiler.match_(TK::Comma) {
                         break;

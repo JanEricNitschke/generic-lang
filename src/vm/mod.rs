@@ -119,7 +119,13 @@ impl VM {
 
             let closure = Closure::new(*function_id.as_function(), true, None, &self.heap);
 
-            self.add_closure_to_modules(&closure, self.path.clone(), None, None, ImportType::Global);
+            self.add_closure_to_modules(
+                &closure,
+                self.path.clone(),
+                None,
+                None,
+                ImportType::Global,
+            );
 
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
@@ -173,7 +179,9 @@ impl VM {
         // condition - is_falsey() ->:
         // IfFalse ^ true = true
         // IfFalse ^ false = false
-        if self.is_falsey(*self.peek(0).expect("Stack underflow in JUMP_IF_FALSE")) ^ bool::from(condition) {
+        if self.is_falsey(*self.peek(0).expect("Stack underflow in JUMP_IF_FALSE"))
+            ^ bool::from(condition)
+        {
             self.callstack.current_mut().ip += offset;
         }
     }
