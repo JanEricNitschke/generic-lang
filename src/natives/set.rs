@@ -6,7 +6,7 @@ use crate::{
 };
 
 /// Insert an item into the set `set.insert(item)`.
-/// Now supports all value types with __hash__ method support.
+/// Supports all value types that implement hashable functionality.
 pub(super) fn set_insert_native(
     vm: &mut VM,
     receiver: &mut Value,
@@ -52,6 +52,5 @@ pub(super) fn set_len_native(
     _args: &mut [&mut Value],
 ) -> Result<Value, String> {
     let my_set = receiver.as_set(&vm.heap);
-    let total_len = my_set.items.len();
-    Ok(Number::from_usize(total_len, &mut vm.heap).into())
+    Ok(Number::from_usize(my_set.items.len(), &mut vm.heap).into())
 }

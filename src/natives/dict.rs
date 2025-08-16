@@ -6,7 +6,7 @@ use crate::{
 };
 
 /// Get an item via `dict[a]`, where `a` is a hashable value type.
-/// Now supports all value types with __hash__ method support.
+/// Supports all value types that implement hashable functionality.
 pub(super) fn dict_get_native(
     vm: &mut VM,
     receiver: &mut Value,
@@ -24,7 +24,7 @@ pub(super) fn dict_get_native(
 }
 
 /// Set an item via `dict[a] = b`, where `a` is a hashable value type.
-/// Now supports all value types with __hash__ method support.
+/// Supports all value types that implement hashable functionality.
 pub(super) fn dict_set_native(
     vm: &mut VM,
     receiver: &mut Value,
@@ -42,6 +42,5 @@ pub(super) fn dict_len_native(
     _args: &mut [&mut Value],
 ) -> Result<Value, String> {
     let dict = receiver.as_dict(&vm.heap);
-    let total_len = dict.items.len();
-    Ok(Number::from_usize(total_len, &mut vm.heap).into())
+    Ok(Number::from_usize(dict.items.len(), &mut vm.heap).into())
 }

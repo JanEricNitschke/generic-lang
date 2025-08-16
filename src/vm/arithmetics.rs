@@ -1,6 +1,9 @@
 use super::{InterpretResult, VM};
 use crate::chunk::CodeOffset;
-use crate::value::{GenericRational, Number, Value};
+use crate::value::{GenericInt, GenericRational, Number, Value};
+use num_bigint::BigInt;
+use rustc_hash::FxHasher;
+use std::hash::{Hash, Hasher};
 
 #[derive(PartialEq, Eq)]
 pub(super) enum BinaryOpResult {
@@ -201,12 +204,6 @@ impl VM {
     }
 
     pub(crate) fn compute_hash(&mut self, value: Value) -> Result<u64, String> {
-        use crate::value::{GenericInt, Number};
-        use num_bigint::BigInt;
-        use rustc_hash::FxHasher;
-        use std::hash::Hash;
-        use std::hash::Hasher;
-
         let mut state = FxHasher::default();
 
         match value {
@@ -227,7 +224,7 @@ impl VM {
                         matches!(hash_method, Value::NativeMethod(_)),
                     );
 
-                    if invoke_result != crate::vm::InterpretResult::Ok {
+                    if invoke_result != InterpretResult::Ok {
                         return Err("__hash__ method failed".to_string());
                     }
 

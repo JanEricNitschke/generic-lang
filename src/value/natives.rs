@@ -12,10 +12,8 @@ use crate::heap::InstanceId;
 use derivative::Derivative;
 
 /// Utility function to check equality using the same logic as VM.equal
-/// This handles custom __eq__ methods on instances while avoiding borrowing conflicts
+/// Uses heap-level equality for consistency with hash collection operations
 fn compare_values(left: &Value, right: &Value, heap: &Heap) -> bool {
-    // For hash collections, we use heap-level equality to avoid borrowing conflicts
-    // This ensures consistent behavior without recursive VM execution
     left.eq(right, heap)
 }
 
