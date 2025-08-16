@@ -146,20 +146,16 @@ impl VM {
     }
 
     // Build an f-string from string parts. The number of parts is the operand.
-    // String parts are on the stack from left to right
+    // Parts are on the stack from left to right (some might not be strings yet)
     pub(crate) fn build_fstring(&mut self) {
         let part_count = self.read_byte();
         
-        // Collect all string parts from the stack
+        // Collect all parts from the stack and convert to strings
         let mut result = String::new();
         for i in (0..part_count).rev() {
             let value = *self.peek(usize::from(i)).unwrap();
-            if let Value::String(string_id) = value {
-                result.push_str(&self.heap.strings[string_id]);
-            } else {
-                // This should not happen if compiler emits correct str() calls
-                result.push_str(&value.to_string(&self.heap));
-            }
+            // Always convert to string using the built-in conversion
+            result.push_str(&value.to_string(&self.heap));
         }
         
         // Pop all parts from stack

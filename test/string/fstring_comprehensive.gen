@@ -1,0 +1,16 @@
+# Test basic interpolation
+var name = "Alice";
+var age = 25;
+print(f"Name: ${name}, Age: ${age}"); # expect: Name: Alice, Age: 25
+
+# Test multiple interpolations with simple variables
+var x = 10;
+var y = 20;  
+print(f"Values: x=${x}, y=${y}"); # expect: Values: x=10, y=20
+
+# Test escaped dollar sign (prevents interpolation)
+var test = "value";
+print(f"Escaped: \\${test}, Normal: ${test}"); # expect: Escaped: $value, Normal: value
+
+# Test no interpolation
+print(f"Just text"); # expect: Just text

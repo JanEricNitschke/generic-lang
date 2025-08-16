@@ -533,12 +533,12 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    /// Simple f-string parsing - consume f"..." as a single token for now
+    /// Simple f-string parsing - consume f"..." as a single token
     fn fstring(&mut self) -> Token<'a> {
         // Consume the opening quote
         self.advance(); // consume "
         
-        // For now, just scan like a regular string but return FStringStart token
+        // Scan like a regular string but return FStringStart token
         while self.peek().is_some_and(|c| c != &b'"') {
             if self.peek() == Some(&b'\n') {
                 *self.line += 1;
@@ -550,8 +550,6 @@ impl<'a> Scanner<'a> {
             return self.error_token("Unterminated f-string.");
         }
 
-        // For now, return this as an FStringStart token
-        // Later we can parse the interpolations
         self.make_token(TokenKind::FStringStart)
     }
 }

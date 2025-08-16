@@ -1,0 +1,2 @@
+var name = "world";
+print(f"Hello, ${name}!"); # expect: Hello, world!

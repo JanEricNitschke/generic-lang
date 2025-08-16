@@ -1,0 +1,23 @@
+# Test basic f-string functionality
+
+# Simple f-string without interpolation
+print(f"Hello, world!"); # expect: Hello, world!
+
+# Basic variable interpolation  
+var name = "Bob";
+print(f"Hi, I'm ${name}!"); # expect: Hi, I'm Bob!
+
+# Multiple interpolations
+var first = "Alice";
+var last = "Smith";
+print(f"Name: ${first} ${last}"); # expect: Name: Alice Smith
+
+# Number interpolation
+var age = 25;
+var height = 5.8;
+print(f"Age: ${age}, Height: ${height}"); # expect: Age: 25, Height: 5.8
+
+# Mixed text and interpolations
+var item = "apple";
+var count = 3;
+print(f"I have ${count} ${item}s in my basket."); # expect: I have 3 apples in my basket.

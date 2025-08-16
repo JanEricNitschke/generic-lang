@@ -171,7 +171,6 @@ impl<'scanner> Compiler<'scanner, '_> {
         self.emit_bytes(OpCode::Call, 1, self.line()); // Call str() with 1 argument
     }
 
-    #[allow(dead_code)]
     pub(super) fn emit_buildfstring(&mut self, part_count: u8) {
         self.emit_bytes(OpCode::BuildFString, part_count, self.line());
     }
