@@ -1,0 +1,36 @@
+class Point {
+    __init__(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+    
+    __hash__() {
+        return this.x * 100 + this.y;
+    }
+    
+    __eq__(other) {
+        return this.x == other.x and this.y == other.y;
+    }
+}
+
+# Test that custom __eq__ methods work in both regular equality and hash collections
+var p1 = Point(3, 4);
+var p2 = Point(3, 4);  # Same values, different instances
+var p3 = Point(5, 6);  # Different values
+
+# Test regular equality operator  
+print("p1 == p2: " + str(p1 == p2)); # expect: p1 == p2: true
+print("p1 == p3: " + str(p1 == p3)); # expect: p1 == p3: false
+
+# Test set operations with custom __eq__
+var point_set = {p1};
+point_set.insert(p2);  # Should not insert since p1.__eq__(p2) == true
+point_set.insert(p3);  # Should insert since p1.__eq__(p3) == false
+print("Set size: " + str(point_set.__len__())); # expect: Set size: 2
+
+# Test dict operations with custom __eq__
+var point_dict = {p1: "first"};
+point_dict[p2] = "second";  # Should overwrite since p1.__eq__(p2) == true
+print("Dict size: " + str(point_dict.__len__())); # expect: Dict size: 1
+
+print("Both VM.equal and hash collections use custom __eq__ methods"); # expect: Both VM.equal and hash collections use custom __eq__ methods

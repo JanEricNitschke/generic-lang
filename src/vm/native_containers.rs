@@ -89,16 +89,12 @@ impl VM {
 
         let arg_count = self.read_byte();
         for index in (0..arg_count).rev() {
-            let value = self.peek(usize::from(index)).unwrap();
-            if !value.is_hasheable() {
-                runtime_error!(
-                    self,
-                    "Value `{}` is not hashable when this is required for items in a set.",
-                    value.to_string(&self.heap)
-                );
+            let value = *self.peek(usize::from(index)).unwrap();
+
+            if let Err(err) = set.add(value, self) {
+                runtime_error!(self, "{}", err);
                 return Some(InterpretResult::RuntimeError);
             }
-            set.add(*value, &self.heap);
         }
         // Pop all items from stack at once
         self.stack
@@ -121,17 +117,13 @@ impl VM {
         // Number of key, value pairs.
         let arg_count = self.read_byte();
         for index in (0..arg_count).rev() {
-            let key = self.peek(usize::from(2 * index + 1)).unwrap();
-            if !key.is_hasheable() {
-                runtime_error!(
-                    self,
-                    "Key `{}` is not hashable when this is required for items in a dict.",
-                    key.to_string(&self.heap)
-                );
+            let key = *self.peek(usize::from(2 * index + 1)).unwrap();
+            let value = *self.peek(usize::from(2 * index)).unwrap();
+
+            if let Err(err) = dict.add(key, value, self) {
+                runtime_error!(self, "{}", err);
                 return Some(InterpretResult::RuntimeError);
             }
-            let value = self.peek(usize::from(2 * index)).unwrap();
-            dict.add(*key, *value, &self.heap);
         }
         // Pop all key-value pairs from stack at once
         self.stack
