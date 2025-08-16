@@ -3,7 +3,7 @@
 use crate::{
     chunk::{CodeOffset, OpCode},
     scanner::{Token, TokenKind},
-    types::Line,
+    types::{Line, NumberEncoding, ReturnMode},
     value::{GenericInt, Number, Value},
 };
 
@@ -41,11 +41,10 @@ impl<'scanner> Compiler<'scanner, '_> {
         self.emit_byte(OpCode::Return, line);
     }
 
-    pub(super) fn end(&mut self, raw: bool) {
-        if raw {
-            self.emit_byte(OpCode::Return, self.line());
-        } else {
-            self.emit_return();
+    pub(super) fn end(&mut self, return_mode: ReturnMode) {
+        match return_mode {
+            ReturnMode::Raw => self.emit_byte(OpCode::Return, self.line()),
+            ReturnMode::Normal => self.emit_return(),
         }
 
         #[cfg(feature = "print_code")]
@@ -132,14 +131,17 @@ impl<'scanner> Compiler<'scanner, '_> {
         self.emit_byte(offset as u8, line);
     }
 
-    pub(super) fn emit_number(&mut self, n: usize, long: bool) -> bool {
-        if long {
-            self.emit_24bit_number(n)
-        } else if let Ok(n) = u8::try_from(n) {
-            self.emit_byte(n, self.line());
-            true
-        } else {
-            false
+    pub(super) fn emit_number(&mut self, n: usize, encoding: NumberEncoding) -> bool {
+        match encoding {
+            NumberEncoding::Long => self.emit_24bit_number(n),
+            NumberEncoding::Short => {
+                if let Ok(n) = u8::try_from(n) {
+                    self.emit_byte(n, self.line());
+                    true
+                } else {
+                    false
+                }
+            }
         }
     }
 

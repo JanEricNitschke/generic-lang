@@ -4,6 +4,7 @@ use crate::value::NativeClass;
 use crate::{
     chunk::{CodeOffset, OpCode},
     heap::{NativeFunctionId, NativeMethodId, StringId, UpvalueId},
+    types::JumpCondition,
     value::{Class, Closure, Instance, Number, Upvalue, Value},
 };
 
