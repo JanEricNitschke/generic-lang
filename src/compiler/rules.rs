@@ -580,8 +580,8 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         // First element
         let mut item_count = 0;
         self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon, TK::Comma]);
-        let is_dict = self.match_(TK::Colon);
-        if is_dict {
+        let collection_type: CollectionType = self.match_(TK::Colon).into();
+        if collection_type == CollectionType::Dict {
             self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon, TK::Comma]);
         }
         item_count += 1;
@@ -589,7 +589,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
 
         // Remaining elements
         while !self.check(TK::RightBrace) {
-            if is_dict {
+            if collection_type == CollectionType::Dict {
                 self.parse_dict_entry();
             } else {
                 self.parse_precedence_ignoring(
@@ -608,7 +608,6 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             }
         }
 
-        let collection_type = is_dict.into();
         self.finish_hash_collection(collection_type, item_count);
     }
 

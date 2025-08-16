@@ -17,7 +17,7 @@ use crate::{
     compiler::rules::{Rules, make_rules},
     heap::{Heap, StringId},
     scanner::{Scanner, Token, TokenKind},
-    types::{Line, ReturnMode},
+    types::{Line, Mutability, ReturnMode},
     value::Function,
 };
 
@@ -36,7 +36,7 @@ struct ScopeDepth(i32);
 struct Local<'scanner> {
     name: Token<'scanner>,
     depth: ScopeDepth,
-    mutability: crate::types::Mutability,
+    mutability: Mutability,
     is_captured: bool,
 }
 
@@ -132,7 +132,7 @@ impl NestableState<'_> {
                     line: Line(0),
                 },
                 depth: ScopeDepth::default(),
-                mutability: crate::types::Mutability::Immutable,
+                mutability: Mutability::Immutable,
                 is_captured: false,
             }],
             upvalues: Vec::new(),

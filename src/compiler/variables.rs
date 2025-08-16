@@ -382,7 +382,7 @@ impl<'scanner> Compiler<'scanner, '_> {
 
     fn check_local_const(&mut self, local_index: usize) {
         let local = &self.locals()[local_index];
-        if *local.depth != -1 && local.mutability == crate::types::Mutability::Immutable {
+        if *local.depth != -1 && local.mutability == Mutability::Immutable {
             self.error("Reassignment to local 'const'.");
         }
     }

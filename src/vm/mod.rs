@@ -167,9 +167,8 @@ impl VM {
         // -> ! (is_falsey())
         // condition = IfFalse -> jump_if_false
         // -> is_falsey
-        let condition_bool: bool = condition.into();
         let is_falsey = self.is_falsey(*self.peek(0).expect("Stack underflow in JUMP"));
-        let should_jump = condition_bool ^ is_falsey;
+        let should_jump = bool::from(condition) ^ is_falsey;
 
         if should_jump {
             self.callstack.current_mut().ip += offset;
