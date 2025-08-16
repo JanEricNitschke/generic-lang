@@ -589,13 +589,12 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
 
         // Remaining elements
         while !self.check(TK::RightBrace) {
-            if collection_type == CollectionType::Dict {
-                self.parse_dict_entry();
-            } else {
-                self.parse_precedence_ignoring(
+            match collection_type {
+                CollectionType::Dict => self.parse_dict_entry(),
+                CollectionType::Set => self.parse_precedence_ignoring(
                     Precedence::non_assigning(),
                     &[TK::Colon, TK::Comma],
-                );
+                ),
             }
 
             if item_count == 255 {
