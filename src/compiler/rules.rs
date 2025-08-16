@@ -10,6 +10,13 @@ use crate::chunk::OpCode;
 use crate::config::LAMBDA_NAME;
 use crate::scanner::TokenKind as TK;
 
+/// Parts of an interpolated string - either literal text or expressions to evaluate
+#[derive(Debug, Clone)]
+enum InterpolationPart {
+    String(String),
+    Expression(String),
+}
+
 // The precedence of the different operators in the language
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
@@ -497,11 +504,179 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Emit a string constant.
     ///
     /// Here, the string is taken from the lexeme of the token with the last and first
-    /// character (`"`) stripped. Rest works like for [`Compiler::float`].
+    /// character (`"`) stripped. Now also handles string interpolation with ${expr}.
     fn string(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let lexeme = self.previous.as_ref().unwrap().as_str();
-        let value = lexeme[1..lexeme.len() - 1].to_string();
-        let string_id = self.heap.string_id(&value);
+        let content = lexeme[1..lexeme.len() - 1].to_string(); // Strip quotes and own the string
+        
+        // Check if the string contains interpolation
+        if content.contains("${") {
+            self.parse_interpolated_string(&content);
+        } else {
+            // Regular string - emit as constant
+            let string_id = self.heap.string_id(&content);
+            self.emit_constant(string_id);
+        }
+    }
+    
+    /// Parse an interpolated string and emit code to concatenate parts and expressions
+    fn parse_interpolated_string(&mut self, content: &str) {
+        let mut parts = Vec::new();
+        let mut current_part = String::new();
+        let mut chars = content.chars().peekable();
+        
+        while let Some(ch) = chars.next() {
+            if ch == '$' && chars.peek() == Some(&'{') {
+                chars.next(); // consume '{'
+                
+                // Save the current string part if any
+                if !current_part.is_empty() {
+                    parts.push(InterpolationPart::String(current_part.clone()));
+                    current_part.clear();
+                }
+                
+                // Extract the expression inside ${}
+                let mut expr = String::new();
+                let mut brace_count = 1;
+                
+                while let Some(ch) = chars.next() {
+                    if ch == '{' {
+                        brace_count += 1;
+                        expr.push(ch);
+                    } else if ch == '}' {
+                        brace_count -= 1;
+                        if brace_count == 0 {
+                            break;
+                        } else {
+                            expr.push(ch);
+                        }
+                    } else {
+                        expr.push(ch);
+                    }
+                }
+                
+                if brace_count > 0 {
+                    self.error("Unterminated interpolation in string.");
+                    return;
+                }
+                
+                parts.push(InterpolationPart::Expression(expr));
+            } else {
+                current_part.push(ch);
+            }
+        }
+        
+        // Add remaining string part
+        if !current_part.is_empty() {
+            parts.push(InterpolationPart::String(current_part));
+        }
+        
+        // Emit code to build the interpolated string
+        self.emit_interpolation_parts(parts);
+    }
+    
+    /// Emit bytecode for interpolated string parts
+    fn emit_interpolation_parts(&mut self, parts: Vec<InterpolationPart>) {
+        if parts.is_empty() {
+            // Empty string
+            let string_id = self.heap.string_id(&String::new());
+            self.emit_constant(string_id);
+            return;
+        }
+        
+        // Emit the first part
+        match &parts[0] {
+            InterpolationPart::String(s) => {
+                let string_id = self.heap.string_id(s);
+                self.emit_constant(string_id);
+            }
+            InterpolationPart::Expression(expr) => {
+                self.compile_interpolation_expression(expr);
+                // Convert the expression result to string
+                self.emit_str_call();
+            }
+        }
+        
+        // Emit remaining parts with concatenation
+        for part in &parts[1..] {
+            match part {
+                InterpolationPart::String(s) => {
+                    let string_id = self.heap.string_id(s);
+                    self.emit_constant(string_id);
+                }
+                InterpolationPart::Expression(expr) => {
+                    self.compile_interpolation_expression(expr);
+                    // Convert the expression result to string
+                    self.emit_str_call();
+                }
+            }
+            // Emit addition to concatenate
+            self.emit_byte(OpCode::Add, self.line());
+        }
+    }
+    
+    /// Emit a call to the str() function to convert a value to string
+    fn emit_str_call(&mut self) {
+        // The expression value is already on the stack
+        // We need to put the str function on the stack, then swap
+        
+        // Get the str function identifier constant
+        let str_constant = self.identifier_constant(&"str".to_string());
+        
+        // Check if we need long form
+        let long = str_constant.0 > usize::from(u8::MAX);
+        let get_op = if long { OpCode::GetGlobalLong } else { OpCode::GetGlobal };
+        
+        // Emit the get global instruction for str function
+        self.emit_byte(get_op, self.line());
+        if !self.emit_number(str_constant.0, long) {
+            self.error("Too many globals in GetGlobal for str()");
+            return;
+        }
+        
+        // Now the stack has: [expression_value, str_function]
+        // We need to swap them so str_function is on top for the call
+        self.emit_byte(OpCode::Swap, self.line());
+        
+        // Call with 1 argument (the expression value)
+        self.emit_byte(OpCode::Call, self.line());
+        self.emit_byte(1, self.line()); // argument count
+    }
+    
+    /// Compile an expression within string interpolation
+    fn compile_interpolation_expression(&mut self, expr: &str) {
+        let trimmed = expr.trim();
+        
+        // Handle simple cases first
+        if trimmed.chars().all(|c| c.is_ascii_digit()) {
+            // Integer literal
+            if let Ok(int_val) = trimmed.parse::<i64>() {
+                self.emit_constant(int_val);
+                return;
+            }
+        }
+        
+        if trimmed.parse::<f64>().is_ok() {
+            // Float literal  
+            if let Ok(float_val) = trimmed.parse::<f64>() {
+                self.emit_constant(float_val);
+                return;
+            }
+        }
+        
+        // Check for simple identifiers (variables)
+        if trimmed.chars().all(|c| c.is_alphanumeric() || c == '_') && 
+           trimmed.chars().next().map_or(false, |c| c.is_alphabetic() || c == '_') {
+            // This looks like a variable name - emit variable access code
+            let var_name = trimmed.to_string();
+            self.named_variable(&var_name, false);
+            return;
+        }
+        
+        // For more complex expressions, emit a placeholder for now
+        // TODO: Implement full expression parsing with scanner context
+        let placeholder = format!("${{{}}}", expr);
+        let string_id = self.heap.string_id(&placeholder);
         self.emit_constant(string_id);
     }
 
