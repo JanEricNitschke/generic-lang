@@ -2,7 +2,7 @@
 
 use crate::{
     chunk::{CodeOffset, OpCode},
-    enums::ConstantSize,
+    enums::{CompilationEndMode, ConstantSize},
     scanner::{Token, TokenKind},
     types::Line,
     value::{GenericInt, Number, Value},
@@ -42,8 +42,8 @@ impl<'scanner> Compiler<'scanner, '_> {
         self.emit_byte(OpCode::Return, line);
     }
 
-    pub(super) fn end(&mut self, raw: bool) {
-        if raw {
+    pub(super) fn end(&mut self, mode: CompilationEndMode) {
+        if mode == CompilationEndMode::Raw {
             self.emit_byte(OpCode::Return, self.line());
         } else {
             self.emit_return();

@@ -9,7 +9,7 @@ use super::{Compiler, FunctionType};
 use crate::{
     chunk::OpCode,
     config::LAMBDA_NAME,
-    enums::{AssignmentCapability, ConstantSize},
+    enums::{AssignmentCapability, CollectionType, ConstantSize},
     scanner::TokenKind as TK,
 };
 
@@ -580,12 +580,12 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ) {
         // Empty set literal
         if self.check(TK::RightBrace) {
-            return self.finish_hash_collection(false, 0);
+            return self.finish_hash_collection(false.into(), 0);
         }
 
         // Empty dict literal {:}
         if self.match_(TK::Colon) {
-            return self.finish_hash_collection(true, 0);
+            return self.finish_hash_collection(true.into(), 0);
         }
 
         // First element
@@ -619,21 +619,25 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             }
         }
 
-        self.finish_hash_collection(is_dict, item_count);
+        self.finish_hash_collection(is_dict.into(), item_count);
     }
 
     /// Helper function to consume the closing brace and emit the appropriate
     /// collection creation opcode (`BuildDict` or `BuildSet`) for dict or set literals.
-    fn finish_hash_collection(&mut self, is_dict: bool, item_count: u8) {
+    fn finish_hash_collection(&mut self, collection_type: CollectionType, item_count: u8) {
         self.consume(
             TK::RightBrace,
             &format!(
                 "Expect '}}' after {} literal.",
-                if is_dict { "dict" } else { "set" }
+                if collection_type == CollectionType::Dictionary {
+                    "dict"
+                } else {
+                    "set"
+                }
             ),
         );
         self.emit_bytes(
-            if is_dict {
+            if collection_type == CollectionType::Dictionary {
                 OpCode::BuildDict
             } else {
                 OpCode::BuildSet

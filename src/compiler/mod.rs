@@ -209,7 +209,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             self.declaration();
         }
 
-        self.end(false);
+        self.end(false.into());
         if self.had_error {
             None
         } else {

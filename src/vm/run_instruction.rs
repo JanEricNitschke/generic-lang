@@ -104,16 +104,12 @@ macro_rules! run_instruction {
             | OpCode::DefineGlobalLong
             | OpCode::DefineGlobalConst
             | OpCode::DefineGlobalConstLong) => $self.define_global(op),
-            OpCode::JumpIfFalse => $self.jump_conditional(crate::enums::JumpCondition::IfFalse),
-            OpCode::JumpIfTrue => $self.jump_conditional(crate::enums::JumpCondition::IfTrue),
-            OpCode::PopJumpIfFalse => {
-                $self.pop_jump_conditional(crate::enums::JumpCondition::IfFalse)
-            }
-            OpCode::PopJumpIfTrue => {
-                $self.pop_jump_conditional(crate::enums::JumpCondition::IfTrue)
-            }
-            OpCode::JumpIfTrueOrPop => $self.jump_if_or_pop(crate::enums::JumpCondition::IfTrue),
-            OpCode::JumpIfFalseOrPop => $self.jump_if_or_pop(crate::enums::JumpCondition::IfFalse),
+            OpCode::JumpIfFalse => $self.jump_conditional(JumpCondition::IfFalse),
+            OpCode::JumpIfTrue => $self.jump_conditional(JumpCondition::IfTrue),
+            OpCode::PopJumpIfFalse => $self.pop_jump_conditional(JumpCondition::IfFalse),
+            OpCode::PopJumpIfTrue => $self.pop_jump_conditional(JumpCondition::IfTrue),
+            OpCode::JumpIfTrueOrPop => $self.jump_if_or_pop(JumpCondition::IfTrue),
+            OpCode::JumpIfFalseOrPop => $self.jump_if_or_pop(JumpCondition::IfFalse),
             // Arg count is passed as the operand
             // The function to call is on the stack followed by all arguments
             // in order from left to right.
@@ -130,11 +126,11 @@ macro_rules! run_instruction {
             }
             // Index of the constant is the operand, value is in the constants table
             OpCode::Constant => {
-                let value = $self.read_constant(crate::enums::ConstantSize::Short);
+                let value = $self.read_constant(ConstantSize::Short);
                 $self.stack_push(value);
             }
             OpCode::ConstantLong => {
-                let value = $self.read_constant(crate::enums::ConstantSize::Long);
+                let value = $self.read_constant(ConstantSize::Long);
                 $self.stack_push(value);
             }
             // `Negate` and `Not` work on the stack value
@@ -149,12 +145,12 @@ macro_rules! run_instruction {
             OpCode::False => $self.stack_push(Value::Bool(false)),
             OpCode::StopIteration => $self.stack.push(Value::StopIteration),
             OpCode::Equal => {
-                if let Some(result) = $self.equal(crate::enums::EqualityOperation::Equal) {
+                if let Some(result) = $self.equal(EqualityOperation::Equal) {
                     return result;
                 }
             }
             OpCode::NotEqual => {
-                if let Some(result) = $self.equal(crate::enums::EqualityOperation::NotEqual) {
+                if let Some(result) = $self.equal(EqualityOperation::NotEqual) {
                     return result;
                 }
             }
@@ -190,7 +186,7 @@ macro_rules! run_instruction {
             // Get the function with the actual bytecode as a value from the operand
             // Capture the upvalues and push the closure onto the stack
             OpCode::Closure => {
-                let value = $self.read_constant(crate::enums::ConstantSize::Short);
+                let value = $self.read_constant(ConstantSize::Short);
                 let function = value.as_function();
                 let mut closure =
                     Closure::new(*function, false, $self.modules.last().copied(), &$self.heap);
@@ -261,7 +257,7 @@ macro_rules! run_instruction {
                 let class_name = $self.read_string("OP_CLASS");
                 let class = $self
                     .heap
-                    .add_class(Class::new(class_name, crate::enums::ClassType::UserDefined));
+                    .add_class(Class::new(class_name, ClassType::UserDefined));
                 $self.stack_push_value(class);
             }
             // Property to get is the operand, instance/module is on the stack
@@ -377,8 +373,7 @@ macro_rules! run_instruction {
             OpCode::Inherit => {
                 let superclass_id = $self.peek(1).expect("Stack underflow in OP_INHERIT");
                 let superclass = if let Value::Class(superclass) = &superclass_id {
-                    if superclass.to_value(&$self.heap).is_native == crate::enums::ClassType::Native
-                    {
+                    if superclass.to_value(&$self.heap).is_native == ClassType::Native {
                         runtime_error!($self, "Can not inherit from native classes yet.");
                         return InterpretResult::RuntimeError;
                     }

@@ -1,5 +1,6 @@
 #[cfg(feature = "trace_execution")]
 use crate::chunk::InstructionDisassembler;
+use crate::enums::{ClassType, ConstantSize, EqualityOperation, JumpCondition};
 use crate::value::NativeClass;
 use crate::{
     chunk::{CodeOffset, OpCode},
@@ -180,7 +181,7 @@ impl VM {
                     .methods
                     .get(&self.heap.builtin_constants().init_string)
                     .copied();
-                let backing = if is_native == crate::enums::ClassType::Native {
+                let backing = if is_native == ClassType::Native {
                     Some(NativeClass::new(
                         class.to_value(&self.heap).name.to_value(&self.heap),
                     ))
@@ -191,7 +192,7 @@ impl VM {
                 let stack_index = self.stack.len() - usize::from(arg_count) - 1;
                 self.stack[stack_index] = instance_id;
                 if let Some(initializer) = maybe_initializer {
-                    if is_native == crate::enums::ClassType::Native {
+                    if is_native == ClassType::Native {
                         self.execute_native_method_call(
                             *initializer.as_native_method(),
                             &mut instance_id,

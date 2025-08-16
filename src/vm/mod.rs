@@ -36,7 +36,7 @@ use crate::natives;
 use crate::{
     chunk::{CodeOffset, OpCode},
     compiler::Compiler,
-    enums::{EqualityOperation, ImportType, JumpCondition},
+    enums::{ClassType, ConstantSize, EqualityOperation, ImportType, JumpCondition},
     heap::{Heap, ModuleId, StringId, UpvalueId},
     scanner::Scanner,
     stdlib,

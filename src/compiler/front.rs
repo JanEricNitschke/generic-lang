@@ -932,10 +932,10 @@ impl Compiler<'_, '_> {
 
             if compiler.match_(TK::LeftBrace) {
                 compiler.block();
-                compiler.end(false);
+                compiler.end(false.into());
             } else if allow_expression_body {
                 compiler.expression();
-                compiler.end(true);
+                compiler.end(true.into());
             } else {
                 compiler.error_at_current("Expect '{' before function body.");
             }

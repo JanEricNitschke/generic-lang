@@ -6,7 +6,7 @@ use super::{Compiler, Local, ScopeDepth, Upvalue};
 use crate::{
     chunk::{ConstantLongIndex, OpCode},
     compiler::rules::Precedence,
-    enums::{AssignmentCapability, ConstantSize, Mutability},
+    enums::{AssignmentCapability, Mutability},
     scanner::{Token, TokenKind as TK},
 };
 
@@ -91,13 +91,12 @@ impl<'scanner> Compiler<'scanner, '_> {
         let arg = arg.unwrap();
 
         // Support for more than u8::MAX variables in a scope
-        let size = if arg > u8::MAX.into() {
+        let is_long = arg > u8::MAX.into();
+        if is_long {
             get_op = get_op.to_long();
             set_op = set_op.to_long();
-            ConstantSize::Long
-        } else {
-            ConstantSize::Short
-        };
+        }
+        let size = is_long.into();
 
         // Get or set?
         let op = if assignment_capability == AssignmentCapability::CanAssign
