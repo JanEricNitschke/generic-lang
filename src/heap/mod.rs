@@ -567,14 +567,18 @@ impl Heap {
                     self.instances.gray.push(tuple_iter.tuple());
                 }
                 NativeClass::Set(set) => {
-                    for item in &set.items {
-                        gray_value!(self, item);
+                    for bucket in set.items.values() {
+                        for (item, _hash) in bucket {
+                            gray_value!(self, item);
+                        }
                     }
                 }
                 NativeClass::Dict(dict) => {
-                    for (key, value) in &dict.items {
-                        gray_value!(self, key);
-                        gray_value!(self, value);
+                    for bucket in dict.items.values() {
+                        for (key, value, _hash) in bucket {
+                            gray_value!(self, key);
+                            gray_value!(self, value);
+                        }
                     }
                 }
                 NativeClass::Range(range) => {

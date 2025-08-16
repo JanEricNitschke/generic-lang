@@ -258,4 +258,11 @@ impl VM {
         self.stack_push(result.into());
         None
     }
+
+    /// Compare two values using heap-level equality.
+    /// Note: For now we use heap-level equality to avoid VM execution complexity.
+    /// Custom __eq__ methods are handled at the VM level for operations like ==.
+    pub(crate) fn compare_values_heap(&self, left: &Value, right: &Value) -> bool {
+        left.eq(right, &self.heap)
+    }
 }

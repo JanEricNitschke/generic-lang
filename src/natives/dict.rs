@@ -42,5 +42,6 @@ pub(super) fn dict_len_native(
     _args: &mut [&mut Value],
 ) -> Result<Value, String> {
     let dict = receiver.as_dict(&vm.heap);
-    Ok(Number::from_usize(dict.items.len(), &mut vm.heap).into())
+    let total_len: usize = dict.items.values().map(Vec::len).sum();
+    Ok(Number::from_usize(total_len, &mut vm.heap).into())
 }

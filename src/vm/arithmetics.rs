@@ -233,16 +233,15 @@ impl VM {
 
                     let result = self.stack.pop().expect("Stack underflow in compute_hash");
                     return match result {
-                        Value::Number(Number::Integer(GenericInt::Small(n))) => Ok(n as u64),
+                        Value::Number(Number::Integer(GenericInt::Small(n))) => Ok(n.wrapping_abs() as u64),
                         _ => Err(format!(
                             "__hash__ method must return an integer, got: {}",
                             result.to_string(&self.heap)
                         )),
                     };
-                } else {
-                    // Fall back to object ID hashing
-                    instance_id.hash(&mut state);
                 }
+                // Fall back to object ID hashing
+                instance_id.hash(&mut state);
             }
             // Basic types use their original hashing logic
             Value::Bool(b) => {
