@@ -580,12 +580,12 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ) {
         // Empty set literal
         if self.check(TK::RightBrace) {
-            return self.finish_hash_collection(false.into(), 0);
+            return self.finish_hash_collection(CollectionType::Set, 0);
         }
 
         // Empty dict literal {:}
         if self.match_(TK::Colon) {
-            return self.finish_hash_collection(true.into(), 0);
+            return self.finish_hash_collection(CollectionType::Dictionary, 0);
         }
 
         // First element
@@ -619,7 +619,14 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             }
         }
 
-        self.finish_hash_collection(is_dict.into(), item_count);
+        self.finish_hash_collection(
+            if is_dict {
+                CollectionType::Dictionary
+            } else {
+                CollectionType::Set
+            },
+            item_count,
+        );
     }
 
     /// Helper function to consume the closing brace and emit the appropriate

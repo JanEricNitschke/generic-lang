@@ -15,6 +15,7 @@ use shrinkwraprs::Shrinkwrap;
 use crate::{
     chunk::{Chunk, CodeOffset, ConstantLongIndex},
     compiler::rules::{Rules, make_rules},
+    enums::CompilationEndMode,
     heap::{Heap, StringId},
     scanner::{Scanner, Token, TokenKind},
     types::Line,
@@ -209,7 +210,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             self.declaration();
         }
 
-        self.end(false.into());
+        self.end(CompilationEndMode::Standard);
         if self.had_error {
             None
         } else {

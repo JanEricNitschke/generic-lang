@@ -7,7 +7,7 @@ use super::{ClassState, Compiler, FunctionType, LoopState, rules::Precedence};
 
 use crate::{
     chunk::{CodeOffset, ConstantIndex, ConstantLongIndex, OpCode},
-    enums::{AssignmentCapability, ConstantSize, Mutability},
+    enums::{AssignmentCapability, CompilationEndMode, ConstantSize, Mutability},
     scanner::{Token, TokenKind as TK},
     types::Line,
     utils::get_file_stem,
@@ -518,7 +518,11 @@ impl Compiler<'_, '_> {
         } else if self.match_(TK::Var) || self.match_(TK::Const) {
             let name = self.current.clone().unwrap();
             let is_mutable = self.check_previous(TK::Var);
-            self.var_declaration(is_mutable.into());
+            self.var_declaration(if is_mutable {
+                Mutability::Mutable
+            } else {
+                Mutability::Immutable
+            });
             // Challenge 25/2: alias loop variables
             u8::try_from(self.locals().len() - 1).map_or_else(
                 |_| {
@@ -564,7 +568,14 @@ impl Compiler<'_, '_> {
             if let Some((loop_var, loop_var_name, is_mutable)) = loop_var_name_mutable {
                 self.begin_scope();
                 self.emit_bytes(OpCode::GetLocal, loop_var, line);
-                self.add_local(loop_var_name, is_mutable.into());
+                self.add_local(
+                    loop_var_name,
+                    if is_mutable {
+                        Mutability::Mutable
+                    } else {
+                        Mutability::Immutable
+                    },
+                );
                 self.mark_initialized();
                 u8::try_from(self.locals().len() - 1).map_or_else(
                     |_| {
@@ -632,10 +643,24 @@ impl Compiler<'_, '_> {
         // Define loop variable
         let name = self.current.clone().unwrap(); // Needed for aliasing
         let is_mutable = self.check_previous(TK::Var);
-        let global = self.parse_variable("Expect variable name.", is_mutable.into());
+        let global = self.parse_variable(
+            "Expect variable name.",
+            if is_mutable {
+                Mutability::Mutable
+            } else {
+                Mutability::Immutable
+            },
+        );
         self.emit_byte(OpCode::Nil, self.line());
         self.consume(TK::In, "Expect 'in' after variable declaration.");
-        self.define_variable(global, is_mutable.into());
+        self.define_variable(
+            global,
+            if is_mutable {
+                Mutability::Mutable
+            } else {
+                Mutability::Immutable
+            },
+        );
         // Challenge 25/2: alias loop variables
         let loop_var = u8::try_from(self.locals().len() - 1)
             .expect("Creating loop variable led to too many locals.");
@@ -688,7 +713,14 @@ impl Compiler<'_, '_> {
         // Alias loop variable for this iteration of the loop
         self.begin_scope();
         self.emit_bytes(OpCode::GetLocal, loop_var, line);
-        self.add_local(name, is_mutable.into());
+        self.add_local(
+            name,
+            if is_mutable {
+                Mutability::Mutable
+            } else {
+                Mutability::Immutable
+            },
+        );
         self.mark_initialized();
         let inner_var = u8::try_from(self.locals().len() - 1)
             .expect("Aliasing loop variable led to too many locals.");
@@ -932,10 +964,10 @@ impl Compiler<'_, '_> {
 
             if compiler.match_(TK::LeftBrace) {
                 compiler.block();
-                compiler.end(false.into());
+                compiler.end(CompilationEndMode::Standard);
             } else if allow_expression_body {
                 compiler.expression();
-                compiler.end(true.into());
+                compiler.end(CompilationEndMode::Raw);
             } else {
                 compiler.error_at_current("Expect '{' before function body.");
             }

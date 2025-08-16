@@ -6,7 +6,7 @@ use super::{Compiler, Local, ScopeDepth, Upvalue};
 use crate::{
     chunk::{ConstantLongIndex, OpCode},
     compiler::rules::Precedence,
-    enums::{AssignmentCapability, Mutability},
+    enums::{AssignmentCapability, ConstantSize, Mutability},
     scanner::{Token, TokenKind as TK},
 };
 
@@ -96,7 +96,11 @@ impl<'scanner> Compiler<'scanner, '_> {
             get_op = get_op.to_long();
             set_op = set_op.to_long();
         }
-        let size = is_long.into();
+        let size = if is_long {
+            ConstantSize::Long
+        } else {
+            ConstantSize::Short
+        };
 
         // Get or set?
         let op = if assignment_capability == AssignmentCapability::CanAssign
