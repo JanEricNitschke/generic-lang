@@ -8,6 +8,7 @@ use super::{Compiler, FunctionType};
 use crate::chunk::OpCode;
 use crate::config::LAMBDA_NAME;
 use crate::scanner::TokenKind as TK;
+use crate::types::{CollectionType, NumberEncoding};
 use crate::value::utils::{ParsedInteger, parse_float_compiler, parse_integer_compiler};
 
 // The precedence of the different operators in the language
@@ -407,7 +408,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             } else {
                 self.emit_byte(OpCode::Dup, line);
                 self.emit_byte(OpCode::GetProperty, line);
-                if !self.emit_number(name_constant.0, false) {
+                if !self.emit_number(name_constant.0, NumberEncoding::Short) {
                     self.error("Too many constants created for OP_GET_PROPERTY.");
                 }
                 self.expression();
@@ -424,19 +425,19 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 }
             }
             self.emit_byte(OpCode::SetProperty, line);
-            if !self.emit_number(name_constant.0, false) {
+            if !self.emit_number(name_constant.0, NumberEncoding::Short) {
                 self.error("Too many constants created for OP_SET_PROPERTY");
             }
         } else if self.match_(TK::LeftParen) {
             let arg_count = self.argument_list();
             self.emit_byte(OpCode::Invoke, line);
-            if !self.emit_number(name_constant.0, false) {
+            if !self.emit_number(name_constant.0, NumberEncoding::Short) {
                 self.error("Too many constants created for OP_INVOKE");
             }
             self.emit_byte(arg_count, line);
         } else {
             self.emit_byte(OpCode::GetProperty, line);
-            if !self.emit_number(name_constant.0, false) {
+            if !self.emit_number(name_constant.0, NumberEncoding::Short) {
                 self.error("Too many constants created for OP_GET_PROPERTY.");
             }
         }
@@ -568,19 +569,23 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     fn hash_collection(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         // Empty set literal
         if self.check(TK::RightBrace) {
-            return self.finish_hash_collection(false, 0);
+            return self.finish_hash_collection(CollectionType::Set, 0);
         }
 
         // Empty dict literal {:}
         if self.match_(TK::Colon) {
-            return self.finish_hash_collection(true, 0);
+            return self.finish_hash_collection(CollectionType::Dict, 0);
         }
 
         // First element
         let mut item_count = 0;
         self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon, TK::Comma]);
-        let is_dict = self.match_(TK::Colon);
-        if is_dict {
+        let collection_type: CollectionType = if self.match_(TK::Colon) {
+            CollectionType::Dict
+        } else {
+            CollectionType::Set
+        };
+        if collection_type == CollectionType::Dict {
             self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon, TK::Comma]);
         }
         item_count += 1;
@@ -588,13 +593,12 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
 
         // Remaining elements
         while !self.check(TK::RightBrace) {
-            if is_dict {
-                self.parse_dict_entry();
-            } else {
-                self.parse_precedence_ignoring(
+            match collection_type {
+                CollectionType::Dict => self.parse_dict_entry(),
+                CollectionType::Set => self.parse_precedence_ignoring(
                     Precedence::non_assigning(),
                     &[TK::Colon, TK::Comma],
-                );
+                ),
             }
 
             if item_count == 255 {
@@ -607,24 +611,26 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             }
         }
 
-        self.finish_hash_collection(is_dict, item_count);
+        self.finish_hash_collection(collection_type, item_count);
     }
 
     /// Helper function to consume the closing brace and emit the appropriate
     /// collection creation opcode (`BuildDict` or `BuildSet`) for dict or set literals.
-    fn finish_hash_collection(&mut self, is_dict: bool, item_count: u8) {
+    fn finish_hash_collection(&mut self, collection_type: CollectionType, item_count: u8) {
         self.consume(
             TK::RightBrace,
             &format!(
                 "Expect '}}' after {} literal.",
-                if is_dict { "dict" } else { "set" }
+                match collection_type {
+                    CollectionType::Dict => "dict",
+                    CollectionType::Set => "set",
+                }
             ),
         );
         self.emit_bytes(
-            if is_dict {
-                OpCode::BuildDict
-            } else {
-                OpCode::BuildSet
+            match collection_type {
+                CollectionType::Dict => OpCode::BuildDict,
+                CollectionType::Set => OpCode::BuildSet,
             },
             item_count,
             self.line(),
@@ -759,14 +765,14 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             let arg_count = self.argument_list();
             self.named_variable(&self.synthetic_token(TK::Super).as_str(), false);
             self.emit_byte(OpCode::SuperInvoke, line);
-            if !self.emit_number(*name, false) {
+            if !self.emit_number(*name, NumberEncoding::Short) {
                 self.error("Too many constants while compiling OP_SUPER_INVOKE");
             }
             self.emit_byte(arg_count, line);
         } else {
             self.named_variable(&self.synthetic_token(TK::Super).as_str(), false);
             self.emit_byte(OpCode::GetSuper, self.line());
-            if !self.emit_number(*name, false) {
+            if !self.emit_number(*name, NumberEncoding::Short) {
                 self.error("Too many constants while compiling OP_SUPER_INVOKE");
             }
         }
@@ -777,7 +783,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         let name_constant = self.identifier_constant(name);
         let line = self.line();
         self.emit_byte(OpCode::Invoke, line);
-        if !self.emit_number(name_constant.0, false) {
+        if !self.emit_number(name_constant.0, NumberEncoding::Short) {
             self.error(error_message);
         }
         self.emit_byte(arg_count, line);
