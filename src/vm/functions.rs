@@ -30,9 +30,12 @@ impl VM {
         }
 
         if method_is_native {
-            InterpretResult::Ok
+            return InterpretResult::Ok;
+        }
+        if matches!(self.run_function(), InterpretResult::RuntimeError) || self.handling_exception {
+            InterpretResult::RuntimeError
         } else {
-            self.run_function()
+            InterpretResult::Ok
         }
     }
 
