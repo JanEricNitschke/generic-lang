@@ -149,7 +149,7 @@ impl VM {
     // Parts are on the stack from left to right (some might not be strings yet)
     pub(crate) fn build_fstring(&mut self) {
         let part_count = self.read_byte();
-        
+
         // Collect all parts from the stack and convert to strings
         let mut result = String::new();
         for i in (0..part_count).rev() {
@@ -157,10 +157,11 @@ impl VM {
             // Always convert to string using the built-in conversion
             result.push_str(&value.to_string(&self.heap));
         }
-        
+
         // Pop all parts from stack
-        self.stack.truncate(self.stack.len() - usize::from(part_count));
-        
+        self.stack
+            .truncate(self.stack.len() - usize::from(part_count));
+
         // Push the concatenated result
         let result_id = self.heap.string_id(&result);
         self.stack_push_value(result_id.into());

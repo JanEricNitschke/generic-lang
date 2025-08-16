@@ -1,0 +1,3 @@
+# Test the exact example from the requirements
+var name = "Bob";
+print(f"Hi, I'm ${name} and I like to say \\${Apples}"); # expect: Hi, I'm Bob and I like to say \${Apples}

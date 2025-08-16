@@ -517,13 +517,13 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Parse an f-string literal with interpolation support
     fn fstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let lexeme = self.previous.as_ref().unwrap().as_str();
-        
+
         // Remove f" and " to get the content
         let content = &lexeme[2..lexeme.len() - 1];
-        
+
         // Parse the content for interpolations
         let parts = self.parse_fstring_content(content);
-        
+
         // If no interpolations, just emit as a regular string
         if parts.len() == 1 && matches!(parts[0], FStringPart::Text(_)) {
             if let FStringPart::Text(text) = &parts[0] {
@@ -532,7 +532,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             }
             return;
         }
-        
+
         // Emit each part
         for part in &parts {
             match part {
@@ -546,7 +546,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 }
             }
         }
-        
+
         // Emit BuildFString instruction
         self.emit_buildfstring(parts.len() as u8);
     }
@@ -556,7 +556,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         let mut parts = Vec::new();
         let mut current_text = String::new();
         let mut chars = content.char_indices().peekable();
-        
+
         while let Some((_i, ch)) = chars.next() {
             match ch {
                 '\\' => {
@@ -577,18 +577,18 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 '$' => {
                     if let Some((_, '{')) = chars.peek() {
                         chars.next(); // consume '{'
-                        
+
                         // Save current text as a part
                         if !current_text.is_empty() {
                             parts.push(FStringPart::Text(current_text.clone()));
                             current_text.clear();
                         }
-                        
+
                         // Extract expression until matching '}'
                         let mut expr = String::new();
                         let mut brace_count = 1;
-                        
-                        while let Some((_, ch)) = chars.next() {
+
+                        for (_, ch) in chars.by_ref() {
                             if ch == '{' {
                                 brace_count += 1;
                             } else if ch == '}' {
@@ -599,7 +599,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                             }
                             expr.push(ch);
                         }
-                        
+
                         if brace_count != 0 {
                             // Unmatched braces, treat as regular text
                             current_text.push_str("${");
@@ -616,16 +616,16 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 }
             }
         }
-        
+
         // Add remaining text
         if !current_text.is_empty() {
             parts.push(FStringPart::Text(current_text));
         }
-        
+
         if parts.is_empty() {
             parts.push(FStringPart::Text(String::new()));
         }
-        
+
         parts
     }
 

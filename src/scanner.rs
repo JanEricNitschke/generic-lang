@@ -385,14 +385,14 @@ impl<'a> Scanner<'a> {
         while self.peek().is_some_and(Self::is_identifier_char) {
             self.advance();
         }
-        
+
         // Check for f-string
         let lexeme = &self.source[self.start..self.current];
         if lexeme == b"f" && self.peek() == Some(&b'"') {
             // This is an f-string, consume it
             return self.fstring();
         }
-        
+
         let token_kind = self.identifier_type();
         self.make_token(token_kind)
     }
@@ -537,7 +537,7 @@ impl<'a> Scanner<'a> {
     fn fstring(&mut self) -> Token<'a> {
         // Consume the opening quote
         self.advance(); // consume "
-        
+
         // Scan like a regular string but return FStringStart token
         while self.peek().is_some_and(|c| c != &b'"') {
             if self.peek() == Some(&b'\n') {
