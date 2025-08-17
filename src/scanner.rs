@@ -597,26 +597,26 @@ impl<'a> Scanner<'a> {
                     }
                 }
                 b'\\' => {
-                    // Handle escape sequences - look ahead to see what we're escaping
-                    if let Some(&next_char) = self.peek() {
+                    // Look ahead for escape sequences
+                    if self.peek() == Some(&b'\\') && self.peek_next() == Some(&b'$') {
+                        // \\\$ sequence -> $ (the first \ escapes the \$)
+                        self.advance(); // consume first \ (escape char)
+                        self.advance(); // consume second \ (part of \$)
+                        self.advance(); // consume $ (part of \$)
+                        has_content = true;
+                        // Allow following interpolation
+                    } else if self.peek() == Some(&b'$') {
+                        // \$ -> $ (escape sequence, prevent interpolation)
                         self.advance(); // consume \
-                        match next_char {
-                            b'$' => {
-                                // Escaping $, consume the $ as well, treat as literal
-                                self.advance(); // consume $
-                                has_content = true;
-                                // Continue scanning without treating $ as special
-                                continue;
-                            }
-                            _ => {
-                                // Other escape sequences, consume the next character
-                                self.advance(); // consume next character
-                                has_content = true;
-                            }
-                        }
+                        self.advance(); // consume $
+                        has_content = true;
+                        continue; // Prevent interpolation
                     } else {
-                        // Backslash at end of input
-                        self.advance();
+                        // Regular escape: \x -> \x
+                        self.advance(); // consume \
+                        if self.peek().is_some() {
+                            self.advance(); // consume next char
+                        }
                         has_content = true;
                     }
                 }
