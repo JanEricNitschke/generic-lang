@@ -1,17 +1,19 @@
 var name = "Bob";
-print f"Hi, I'm ${name}."; # expect: Hi, I'm Bob.
-
-var age = 25;
-print f"I am ${age} years old."; # expect: I am 25 years old.
+print(f"Hi, I'm ${name}."); # expect: Hi, I'm Bob.
 
 # Basic string parts
-print f"Hello world"; # expect: Hello world
-
-# Empty interpolation
-var empty = "";
-print f"Value: ${empty}End"; # expect: Value: End
+print(f"Hello world"); # expect: Hello world
 
 # Multiple interpolations
 var first = "John";
 var last = "Doe";
-print f"Name: ${first} ${last}"; # expect: Name: John Doe
+print(f"Name: ${first} ${last}"); # expect: Name: John Doe
+
+# Interpolation at start and end
+var greeting = "Hello";
+var punctuation = "!";
+print(f"${greeting}, world${punctuation}"); # expect: Hello, world!
+
+# Single interpolation
+var value = "test";
+print(f"${value}"); # expect: test

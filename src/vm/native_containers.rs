@@ -159,13 +159,13 @@ impl VM {
         }
 
         // Collect all parts from the stack (they are already strings)
-        let mut result = String::new();
+        let mut parts = Vec::new();
         for index in (0..part_count).rev() {
             let part_value = *self.peek(usize::from(index)).expect("Stack underflow in BuildFString");
             match part_value {
                 Value::String(string_id) => {
                     let part_str = string_id.to_value(&self.heap);
-                    result = part_str.clone() + &result;
+                    parts.push(part_str.clone());
                 }
                 _ => {
                     // This should not happen as we ensure all parts are strings
@@ -182,6 +182,9 @@ impl VM {
         // Pop all parts from stack
         self.stack
             .truncate(self.stack.len() - usize::from(part_count));
+
+        // Concatenate parts in correct order
+        let result = parts.join("");
 
         // Push the result string
         let result_id = self.heap.string_id(&result);
