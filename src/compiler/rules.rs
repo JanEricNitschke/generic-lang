@@ -93,7 +93,7 @@ macro_rules! make_rules {
     }};
 }
 
-pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 88];
+pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 89];
 
 // Can't be static because the associated function types include lifetimes
 #[rustfmt::skip]
@@ -110,6 +110,7 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Default       = [None,            None,      None      ],
         Dot           = [None,            dot,       Call      ],
         Dollar        = [None,            None,      None      ],
+        DollarLBrace  = [None,            None,      None      ],
         Minus         = [unary,           binary,    Term      ],
         MinusEqual    = [None,            None,      None      ],
         Plus          = [None,            binary,    Term      ],
@@ -529,15 +530,14 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 self.emit_constant(string_id);
                 part_count += 1;
                 self.advance();
-            } else if self.match_(TK::Dollar) {
+            } else if self.match_(TK::DollarLBrace) {
                 // Start of interpolation ${expr}
-                if !self.match_(TK::LeftBrace) {
-                    self.error("Expected '{' after '$' in f-string.");
-                    return;
-                }
                 
                 // Parse the expression
                 self.expression();
+                
+                // For now, let the VM handle string conversion automatically
+                // TODO: Later we can emit explicit str() calls as globals if needed
                 
                 part_count += 1;
                 
@@ -566,7 +566,15 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 if let Some(next_ch) = chars.next() {
                     match next_ch {
                         '$' => result.push('$'), // \$ -> $
-                        '\\' => result.push('\\'), // \\ -> \
+                        '\\' => {
+                            // Check for \\$ -> $ pattern
+                            if chars.as_str().starts_with('$') {
+                                chars.next(); // consume the $
+                                result.push('$'); // \\$ -> $
+                            } else {
+                                result.push('\\'); // \\ -> \
+                            }
+                        }
                         _ => {
                             result.push('\\');
                             result.push(next_ch);

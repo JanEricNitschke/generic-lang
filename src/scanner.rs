@@ -20,6 +20,7 @@ pub enum TokenKind {
     Comma,
     Dot,
     Dollar,
+    DollarLBrace,
 
     QuestionMark,
 
@@ -185,11 +186,10 @@ impl<'a> Scanner<'a> {
         
         // If we're inside an f-string and not inside ${} (and didn't just start ${), 
         // try to parse f-string content
-        if self.fstring_depth > 0 && self.fstring_brace_depth == 0 && !just_started_expr {
-            if let Some(token) = self.scan_fstring_content() {
+        if self.fstring_depth > 0 && self.fstring_brace_depth == 0 && !just_started_expr
+            && let Some(token) = self.scan_fstring_content() {
                 return token;
             }
-        }
         
         self.skip_whitespace();
         self.start = self.current;
@@ -325,7 +325,16 @@ impl<'a> Scanner<'a> {
                     }
                 }
                 b'"' => return self.string(),
-                b'$' => TK::Dollar,
+                b'$' => {
+                    if self.match_(b'{') {
+                        if self.fstring_depth > 0 {
+                            self.fstring_brace_depth += 1;
+                        }
+                        TK::DollarLBrace
+                    } else {
+                        TK::Dollar
+                    }
+                }
                 c if c.is_ascii_digit() => return self.number(),
                 c if c.is_ascii_alphabetic() || c == &b'_' => return self.identifier(),
                 _ => return self.error_token("Unexpected character."),
@@ -597,43 +606,34 @@ impl<'a> Scanner<'a> {
                     }
                 }
                 b'\\' => {
-                    // Look ahead for escape sequences
-                    if self.peek() == Some(&b'\\') && self.peek_next() == Some(&b'$') {
-                        // \\\$ sequence -> $ (the first \ escapes the \$)
-                        self.advance(); // consume first \ (escape char)
-                        self.advance(); // consume second \ (part of \$)
-                        self.advance(); // consume $ (part of \$)
-                        has_content = true;
-                        // Allow following interpolation
-                    } else if self.peek() == Some(&b'$') {
-                        // \$ -> $ (escape sequence, prevent interpolation)
-                        self.advance(); // consume \
-                        self.advance(); // consume $
-                        has_content = true;
-                        continue; // Prevent interpolation
-                    } else {
-                        // Regular escape: \x -> \x
-                        self.advance(); // consume \
-                        if self.peek().is_some() {
-                            self.advance(); // consume next char
-                        }
-                        has_content = true;
-                    }
+                    // For f-string content, preserve escape sequences for the compiler to handle
+                    self.advance(); // consume \
+                    has_content = true;
+                    // Don't process escape sequences here - let compiler handle them
                 }
                 b'$' => {
-                    if self.peek_next() == Some(&b'{') {
-                        // Found interpolation start
+                    // Check if this $ is escaped (preceded by odd number of backslashes)
+                    let mut backslash_count = 0;
+                    let mut pos = self.current;
+                    while pos > self.start && self.source[pos - 1] == b'\\' {
+                        backslash_count += 1;
+                        pos -= 1;
+                    }
+                    let is_escaped = backslash_count % 2 == 1;
+                    
+                    if !is_escaped && self.peek_next() == Some(&b'{') {
+                        // Found interpolation start (not escaped)
                         if has_content {
                             // Return string part before ${
                             return Some(self.make_token(TokenKind::StringPart));
                         } else {
-                            // No content before ${, so let normal scanner handle $ and {
+                            // No content before ${, so let normal scanner handle ${
                             // Set flag to prevent calling scan_fstring_content on next scan()
                             self.just_started_fstring_expr = true;
                             return None;
                         }
                     } else {
-                        // Regular $ character
+                        // Regular $ character or escaped $
                         self.advance();
                         has_content = true;
                     }
