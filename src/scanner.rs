@@ -619,10 +619,11 @@ impl<'a> Scanner<'a> {
                         backslash_count += 1;
                         pos -= 1;
                     }
+                    
                     let is_escaped = backslash_count % 2 == 1;
                     
                     if !is_escaped && self.peek_next() == Some(&b'{') {
-                        // Found interpolation start (not escaped)
+                        // Regular interpolation start
                         if has_content {
                             // Return string part before ${
                             return Some(self.make_token(TokenKind::StringPart));
@@ -633,7 +634,7 @@ impl<'a> Scanner<'a> {
                             return None;
                         }
                     } else {
-                        // Regular $ character or escaped $
+                        // Regular $ character or escaped $ - include in string content
                         self.advance();
                         has_content = true;
                     }

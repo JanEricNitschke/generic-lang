@@ -567,10 +567,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                     match next_ch {
                         '$' => result.push('$'), // \$ -> $
                         '\\' => {
-                            // Check for \\$ -> $ pattern
-                            if chars.as_str().starts_with('$') {
-                                chars.next(); // consume the $
-                                result.push('$'); // \\$ -> $
+                            // If this is the last \\, and we're at the end, convert to $
+                            // This handles the case where \\$ is split with \\ in content and $ in DollarLBrace token
+                            if chars.as_str().is_empty() {
+                                result.push('$'); // \\ at end -> $ (assumes followed by ${})
                             } else {
                                 result.push('\\'); // \\ -> \
                             }
