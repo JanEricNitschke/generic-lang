@@ -93,7 +93,7 @@ macro_rules! make_rules {
     }};
 }
 
-pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 87];
+pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 88];
 
 // Can't be static because the associated function types include lifetimes
 #[rustfmt::skip]
@@ -109,6 +109,7 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Comma         = [None,            tuple,     Tuple    ],
         Default       = [None,            None,      None      ],
         Dot           = [None,            dot,       Call      ],
+        Dollar        = [None,            None,      None      ],
         Minus         = [unary,           binary,    Term      ],
         MinusEqual    = [None,            None,      None      ],
         Plus          = [None,            binary,    Term      ],
@@ -510,57 +511,54 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
 
     /// Parse an f-string literal with interpolation support
     fn fstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
-        let mut parts = Vec::new();
+        let mut part_count = 0u8;
         
-        // Process f-string tokens until we reach FStringEnd
+        // Process tokens until we reach FStringEnd
         loop {
-            self.advance();
+            // Check what the current token is
+            if self.check(TK::FStringEnd) {
+                self.advance(); // consume FStringEnd
+                break;
+            }
             
-            match self.current.as_ref().unwrap().kind {
-                TK::StringPart => {
-                    // Add string part
-                    let lexeme = self.current.as_ref().unwrap().as_str();
-                    let value = self.unescape_fstring_content(lexeme);
-                    let string_id = self.heap.string_id(&value);
-                    self.emit_constant(string_id);
-                    parts.push(());
-                }
-                TK::LeftBrace if self.peek_token().kind == TK::Dollar => {
-                    // Skip ${, parse expression, and emit str() call
-                    self.advance(); // consume {
-                    self.advance(); // consume $
-                    
-                    // Parse the expression inside ${}
-                    self.expression();
-                    
-                    // Emit call to str() function
-                    let str_name = self.heap.string_id(&"str");
-                    self.emit_constant(str_name);
-                    self.emit_bytes(OpCode::Call, 1, self.line());
-                    
-                    // Expect closing }
-                    if !self.match_token(TK::RightBrace) {
-                        self.error_at_current("Expected '}' after f-string expression.");
-                        return;
-                    }
-                    
-                    parts.push(());
-                }
-                TK::FStringEnd => {
-                    break;
-                }
-                _ => {
-                    // Regular tokens inside expressions - should be handled by normal parsing
+            if self.check(TK::StringPart) {
+                // Handle string literal part
+                let lexeme = self.current.as_ref().unwrap().as_str();
+                let value = self.unescape_fstring_content(lexeme);
+                let string_id = self.heap.string_id(&value);
+                self.emit_constant(string_id);
+                part_count += 1;
+                self.advance();
+            } else if self.match_(TK::Dollar) {
+                // Start of interpolation ${expr}
+                if !self.match_(TK::LeftBrace) {
+                    self.error("Expected '{' after '$' in f-string.");
                     return;
                 }
+                
+                // Parse the expression
+                self.expression();
+                
+                // Emit str() call to convert expression result to string
+                let str_name = self.heap.string_id(&"str");
+                self.emit_constant(str_name);
+                self.emit_bytes(OpCode::Call, 1, self.line());
+                
+                part_count += 1;
+                
+                if !self.match_(TK::RightBrace) {
+                    self.error("Expected '}' after f-string expression.");
+                    return;
+                }
+            } else {
+                // Unexpected token
+                self.error_at_current("Unexpected token in f-string.");
+                return;
             }
         }
 
         // Emit BuildFString instruction with part count
-        if parts.len() > 255 {
-            self.error("Too many parts in f-string.");
-        }
-        self.emit_buildfstring(parts.len() as u8);
+        self.emit_buildfstring(part_count);
     }
 
     /// Unescape f-string content (handle \\$ sequences)

@@ -19,6 +19,7 @@ pub enum TokenKind {
     Colon,
     Comma,
     Dot,
+    Dollar,
 
     QuestionMark,
 
@@ -148,17 +149,20 @@ pub struct Scanner<'a> {
     line: Line,
     /// Stack to track f-string nesting depth
     fstring_depth: usize,
+    /// When > 0, we're inside ${} in an f-string
+    fstring_brace_stack: Vec<usize>,
 }
 
 impl<'a> Scanner<'a> {
     #[must_use]
-    pub(super) const fn new(source: &'a [u8]) -> Self {
+    pub(super) fn new(source: &'a [u8]) -> Self {
         Self {
             source,
             start: 0,
             current: 0,
             line: Line(1),
             fstring_depth: 0,
+            fstring_brace_stack: Vec::new(),
         }
     }
 
@@ -172,8 +176,8 @@ impl<'a> Scanner<'a> {
     pub(super) fn scan(&mut self) -> Token<'a> {
         use TokenKind as TK;
         
-        // If we're inside an f-string, try to parse f-string content
-        if self.fstring_depth > 0 {
+        // If we're inside an f-string and not inside ${}, try to parse f-string content
+        if self.fstring_depth > 0 && self.fstring_brace_stack.is_empty() {
             if let Some(token) = self.scan_fstring_content() {
                 return token;
             }
@@ -189,8 +193,26 @@ impl<'a> Scanner<'a> {
                 b':' => TK::Colon,
                 b'(' => TK::LeftParen,
                 b')' => TK::RightParen,
-                b'{' => TK::LeftBrace,
-                b'}' => TK::RightBrace,
+                b'{' => {
+                    if self.fstring_depth > 0 && !self.fstring_brace_stack.is_empty() {
+                        // We're inside an f-string expression, increment brace depth
+                        let depth = self.fstring_brace_stack.last_mut().unwrap();
+                        *depth += 1;
+                    }
+                    TK::LeftBrace
+                }
+                b'}' => {
+                    if self.fstring_depth > 0 && !self.fstring_brace_stack.is_empty() {
+                        // We're closing a brace in an f-string
+                        let depth = self.fstring_brace_stack.last_mut().unwrap();
+                        *depth -= 1;
+                        if *depth == 0 {
+                            self.fstring_brace_stack.pop();
+                            // Now we should return to f-string scanning mode
+                        }
+                    }
+                    TK::RightBrace
+                }
                 b'[' => TK::LeftBracket,
                 b']' => TK::RightBracket,
                 b';' => TK::Semicolon,
@@ -303,6 +325,7 @@ impl<'a> Scanner<'a> {
                     }
                 }
                 b'"' => return self.string(),
+                b'$' => TK::Dollar,
                 c if c.is_ascii_digit() => return self.number(),
                 c if c.is_ascii_alphabetic() || c == &b'_' => return self.identifier(),
                 _ => return self.error_token("Unexpected character."),
@@ -557,16 +580,17 @@ impl<'a> Scanner<'a> {
     fn scan_fstring_content(&mut self) -> Option<Token<'a>> {
         self.start = self.current;
         
-        // Look for string content, ${, or closing "
+        // Scan for string content until we hit $, ", or EOF
+        let mut has_content = false;
         while let Some(&ch) = self.peek() {
             match ch {
                 b'"' => {
                     // End of f-string
-                    if self.current > self.start {
-                        // We have string content to return first
+                    if has_content {
+                        // Return string part first
                         return Some(self.make_token(TokenKind::StringPart));
                     } else {
-                        // Return the closing quote token
+                        // Return FStringEnd
                         self.advance(); // consume "
                         self.fstring_depth -= 1;
                         return Some(self.make_token(TokenKind::FStringEnd));
@@ -577,34 +601,41 @@ impl<'a> Scanner<'a> {
                     self.advance(); // consume \
                     if self.peek().is_some() {
                         self.advance(); // consume escaped character
+                        has_content = true;
                     }
                 }
                 b'$' => {
                     if self.peek_next() == Some(&b'{') {
-                        // Found interpolation
-                        if self.current > self.start {
-                            // Return string part before interpolation
+                        // Found interpolation start
+                        if has_content {
+                            // Return string part before ${
                             return Some(self.make_token(TokenKind::StringPart));
                         } else {
-                            // Start of interpolation - let normal tokenizer handle ${
+                            // No content before ${, so let normal scanner handle $ and {
+                            // Mark that we're starting an expression
+                            self.fstring_brace_stack.push(1);
                             return None;
                         }
                     } else {
+                        // Regular $ character
                         self.advance();
+                        has_content = true;
                     }
                 }
                 b'\n' => {
                     *self.line += 1;
                     self.advance();
+                    has_content = true;
                 }
                 _ => {
                     self.advance();
+                    has_content = true;
                 }
             }
         }
         
-        // Unterminated f-string
-        if self.current > self.start {
+        // EOF while in f-string
+        if has_content {
             Some(self.make_token(TokenKind::StringPart))
         } else {
             Some(self.error_token("Unterminated f-string."))
