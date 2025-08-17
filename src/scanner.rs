@@ -139,7 +139,6 @@ impl<'a> Token<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 enum ScannerMode {
     Base,       // Normal scanning mode
     FString,    // Inside f"..." but not in an expression
@@ -180,11 +179,7 @@ impl<'a> Scanner<'a> {
     pub(super) fn scan(&mut self) -> Token<'a> {
         match self.current_mode() {
             ScannerMode::Base => self.scan_base_mode(),
-            ScannerMode::FString => {
-                self.skip_whitespace_if_needed();
-                self.start = self.current;
-                self.scan_fstring_mode()
-            }
+            ScannerMode::FString => self.scan_fstring_mode(),
             ScannerMode::Expression => self.scan_expression_mode(),
         }
     }
@@ -206,13 +201,7 @@ impl<'a> Scanner<'a> {
                 b'(' => TK::LeftParen,
                 b')' => TK::RightParen,
                 b'{' => TK::LeftBrace,
-                b'}' => {
-                    // Check if we're in expression mode within f-string
-                    if self.current_mode() == ScannerMode::Expression {
-                        self.pop_mode(); // Back to f-string mode
-                    }
-                    TK::RightBrace
-                }
+                b'}' => TK::RightBrace,
                 b'[' => TK::LeftBracket,
                 b']' => TK::RightBracket,
                 b';' => TK::Semicolon,
@@ -347,26 +336,22 @@ impl<'a> Scanner<'a> {
         self.skip_whitespace();
         self.start = self.current;
 
-        let token_kind = match self.advance() {
-            None => TK::Eof,
-            Some(c) => {
-                if c == &b'}' {
-                    // End of expression, return to f-string mode
-                    self.pop_mode();
-                    TK::RightBrace
-                } else {
-                    // For all other characters, delegate to base mode logic
-                    // Reset position and scan as normal
-                    self.current -= 1;
-                    return self.scan_base_token();
-                }
+        // Check for closing brace specifically
+        if let Some(c) = self.peek() {
+            if c == &b'}' {
+                self.advance(); // consume '}'
+                self.pop_mode(); // Back to f-string mode
+                return self.make_token(TK::RightBrace);
             }
-        };
-        self.make_token(token_kind)
+        }
+
+        // For all other tokens, delegate to base mode logic
+        self.scan_base_token()
     }
 
     /// Scan in f-string mode (string content with interpolations)
     fn scan_fstring_mode(&mut self) -> Token<'a> {
+        // Don't skip whitespace in f-string mode - preserve it
         self.start = self.current;
 
         while let Some(c) = self.peek() {
@@ -564,12 +549,6 @@ impl<'a> Scanner<'a> {
     }
 
     /// Helper to skip whitespace only when needed (not in f-string mode)
-    fn skip_whitespace_if_needed(&mut self) {
-        if self.current_mode() != ScannerMode::FString {
-            self.skip_whitespace();
-        }
-    }
-
     fn advance(&mut self) -> Option<&u8> {
         self.current += 1;
         self.source.get(self.current - 1)

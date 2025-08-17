@@ -153,13 +153,8 @@ impl VM {
             .rev()
             .map(|index| {
                 let value = *self.peek(usize::from(index)).unwrap();
-                if let Value::String(string_id) = value {
-                    string_id.to_value(&self.heap).clone()
-                } else {
-                    // This should not happen if compiler correctly calls str() on expressions
-                    // Use direct conversion with panic as requested
-                    value.as_string().to_value(&self.heap).clone()
-                }
+                // All values should be strings from str() calls - panic if not
+                value.as_string().to_value(&self.heap).clone()
             })
             .collect();
 

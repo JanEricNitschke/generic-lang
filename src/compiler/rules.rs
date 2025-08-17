@@ -515,40 +515,34 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         let mut part_count = 0u8;
 
         // Process alternating string parts and expressions until we hit FStringEnd
-        while self.current.as_ref().map(|t| t.kind) != Some(TK::FStringEnd) {
-            match self.current.as_ref().map(|t| t.kind) {
-                Some(TK::StringPart) => {
-                    // Emit string part as constant
-                    self.advance();
-                    let lexeme = self.previous.as_ref().unwrap().as_str();
-                    let string_id = self.heap.string_id(&lexeme);
-                    self.emit_constant(string_id);
+        while !self.match_(TK::FStringEnd) {
+            if self.match_(TK::StringPart) {
+                // Emit string part as constant
+                let lexeme = self.previous.as_ref().unwrap().as_str();
+                let string_id = self.heap.string_id(&lexeme);
+                self.emit_constant(string_id);
+            } else if self.match_(TK::LeftBrace) {
+                // Expression interpolation - parse the expression
+
+                // First get the str function before parsing expression
+                let str_name = self.identifier_constant(&"str");
+                self.emit_byte(OpCode::GetGlobal, self.line());
+                if !self.emit_number(str_name.0, false) {
+                    self.error("Too many constants for str() function in f-string.");
                 }
-                Some(TK::LeftBrace) => {
-                    // Expression interpolation - parse the expression
-                    self.advance(); // consume '{'
 
-                    // First get the str function before parsing expression
-                    let str_name = self.identifier_constant(&"str");
-                    self.emit_byte(OpCode::GetGlobal, self.line());
-                    if !self.emit_number(str_name.0, false) {
-                        self.error("Too many constants for str() function in f-string.");
-                    }
+                // Now parse the expression (this leaves the result on top of str function)
+                self.expression();
 
-                    // Now parse the expression (this leaves the result on top of str function)
-                    self.expression();
+                // Call str() on the expression result
+                self.emit_byte(OpCode::Call, self.line());
+                self.emit_byte(1, self.line()); // 1 argument
 
-                    // Call str() on the expression result
-                    self.emit_byte(OpCode::Call, self.line());
-                    self.emit_byte(1, self.line()); // 1 argument
-
-                    // Expect closing brace - this should be handled by scanner
-                    self.consume(TK::RightBrace, "Expect '}' after interpolated expression.");
-                }
-                _ => {
-                    self.error("Unexpected token in f-string.");
-                    break;
-                }
+                // Expect closing brace - this should be handled by scanner
+                self.consume(TK::RightBrace, "Expect '}' after interpolated expression.");
+            } else {
+                self.error("Unexpected token in f-string.");
+                break;
             }
 
             // Increment and check part count after processing each part
@@ -557,11 +551,6 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 self.error("Too many parts in f-string.");
                 break;
             }
-        }
-
-        // Consume the FStringEnd token
-        if self.current.as_ref().map(|t| t.kind) == Some(TK::FStringEnd) {
-            self.advance();
         }
 
         // Emit BuildFString instruction with part count using emit_bytes
