@@ -1,0 +1,23 @@
+# Basic f-string interpolation tests
+
+# Simple interpolation
+var name = "Alice";
+print(f"Hello, ${name}!"); # expect: Hello, Alice!
+
+# Multiple interpolations  
+var age = 25;
+print(f"${name} is ${age} years old"); # expect: Alice is 25 years old
+
+# Escaping
+print(f"Price: \${age} dollars"); # expect: Price: \${age} dollars
+
+# F-string without interpolation
+print(f"Just a string"); # expect: Just a string
+
+# Expression interpolation
+print(f"2 + 3 = ${2 + 3}"); # expect: 2 + 3 = 5
+
+# Complex expression
+var x = 10;
+var y = 20;
+print(f"${x} * ${y} = ${x * y}"); # expect: 10 * 20 = 200

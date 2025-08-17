@@ -513,7 +513,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// F-strings are sequences of string parts and expressions that get concatenated.
     fn fstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let mut part_count = 0u8;
-        
+
         // Process alternating string parts and expressions
         loop {
             match self.current.as_ref().map(|t| t.kind) {
@@ -524,7 +524,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                     let string_id = self.heap.string_id(&lexeme);
                     self.emit_constant(string_id);
                     part_count += 1;
-                    
+
                     if part_count == 255 {
                         self.error("Too many parts in f-string.");
                         break;
@@ -534,7 +534,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                     // Expression interpolation - parse the expression
                     self.advance(); // consume '{'
                     self.expression(); // Parse the expression
-                    
+
                     // Call str() on the result to convert to string
                     // First get the str function
                     let str_name = self.identifier_constant(&"str");
@@ -548,13 +548,13 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                     self.emit_byte(OpCode::Swap, self.line());
                     self.emit_byte(OpCode::Call, self.line());
                     self.emit_byte(1, self.line()); // 1 argument
-                    
+
                     part_count += 1;
                     if part_count == 255 {
                         self.error("Too many parts in f-string.");
                         break;
                     }
-                    
+
                     // Expect closing brace - this should be handled by scanner
                     self.consume(TK::RightBrace, "Expect '}' after interpolated expression.");
                 }
@@ -569,7 +569,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 }
             }
         }
-        
+
         // Emit BuildFString instruction with part count
         self.emit_byte(OpCode::BuildFString, self.line());
         self.emit_byte(part_count, self.line());

@@ -141,8 +141,8 @@ impl<'a> Token<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 enum ScannerMode {
-    Base,      // Normal scanning mode
-    FString,   // Inside f"..." but not in an expression
+    Base,       // Normal scanning mode
+    FString,    // Inside f"..." but not in an expression
     Expression, // Inside ${...} within an f-string
 }
 
@@ -180,13 +180,15 @@ impl<'a> Scanner<'a> {
     #[allow(clippy::too_many_lines)]
     pub(super) fn scan(&mut self) -> Token<'a> {
         use TokenKind as TK;
-        self.skip_whitespace();
-        self.start = self.current;
 
-        // Handle f-string content mode
+        // Handle f-string content mode (don't skip whitespace in f-strings)
         if self.current_mode() == ScannerMode::FString {
+            self.start = self.current;
             return self.fstring_content();
         }
+
+        self.skip_whitespace();
+        self.start = self.current;
 
         let token_kind = match self.advance() {
             None => TK::Eof,
@@ -581,7 +583,7 @@ impl<'a> Scanner<'a> {
     fn fstring_content(&mut self) -> Token<'a> {
         // Set start position for this token
         self.start = self.current;
-        
+
         while let Some(c) = self.peek() {
             match c {
                 b'"' => {
@@ -621,6 +623,7 @@ impl<'a> Scanner<'a> {
                         } else {
                             // No content, handle the ${ as start of expression
                             self.advance(); // consume '$'
+                            self.start = self.current; // start at the '{'
                             self.advance(); // consume '{'
                             self.push_mode(ScannerMode::Expression);
                             return self.make_token(TokenKind::LeftBrace);

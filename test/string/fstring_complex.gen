@@ -1,0 +1,14 @@
+# Test nested f-strings and complex expressions
+var name = "World";
+var items = [1, 2, 3];
+
+# Nested function calls
+print(f"Length: ${len(items)}"); # expect: Length: 3
+
+# Complex arithmetic  
+var x = 5;
+var y = 3;
+print(f"${x} + ${y} = ${x + y}, ${x} * ${y} = ${x * y}"); # expect: 5 + 3 = 8, 5 * 3 = 15
+
+# String interpolation at start and end
+print(f"${name}!!! Welcome to ${name} programming!"); # expect: World!!! Welcome to World programming!
