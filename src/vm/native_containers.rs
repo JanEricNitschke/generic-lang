@@ -150,7 +150,7 @@ impl VM {
     /// Parts are on the stack as strings in order from left to right.
     pub(crate) fn build_fstring(&mut self) {
         let part_count = self.read_byte();
-        
+
         if part_count == 0 {
             // Empty f-string
             let empty_string_id = self.heap.string_id(&String::new());
@@ -161,7 +161,9 @@ impl VM {
         // Collect all parts from the stack (they are already strings)
         let mut parts = Vec::new();
         for index in (0..part_count).rev() {
-            let part_value = *self.peek(usize::from(index)).expect("Stack underflow in BuildFString");
+            let part_value = *self
+                .peek(usize::from(index))
+                .expect("Stack underflow in BuildFString");
             match part_value {
                 Value::String(string_id) => {
                     let part_str = string_id.to_value(&self.heap);
