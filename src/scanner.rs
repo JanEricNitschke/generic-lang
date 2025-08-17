@@ -150,19 +150,22 @@ pub struct Scanner<'a> {
     /// Stack to track f-string nesting depth
     fstring_depth: usize,
     /// When > 0, we're inside ${} in an f-string
-    fstring_brace_stack: Vec<usize>,
+    fstring_brace_depth: usize,
+    /// Flag to indicate we just started processing ${
+    just_started_fstring_expr: bool,
 }
 
 impl<'a> Scanner<'a> {
     #[must_use]
-    pub(super) fn new(source: &'a [u8]) -> Self {
+    pub(super) const fn new(source: &'a [u8]) -> Self {
         Self {
             source,
             start: 0,
             current: 0,
             line: Line(1),
             fstring_depth: 0,
-            fstring_brace_stack: Vec::new(),
+            fstring_brace_depth: 0,
+            just_started_fstring_expr: false,
         }
     }
 
@@ -176,8 +179,13 @@ impl<'a> Scanner<'a> {
     pub(super) fn scan(&mut self) -> Token<'a> {
         use TokenKind as TK;
         
-        // If we're inside an f-string and not inside ${}, try to parse f-string content
-        if self.fstring_depth > 0 && self.fstring_brace_stack.is_empty() {
+        // Reset the flag at the start of each scan
+        let just_started_expr = self.just_started_fstring_expr;
+        self.just_started_fstring_expr = false;
+        
+        // If we're inside an f-string and not inside ${} (and didn't just start ${), 
+        // try to parse f-string content
+        if self.fstring_depth > 0 && self.fstring_brace_depth == 0 && !just_started_expr {
             if let Some(token) = self.scan_fstring_content() {
                 return token;
             }
@@ -194,22 +202,14 @@ impl<'a> Scanner<'a> {
                 b'(' => TK::LeftParen,
                 b')' => TK::RightParen,
                 b'{' => {
-                    if self.fstring_depth > 0 && !self.fstring_brace_stack.is_empty() {
-                        // We're inside an f-string expression, increment brace depth
-                        let depth = self.fstring_brace_stack.last_mut().unwrap();
-                        *depth += 1;
+                    if self.fstring_depth > 0 {
+                        self.fstring_brace_depth += 1;
                     }
                     TK::LeftBrace
                 }
                 b'}' => {
-                    if self.fstring_depth > 0 && !self.fstring_brace_stack.is_empty() {
-                        // We're closing a brace in an f-string
-                        let depth = self.fstring_brace_stack.last_mut().unwrap();
-                        *depth -= 1;
-                        if *depth == 0 {
-                            self.fstring_brace_stack.pop();
-                            // Now we should return to f-string scanning mode
-                        }
+                    if self.fstring_depth > 0 && self.fstring_brace_depth > 0 {
+                        self.fstring_brace_depth -= 1;
                     }
                     TK::RightBrace
                 }
@@ -597,10 +597,26 @@ impl<'a> Scanner<'a> {
                     }
                 }
                 b'\\' => {
-                    // Handle escape sequences
-                    self.advance(); // consume \
-                    if self.peek().is_some() {
-                        self.advance(); // consume escaped character
+                    // Handle escape sequences - look ahead to see what we're escaping
+                    if let Some(&next_char) = self.peek() {
+                        self.advance(); // consume \
+                        match next_char {
+                            b'$' => {
+                                // Escaping $, consume the $ as well, treat as literal
+                                self.advance(); // consume $
+                                has_content = true;
+                                // Continue scanning without treating $ as special
+                                continue;
+                            }
+                            _ => {
+                                // Other escape sequences, consume the next character
+                                self.advance(); // consume next character
+                                has_content = true;
+                            }
+                        }
+                    } else {
+                        // Backslash at end of input
+                        self.advance();
                         has_content = true;
                     }
                 }
@@ -612,8 +628,8 @@ impl<'a> Scanner<'a> {
                             return Some(self.make_token(TokenKind::StringPart));
                         } else {
                             // No content before ${, so let normal scanner handle $ and {
-                            // Mark that we're starting an expression
-                            self.fstring_brace_stack.push(1);
+                            // Set flag to prevent calling scan_fstring_content on next scan()
+                            self.just_started_fstring_expr = true;
                             return None;
                         }
                     } else {

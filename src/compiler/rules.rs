@@ -539,11 +539,6 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 // Parse the expression
                 self.expression();
                 
-                // Emit str() call to convert expression result to string
-                let str_name = self.heap.string_id(&"str");
-                self.emit_constant(str_name);
-                self.emit_bytes(OpCode::Call, 1, self.line());
-                
                 part_count += 1;
                 
                 if !self.match_(TK::RightBrace) {
