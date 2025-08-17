@@ -164,13 +164,6 @@ impl<'scanner> Compiler<'scanner, '_> {
         }
     }
 
-    #[allow(dead_code)]
-    pub(super) fn emit_call_str(&mut self) {
-        let str_name = self.heap.string_id(&"str");
-        self.emit_constant(str_name);
-        self.emit_bytes(OpCode::Call, 1, self.line()); // Call str() with 1 argument
-    }
-
     pub(super) fn emit_buildfstring(&mut self, part_count: u8) {
         self.emit_bytes(OpCode::BuildFString, part_count, self.line());
     }

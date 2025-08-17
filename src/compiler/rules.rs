@@ -10,12 +10,6 @@ use crate::chunk::OpCode;
 use crate::config::LAMBDA_NAME;
 use crate::scanner::TokenKind as TK;
 
-#[derive(Debug, Clone)]
-enum FStringPart {
-    Text(String),
-    Expression(String),
-}
-
 // The precedence of the different operators in the language
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
@@ -516,132 +510,84 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
 
     /// Parse an f-string literal with interpolation support
     fn fstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
-        let lexeme = self.previous.as_ref().unwrap().as_str();
-
-        // Remove f" and " to get the content
-        let content = &lexeme[2..lexeme.len() - 1];
-
-        // Parse the content for interpolations
-        let parts = self.parse_fstring_content(content);
-
-        // If no interpolations, just emit as a regular string
-        if parts.len() == 1 && matches!(parts[0], FStringPart::Text(_)) {
-            if let FStringPart::Text(text) = &parts[0] {
-                let string_id = self.heap.string_id(text);
-                self.emit_constant(string_id);
-            }
-            return;
-        }
-
-        // Emit each part
-        for part in &parts {
-            match part {
-                FStringPart::Text(text) => {
-                    let string_id = self.heap.string_id(text);
+        let mut parts = Vec::new();
+        
+        // Process f-string tokens until we reach FStringEnd
+        loop {
+            self.advance();
+            
+            match self.current.as_ref().unwrap().kind {
+                TK::StringPart => {
+                    // Add string part
+                    let lexeme = self.current.as_ref().unwrap().as_str();
+                    let value = self.unescape_fstring_content(lexeme);
+                    let string_id = self.heap.string_id(&value);
                     self.emit_constant(string_id);
+                    parts.push(());
                 }
-                FStringPart::Expression(expr) => {
-                    // Parse and compile the expression
-                    self.compile_fstring_expression(expr);
+                TK::LeftBrace if self.peek_token().kind == TK::Dollar => {
+                    // Skip ${, parse expression, and emit str() call
+                    self.advance(); // consume {
+                    self.advance(); // consume $
+                    
+                    // Parse the expression inside ${}
+                    self.expression();
+                    
+                    // Emit call to str() function
+                    let str_name = self.heap.string_id(&"str");
+                    self.emit_constant(str_name);
+                    self.emit_bytes(OpCode::Call, 1, self.line());
+                    
+                    // Expect closing }
+                    if !self.match_token(TK::RightBrace) {
+                        self.error_at_current("Expected '}' after f-string expression.");
+                        return;
+                    }
+                    
+                    parts.push(());
+                }
+                TK::FStringEnd => {
+                    break;
+                }
+                _ => {
+                    // Regular tokens inside expressions - should be handled by normal parsing
+                    return;
                 }
             }
         }
 
-        // Emit BuildFString instruction
+        // Emit BuildFString instruction with part count
+        if parts.len() > 255 {
+            self.error("Too many parts in f-string.");
+        }
         self.emit_buildfstring(parts.len() as u8);
     }
 
-    /// Parse f-string content into text and expression parts
-    fn parse_fstring_content(&self, content: &str) -> Vec<FStringPart> {
-        let mut parts = Vec::new();
-        let mut current_text = String::new();
-        let mut chars = content.char_indices().peekable();
-
-        while let Some((_i, ch)) = chars.next() {
-            match ch {
-                '\\' => {
-                    // Handle escape sequences
-                    if let Some((_, next_ch)) = chars.peek() {
-                        if *next_ch == '$' {
-                            // Escaped $ - add just the $ to prevent interpolation
-                            current_text.push('$');
-                            chars.next(); // consume the $
-                        } else {
-                            // Other escape, keep the backslash for normal string processing
-                            current_text.push(ch);
+    /// Unescape f-string content (handle \\$ sequences)
+    fn unescape_fstring_content(&self, content: &str) -> String {
+        let mut result = String::new();
+        let mut chars = content.chars();
+        
+        while let Some(ch) = chars.next() {
+            if ch == '\\' {
+                if let Some(next_ch) = chars.next() {
+                    match next_ch {
+                        '$' => result.push('$'), // \$ -> $
+                        '\\' => result.push('\\'), // \\ -> \
+                        _ => {
+                            result.push('\\');
+                            result.push(next_ch);
                         }
-                    } else {
-                        current_text.push(ch);
                     }
+                } else {
+                    result.push('\\');
                 }
-                '$' => {
-                    if let Some((_, '{')) = chars.peek() {
-                        chars.next(); // consume '{'
-
-                        // Save current text as a part
-                        if !current_text.is_empty() {
-                            parts.push(FStringPart::Text(current_text.clone()));
-                            current_text.clear();
-                        }
-
-                        // Extract expression until matching '}'
-                        let mut expr = String::new();
-                        let mut brace_count = 1;
-
-                        for (_, ch) in chars.by_ref() {
-                            if ch == '{' {
-                                brace_count += 1;
-                            } else if ch == '}' {
-                                brace_count -= 1;
-                                if brace_count == 0 {
-                                    break;
-                                }
-                            }
-                            expr.push(ch);
-                        }
-
-                        if brace_count != 0 {
-                            // Unmatched braces, treat as regular text
-                            current_text.push_str("${");
-                            current_text.push_str(&expr);
-                        } else {
-                            parts.push(FStringPart::Expression(expr));
-                        }
-                    } else {
-                        current_text.push(ch);
-                    }
-                }
-                _ => {
-                    current_text.push(ch);
-                }
+            } else {
+                result.push(ch);
             }
         }
-
-        // Add remaining text
-        if !current_text.is_empty() {
-            parts.push(FStringPart::Text(current_text));
-        }
-
-        if parts.is_empty() {
-            parts.push(FStringPart::Text(String::new()));
-        }
-
-        parts
-    }
-
-    /// Compile an f-string expression
-    fn compile_fstring_expression(&mut self, expr: &str) {
-        // For now, handle simple variable references
-        if expr.chars().all(|c| c.is_alphanumeric() || c == '_') && !expr.is_empty() {
-            // Simple identifier - use the named_variable mechanism
-            self.named_variable(&expr.to_string(), false);
-            // No need to call str() - the VM will handle conversion
-        } else {
-            // For more complex expressions, we'd need a full expression parser
-            // For now, just emit the expression as a string literal
-            let string_id = self.heap.string_id(&format!("${{{}}}", expr));
-            self.emit_constant(string_id);
-        }
+        
+        result
     }
 
     /// Parse a list literal ([a, b, c(,)])

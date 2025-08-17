@@ -146,6 +146,8 @@ pub struct Scanner<'a> {
     /// Always points at the next character to be consumed.
     current: usize,
     line: Line,
+    /// Stack to track f-string nesting depth
+    fstring_depth: usize,
 }
 
 impl<'a> Scanner<'a> {
@@ -156,6 +158,7 @@ impl<'a> Scanner<'a> {
             start: 0,
             current: 0,
             line: Line(1),
+            fstring_depth: 0,
         }
     }
 
@@ -168,6 +171,14 @@ impl<'a> Scanner<'a> {
     #[allow(clippy::too_many_lines)]
     pub(super) fn scan(&mut self) -> Token<'a> {
         use TokenKind as TK;
+        
+        // If we're inside an f-string, try to parse f-string content
+        if self.fstring_depth > 0 {
+            if let Some(token) = self.scan_fstring_content() {
+                return token;
+            }
+        }
+        
         self.skip_whitespace();
         self.start = self.current;
         let token_kind = match self.advance() {
@@ -389,8 +400,9 @@ impl<'a> Scanner<'a> {
         // Check for f-string
         let lexeme = &self.source[self.start..self.current];
         if lexeme == b"f" && self.peek() == Some(&b'"') {
-            // This is an f-string, consume it
-            return self.fstring();
+            // This is an f-string start
+            self.advance(); // consume the "
+            return self.fstring_start();
         }
 
         let token_kind = self.identifier_type();
@@ -533,23 +545,70 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    /// Simple f-string parsing - consume f"..." as a single token
-    fn fstring(&mut self) -> Token<'a> {
-        // Consume the opening quote
-        self.advance(); // consume "
-
-        // Scan like a regular string but return FStringStart token
-        while self.peek().is_some_and(|c| c != &b'"') {
-            if self.peek() == Some(&b'\n') {
-                *self.line += 1;
-            }
-            self.advance();
-        }
-
-        if !self.match_(b'"') {
-            return self.error_token("Unterminated f-string.");
-        }
-
+    /// Handle f-string start after detecting f"
+    fn fstring_start(&mut self) -> Token<'a> {
+        self.fstring_depth += 1;
+        // Reset start position to just include the f" part
+        self.start = self.current - 2; // f"
         self.make_token(TokenKind::FStringStart)
     }
+
+    /// Scan f-string content when inside an f-string
+    fn scan_fstring_content(&mut self) -> Option<Token<'a>> {
+        self.start = self.current;
+        
+        // Look for string content, ${, or closing "
+        while let Some(&ch) = self.peek() {
+            match ch {
+                b'"' => {
+                    // End of f-string
+                    if self.current > self.start {
+                        // We have string content to return first
+                        return Some(self.make_token(TokenKind::StringPart));
+                    } else {
+                        // Return the closing quote token
+                        self.advance(); // consume "
+                        self.fstring_depth -= 1;
+                        return Some(self.make_token(TokenKind::FStringEnd));
+                    }
+                }
+                b'\\' => {
+                    // Handle escape sequences
+                    self.advance(); // consume \
+                    if self.peek().is_some() {
+                        self.advance(); // consume escaped character
+                    }
+                }
+                b'$' => {
+                    if self.peek_next() == Some(&b'{') {
+                        // Found interpolation
+                        if self.current > self.start {
+                            // Return string part before interpolation
+                            return Some(self.make_token(TokenKind::StringPart));
+                        } else {
+                            // Start of interpolation - let normal tokenizer handle ${
+                            return None;
+                        }
+                    } else {
+                        self.advance();
+                    }
+                }
+                b'\n' => {
+                    *self.line += 1;
+                    self.advance();
+                }
+                _ => {
+                    self.advance();
+                }
+            }
+        }
+        
+        // Unterminated f-string
+        if self.current > self.start {
+            Some(self.make_token(TokenKind::StringPart))
+        } else {
+            Some(self.error_token("Unterminated f-string."))
+        }
+    }
+
 }
