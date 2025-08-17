@@ -155,7 +155,6 @@ pub struct Scanner<'a> {
     current: usize,
     line: Line,
     /// Stack of scanning modes for handling f-string interpolation
-    #[allow(dead_code)]
     mode_stack: Vec<ScannerMode>,
 }
 
@@ -179,13 +178,21 @@ impl<'a> Scanner<'a> {
     /// Uses a trie strategy to identify tokens.
     #[allow(clippy::too_many_lines)]
     pub(super) fn scan(&mut self) -> Token<'a> {
-        use TokenKind as TK;
-
-        // Handle f-string content mode (don't skip whitespace in f-strings)
-        if self.current_mode() == ScannerMode::FString {
-            self.start = self.current;
-            return self.fstring_content();
+        match self.current_mode() {
+            ScannerMode::Base => self.scan_base_mode(),
+            ScannerMode::FString => {
+                self.skip_whitespace_if_needed();
+                self.start = self.current;
+                self.scan_fstring_mode()
+            }
+            ScannerMode::Expression => self.scan_expression_mode(),
         }
+    }
+
+    /// Scan in base mode (normal code)
+    #[allow(clippy::too_many_lines)]
+    fn scan_base_mode(&mut self) -> Token<'a> {
+        use TokenKind as TK;
 
         self.skip_whitespace();
         self.start = self.current;
@@ -331,6 +338,236 @@ impl<'a> Scanner<'a> {
             },
         };
         self.make_token(token_kind)
+    }
+
+    /// Scan in expression mode (inside ${...} in f-strings)
+    fn scan_expression_mode(&mut self) -> Token<'a> {
+        use TokenKind as TK;
+
+        self.skip_whitespace();
+        self.start = self.current;
+
+        let token_kind = match self.advance() {
+            None => TK::Eof,
+            Some(c) => {
+                if c == &b'}' {
+                    // End of expression, return to f-string mode
+                    self.pop_mode();
+                    TK::RightBrace
+                } else {
+                    // For all other characters, delegate to base mode logic
+                    // Reset position and scan as normal
+                    self.current -= 1;
+                    return self.scan_base_token();
+                }
+            }
+        };
+        self.make_token(token_kind)
+    }
+
+    /// Scan in f-string mode (string content with interpolations)
+    fn scan_fstring_mode(&mut self) -> Token<'a> {
+        self.start = self.current;
+
+        while let Some(c) = self.peek() {
+            match c {
+                b'"' => {
+                    // End of f-string - check if we have content
+                    if self.current > self.start {
+                        // We have string content to return
+                        return self.make_token(TokenKind::StringPart);
+                    }
+                    // No content, this is the end
+                    self.advance(); // consume '"'
+                    self.pop_mode(); // Exit f-string mode
+                    return self.make_token(TokenKind::FStringEnd);
+                }
+                b'\\' => {
+                    // Regular backslash character, no special handling
+                    self.advance();
+                }
+                b'$' => {
+                    // Check for interpolation start
+                    let next_pos = self.current + 1;
+                    if self.source.get(next_pos) == Some(&b'{') {
+                        // Found interpolation start ${
+                        if self.current > self.start {
+                            // We have string content before the interpolation
+                            return self.make_token(TokenKind::StringPart);
+                        }
+                        // No content, handle the ${ as start of expression
+                        self.advance(); // consume '$'
+                        self.start = self.current; // start at the '{'
+                        self.advance(); // consume '{'
+                        self.push_mode(ScannerMode::Expression);
+                        return self.make_token(TokenKind::LeftBrace);
+                    }
+                    // Regular '$' character
+                    self.advance();
+                }
+                b'\n' => {
+                    *self.line += 1;
+                    self.advance();
+                }
+                _ => {
+                    self.advance();
+                }
+            }
+        }
+
+        // End of input reached
+        if self.current > self.start {
+            self.make_token(TokenKind::StringPart)
+        } else {
+            self.error_token("Unterminated f-string.")
+        }
+    }
+
+    /// Helper to scan a token using base mode logic (reused by expression mode)
+    #[allow(clippy::too_many_lines)]
+    fn scan_base_token(&mut self) -> Token<'a> {
+        use TokenKind as TK;
+
+        self.skip_whitespace();
+        self.start = self.current;
+
+        let token_kind = match self.advance() {
+            None => TK::Eof,
+            Some(c) => match c {
+                b'\'' => TK::Apostrophe,
+                b'?' => TK::QuestionMark,
+                b':' => TK::Colon,
+                b'(' => TK::LeftParen,
+                b')' => TK::RightParen,
+                b'{' => TK::LeftBrace,
+                b'}' => TK::RightBrace,
+                b'[' => TK::LeftBracket,
+                b']' => TK::RightBracket,
+                b';' => TK::Semicolon,
+                b',' => TK::Comma,
+                b'.' => {
+                    // Check for range operators ..= and ..<
+                    if self.match_(b'.') {
+                        if self.match_(b'=') {
+                            TK::DotDotEqual
+                        } else if self.match_(b'<') {
+                            TK::DotDotLess
+                        } else {
+                            // This is an error - we've consumed two dots but can't make a valid token
+                            return self
+                                .error_token("Invalid token '..' - expected '..=' or '..<'");
+                        }
+                    } else {
+                        TK::Dot
+                    }
+                }
+                b'+' => {
+                    if self.match_(b'=') {
+                        TK::PlusEqual
+                    } else {
+                        TK::Plus
+                    }
+                }
+                b'-' => {
+                    if self.match_(b'=') {
+                        TK::MinusEqual
+                    } else {
+                        TK::Minus
+                    }
+                }
+                b'*' => {
+                    if self.match_(b'=') {
+                        TK::StarEqual
+                    } else {
+                        TK::Star
+                    }
+                }
+                b'/' => {
+                    if self.match_(b'=') {
+                        TK::SlashEqual
+                    } else {
+                        TK::Slash
+                    }
+                }
+                b'%' => {
+                    if self.match_(b'=') {
+                        TK::PercentEqual
+                    } else {
+                        TK::Percent
+                    }
+                }
+                b'!' => {
+                    if self.match_(b'=') {
+                        TK::BangEqual
+                    } else {
+                        TK::Bang
+                    }
+                }
+                b'<' => {
+                    if self.match_(b'=') {
+                        TK::LessEqual
+                    } else {
+                        TK::Less
+                    }
+                }
+                b'>' => {
+                    if self.match_(b'=') {
+                        TK::GreaterEqual
+                    } else {
+                        TK::Greater
+                    }
+                }
+                b'=' => {
+                    if self.match_(b'=') {
+                        TK::EqualEqual
+                    } else {
+                        TK::Equal
+                    }
+                }
+                b'&' => {
+                    if self.match_(b'&') {
+                        TK::And
+                    } else {
+                        return self.error_token("Unexpected character.");
+                    }
+                }
+                b'|' => {
+                    if self.match_(b'|') {
+                        TK::Or
+                    } else {
+                        return self.error_token("Unexpected character.");
+                    }
+                }
+                b'"' => return self.string(),
+                c if c.is_ascii_digit() => return self.number(),
+                b'f' => {
+                    // Check for f-string literal
+                    if self.match_(b'"') {
+                        return self.fstring_start();
+                    }
+                    // Regular identifier starting with 'f'
+                    return self.identifier();
+                }
+                c if c.is_ascii_alphabetic() || *c == b'_' => {
+                    while let Some(&c) = self.peek() {
+                        if !c.is_ascii_alphanumeric() && c != b'_' {
+                            break;
+                        }
+                        self.advance();
+                    }
+                    return self.identifier();
+                }
+                _ => return self.error_token("Unexpected character."),
+            },
+        };
+        self.make_token(token_kind)
+    }
+
+    /// Helper to skip whitespace only when needed (not in f-string mode)
+    fn skip_whitespace_if_needed(&mut self) {
+        if self.current_mode() != ScannerMode::FString {
+            self.skip_whitespace();
+        }
     }
 
     fn advance(&mut self) -> Option<&u8> {
@@ -560,7 +797,7 @@ impl<'a> Scanner<'a> {
 
     /// Get the current scanning mode
     fn current_mode(&self) -> ScannerMode {
-        *self.mode_stack.last().unwrap_or(&ScannerMode::Base)
+        *self.mode_stack.last().unwrap()
     }
 
     /// Push a new scanning mode onto the stack
@@ -570,84 +807,12 @@ impl<'a> Scanner<'a> {
 
     /// Pop the current scanning mode from the stack
     fn pop_mode(&mut self) -> ScannerMode {
-        self.mode_stack.pop().unwrap_or(ScannerMode::Base)
+        self.mode_stack.pop().unwrap()
     }
 
     /// Scan an f-string start token (f")
     fn fstring_start(&mut self) -> Token<'a> {
         self.push_mode(ScannerMode::FString);
         self.make_token(TokenKind::FStringStart)
-    }
-
-    /// Scan string content within an f-string, handling interpolations
-    fn fstring_content(&mut self) -> Token<'a> {
-        // Set start position for this token
-        self.start = self.current;
-
-        while let Some(c) = self.peek() {
-            match c {
-                b'"' => {
-                    // End of f-string - check if we have content
-                    if self.current > self.start {
-                        // We have string content to return
-                        return self.make_token(TokenKind::StringPart);
-                    } else {
-                        // No content, this is the end
-                        self.advance(); // consume '"'
-                        self.pop_mode(); // Exit f-string mode
-                        return self.make_token(TokenKind::FStringEnd);
-                    }
-                }
-                b'\\' => {
-                    // Handle escaping - consume the backslash and next character
-                    self.advance(); // consume '\'
-                    if let Some(next) = self.peek() {
-                        if *next == b'$' || *next == b'"' {
-                            self.advance(); // consume the escaped character
-                        } else {
-                            // Regular escape sequence, advance normally
-                            self.advance();
-                        }
-                    } else {
-                        return self.error_token("Unterminated escape sequence in f-string.");
-                    }
-                }
-                b'$' => {
-                    // Check for interpolation start
-                    let next_pos = self.current + 1;
-                    if self.source.get(next_pos) == Some(&b'{') {
-                        // Found interpolation start ${
-                        if self.current > self.start {
-                            // We have string content before the interpolation
-                            return self.make_token(TokenKind::StringPart);
-                        } else {
-                            // No content, handle the ${ as start of expression
-                            self.advance(); // consume '$'
-                            self.start = self.current; // start at the '{'
-                            self.advance(); // consume '{'
-                            self.push_mode(ScannerMode::Expression);
-                            return self.make_token(TokenKind::LeftBrace);
-                        }
-                    } else {
-                        // Regular '$' character
-                        self.advance();
-                    }
-                }
-                b'\n' => {
-                    *self.line += 1;
-                    self.advance();
-                }
-                _ => {
-                    self.advance();
-                }
-            }
-        }
-
-        // End of input reached
-        if self.current > self.start {
-            self.make_token(TokenKind::StringPart)
-        } else {
-            self.error_token("Unterminated f-string.")
-        }
     }
 }

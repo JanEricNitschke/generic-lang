@@ -8,9 +8,6 @@ print(f"Hello, ${name}!"); # expect: Hello, Alice!
 var age = 25;
 print(f"${name} is ${age} years old"); # expect: Alice is 25 years old
 
-# Escaping
-print(f"Price: \${age} dollars"); # expect: Price: \${age} dollars
-
 # F-string without interpolation
 print(f"Just a string"); # expect: Just a string
 

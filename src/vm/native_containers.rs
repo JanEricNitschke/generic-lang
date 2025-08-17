@@ -147,27 +147,28 @@ impl VM {
 
     pub(crate) fn build_fstring(&mut self) {
         let arg_count = self.read_byte();
-        // Pop all string parts and concatenate them
-        let mut parts = Vec::with_capacity(usize::from(arg_count));
 
-        // Collect in reverse order since we're popping from stack
-        for _ in 0..arg_count {
-            let value = self
-                .stack
-                .pop()
-                .expect("Stack underflow in OP_BUILD_FSTRING");
-            if let Value::String(string_id) = value {
-                parts.push(string_id.to_value(&self.heap).to_string());
-            } else {
-                // This should not happen if compiler correctly calls str() on expressions
-                parts.push(value.to_string(&self.heap));
-            }
-        }
+        // Collect string parts using peek (like list/set/dict) instead of individual pops
+        let parts: Vec<String> = (0..arg_count)
+            .rev()
+            .map(|index| {
+                let value = *self.peek(usize::from(index)).unwrap();
+                if let Value::String(string_id) = value {
+                    string_id.to_value(&self.heap).clone()
+                } else {
+                    // This should not happen if compiler correctly calls str() on expressions
+                    // Use direct conversion with panic as requested
+                    value.as_string().to_value(&self.heap).clone()
+                }
+            })
+            .collect();
 
-        // Reverse to get correct order
-        parts.reverse();
+        // Pop all items from stack at once
+        self.stack
+            .truncate(self.stack.len() - usize::from(arg_count));
+
         let result = parts.join("");
         let result_id = self.heap.string_id(&result);
-        self.stack_push_value(Value::String(result_id));
+        self.stack_push_value(result_id.into());
     }
 }

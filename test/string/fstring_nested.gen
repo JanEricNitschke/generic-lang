@@ -1,0 +1,10 @@
+# Test nested interpolations in f-strings
+
+# Nested with expressions  
+var x = 5;
+var y = 10;
+print(f"Outer: ${f"Inner: ${x + y}"}"); # expect: Outer: Inner: 15
+
+# Multiple levels
+var name = "World";
+print(f"Hello ${f"${name}"}!"); # expect: Hello World!
