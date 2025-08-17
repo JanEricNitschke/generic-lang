@@ -144,4 +144,27 @@ impl VM {
         self.stack_push_value(instance_value);
         None
     }
+
+    pub(crate) fn build_fstring(&mut self) {
+        let arg_count = self.read_byte();
+        // Pop all string parts and concatenate them
+        let mut parts = Vec::with_capacity(usize::from(arg_count));
+        
+        // Collect in reverse order since we're popping from stack
+        for _ in 0..arg_count {
+            let value = self.stack.pop().expect("Stack underflow in OP_BUILD_FSTRING");
+            if let Value::String(string_id) = value {
+                parts.push(string_id.to_value(&self.heap).to_string());
+            } else {
+                // This should not happen if compiler correctly calls str() on expressions
+                parts.push(value.to_string(&self.heap));
+            }
+        }
+        
+        // Reverse to get correct order
+        parts.reverse();
+        let result = parts.join("");
+        let result_id = self.heap.string_id(&result);
+        self.stack_push_value(Value::String(result_id));
+    }
 }

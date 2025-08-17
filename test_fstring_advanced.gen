@@ -1,0 +1,9 @@
+var name = "Alice";
+var age = 25;
+print(f"Name: ${name}, Age: ${age}");
+
+# Test escaping
+print(f"Price: \${age}");
+
+# Test multiple interpolations
+print(f"${name} is ${age} years old");

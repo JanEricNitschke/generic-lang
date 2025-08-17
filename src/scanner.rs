@@ -53,6 +53,9 @@ pub enum TokenKind {
     // Literals.
     Identifier,
     String,
+    FStringStart,
+    StringPart,
+    FStringEnd,
     Float,
     Integer,
     False,
@@ -135,6 +138,14 @@ impl<'a> Token<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+enum ScannerMode {
+    Base,      // Normal scanning mode
+    FString,   // Inside f"..." but not in an expression
+    Expression, // Inside ${...} within an f-string
+}
+
 /// Main struct for parsing the source characters to tokens.
 #[derive(Debug, Clone)]
 pub struct Scanner<'a> {
@@ -143,16 +154,20 @@ pub struct Scanner<'a> {
     /// Always points at the next character to be consumed.
     current: usize,
     line: Line,
+    /// Stack of scanning modes for handling f-string interpolation
+    #[allow(dead_code)]
+    mode_stack: Vec<ScannerMode>,
 }
 
 impl<'a> Scanner<'a> {
     #[must_use]
-    pub(super) const fn new(source: &'a [u8]) -> Self {
+    pub(super) fn new(source: &'a [u8]) -> Self {
         Self {
             source,
             start: 0,
             current: 0,
             line: Line(1),
+            mode_stack: vec![ScannerMode::Base],
         }
     }
 
@@ -167,6 +182,12 @@ impl<'a> Scanner<'a> {
         use TokenKind as TK;
         self.skip_whitespace();
         self.start = self.current;
+
+        // Handle f-string content mode
+        if self.current_mode() == ScannerMode::FString {
+            return self.fstring_content();
+        }
+
         let token_kind = match self.advance() {
             None => TK::Eof,
             Some(c) => match c {
@@ -176,7 +197,13 @@ impl<'a> Scanner<'a> {
                 b'(' => TK::LeftParen,
                 b')' => TK::RightParen,
                 b'{' => TK::LeftBrace,
-                b'}' => TK::RightBrace,
+                b'}' => {
+                    // Check if we're in expression mode within f-string
+                    if self.current_mode() == ScannerMode::Expression {
+                        self.pop_mode(); // Back to f-string mode
+                    }
+                    TK::RightBrace
+                }
                 b'[' => TK::LeftBracket,
                 b']' => TK::RightBracket,
                 b';' => TK::Semicolon,
@@ -290,7 +317,14 @@ impl<'a> Scanner<'a> {
                 }
                 b'"' => return self.string(),
                 c if c.is_ascii_digit() => return self.number(),
-                c if c.is_ascii_alphabetic() || c == &b'_' => return self.identifier(),
+                c if c.is_ascii_alphabetic() || c == &b'_' => {
+                    // Check for f-string prefix before processing as identifier
+                    if c == &b'f' && self.peek() == Some(&b'"') {
+                        self.advance(); // consume the '"'
+                        return self.fstring_start();
+                    }
+                    return self.identifier();
+                }
                 _ => return self.error_token("Unexpected character."),
             },
         };
@@ -519,6 +553,98 @@ impl<'a> Scanner<'a> {
             kind: TokenKind::Error,
             lexeme: msg.as_bytes(),
             line: self.line,
+        }
+    }
+
+    /// Get the current scanning mode
+    fn current_mode(&self) -> ScannerMode {
+        *self.mode_stack.last().unwrap_or(&ScannerMode::Base)
+    }
+
+    /// Push a new scanning mode onto the stack
+    fn push_mode(&mut self, mode: ScannerMode) {
+        self.mode_stack.push(mode);
+    }
+
+    /// Pop the current scanning mode from the stack
+    fn pop_mode(&mut self) -> ScannerMode {
+        self.mode_stack.pop().unwrap_or(ScannerMode::Base)
+    }
+
+    /// Scan an f-string start token (f")
+    fn fstring_start(&mut self) -> Token<'a> {
+        self.push_mode(ScannerMode::FString);
+        self.make_token(TokenKind::FStringStart)
+    }
+
+    /// Scan string content within an f-string, handling interpolations
+    fn fstring_content(&mut self) -> Token<'a> {
+        // Set start position for this token
+        self.start = self.current;
+        
+        while let Some(c) = self.peek() {
+            match c {
+                b'"' => {
+                    // End of f-string - check if we have content
+                    if self.current > self.start {
+                        // We have string content to return
+                        return self.make_token(TokenKind::StringPart);
+                    } else {
+                        // No content, this is the end
+                        self.advance(); // consume '"'
+                        self.pop_mode(); // Exit f-string mode
+                        return self.make_token(TokenKind::FStringEnd);
+                    }
+                }
+                b'\\' => {
+                    // Handle escaping - consume the backslash and next character
+                    self.advance(); // consume '\'
+                    if let Some(next) = self.peek() {
+                        if *next == b'$' || *next == b'"' {
+                            self.advance(); // consume the escaped character
+                        } else {
+                            // Regular escape sequence, advance normally
+                            self.advance();
+                        }
+                    } else {
+                        return self.error_token("Unterminated escape sequence in f-string.");
+                    }
+                }
+                b'$' => {
+                    // Check for interpolation start
+                    let next_pos = self.current + 1;
+                    if self.source.get(next_pos) == Some(&b'{') {
+                        // Found interpolation start ${
+                        if self.current > self.start {
+                            // We have string content before the interpolation
+                            return self.make_token(TokenKind::StringPart);
+                        } else {
+                            // No content, handle the ${ as start of expression
+                            self.advance(); // consume '$'
+                            self.advance(); // consume '{'
+                            self.push_mode(ScannerMode::Expression);
+                            return self.make_token(TokenKind::LeftBrace);
+                        }
+                    } else {
+                        // Regular '$' character
+                        self.advance();
+                    }
+                }
+                b'\n' => {
+                    *self.line += 1;
+                    self.advance();
+                }
+                _ => {
+                    self.advance();
+                }
+            }
+        }
+
+        // End of input reached
+        if self.current > self.start {
+            self.make_token(TokenKind::StringPart)
+        } else {
+            self.error_token("Unterminated f-string.")
         }
     }
 }

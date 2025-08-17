@@ -526,6 +526,9 @@ macro_rules! run_instruction {
                     return value;
                 }
             }
+            OpCode::BuildFString => {
+                $self.build_fstring();
+            }
         };
     };
 }

@@ -93,7 +93,7 @@ macro_rules! make_rules {
     }};
 }
 
-pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 84];
+pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 87];
 
 // Can't be static because the associated function types include lifetimes
 #[rustfmt::skip]
@@ -139,6 +139,9 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Identifier    = [variable,        None,      None      ],
         In            = [None,            binary,    In        ],
         String        = [string,          None,      None      ],
+        FStringStart  = [fstring,         None,      None      ],
+        StringPart    = [None,            None,      None      ],
+        FStringEnd    = [None,            None,      None      ],
         Float         = [float,           None,      None      ],
         Integer       = [integer,         None,      None      ],
         And           = [None,            and,       And       ],
@@ -503,6 +506,73 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         let value = lexeme[1..lexeme.len() - 1].to_string();
         let string_id = self.heap.string_id(&value);
         self.emit_constant(string_id);
+    }
+
+    /// Parse an f-string literal with interpolations.
+    ///
+    /// F-strings are sequences of string parts and expressions that get concatenated.
+    fn fstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
+        let mut part_count = 0u8;
+        
+        // Process alternating string parts and expressions
+        loop {
+            match self.current.as_ref().map(|t| t.kind) {
+                Some(TK::StringPart) => {
+                    // Emit string part as constant
+                    self.advance();
+                    let lexeme = self.previous.as_ref().unwrap().as_str();
+                    let string_id = self.heap.string_id(&lexeme);
+                    self.emit_constant(string_id);
+                    part_count += 1;
+                    
+                    if part_count == 255 {
+                        self.error("Too many parts in f-string.");
+                        break;
+                    }
+                }
+                Some(TK::LeftBrace) => {
+                    // Expression interpolation - parse the expression
+                    self.advance(); // consume '{'
+                    self.expression(); // Parse the expression
+                    
+                    // Call str() on the result to convert to string
+                    // First get the str function
+                    let str_name = self.identifier_constant(&"str");
+                    self.emit_byte(OpCode::GetGlobal, self.line());
+                    if !self.emit_number(str_name.0, false) {
+                        self.error("Too many constants for str() function in f-string.");
+                    }
+                    // The expression result is already on the stack as the argument
+                    // Stack now has: [expression_result] [str_function]
+                    // We need: [str_function] [expression_result]
+                    self.emit_byte(OpCode::Swap, self.line());
+                    self.emit_byte(OpCode::Call, self.line());
+                    self.emit_byte(1, self.line()); // 1 argument
+                    
+                    part_count += 1;
+                    if part_count == 255 {
+                        self.error("Too many parts in f-string.");
+                        break;
+                    }
+                    
+                    // Expect closing brace - this should be handled by scanner
+                    self.consume(TK::RightBrace, "Expect '}' after interpolated expression.");
+                }
+                Some(TK::FStringEnd) => {
+                    // End of f-string
+                    self.advance();
+                    break;
+                }
+                _ => {
+                    self.error("Unexpected token in f-string.");
+                    break;
+                }
+            }
+        }
+        
+        // Emit BuildFString instruction with part count
+        self.emit_byte(OpCode::BuildFString, self.line());
+        self.emit_byte(part_count, self.line());
     }
 
     /// Parse a list literal ([a, b, c(,)])
