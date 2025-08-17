@@ -144,4 +144,47 @@ impl VM {
         self.stack_push_value(instance_value);
         None
     }
+
+    /// Build an f-string by concatenating parts on the stack.
+    /// The number of parts is the operand.
+    /// Parts are on the stack as strings in order from left to right.
+    pub(crate) fn build_fstring(&mut self) {
+        let part_count = self.read_byte();
+        
+        if part_count == 0 {
+            // Empty f-string
+            let empty_string_id = self.heap.string_id(&String::new());
+            self.stack_push_value(Value::String(empty_string_id));
+            return;
+        }
+
+        // Collect all parts from the stack (they are already strings)
+        let mut result = String::new();
+        for index in (0..part_count).rev() {
+            let part_value = *self.peek(usize::from(index)).expect("Stack underflow in BuildFString");
+            match part_value {
+                Value::String(string_id) => {
+                    let part_str = string_id.to_value(&self.heap);
+                    result = part_str.clone() + &result;
+                }
+                _ => {
+                    // This should not happen as we ensure all parts are strings
+                    runtime_error!(
+                        self,
+                        "Invalid f-string part type: {}",
+                        part_value.to_string(&self.heap)
+                    );
+                    return;
+                }
+            }
+        }
+
+        // Pop all parts from stack
+        self.stack
+            .truncate(self.stack.len() - usize::from(part_count));
+
+        // Push the result string
+        let result_id = self.heap.string_id(&result);
+        self.stack_push_value(Value::String(result_id));
+    }
 }

@@ -442,6 +442,9 @@ macro_rules! run_instruction {
                     return value;
                 }
             }
+            OpCode::BuildFString => {
+                $self.build_fstring();
+            }
             // Import a module by filepath without qualifiers.
             // Expects either the path to the module or the name of
             // a stdlib module as a string as an operand.

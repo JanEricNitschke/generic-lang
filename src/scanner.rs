@@ -4,6 +4,14 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use crate::types::Line;
 
+/// Scanner modes for tracking context during f-string parsing
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScannerMode {
+    Base,
+    FString,
+    Expression,
+}
+
 /// `Token` types that exist in the generic language.
 #[derive(IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Clone, Copy, Debug)]
 #[repr(u8)]
@@ -59,6 +67,11 @@ pub enum TokenKind {
     True,
     Nil,
     StopIteration,
+
+    // F-string tokens.
+    FStringStart,
+    FStringPart,
+    FStringEnd,
 
     // Keywords.
     And,
@@ -143,16 +156,22 @@ pub struct Scanner<'a> {
     /// Always points at the next character to be consumed.
     current: usize,
     line: Line,
+    /// Stack of scanning modes for handling nested contexts
+    mode_stack: Vec<ScannerMode>,
+    /// Brace nesting level for expression mode
+    brace_count: usize,
 }
 
 impl<'a> Scanner<'a> {
     #[must_use]
-    pub(super) const fn new(source: &'a [u8]) -> Self {
+    pub(super) fn new(source: &'a [u8]) -> Self {
         Self {
             source,
             start: 0,
             current: 0,
             line: Line(1),
+            mode_stack: vec![ScannerMode::Base],
+            brace_count: 0,
         }
     }
 
@@ -164,6 +183,16 @@ impl<'a> Scanner<'a> {
     /// Uses a trie strategy to identify tokens.
     #[allow(clippy::too_many_lines)]
     pub(super) fn scan(&mut self) -> Token<'a> {
+        let current_mode = *self.mode_stack.last().unwrap_or(&ScannerMode::Base);
+        match current_mode {
+            ScannerMode::Base => self.scan_base(),
+            ScannerMode::FString => self.scan_fstring(),
+            ScannerMode::Expression => self.scan_expression(),
+        }
+    }
+
+    /// Scan tokens in base mode (normal parsing)
+    fn scan_base(&mut self) -> Token<'a> {
         use TokenKind as TK;
         self.skip_whitespace();
         self.start = self.current;
@@ -290,7 +319,13 @@ impl<'a> Scanner<'a> {
                 }
                 b'"' => return self.string(),
                 c if c.is_ascii_digit() => return self.number(),
-                c if c.is_ascii_alphabetic() || c == &b'_' => return self.identifier(),
+                c if c.is_ascii_alphabetic() || c == &b'_' => {
+                    // Check for f-string before regular identifier
+                    if c == &b'f' && self.peek() == Some(&b'"') {
+                        return self.fstring_start();
+                    }
+                    return self.identifier();
+                }
                 _ => return self.error_token("Unexpected character."),
             },
         };
@@ -520,5 +555,227 @@ impl<'a> Scanner<'a> {
             lexeme: msg.as_bytes(),
             line: self.line,
         }
+    }
+
+    /// Start scanning an f-string after encountering 'f"'
+    fn fstring_start(&mut self) -> Token<'a> {
+        // We've seen 'f', now consume the '"'
+        if !self.match_(b'"') {
+            return self.error_token("Expected '\"' after 'f'.");
+        }
+        
+        // Push f-string mode
+        self.mode_stack.push(ScannerMode::FString);
+        
+        self.make_token(TokenKind::FStringStart)
+    }
+
+    /// Scan tokens in f-string mode (looking for string parts and expressions)
+    fn scan_fstring(&mut self) -> Token<'a> {
+        self.skip_whitespace();
+        self.start = self.current;
+
+        // Check what we're looking at without consuming it first
+        match self.peek() {
+            None => self.error_token("Unterminated f-string."),
+            Some(&b'"') => {
+                // End of f-string
+                self.advance(); // consume the '"'
+                self.mode_stack.pop();
+                self.make_token(TokenKind::FStringEnd)
+            }
+            Some(&b'$') => {
+                self.advance(); // consume the '$'
+                if self.match_(b'{') {
+                    // Start of expression
+                    self.mode_stack.push(ScannerMode::Expression);
+                    self.brace_count = 1;
+                    // We need to scan the next token in expression mode
+                    self.scan_expression()
+                } else {
+                    // Just a $ character, this is a problem in my approach - let me treat $ as part of string
+                    // Actually, let me back up and include $ in the string part
+                    self.current -= 1; // back up over the $
+                    self.fstring_part_until_dollar_or_quote()
+                }
+            }
+            Some(_) => {
+                // String literal part - scan until $ or "
+                self.fstring_part_until_dollar_or_quote()
+            }
+        }
+    }
+
+    /// Scan an f-string part until we hit $ or "
+    fn fstring_part_until_dollar_or_quote(&mut self) -> Token<'a> {
+        // Consume characters until we hit a delimiter
+        loop {
+            match self.peek() {
+                Some(b'"') | Some(b'$') | None => break,
+                Some(b'\n') => {
+                    *self.line += 1;
+                    self.advance();
+                }
+                Some(_) => {
+                    self.advance();
+                }
+            }
+        }
+        
+        // Check if we actually consumed any characters
+        if self.current == self.start {
+            // No characters consumed, this shouldn't happen in normal flow
+            return self.error_token("Empty f-string part");
+        }
+        
+        self.make_token(TokenKind::FStringPart)
+    }
+
+    /// Scan tokens in expression mode (inside ${...})
+    fn scan_expression(&mut self) -> Token<'a> {
+        self.skip_whitespace();
+        self.start = self.current;
+        
+        let token_kind = match self.advance() {
+            None => return self.error_token("Unterminated expression in f-string."),
+            Some(c) => match c {
+                b'{' => {
+                    self.brace_count += 1;
+                    TokenKind::LeftBrace
+                }
+                b'}' => {
+                    self.brace_count -= 1;
+                    if self.brace_count == 0 {
+                        // End of expression, return to f-string mode
+                        self.mode_stack.pop();
+                        // Continue scanning in f-string mode
+                        return self.scan_fstring();
+                    }
+                    TokenKind::RightBrace
+                }
+                // For all other characters, use the same logic as base mode
+                b'\'' => TokenKind::Apostrophe,
+                b'?' => TokenKind::QuestionMark,
+                b':' => TokenKind::Colon,
+                b'(' => TokenKind::LeftParen,
+                b')' => TokenKind::RightParen,
+                b'[' => TokenKind::LeftBracket,
+                b']' => TokenKind::RightBracket,
+                b';' => TokenKind::Semicolon,
+                b',' => TokenKind::Comma,
+                b'.' => {
+                    // Check for range operators ..= and ..<
+                    if self.match_(b'.') {
+                        if self.match_(b'=') {
+                            TokenKind::DotDotEqual
+                        } else if self.match_(b'<') {
+                            TokenKind::DotDotLess
+                        } else {
+                            // This is an error - we've consumed two dots but can't make a valid token
+                            return self
+                                .error_token("Invalid token '..' - expected '..=' or '..<'");
+                        }
+                    } else {
+                        TokenKind::Dot
+                    }
+                }
+                b'@' => TokenKind::At,
+                b'-' => {
+                    if self.match_(b'=') {
+                        TokenKind::MinusEqual
+                    } else if self.match_(b'>') {
+                        TokenKind::RightArrow
+                    } else {
+                        TokenKind::Minus
+                    }
+                }
+                b'+' => {
+                    if self.match_(b'=') {
+                        TokenKind::PlusEqual
+                    } else {
+                        TokenKind::Plus
+                    }
+                }
+                b'/' => {
+                    if self.match_(b'=') {
+                        TokenKind::SlashEqual
+                    } else if self.match_(b'/') {
+                        TokenKind::SlashSlash
+                    } else {
+                        TokenKind::Slash
+                    }
+                }
+                b'*' => {
+                    if self.match_(b'=') {
+                        TokenKind::StarEqual
+                    } else if self.match_(b'*') {
+                        TokenKind::StarStar
+                    } else {
+                        TokenKind::Star
+                    }
+                }
+                b'%' => {
+                    if self.match_(b'=') {
+                        TokenKind::PercentEqual
+                    } else {
+                        TokenKind::Percent
+                    }
+                }
+                b'&' => {
+                    if self.match_(b'=') {
+                        TokenKind::AmperEqual
+                    } else {
+                        TokenKind::Amper
+                    }
+                }
+                b'|' => {
+                    if self.match_(b'=') {
+                        TokenKind::PipeEqual
+                    } else {
+                        TokenKind::Pipe
+                    }
+                }
+                b'^' => {
+                    if self.match_(b'=') {
+                        TokenKind::HatEqual
+                    } else {
+                        TokenKind::Hat
+                    }
+                }
+                b'!' => {
+                    if self.match_(b'=') {
+                        TokenKind::BangEqual
+                    } else {
+                        TokenKind::Bang
+                    }
+                }
+                b'=' => {
+                    if self.match_(b'=') {
+                        TokenKind::EqualEqual
+                    } else {
+                        TokenKind::Equal
+                    }
+                }
+                b'<' => {
+                    if self.match_(b'=') {
+                        TokenKind::LessEqual
+                    } else {
+                        TokenKind::Less
+                    }
+                }
+                b'>' => {
+                    if self.match_(b'=') {
+                        TokenKind::GreaterEqual
+                    } else {
+                        TokenKind::Greater
+                    }
+                }
+                b'"' => return self.string(),
+                c if c.is_ascii_digit() => return self.number(),
+                c if c.is_ascii_alphabetic() || c == &b'_' => return self.identifier(),
+                _ => return self.error_token("Unexpected character."),
+            },
+        };
+        self.make_token(token_kind)
     }
 }

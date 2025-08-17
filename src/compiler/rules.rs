@@ -93,7 +93,7 @@ macro_rules! make_rules {
     }};
 }
 
-pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 84];
+pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 87];
 
 // Can't be static because the associated function types include lifetimes
 #[rustfmt::skip]
@@ -183,6 +183,9 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Throw         = [None,            None,      None      ],
         DotDotLess    = [None,            binary,    Range     ],
         DotDotEqual   = [None,            binary,    Range     ],
+        FStringStart  = [fstring,         None,      None      ],
+        FStringPart   = [None,            None,      None      ],
+        FStringEnd    = [None,            None,      None      ],
     )
 }
 
@@ -503,6 +506,62 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         let value = lexeme[1..lexeme.len() - 1].to_string();
         let string_id = self.heap.string_id(&value);
         self.emit_constant(string_id);
+    }
+
+    /// Parse an f-string literal starting with f"
+    ///
+    /// Alternates between parsing string parts and expressions until FStringEnd.
+    fn fstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
+        let mut part_count = 0_u8;
+
+        // Advance past the FStringStart token
+        self.advance();
+
+        loop {
+            match self.current.as_ref().unwrap().kind {
+                TK::FStringPart => {
+                    // Emit string part constant
+                    let lexeme = self.current.as_ref().unwrap().as_str();
+                    let string_id = self.heap.string_id(&lexeme.to_string());
+                    self.emit_constant(string_id);
+                    part_count += 1;
+                    self.advance();
+                }
+                TK::FStringEnd => {
+                    // End of f-string
+                    self.advance();
+                    break;
+                }
+                _ => {
+                    // Expression part - parse as normal expression
+                    self.parse_precedence_ignoring(Precedence::non_assigning(), &[]);
+                    
+                    // Emit call to str() to convert to string
+                    let str_name = "str".to_string();
+                    let str_constant = self.identifier_constant(&str_name);
+                    self.emit_byte(OpCode::Invoke, self.line());
+                    if !self.emit_number(str_constant.0, false) {
+                        self.error("Too many constants in one chunk.");
+                    }
+                    self.emit_byte(1, self.line()); // 1 argument
+                    
+                    part_count += 1;
+                    
+                    // Check if we're at the end or continue with more parts
+                    if self.check(TK::FStringEnd) {
+                        self.advance();
+                        break;
+                    } else if !self.check(TK::FStringPart) && !matches!(self.current.as_ref().unwrap().kind, TK::Identifier | TK::Integer | TK::Float | TK::String | TK::LeftParen | TK::True | TK::False | TK::Nil) {
+                        self.error("Expected expression or end of f-string.");
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Emit BuildFString instruction
+        self.emit_byte(OpCode::BuildFString, self.line());
+        self.emit_byte(part_count, self.line());
     }
 
     /// Parse a list literal ([a, b, c(,)])
