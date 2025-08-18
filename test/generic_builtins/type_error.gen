@@ -1,0 +1,11 @@
+try {
+    throw TypeError("Types are wrong");
+} catch TypeError as e {
+    print("Caught");  # expect: Caught
+    print(e.message());  # expect: Types are wrong
+    print(e);  # expect: TypeError: Types are wrong
+               # expect: Stacktrace (most recent call last):
+               # expect:   [line 2] in <script>
+}
+
+throw TypeError("Wrong again!");  # expect runtime error: Uncaught exception: Exception: Wrong again!
