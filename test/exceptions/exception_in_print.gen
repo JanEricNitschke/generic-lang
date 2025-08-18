@@ -1,4 +1,4 @@
-class Error {}
+class Error < Exception {}
 
 class ThrowOnToString {
     __str__() {

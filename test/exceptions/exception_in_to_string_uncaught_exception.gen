@@ -1,0 +1,8 @@
+class Error < Exception {
+    __str__() {
+        throw Error();
+    }
+
+}
+
+throw Error();  # expect runtime error: <unprintable exception>

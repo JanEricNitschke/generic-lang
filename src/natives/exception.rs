@@ -12,12 +12,12 @@ pub(super) fn exception_init_native(
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
     let message = match &args[0] {
-        Value::String(string_id) => string_id.to_value(&vm.heap).clone(),
+        Value::String(string_id) => *string_id,
         _ => return Err("Exception message must be a string".to_string()),
     };
 
     // Use the utility function to create the exception data with stack trace
-    let exception_data = vm.create_exception_data(&message);
+    let exception_data = vm.create_exception_data(message);
 
     if let Value::Instance(instance) = receiver {
         instance.to_value_mut(&mut vm.heap).backing = Some(NativeClass::Exception(exception_data));

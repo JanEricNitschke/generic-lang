@@ -329,32 +329,20 @@ macro_rules! run_instruction {
                             .insert(field, value);
                     }
                     Value::Module(module) => {
-                        let is_mutable = if let Some(global) =
-                            module.to_value(&$self.heap).globals.get(&field_string_id)
-                        {
-                            global.mutable
-                        } else {
-                            true // Default to mutable if not found (will create new)
-                        };
-
-                        if !is_mutable {
-                            if let Some(result) =
-                                $self.throw_const_reassignment_error("Cannot reassign const variable.")
-                            {
-                                return result;
-                            }
-                        } else if let Some(global) = module
+                        if let Some(global) = module
                             .to_value_mut(&mut $self.heap)
                             .globals
                             .get_mut(&field_string_id)
                         {
-                            global.value = value;
-                        } else {
-                            // Create new mutable global
-                            module
-                                .to_value_mut(&mut $self.heap)
-                                .globals
-                                .insert(field_string_id, crate::vm::Global::new_mutable(value));
+                            if !global.mutable {
+                                if let Some(result) = $self.throw_const_reassignment_error(
+                                    "Cannot reassign const variable.",
+                                ) {
+                                    return result;
+                                }
+                            } else {
+                                global.value = value;
+                            }
                         }
                     }
                     x => {
