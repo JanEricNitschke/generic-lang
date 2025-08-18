@@ -1,23 +1,19 @@
-# False and nil are false.
+# False, nil, zero and empty string are false.
 unless (false) {
     print("false"); # expect: false
 }
 unless (nil) {
     print("nil"); # expect: nil
 }
+unless (0) {
+    print(0); # expect: 0
+}
+unless ("") {
+    print("empty"); # expect: empty
+}
 # Everything else is true.
 unless (true) {
     print("bad");
 } else {
     print(true); # expect: true
-}
-unless (0) {
-    print("bad");
-} else {
-    print(0); # expect: 0
-}
-unless ("") {
-    print("bad");
-} else {
-    print("empty"); # expect: empty
 }

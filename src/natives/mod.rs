@@ -25,7 +25,8 @@ use crate::natives::range::{
 };
 
 use crate::natives::set::{
-    set_contains_native, set_init_native, set_insert_native, set_len_native, set_remove_native,
+    set_bool_native, set_contains_native, set_init_native, set_insert_native, set_len_native,
+    set_remove_native,
 };
 
 use crate::natives::tuple::{
@@ -33,7 +34,10 @@ use crate::natives::tuple::{
     tuple_init_native, tuple_iter_native, tuple_iter_next_native, tuple_len_native,
 };
 
-use crate::natives::dict::{dict_get_native, dict_len_native, dict_set_native};
+use crate::natives::dict::{
+    dict_bool_native, dict_contains_native, dict_get_native, dict_init_native, dict_len_native,
+    dict_set_native,
+};
 
 use crate::natives::exception::{
     exception_init_native, exception_message_native, exception_stack_trace_native,
@@ -125,11 +129,15 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"Set", &"insert", &[1], set_insert_native);
     vm.define_native_method(&"Set", &"remove", &[1], set_remove_native);
     vm.define_native_method(&"Set", &"__len__", &[0], set_len_native);
+    vm.define_native_method(&"Set", &"__bool__", &[0], set_bool_native);
 
     vm.define_native_class(&"Dict", true);
+    vm.define_native_method(&"Dict", &"__init__", &VARIADIC_0_PLUS, dict_init_native);
+    vm.define_native_method(&"Dict", &"contains", &[1], dict_contains_native);
     vm.define_native_method(&"Dict", &"__getitem__", &[1], dict_get_native);
     vm.define_native_method(&"Dict", &"__setitem__", &[2], dict_set_native);
     vm.define_native_method(&"Dict", &"__len__", &[0], dict_len_native);
+    vm.define_native_method(&"Dict", &"__bool__", &[0], dict_bool_native);
 
     vm.define_native_class(&"Range", true);
     vm.define_native_method(&"Range", &"__init__", &[2], range_init_native);
