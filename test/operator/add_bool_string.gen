@@ -1,1 +1,1 @@
-true + "s"; # expect runtime error: Operands must be two numbers or two strings. Got: [true, s]
+true + "s"; # expect runtime error: TypeError: Operands must be two numbers or two strings. Got: [true, s]

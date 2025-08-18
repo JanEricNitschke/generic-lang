@@ -1,2 +1,2 @@
 var my_list = [1, 2, 3];
-my_list[6] = "test"; # expect runtime error: Index `6` is out of bounds of list with len `3`.
+my_list[6] = "test"; # expect runtime error: Exception: Index `6` is out of bounds of list with len `3`.

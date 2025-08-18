@@ -1,3 +1,3 @@
 fun foo() {}
 
-foo.bar; # expect runtime error: Tried to get property 'bar' of non-instance `<fn foo>`.
+foo.bar; # expect runtime error: TypeError: Tried to get property 'bar' of non-instance `<fn foo>`

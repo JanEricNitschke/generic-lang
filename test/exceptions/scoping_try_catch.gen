@@ -5,5 +5,5 @@ try {
     var a;
     throw Error1("error message");
 } catch Error1 as e1 {
-    print(a);  # expect runtime error: Undefined variable 'a'.
+    print(a);  # expect runtime error: NameError: Undefined variable 'a'.
 }

@@ -72,7 +72,7 @@ print(add6(2, 3)); # expect: 20
 
 var apple = 5;
 
-@apple # expect runtime error: Can only call functions, classes and instances with a `__call__` method.
+@apple # expect runtime error: TypeError: Can only call functions, classes and instances with a `__call__` method.
 fun add7(a, b) {
     return a + b;
 } 

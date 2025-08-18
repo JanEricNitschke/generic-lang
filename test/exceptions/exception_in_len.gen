@@ -12,4 +12,4 @@ try {
     print("Caught");  # expect: Caught
 }
 
-len(ThrowOnLen());  # expect runtime error: Uncaught exception: <Error instance>
+len(ThrowOnLen());  # expect runtime error: Exception: __str__ method failed with runtime error

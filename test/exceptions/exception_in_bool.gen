@@ -20,4 +20,4 @@ try {
 
 if ThrowOnBool() {
     print("Truthy");
-}  # expect runtime error: Uncaught exception: <Error instance>
+}  # expect runtime error: Exception: __str__ method failed with runtime error

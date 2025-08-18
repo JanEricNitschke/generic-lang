@@ -3,4 +3,4 @@ foreach (var val in [1, 2, 3]) {
     break;
 }
 print(1); # expect: 1
-print(foo); # expect runtime error: Undefined variable 'foo'.
+print(foo); # expect runtime error: NameError: Undefined variable 'foo'.

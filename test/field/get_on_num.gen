@@ -1,1 +1,1 @@
-123.foo; # expect runtime error: Tried to get property 'foo' of non-instance `123`.
+123.foo; # expect runtime error: TypeError: Tried to get property 'foo' of non-instance `123`
