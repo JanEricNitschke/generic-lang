@@ -1,6 +1,6 @@
 use super::InterpretResult;
 use crate::chunk::CodeOffset;
-use crate::value::Value;
+use crate::value::{Value, is_exception_subclass, is_subclass_of};
 use crate::vm::VM;
 /// An exception handlers
 ///
@@ -40,6 +40,23 @@ impl VM {
             );
             return Some(InterpretResult::RuntimeError);
         }
+
+        // Check that the exception is an instance of Exception or its subclasses
+        let exception_class_id = exception.as_instance().to_value(&self.heap).class;
+
+        // Only allow throwing instances of Exception or its subclasses
+        if !is_exception_subclass(&self.heap, exception_class_id) {
+            runtime_error!(
+                self,
+                "Can only throw instances of Exception or its subclasses, got instance of: {}",
+                exception_class_id
+                    .to_value(&self.heap)
+                    .name
+                    .to_value(&self.heap)
+            );
+            return Some(InterpretResult::RuntimeError);
+        }
+
         if let Some(handler) = self.pop_exception_handler() {
             self.callstack.truncate(handler.frames_to_keep, &self.heap);
             self.callstack.current_mut().ip = handler.ip;
@@ -73,10 +90,23 @@ impl VM {
             .peek(0)
             .expect("Stack underflow in OP_COMPARE_EXCEPTION");
         if let Value::Class(class_id) = class_to_catch {
-            let exception_instance = exception_value.as_instance();
-            self.stack.push(Value::Bool(
-                exception_instance.to_value(&self.heap).class == class_id,
-            ));
+            // Check that the class to catch is a subclass of Exception
+            if !is_exception_subclass(&self.heap, class_id) {
+                runtime_error!(
+                    self,
+                    "Can only catch Exception or its subclasses, got: {}",
+                    class_id.to_value(&self.heap).name.to_value(&self.heap)
+                );
+                return Some(InterpretResult::RuntimeError);
+            }
+
+            let exception_class_id = exception_value.as_instance().to_value(&self.heap).class;
+            // Check if the exception class is the same as or a subclass of the catch class
+            self.stack.push(Value::Bool(is_subclass_of(
+                &self.heap,
+                exception_class_id,
+                class_id,
+            )));
             None
         } else {
             runtime_error!(

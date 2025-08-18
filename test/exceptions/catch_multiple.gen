@@ -1,8 +1,8 @@
-class Error1 {}
-class Error2 {}
+class Error1 < Exception {}
+class Error2 < Exception {}
 
 try {
-    throw Error1();
+    throw Error1("error message");
     print("Try");
 } catch (Error1, Error2) {
     print("Catch"); # expect: Catch

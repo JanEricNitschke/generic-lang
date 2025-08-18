@@ -1,4 +1,4 @@
-class Error {}
+class Error < Exception {}
 
 try {
     print("Try"); # expect: Try

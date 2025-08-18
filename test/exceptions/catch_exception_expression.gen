@@ -1,11 +1,11 @@
-class Error {}
+class Error < Exception {}
 
 fun get_exception() {
     return Error;
 }
 
 try {
-    throw Error();
+    throw Error("error message");
 } catch get_exception() {
     print("Catch"); # expect: Catch
 }

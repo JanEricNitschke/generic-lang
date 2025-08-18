@@ -1,0 +1,12 @@
+class Animal {}
+class Dog < Animal {}  
+class Cat < Animal {}
+
+# Direct matches (true cases)
+print(issubclass(Dog, Dog));       # expect: true
+print(issubclass(Animal, Animal)); # expect: true
+
+# False cases
+print(issubclass(Animal, Dog));    # expect: false
+print(issubclass(Cat, Dog));       # expect: false
+print(issubclass(Dog, Cat));       # expect: false

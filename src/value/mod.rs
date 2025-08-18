@@ -10,7 +10,9 @@ use crate::heap::{
     BigIntId, BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ModuleId,
     NativeFunctionId, NativeMethodId, StringId, UpvalueId,
 };
-pub use classes::{BoundMethod, Class, Instance};
+pub use classes::{
+    BoundMethod, Class, Instance, get_native_class_id, is_exception_subclass, is_subclass_of,
+};
 pub use functions::{Closure, Function, Module, Upvalue};
 pub use natives::{
     Dict, Exception, List, ListIterator, ModuleContents, NativeClass, NativeFunction,

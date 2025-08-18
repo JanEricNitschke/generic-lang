@@ -1,11 +1,11 @@
-class Error1 {}
-class Error2 {}
-class Error3 {}
-class Error4 {}
+class Error1 < Exception {}
+class Error2 < Exception {}
+class Error3 < Exception {}
+class Error4 < Exception {}
 
 fun second() {
     try {
-        throw Error1();
+        throw Error1("error message");
     } catch Error4 {
         print("Catch third");
     }
@@ -20,7 +20,7 @@ fun first() {
 }
 
 try {
-    first();
+    first(); # expect runtime error: Error1: error message
 } catch Error2 as e {
     print(e);
-}  # expect runtime error: <Error1 instance>
+}

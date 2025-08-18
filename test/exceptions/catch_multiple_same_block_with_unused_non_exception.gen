@@ -1,0 +1,11 @@
+class Error1 < Exception {}
+class Error2 < Exception {}
+class RegularClass {}
+
+try {
+    throw Error1("error message");
+    print("Try");
+} catch (Error1, RegularClass) {
+    print("Caught Error1"); # expect: Caught Error1
+}
+print("Done"); # expect: Done

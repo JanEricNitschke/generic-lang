@@ -50,6 +50,35 @@ impl Class {
     }
 }
 
+/// Check if the first class is the same as or a subclass of the second class.
+/// This is a standalone function that works with `ClassIds` directly.
+pub fn is_subclass_of(heap: &Heap, current_class_id: ClassId, superclass_id: ClassId) -> bool {
+    // Check if they are the same class
+    if current_class_id == superclass_id {
+        return true;
+    }
+
+    // Walk up the inheritance chain
+    if let Some(parent_id) = current_class_id.to_value(heap).superclass {
+        return is_subclass_of(heap, parent_id, superclass_id);
+    }
+
+    false
+}
+
+pub fn get_native_class_id(heap: &Heap, native_class: &str) -> ClassId {
+    *heap
+        .native_classes
+        .get(native_class)
+        .expect("Internal error: Exception class should be defined in native_classes")
+        .as_class()
+}
+
+/// Check if a class is a subclass of Exception
+pub fn is_exception_subclass(heap: &Heap, class_id: ClassId) -> bool {
+    is_subclass_of(heap, class_id, get_native_class_id(heap, "Exception"))
+}
+
 impl std::fmt::Display for Class {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.pad("<class Value>")
