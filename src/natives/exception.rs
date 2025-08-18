@@ -36,3 +36,36 @@ pub(super) fn exception_message_native(
 ) -> Result<Value, String> {
     Ok(Value::String(receiver.as_exception(&vm.heap).message()))
 }
+
+/// Get the stack trace of the Exception.
+pub(super) fn exception_stack_trace_native(
+    vm: &mut VM,
+    receiver: &mut Value,
+    _args: &mut [&mut Value],
+) -> Result<Value, String> {
+    Ok(Value::String(receiver.as_exception(&vm.heap).stack_trace()))
+}
+
+/// Get the the full string representation of the Exception.
+/// 
+/// This will be inherited by all exceptions and properly display their name.
+pub(super) fn exception_str_native(
+    vm: &mut VM,
+    receiver: &mut Value,
+    _args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let exception = receiver.as_exception(&vm.heap);
+    let mut result = format!(
+        "{}: {}\n",
+        receiver
+            .as_instance()
+            .to_value(&vm.heap)
+            .class
+            .to_value(&vm.heap)
+            .name
+            .to_value(&vm.heap),
+        exception.message().to_value(&vm.heap)
+    );
+    result.push_str(exception.stack_trace().to_value(&vm.heap));
+    Ok(vm.heap.string_id(&result).into())
+}
