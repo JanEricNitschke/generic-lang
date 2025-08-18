@@ -25,13 +25,11 @@ impl VM {
         method_name: StringId,
         arg_count: u8,
         method_is_native: bool,
-    ) -> InterpretResult {
-        if self.invoke(method_name, arg_count).is_err() {
-            return InterpretResult::RuntimeError;
-        }
+    ) -> Result<(), RuntimeError> {
+        self.invoke(method_name, arg_count)?;
 
         if method_is_native {
-            InterpretResult::Ok
+            Ok(())
         } else {
             self.run_function()
         }
@@ -39,11 +37,21 @@ impl VM {
 
     /// Run the closure currently on top of the callstack.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    pub(super) fn run_function(&mut self) -> InterpretResult {
+    pub(super) fn run_function(&mut self) -> Result<(), RuntimeError> {
         let call_depth = self.callstack.len();
         while self.callstack.len() >= call_depth {
-            run_instruction!(self);
+            match self.run_single_instruction() {
+                InterpretResult::Ok => continue,
+                InterpretResult::RuntimeError => return Err(RuntimeError::new()),
+                InterpretResult::CompileError => return Err(RuntimeError::new()),
+            }
         }
+        Ok(())
+    }
+
+    /// Run a single instruction from the current call frame
+    fn run_single_instruction(&mut self) -> InterpretResult {
+        run_instruction!(self);
         InterpretResult::Ok
     }
 }

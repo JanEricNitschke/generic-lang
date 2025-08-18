@@ -1,4 +1,4 @@
-use super::{InterpretResult, VM};
+use super::VM;
 use crate::value::{GenericInt, Number, Value};
 use num_bigint::BigInt;
 use rustc_hash::FxHasher;
@@ -17,10 +17,17 @@ impl VM {
         {
             // Push the value onto the stack temporarily so invoke_and_run_function can access it
             self.stack.push(*value);
-            self.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)));
-            self.stack
-                .pop()
-                .expect("Stack underflow in value_to_string")
+            if self
+                .invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)))
+                .is_err()
+            {
+                // If error occurred, fall back to default string representation
+                Value::String(self.heap.string_id(&value.to_string(&self.heap)))
+            } else {
+                self.stack
+                    .pop()
+                    .expect("Stack underflow in value_to_string")
+            }
         } else {
             Value::String(self.heap.string_id(&value.to_string(&self.heap)))
         }
@@ -35,16 +42,21 @@ impl VM {
         {
             // Value needs to be on top of the stack to invoke this check.
             self.stack_push_value(value);
-            self.invoke_and_run_function(bool_id, 0, matches!(bool_method, Value::NativeMethod(_)));
-            let result = self.stack.pop().expect("Stack underflow in IS_FALSEY");
-            result == Value::Bool(false)
-        } else {
-            match value {
-                Value::Nil | Value::Bool(false) => true,
-                Value::Number(n) => n == 0.into(),
-                Value::String(id) => (id.to_value(&self.heap)).to_string().is_empty(),
-                _ => false,
+            if self
+                .invoke_and_run_function(bool_id, 0, matches!(bool_method, Value::NativeMethod(_)))
+                .is_ok()
+            {
+                let result = self.stack.pop().expect("Stack underflow in IS_FALSEY");
+                return result == Value::Bool(false);
             }
+        }
+
+        // Fall back to default falsey check
+        match value {
+            Value::Nil | Value::Bool(false) => true,
+            Value::Number(n) => n == 0.into(),
+            Value::String(id) => (id.to_value(&self.heap)).to_string().is_empty(),
+            _ => false,
         }
     }
 
@@ -69,7 +81,7 @@ impl VM {
                         matches!(hash_method, Value::NativeMethod(_)),
                     );
 
-                    if invoke_result != InterpretResult::Ok {
+                    if invoke_result.is_err() {
                         return Err("__hash__ method failed".to_string());
                     }
 
@@ -167,25 +179,16 @@ impl VM {
             self.stack_push(left);
             self.stack_push(right);
 
-            if matches!(self.invoke(eq_id, 1), Ok(())) {
-                // Method call succeeded, run it and get result
-                match self.run_function() {
-                    InterpretResult::Ok => {
-                        let result = self
-                            .stack
-                            .pop()
-                            .expect("Stack underflow in compare_values_equal");
-                        return Ok(!self.is_falsey(result));
-                    }
-                    InterpretResult::RuntimeError => {
-                        return Err("__eq__ method failed with runtime error".to_string());
-                    }
-                    InterpretResult::CompileError => {
-                        return Err("__eq__ method failed with compile error".to_string());
-                    }
-                }
-            }
-            return Err("Failed to invoke __eq__ method".to_string());
+            self.invoke(eq_id, 1)
+                .map_err(|_| "__eq__ method invoke failed".to_string())?;
+            // Method call succeeded, run it and get result
+            self.run_function()
+                .map_err(|_| "__eq__ method execution failed".to_string())?;
+            let result = self
+                .stack
+                .pop()
+                .expect("Stack underflow in compare_values_equal");
+            return Ok(!self.is_falsey(result));
         }
 
         // Fall back to heap-level equality

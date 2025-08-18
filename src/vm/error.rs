@@ -1,3 +1,5 @@
+use crate::vm::InterpretResult;
+
 /// Runtime error type for the virtual machine
 ///
 /// This unified error type provides consistent error handling throughout the VM.
@@ -11,5 +13,11 @@ impl RuntimeError {
     /// Create a new runtime error
     pub fn new() -> Self {
         Self::Runtime
+    }
+}
+
+impl From<RuntimeError> for InterpretResult {
+    fn from(_: RuntimeError) -> Self {
+        InterpretResult::RuntimeError
     }
 }

@@ -31,6 +31,7 @@ where
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! binary_op_invoke {
     ($self:ident, $a:ident, $b:ident, $method:ident, mut_heap) => {
         $a.$method(*$b, &mut $self.heap)

@@ -356,13 +356,19 @@ pub(super) fn len_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, 
             .to_value(&vm.heap)
             .get_field_or_method(len_method_id, &vm.heap)
     {
-        vm.invoke_and_run_function(
-            len_method_id,
-            0,
-            matches!(len_method, Value::NativeMethod(_)),
-        );
-        let result = vm.stack.pop().expect("Stack underflow in len_native");
-        return Ok(result);
+        if vm
+            .invoke_and_run_function(
+                len_method_id,
+                0,
+                matches!(len_method, Value::NativeMethod(_)),
+            )
+            .is_ok()
+        {
+            let result = vm.stack.pop().expect("Stack underflow in len_native");
+            return Ok(result);
+        } else {
+            return Err("__len__ method execution failed".into());
+        }
     }
 
     Err("Undefined property '__len__'.".into())
