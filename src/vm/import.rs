@@ -1,4 +1,4 @@
-use super::{Global, InterpretResult, VM};
+use super::{Global, RuntimeError, VM};
 
 use path_slash::PathBufExt;
 use std::path::PathBuf;
@@ -23,7 +23,7 @@ impl VM {
         names_to_import: Option<Vec<StringId>>,
         alias: Option<StringId>,
         local_import: bool,
-    ) -> Option<InterpretResult> {
+    ) -> Result<(), RuntimeError> {
         let file_path = self.clean_filepath(file_path_string_id);
 
         let name = if let Some(stem) = file_path.file_stem() {

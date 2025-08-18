@@ -5,6 +5,7 @@
 
 #[macro_use]
 mod runtime_error;
+mod error;
 mod dunder;
 mod garbage_collection;
 mod import;
@@ -26,6 +27,7 @@ mod variables;
 use arithmetics::{BinaryOpResult, IntoResultValue};
 use callstack::CallStack;
 use exception_handling::ExceptionHandler;
+pub use error::RuntimeError;
 
 use rustc_hash::FxHashMap as HashMap;
 use std::collections::VecDeque;
@@ -323,7 +325,7 @@ impl VM {
     /// # Panics
     ///
     /// If the stack does not have two values. This is an internal error and should never happen.
-    fn equal(&mut self, negate: bool) -> Option<InterpretResult> {
+    fn equal(&mut self, negate: bool) -> Result<(), RuntimeError> {
         let eq_id = self.heap.string_id(&"__eq__");
         let left_id = self.peek(1).expect("Stack underflow in OP EQUAL (left)");
 
@@ -336,9 +338,9 @@ impl VM {
             // If the left value is an instance, use its __eq__ method
             // Values are already on stack in correct order for method call
             return if self.invoke(eq_id, 1) {
-                None // Continue execution - method will handle result
+                Ok(()) // Continue execution - method will handle result
             } else {
-                Some(InterpretResult::RuntimeError)
+                Err(RuntimeError::new("Method invocation failed".to_string()))
             };
         }
 
@@ -354,6 +356,6 @@ impl VM {
 
         let result = left_id.eq(&right_id, &self.heap) != negate;
         self.stack_push(result.into());
-        None
+        Ok(())
     }
 }

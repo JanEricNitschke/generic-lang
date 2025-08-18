@@ -8,7 +8,7 @@ use crate::{
     value::{Class, Closure, Instance, Number, Upvalue, Value},
 };
 
-use super::{Global, InterpretResult, VM};
+use super::{Global, InterpretResult, RuntimeError, VM};
 use crate::vm::arithmetics::{BinaryOpResult, IntoResultValue};
 
 // Execute a function (rust side)
@@ -50,13 +50,13 @@ impl VM {
 
 // Handle a call (generic side)
 impl VM {
-    pub(super) fn call(&mut self) -> Option<InterpretResult> {
+    pub(super) fn call(&mut self) -> Result<(), RuntimeError> {
         let arg_count = self.read_byte();
         let callee = self.stack[self.stack.len() - 1 - usize::from(arg_count)];
         if !self.call_value(callee, arg_count) {
-            return Some(InterpretResult::RuntimeError);
+            return Err(RuntimeError::new("Function call failed".to_string()));
         }
-        None
+        Ok(())
     }
 
     /// Invoke a value retrieved from an instance or module.
@@ -473,7 +473,7 @@ impl VM {
     /// from the main loop.
     ///
     /// If the current frame is a function, we return the value and close the upvalues.
-    pub(super) fn return_(&mut self) -> Option<InterpretResult> {
+    pub(super) fn return_(&mut self) -> Result<Option<InterpretResult>, RuntimeError> {
         // Pop the return value. If none was specified (empty return, missing return, module)
         // then the value is nil. This is handled by the compiler.
         let result = self.stack.pop();
@@ -484,7 +484,7 @@ impl VM {
         // We just popped the main script
         if self.callstack.is_empty() {
             self.stack.pop();
-            return Some(InterpretResult::Ok);
+            return Ok(Some(InterpretResult::Ok));
         }
         if frame.is_module {
             // Pop the module itself from the stack
@@ -506,7 +506,10 @@ impl VM {
                             "Could not find name to import `{}`.",
                             name.to_value(&self.heap)
                         );
-                        return Some(InterpretResult::RuntimeError);
+                        return Err(RuntimeError::new(format!(
+                            "Could not find name to import `{}`.",
+                            name.to_value(&self.heap)
+                        )));
                     };
                     if was_local_import {
                         self.stack_push(value.value);
@@ -541,13 +544,13 @@ impl VM {
                     mutable: true,
                 },
             );
-            return None;
+            return Ok(None);
         }
         // Normal function return
         self.close_upvalue(frame.stack_base);
         // Pop all of the arguments and locals as well as the function itself.
         self.stack.truncate(frame.stack_base);
         self.stack_push(result.expect("Stack underflow in OP_RETURN"));
-        None
+        Ok(None)
     }
 }

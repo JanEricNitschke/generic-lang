@@ -1,4 +1,4 @@
-use super::{InterpretResult, VM};
+use super::{RuntimeError, VM};
 use crate::chunk::CodeOffset;
 use crate::value::{GenericRational, Number, Value};
 
@@ -110,7 +110,7 @@ macro_rules! binary_op {
 }
 
 impl VM {
-    pub(super) fn add(&mut self) -> Option<InterpretResult> {
+    pub(super) fn add(&mut self) -> Result<(), RuntimeError> {
         let slice_start = self.stack.len() - 2;
         let gen_method_id = self.heap.string_id(&"__add__");
         let ok = match &self.stack[slice_start..] {
@@ -137,7 +137,7 @@ impl VM {
                         .has_field_or_method(gen_method_id, &self.heap) =>
                 {
                     if !self.invoke(gen_method_id, 1) {
-                        return Some(InterpretResult::RuntimeError);
+                        return Err(RuntimeError::new("Method invocation failed".to_string()));
                     }
                     // If the invoke succeeds, decide what to return —
                     // keeping same flow as original code
@@ -159,9 +159,16 @@ impl VM {
                     .join(", ")
             );
 
-            return Some(InterpretResult::RuntimeError);
+            return Err(RuntimeError::new(format!(
+                "Operands must be two numbers or two strings. Got: [{}]",
+                self.stack[slice_start..]
+                    .iter()
+                    .map(|v| v.to_string(&self.heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )));
         }
-        None
+        Ok(())
     }
 
     /// Negate the top value on the stack.
@@ -169,7 +176,7 @@ impl VM {
     /// # Panics
     ///
     /// If the stack is empty. This is an internal error and should never happen.
-    pub(super) fn negate(&mut self) -> Option<InterpretResult> {
+    pub(super) fn negate(&mut self) -> Result<(), RuntimeError> {
         let value_id = *self.peek(0).expect("stack underflow in OP_NEGATE");
         let value = &value_id;
         if let Value::Number(n) = value {
@@ -178,12 +185,12 @@ impl VM {
             self.stack_push_value(negated.into());
         } else {
             runtime_error!(self, "Operand must be a number.");
-            return Some(InterpretResult::RuntimeError);
+            return Err(RuntimeError::new("Operand must be a number.".to_string()));
         }
-        None
+        Ok(())
     }
 
-    pub(crate) fn build_rational(&mut self) -> Option<InterpretResult> {
+    pub(crate) fn build_rational(&mut self) -> Result<(), RuntimeError> {
         let denominator = self
             .stack
             .pop()
@@ -208,9 +215,13 @@ impl VM {
                     numerator.to_string(&self.heap),
                     denominator.to_string(&self.heap)
                 );
-                return Some(InterpretResult::RuntimeError);
+                return Err(RuntimeError::new(format!(
+                    "Invalid operands ({}, {}) for rational construction.",
+                    numerator.to_string(&self.heap),
+                    denominator.to_string(&self.heap)
+                )));
             }
         }
-        None
+        Ok(())
     }
 }

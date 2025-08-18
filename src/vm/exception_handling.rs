@@ -1,4 +1,4 @@
-use super::InterpretResult;
+use super::RuntimeError;
 use crate::chunk::CodeOffset;
 use crate::value::Value;
 use crate::vm::VM;
@@ -31,40 +31,45 @@ impl VM {
         self.exception_handlers.pop()
     }
 
-    pub(super) fn unwind(&mut self, exception: Value) -> Option<InterpretResult> {
+    pub(super) fn unwind(&mut self, exception: Value) -> Result<(), RuntimeError> {
         if !matches!(exception, Value::Instance(_)) {
             runtime_error!(
                 self,
                 "Can only throw instances, got: {}",
                 exception.to_string(&self.heap)
             );
-            return Some(InterpretResult::RuntimeError);
+            return Err(RuntimeError::new(format!(
+                "Can only throw instances, got: {}",
+                exception.to_string(&self.heap)
+            )));
         }
         if let Some(handler) = self.pop_exception_handler() {
             self.callstack.truncate(handler.frames_to_keep, &self.heap);
             self.callstack.current_mut().ip = handler.ip;
             self.stack.truncate(handler.stack_length);
             self.stack.push(exception);
-            None
+            Ok(())
         } else {
             runtime_error!(
                 self,
                 "{}",
                 self.value_to_string(&exception).to_string(&self.heap)
             );
-            Some(InterpretResult::RuntimeError)
+            Err(RuntimeError::new(
+                self.value_to_string(&exception).to_string(&self.heap)
+            ))
         }
     }
 
-    pub(super) fn reraise_exception(&mut self) -> Option<InterpretResult> {
+    pub(super) fn reraise_exception(&mut self) -> Result<(), RuntimeError> {
         match self.stack.pop().expect("Stack underflow in OP_RERAISE") {
-            Value::Nil => None,
+            Value::Nil => Ok(()),
             exception => self.unwind(exception),
         }
     }
 
     ///Layout is Stack Top: [`exception_class_to_catch`, `exception_value_raised`]
-    pub(super) fn compare_exception(&mut self) -> Option<InterpretResult> {
+    pub(super) fn compare_exception(&mut self) -> Result<(), RuntimeError> {
         let class_to_catch = self
             .stack
             .pop()
@@ -77,14 +82,17 @@ impl VM {
             self.stack.push(Value::Bool(
                 exception_instance.to_value(&self.heap).class == class_id,
             ));
-            None
+            Ok(())
         } else {
             runtime_error!(
                 self,
                 "Exception to catch must be a class, got: {}",
                 class_to_catch.to_string(&self.heap)
             );
-            Some(InterpretResult::RuntimeError)
+            Err(RuntimeError::new(format!(
+                "Exception to catch must be a class, got: {}",
+                class_to_catch.to_string(&self.heap)
+            )))
         }
     }
 }

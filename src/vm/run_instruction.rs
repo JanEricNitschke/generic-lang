@@ -89,14 +89,14 @@ macro_rules! run_instruction {
             op @ (OpCode::SetLocal | OpCode::SetLocalLong) => $self.set_local(op),
             // Global to get passed as operand
             op @ (OpCode::GetGlobal | OpCode::GetGlobalLong) => {
-                if let Some(value) = $self.get_global(op) {
-                    return value;
+                if let Err(_) = $self.get_global(op) {
+                    return InterpretResult::RuntimeError;
                 }
             }
             // Global whose value to set is operand, value to use is on the stack
             op @ (OpCode::SetGlobal | OpCode::SetGlobalLong) => {
-                if let Some(value) = $self.set_global(op) {
-                    return value;
+                if let Err(_) = $self.set_global(op) {
+                    return InterpretResult::RuntimeError;
                 }
             }
             // Name of the global to define comes from the operand, value
@@ -114,14 +114,16 @@ macro_rules! run_instruction {
             // The function to call is on the stack followed by all arguments
             // in order from left to right.
             OpCode::Call => {
-                if let Some(value) = $self.call() {
-                    return value;
+                if let Err(_) = $self.call() {
+                    return InterpretResult::RuntimeError;
                 }
             }
             // Value to return is on the stack
             OpCode::Return => {
-                if let Some(value) = $self.return_() {
-                    return value;
+                match $self.return_() {
+                    Ok(Some(result)) => return result,
+                    Ok(None) => {},
+                    Err(_) => return InterpretResult::RuntimeError,
                 }
             }
             // Index of the constant is the operand, value is in the constants table
@@ -135,8 +137,8 @@ macro_rules! run_instruction {
             }
             // `Negate` and `Not` work on the stack value
             OpCode::Negate => {
-                if let Some(value) = $self.negate() {
-                    return value;
+                if let Err(_) = $self.negate() {
+                    return InterpretResult::RuntimeError;
                 }
             }
             OpCode::Not => $self.not_(),
@@ -145,20 +147,20 @@ macro_rules! run_instruction {
             OpCode::False => $self.stack_push(Value::Bool(false)),
             OpCode::StopIteration => $self.stack.push(Value::StopIteration),
             OpCode::Equal => {
-                if let Some(result) = $self.equal(false) {
-                    return result;
+                if let Err(_) = $self.equal(false) {
+                    return InterpretResult::RuntimeError;
                 }
             }
             OpCode::NotEqual => {
-                if let Some(result) = $self.equal(true) {
-                    return result;
+                if let Err(_) = $self.equal(true) {
+                    return InterpretResult::RuntimeError;
                 }
             }
             // All of these work on the top two stack values.
             // Top most is right operand, second is left.
             OpCode::Add => {
-                if let Some(value) = $self.add() {
-                    return value;
+                if let Err(_) = $self.add() {
+                    return InterpretResult::RuntimeError;
                 }
             }
             OpCode::Subtract => binary_op!($self, sub, "__sub__", false, mut_heap),
@@ -416,28 +418,28 @@ macro_rules! run_instruction {
                 $self.build_tuple();
             }
             OpCode::BuildSet => {
-                if let Some(value) = $self.build_set() {
-                    return value;
+                if let Err(_) = $self.build_set() {
+                    return InterpretResult::RuntimeError;
                 }
             }
             OpCode::BuildDict => {
-                if let Some(value) = $self.build_dict() {
-                    return value;
+                if let Err(_) = $self.build_dict() {
+                    return InterpretResult::RuntimeError;
                 }
             }
             OpCode::BuildRangeExclusive => {
-                if let Some(value) = $self.build_range(true) {
-                    return value;
+                if let Err(_) = $self.build_range(true) {
+                    return InterpretResult::RuntimeError;
                 }
             }
             OpCode::BuildRangeInclusive => {
-                if let Some(value) = $self.build_range(false) {
-                    return value;
+                if let Err(_) = $self.build_range(false) {
+                    return InterpretResult::RuntimeError;
                 }
             }
             OpCode::BuildRational => {
-                if let Some(value) = $self.build_rational() {
-                    return value;
+                if let Err(_) = $self.build_rational() {
+                    return InterpretResult::RuntimeError;
                 }
             }
             // Import a module by filepath without qualifiers.
@@ -507,21 +509,21 @@ macro_rules! run_instruction {
             // We pop the exception, unwind to the handler and push the exception again.
             OpCode::Throw => {
                 let exception = $self.stack.pop().expect("Stack underflow in OP_THROW.");
-                if let Some(value) = $self.unwind(exception) {
-                    return value;
+                if let Err(_) = $self.unwind(exception) {
+                    return InterpretResult::RuntimeError;
                 }
             }
             // Layout is Stack Top: [exception_class_to_catch, exception_value_raised]
             OpCode::CompareException => {
-                if let Some(value) = $self.compare_exception() {
-                    return value;
+                if let Err(_) = $self.compare_exception() {
+                    return InterpretResult::RuntimeError;
                 }
             }
             //  We expect either the exception at the stop of the stack that should be reraised
             // or nil if we handled the exception.
             OpCode::Reraise => {
-                if let Some(value) = $self.reraise_exception() {
-                    return value;
+                if let Err(_) = $self.reraise_exception() {
+                    return InterpretResult::RuntimeError;
                 }
             }
         };
