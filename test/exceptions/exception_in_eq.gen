@@ -14,4 +14,4 @@ try {
     print("No Exception");
 }
 
-ThrowOnEq() == ThrowOnEq() # expect runtime error: Error1
+ThrowOnEq() == ThrowOnEq() # expect runtime error: [line 11] Error at '}': Expect ';' after expression.

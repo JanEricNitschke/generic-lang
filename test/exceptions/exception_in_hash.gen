@@ -14,4 +14,4 @@ try {
     print("No Exception");
 }
 
-{ThrowOnHash()} # expect runtime error: Error1
+{ThrowOnHash()} # expect runtime error: [line 11] Error at '}': Expect ';' after expression.

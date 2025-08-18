@@ -1,1 +1,1 @@
-nil.foo; # expect runtime error: TypeError: Tried to get property 'foo' of non-instance `nil`
+nil.foo; # expect runtime error: TypeError: Tried to get property 'foo' of non-instance `nil`.

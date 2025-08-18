@@ -11,4 +11,4 @@ setattr(foo, field, 20);
 print(getattr(foo, x)); # expect: 20
 print(foo.bar); # expect: 20
 
-print(getattr(foo, "field")); # expect runtime error: AttributeError: Undefined property 'field'.
+print(getattr(foo, "field")); # expect runtime error: Exception: Undefined property 'field'.
