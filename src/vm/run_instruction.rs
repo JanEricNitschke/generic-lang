@@ -119,13 +119,11 @@ macro_rules! run_instruction {
                 }
             }
             // Value to return is on the stack
-            OpCode::Return => {
-                match $self.return_() {
-                    Ok(Some(result)) => return result,
-                    Ok(None) => {},
-                    Err(_) => return InterpretResult::RuntimeError,
-                }
-            }
+            OpCode::Return => match $self.return_() {
+                Ok(Some(result)) => return result,
+                Ok(None) => {}
+                Err(_) => return InterpretResult::RuntimeError,
+            },
             // Index of the constant is the operand, value is in the constants table
             OpCode::Constant => {
                 let value = $self.read_constant(false);
@@ -448,8 +446,8 @@ macro_rules! run_instruction {
             OpCode::Import => {
                 let file_path = $self.read_string("OP_IMPORT_AS");
                 let local_import = $self.read_byte() == 1;
-                if let Some(value) = $self.import_file(file_path, None, None, local_import) {
-                    return value;
+                if let Err(_) = $self.import_file(file_path, None, None, local_import) {
+                    return InterpretResult::RuntimeError;
                 }
             }
             // Import a module by filepath with an alias.
@@ -458,8 +456,8 @@ macro_rules! run_instruction {
                 let file_path = $self.read_string("OP_IMPORT_AS");
                 let alias = $self.read_string("OP_IMPORT_AS");
                 let local_import = $self.read_byte() == 1;
-                if let Some(value) = $self.import_file(file_path, None, Some(alias), local_import) {
-                    return value;
+                if let Err(_) = $self.import_file(file_path, None, Some(alias), local_import) {
+                    return InterpretResult::RuntimeError;
                 }
             }
             // Import a set of names from a module.
@@ -481,10 +479,8 @@ macro_rules! run_instruction {
                     None
                 };
 
-                if let Some(value) =
-                    $self.import_file(file_path, names_to_import, None, local_import)
-                {
-                    return value;
+                if let Err(_) = $self.import_file(file_path, names_to_import, None, local_import) {
+                    return InterpretResult::RuntimeError;
                 }
             }
             // Register an exception handler.

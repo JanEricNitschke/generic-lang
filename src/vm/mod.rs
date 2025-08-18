@@ -5,8 +5,8 @@
 
 #[macro_use]
 mod runtime_error;
-mod error;
 mod dunder;
+mod error;
 mod garbage_collection;
 mod import;
 mod setup;
@@ -26,8 +26,8 @@ mod variables;
 
 use arithmetics::{BinaryOpResult, IntoResultValue};
 use callstack::CallStack;
-use exception_handling::ExceptionHandler;
 pub use error::RuntimeError;
+use exception_handling::ExceptionHandler;
 
 use rustc_hash::FxHashMap as HashMap;
 use std::collections::VecDeque;

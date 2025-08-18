@@ -56,7 +56,7 @@ impl VM {
                 self.value_to_string(&exception).to_string(&self.heap)
             );
             Err(RuntimeError::new(
-                self.value_to_string(&exception).to_string(&self.heap)
+                self.value_to_string(&exception).to_string(&self.heap),
             ))
         }
     }
