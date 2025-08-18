@@ -7,7 +7,7 @@ use std::hash::{Hash, Hasher};
 impl VM {
     /// Convert a value to string, handling instances with __str__ methods.
     /// This function is shared between value constructors, `to_string_native`, and `print_native`.
-    pub fn value_to_string(&mut self, value: &Value) -> Value {
+    pub fn value_to_string(&mut self, value: &Value) -> Result<Value, String> {
         let str_id = self.heap.string_id(&"__str__");
 
         if let Value::Instance(instance) = value
@@ -17,12 +17,28 @@ impl VM {
         {
             // Push the value onto the stack temporarily so invoke_and_run_function can access it
             self.stack.push(*value);
-            self.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)));
-            self.stack
-                .pop()
-                .expect("Stack underflow in value_to_string")
+            let result = self.invoke_and_run_function(
+                str_id,
+                0,
+                matches!(str_method, Value::NativeMethod(_)),
+            );
+
+            match result {
+                InterpretResult::Ok => Ok(self
+                    .stack
+                    .pop()
+                    .expect("Stack underflow in value_to_string")),
+                InterpretResult::RuntimeError => {
+                    Err("__str__ method failed with runtime error".to_string())
+                }
+                InterpretResult::CompileError => {
+                    Err("__str__ method failed with compile error".to_string())
+                }
+            }
         } else {
-            Value::String(self.heap.string_id(&value.to_string(&self.heap)))
+            Ok(Value::String(
+                self.heap.string_id(&value.to_string(&self.heap)),
+            ))
         }
     }
 
@@ -150,6 +166,26 @@ impl VM {
         }
 
         Ok(state.finish())
+    }
+
+    /// Compare two values for equality, with support for custom __eq__ methods.
+    /// If an exception occurs in __eq__, sets handling_exception flag and returns false.
+    /// Callers should check handling_exception after calling this method.
+    pub(crate) fn compare_values_for_collections(&mut self, left: Value, right: Value) -> bool {
+        // If we already have an active exception, don't run the comparison
+        if self.handling_exception {
+            return false;
+        }
+        
+        match self.compare_values(left, right) {
+            Ok(result) => result,
+            Err(_error) => {
+                // The exception is already set by compare_values if it failed due to __eq__ 
+                // Just set the handling_exception flag if it wasn't already set
+                self.handling_exception = true;
+                false // Return false as default when __eq__ fails
+            }
+        }
     }
 
     /// Compare two values for equality, with support for custom __eq__ methods.

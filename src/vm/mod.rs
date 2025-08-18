@@ -6,6 +6,7 @@
 #[macro_use]
 mod runtime_error;
 mod dunder;
+mod errors;
 mod garbage_collection;
 mod import;
 mod setup;
@@ -69,6 +70,13 @@ impl Global {
             self.mutable
         )
     }
+
+    pub(super) fn new_mutable(value: Value) -> Self {
+        Self {
+            value,
+            mutable: true,
+        }
+    }
 }
 
 impl std::fmt::Display for Global {
@@ -92,7 +100,7 @@ pub struct VM {
     path: PathBuf,
     builtins: HashMap<StringId, Global>,
     stdlib: HashMap<StringId, ModuleContents>,
-    handling_exception: bool,
+    pub(crate) handling_exception: bool,
 }
 
 // Core functionality for running a script.

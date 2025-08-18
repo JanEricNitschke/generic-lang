@@ -1,0 +1,12 @@
+# Test that const reassignment errors can now be caught
+const x = 10;
+try {
+    x = 20; # This should throw ConstReassignmentError
+    print("This should not print");
+} catch ConstReassignmentError as e {
+    print("Caught const reassignment error"); # expect: Caught const reassignment error
+    print(e.message()); # expect: Cannot reassign const variable.
+} else {
+    print("This should not print");
+}
+print("Done"); # expect: Done

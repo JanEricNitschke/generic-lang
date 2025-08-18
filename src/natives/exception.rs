@@ -1,7 +1,7 @@
 //! Native methods for Exception class.
 
 use crate::{
-    value::{Exception, NativeClass, Value},
+    value::{NativeClass, Value},
     vm::VM,
 };
 
@@ -12,16 +12,15 @@ pub(super) fn exception_init_native(
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
     let message = match &args[0] {
-        Value::String(string_id) => *string_id,
+        Value::String(string_id) => string_id.to_value(&vm.heap).clone(),
         _ => return Err("Exception message must be a string".to_string()),
     };
 
-    let stack_trace = vm.capture_stack_trace();
-
-    let exception = Exception::new(message, vm.heap.string_id(&stack_trace));
+    // Use the utility function to create the exception data with stack trace
+    let exception_data = vm.create_exception_data(&message);
 
     if let Value::Instance(instance) = receiver {
-        instance.to_value_mut(&mut vm.heap).backing = Some(NativeClass::Exception(exception));
+        instance.to_value_mut(&mut vm.heap).backing = Some(NativeClass::Exception(exception_data));
     }
 
     // Return the modified instance

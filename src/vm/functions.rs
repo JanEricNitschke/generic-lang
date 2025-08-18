@@ -2,7 +2,7 @@
 use crate::chunk::InstructionDisassembler;
 use crate::value::NativeClass;
 use crate::{
-    chunk::{CodeOffset, OpCode},
+    chunk::OpCode,
     heap::{NativeFunctionId, NativeMethodId, StringId, UpvalueId},
     types::JumpCondition,
     value::{Class, Closure, Instance, Number, Upvalue, Value},
@@ -97,17 +97,17 @@ impl VM {
                     self.stack[new_stack_base] = value.value;
                     self.call_value(value.value, arg_count)
                 } else {
-                    runtime_error!(
-                        self,
+                    let message = format!(
                         "Function '{}' not defined in module {}.",
                         method_name.to_value(&self.heap),
                         module.to_value(&self.heap).name.to_value(&self.heap)
                     );
+                    self.throw_value_error(&message);
                     false
                 }
             }
             _ => {
-                runtime_error!(self, "Only instances have methods.");
+                self.throw_type_error("Only instances have methods.");
                 false
             }
         }
@@ -126,11 +126,8 @@ impl VM {
             .methods
             .get(&method_name)
         else {
-            runtime_error!(
-                self,
-                "Undefined property '{}'.",
-                self.heap.strings[method_name]
-            );
+            let message = format!("Undefined property '{}'.", self.heap.strings[method_name]);
+            self.throw_attribute_error(&message);
             return false;
         };
         match method {
@@ -204,7 +201,8 @@ impl VM {
                         _ => self.execute_call(initializer, arg_count),
                     }
                 } else if arg_count != 0 {
-                    runtime_error!(self, "Expected 0 arguments but got {arg_count}.");
+                    let message = format!("Expected 0 arguments but got {arg_count}.");
+                    self.throw_type_error(&message);
                     false
                 } else {
                     true
@@ -223,17 +221,15 @@ impl VM {
                     arg_count,
                 ),
                 _ => {
-                    runtime_error!(
-                        self,
-                        "Native methods only bind over closures or native methods."
+                    self.throw_type_error(
+                        "Native methods only bind over closures or native methods.",
                     );
                     false
                 }
             },
             _ => {
-                runtime_error!(
-                    self,
-                    "Can only call functions, classes and instances with a `__call__` method."
+                self.throw_type_error(
+                    "Can only call functions, classes and instances with a `__call__` method.",
                 );
                 false
             }
@@ -253,18 +249,18 @@ impl VM {
             .arity;
         let arg_count = usize::from(arg_count);
         if arg_count != arity {
-            runtime_error!(
-                self,
+            let message = format!(
                 "Expected {} argument{} but got {}.",
                 arity,
                 { if arity == 1 { "" } else { "s" } },
                 arg_count
             );
+            self.throw_type_error(&message);
             return false;
         }
 
         if self.callstack.len() == crate::config::FRAMES_MAX {
-            runtime_error!(self, "Stack overflow.");
+            self.throw_runtime_error("Stack overflow.");
             return false;
         }
 
@@ -286,24 +282,23 @@ impl VM {
         let f = f.to_value(&self.heap);
         let arity = f.arity;
         if !arity.contains(&arg_count) {
-            if arity.len() == 1 {
-                runtime_error!(
-                    self,
+            let message = if arity.len() == 1 {
+                format!(
                     "Native function '{}' expected {} argument{}, got {}.",
                     f.name.to_value(&self.heap),
                     arity[0],
                     { if arity[0] == 1 { "" } else { "s" } },
                     arg_count
-                );
+                )
             } else {
-                runtime_error!(
-                    self,
+                format!(
                     "Native function '{}' expected any of {:?} arguments, got {}.",
                     f.name.to_value(&self.heap),
                     arity,
                     arg_count
-                );
-            }
+                )
+            };
+            self.throw_type_error(&message);
             return false;
         }
         let fun = f.fun;
@@ -318,7 +313,7 @@ impl VM {
                 true
             }
             Err(e) => {
-                runtime_error!(self, "{}", e);
+                self.throw_runtime_error(&e);
                 false
             }
         }
@@ -339,26 +334,25 @@ impl VM {
         let f = f.to_value(&self.heap);
         let arity = f.arity;
         if !arity.contains(&arg_count) {
-            if arity.len() == 1 {
-                runtime_error!(
-                    self,
+            let message = if arity.len() == 1 {
+                format!(
                     "Native method '{}' of class {} expected {} argument{}, got {}.",
                     f.name.to_value(&self.heap),
                     *receiver.class_name(&self.heap).to_value(&self.heap),
                     arity[0],
                     { if arity[0] == 1 { "" } else { "s" } },
                     arg_count
-                );
+                )
             } else {
-                runtime_error!(
-                    self,
+                format!(
                     "Native method '{}' of class {} expected any of {:?} arguments, got {}.",
                     *f.name.to_value(&self.heap),
                     *receiver.class_name(&self.heap).to_value(&self.heap),
                     arity,
                     arg_count
-                );
-            }
+                )
+            };
+            self.throw_type_error(&message);
             return false;
         }
         let fun = f.fun;
@@ -374,7 +368,7 @@ impl VM {
                 true
             }
             Err(e) => {
-                runtime_error!(self, "{}", e);
+                self.throw_runtime_error(&e);
                 false
             }
         }
@@ -504,12 +498,11 @@ impl VM {
                 for name in names {
                     let Some(value) = last_module.to_value(&self.heap).globals.get(&name).copied()
                     else {
-                        runtime_error!(
-                            self,
+                        let message = format!(
                             "Could not find name to import `{}`.",
                             name.to_value(&self.heap)
                         );
-                        return Some(InterpretResult::RuntimeError);
+                        return self.throw_value_error(&message);
                     };
                     if was_local_import {
                         self.stack_push(value.value);

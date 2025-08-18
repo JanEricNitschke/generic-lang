@@ -21,7 +21,7 @@ pub(super) fn string_init_native(
     _receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> Result<Value, String> {
-    Ok(vm.value_to_string(args[0]))
+    vm.value_to_string(args[0])
 }
 
 /// Integer.__init__(value) - Convert string or number to integer

@@ -280,12 +280,11 @@ macro_rules! run_instruction {
                             // instance so that it can later be called separately.
                             // Just using the side effects
                         } else {
-                            runtime_error!(
-                                $self,
-                                "Undefined property '{}'.",
-                                field.to_value(&$self.heap)
-                            );
-                            return InterpretResult::RuntimeError;
+                            let message =
+                                format!("Undefined property '{}'.", field.to_value(&$self.heap));
+                            if let Some(result) = $self.throw_attribute_error(&message) {
+                                return result;
+                            }
                         }
                     }
                     Value::Module(module) => {
@@ -293,23 +292,25 @@ macro_rules! run_instruction {
                             $self.stack.pop(); // module
                             $self.stack_push(value.value);
                         } else {
-                            runtime_error!(
-                                $self,
+                            let message = format!(
                                 "Undefined name '{}' in module {}.",
                                 field.to_value(&$self.heap),
                                 module.to_value(&$self.heap).name.to_value(&$self.heap)
                             );
-                            return InterpretResult::RuntimeError;
+                            if let Some(result) = $self.throw_value_error(&message) {
+                                return result;
+                            }
                         }
                     }
                     x => {
-                        runtime_error!(
-                            $self,
+                        let message = format!(
                             "Tried to get property '{}' of non-instance `{}`.",
                             field.to_value(&$self.heap),
                             x.to_string(&$self.heap)
                         );
-                        return InterpretResult::RuntimeError;
+                        if let Some(result) = $self.throw_type_error(&message) {
+                            return result;
+                        }
                     }
                 };
             }
@@ -328,26 +329,43 @@ macro_rules! run_instruction {
                             .insert(field, value);
                     }
                     Value::Module(module) => {
-                        if let Some(global) = module
+                        let is_mutable = if let Some(global) =
+                            module.to_value(&$self.heap).globals.get(&field_string_id)
+                        {
+                            global.mutable
+                        } else {
+                            true // Default to mutable if not found (will create new)
+                        };
+
+                        if !is_mutable {
+                            if let Some(result) =
+                                $self.throw_const_reassignment_error("Cannot reassign const variable.")
+                            {
+                                return result;
+                            }
+                        } else if let Some(global) = module
                             .to_value_mut(&mut $self.heap)
                             .globals
                             .get_mut(&field_string_id)
                         {
-                            if !global.mutable {
-                                runtime_error!($self, "Reassignment to global 'const'.");
-                                return InterpretResult::RuntimeError;
-                            }
                             global.value = value;
+                        } else {
+                            // Create new mutable global
+                            module
+                                .to_value_mut(&mut $self.heap)
+                                .globals
+                                .insert(field_string_id, crate::vm::Global::new_mutable(value));
                         }
                     }
                     x => {
-                        runtime_error!(
-                            $self,
+                        let message = format!(
                             "Tried to set property '{}' of non-instance `{}`",
                             field,
                             x.to_string(&$self.heap)
                         );
-                        return InterpretResult::RuntimeError;
+                        if let Some(result) = $self.throw_type_error(&message) {
+                            return result;
+                        }
                     }
                 };
                 $self.stack_push(value);
@@ -374,8 +392,10 @@ macro_rules! run_instruction {
                 let superclass = if let Value::Class(superclass) = &superclass_id {
                     *superclass
                 } else {
-                    runtime_error!($self, "Superclass must be a class.");
-                    return InterpretResult::RuntimeError;
+                    if let Some(result) = $self.throw_type_error("Superclass must be a class.") {
+                        return result;
+                    }
+                    return InterpretResult::RuntimeError; // This should never be reached
                 };
                 let methods = superclass.to_value(&$self.heap).methods.clone();
                 let subclass = $self

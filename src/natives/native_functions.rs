@@ -161,7 +161,7 @@ pub(super) fn is_int_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Valu
 /// Turn the value into a string.
 /// Fixed implementations for basic types, instances use the `__str__` method if present.
 pub(super) fn to_string_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
-    Ok(vm.value_to_string(args[0]))
+    vm.value_to_string(args[0])
 }
 
 /// Return the type of the value as a string.
@@ -220,7 +220,7 @@ pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value
     };
 
     // Use the shared value_to_string utility for consistent behavior
-    let string_value = vm.value_to_string(args[0]);
+    let string_value = vm.value_to_string(args[0])?;
     print!("{}{end}", string_value.to_string(&vm.heap));
 
     Ok(Value::Nil)
