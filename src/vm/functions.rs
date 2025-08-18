@@ -26,7 +26,7 @@ impl VM {
         arg_count: u8,
         method_is_native: bool,
     ) -> InterpretResult {
-        if let Err(_) = self.invoke(method_name, arg_count) {
+        if self.invoke(method_name, arg_count).is_err() {
             return InterpretResult::RuntimeError;
         }
 
@@ -61,7 +61,11 @@ impl VM {
     ///
     /// If it is an instance and the attribute is not a property of the instance
     /// then a method is looked up in the class.
-    pub(crate) fn invoke(&mut self, method_name: StringId, arg_count: u8) -> Result<(), RuntimeError> {
+    pub(crate) fn invoke(
+        &mut self,
+        method_name: StringId,
+        arg_count: u8,
+    ) -> Result<(), RuntimeError> {
         let receiver = *self
             .peek(arg_count.into())
             .expect("Stack underflow in OP_INVOKE");
@@ -239,7 +243,11 @@ impl VM {
     ///
     /// The arity of the closure is checked against the provided number of arguments.
     /// Then the closure is pushed onto the callstack.
-    pub(super) fn execute_call(&mut self, closure_id: Value, arg_count: u8) -> Result<(), RuntimeError> {
+    pub(super) fn execute_call(
+        &mut self,
+        closure_id: Value,
+        arg_count: u8,
+    ) -> Result<(), RuntimeError> {
         let closure = closure_id.as_closure();
         let arity = closure
             .to_value(&self.heap)
@@ -277,7 +285,11 @@ impl VM {
     /// After the call the stack is truncated to remove the arguments and the function
     /// and the result is pushed onto the stack.
     #[allow(clippy::branches_sharing_code)]
-    fn execute_native_function_call(&mut self, f: NativeFunctionId, arg_count: u8) -> Result<(), RuntimeError> {
+    fn execute_native_function_call(
+        &mut self,
+        f: NativeFunctionId,
+        arg_count: u8,
+    ) -> Result<(), RuntimeError> {
         let f = f.to_value(&self.heap);
         let arity = f.arity;
         if !arity.contains(&arg_count) {

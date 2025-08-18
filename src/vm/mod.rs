@@ -136,7 +136,7 @@ impl VM {
 
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
-            if let Err(_) = self.execute_call(value_id, 0) {
+            if self.execute_call(value_id, 0).is_err() {
                 return InterpretResult::RuntimeError;
             }
 

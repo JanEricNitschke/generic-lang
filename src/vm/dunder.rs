@@ -167,7 +167,7 @@ impl VM {
             self.stack_push(left);
             self.stack_push(right);
 
-            if let Ok(()) = self.invoke(eq_id, 1) {
+            if matches!(self.invoke(eq_id, 1), Ok(())) {
                 // Method call succeeded, run it and get result
                 match self.run_function() {
                     InterpretResult::Ok => {
