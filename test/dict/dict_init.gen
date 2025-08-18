@@ -1,0 +1,4 @@
+var my_dict = Dict((1, "a"), (2, "b"), (3, "c"));
+print(my_dict); # expect: {2: b, 3: c, 1: a}
+
+var bad_dict = Dict((1, "a"), (1, 2, 3));  # expect runtime error: Dict initializer expects 2-element tuples, got `(1, 2, 3)`.

@@ -1,4 +1,4 @@
-# False and nil are false.
+# False, nil, zero and empty string are false.
 if (false) {
     print("bad");
 } else {
@@ -9,14 +9,25 @@ if (nil) {
 } else {
     print("nil"); # expect: nil
 }
+if (0) {
+    print("bad");
+} else {
+    print(0); # expect: 0
+}
+if ("") {
+    print("bad");
+} else {
+    print("empty"); # expect: empty
+}
 
 # Everything else is true.
 if (true) {
     print(true); # expect: true
 }
-if (0) {
-    print(0); # expect: 0
+if 1 {
+    print(1); # expect: 1
 }
-if ("") {
-    print("empty"); # expect: empty
+
+if "apple" {
+    print("apple");  # expect: apple
 }

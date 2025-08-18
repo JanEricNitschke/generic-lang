@@ -130,11 +130,13 @@ impl NativeClass {
             Self::TupleIterator(tuple_iter) => tuple_iter.to_string(heap),
             Self::Exception(exception) => exception.to_string(heap),
             // Proxy classes should never be accessed for string conversion
-            Self::BoolProxy => "<BoolProxy>".to_string(),
-            Self::StringProxy => "<StringProxy>".to_string(),
-            Self::IntegerProxy => "<IntegerProxy>".to_string(),
-            Self::FloatProxy => "<FloatProxy>".to_string(),
-            Self::RationalProxy => "<RationalProxy>".to_string(),
+            Self::BoolProxy => unreachable!("BoolProxy should never be converted to string"),
+            Self::StringProxy => unreachable!("StringProxy should never be converted to string"),
+            Self::IntegerProxy => unreachable!("IntegerProxy should never be converted to string"),
+            Self::FloatProxy => unreachable!("FloatProxy should never be converted to string"),
+            Self::RationalProxy => {
+                unreachable!("RationalProxy should never be converted to string")
+            }
         }
     }
 }
@@ -372,6 +374,12 @@ impl Dict {
         self.items
             .find(key.to_hash(heap), |(k, _v)| k.eq(key, heap))
             .map(|(_k, v)| v)
+    }
+
+    pub(crate) fn contains(&self, item: &Value, heap: &Heap) -> bool {
+        self.items
+            .find(item.to_hash(heap), |(key, _val)| key.eq(item, heap))
+            .is_some()
     }
 }
 

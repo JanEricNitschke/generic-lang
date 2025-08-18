@@ -36,7 +36,12 @@ impl VM {
             let result = self.stack.pop().expect("Stack underflow in IS_FALSEY");
             result == Value::Bool(false)
         } else {
-            matches!(value, Value::Nil | Value::Bool(false))
+            match value {
+                Value::Nil | Value::Bool(false) => true,
+                Value::Number(n) => n == 0.into(),
+                Value::String(id) => (id.to_value(&self.heap)).to_string().is_empty(),
+                _ => false,
+            }
         }
     }
 }

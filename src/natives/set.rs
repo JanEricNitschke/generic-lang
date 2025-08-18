@@ -71,7 +71,17 @@ pub(super) fn set_len_native(
     Ok(Number::from_usize(my_set.items.len(), &mut vm.heap).into())
 }
 
+pub(super) fn set_bool_native(
+    vm: &mut VM,
+    receiver: &mut Value,
+    _args: &mut [&mut Value],
+) -> Result<Value, String> {
+    let is_empty = receiver.as_set(&vm.heap).items.is_empty();
+    Ok((!is_empty).into())
+}
+
 /// Constructor for Set that accepts variable number of arguments.
+///
 /// `Set()` creates empty set, `Set(1, 2, 3)` creates {1, 2, 3}.
 /// Only hashable values are allowed.
 pub(super) fn set_init_native(
