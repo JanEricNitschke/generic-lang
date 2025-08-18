@@ -29,4 +29,4 @@ print("z" in my_object); # expect: false
 class BadClass {}
 
 var bad_object = BadClass();
-"x" in bad_object; # expect runtime error: Undefined property 'contains'.
+"x" in bad_object; # expect runtime error: AttributeError: Undefined property 'contains'.

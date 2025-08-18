@@ -12,5 +12,5 @@ try {
     print("Caught");  # expect: Caught
 }
 
-print(ThrowOnToString());  # expect runtime error: Uncaught exception: <Error instance>
+print(ThrowOnToString());  # expect runtime error: Exception: __str__ method failed with runtime error
 

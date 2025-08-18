@@ -8,4 +8,4 @@ fun test_fib() {
 
 test_fib();
 
-print(fibo(1)); # expect runtime error: Undefined variable 'fibo'.
+print(fibo(1)); # expect runtime error: NameError: Undefined variable 'fibo'.

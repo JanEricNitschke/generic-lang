@@ -14,5 +14,5 @@ tree.x = 6;
 print(tree.x); # expect: 6
 tree.x *= 2;
 print(tree.x); # expect: 12
-tree.x *= "Test"; # expect runtime error: Operands must be numbers. Got: [12, Test]
+tree.x *= "Test"; # expect runtime error: TypeError: Operands must be numbers. Got: [12, Test]
 print(tree.x);

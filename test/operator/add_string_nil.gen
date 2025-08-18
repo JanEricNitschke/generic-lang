@@ -1,1 +1,1 @@
-"s" + nil; # expect runtime error: Operands must be two numbers or two strings. Got: [s, nil]
+"s" + nil; # expect runtime error: TypeError: Operands must be two numbers or two strings. Got: [s, nil]

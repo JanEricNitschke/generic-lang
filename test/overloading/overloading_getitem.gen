@@ -27,4 +27,4 @@ print(my_object[2]); # expect: nil
 class BadClass {}
 
 var bad_object = BadClass();
-bad_object[1]; # expect runtime error: Undefined property '__getitem__'.
+bad_object[1]; # expect runtime error: AttributeError: Undefined property '__getitem__'.

@@ -2,4 +2,4 @@ import "math";
 
 print(math.sqrt(9)); # expect: 3.0
 
-math.sqrt(nil); # expect runtime error: 'sqrt' expected numeric argument, got: nil
+math.sqrt(nil); # expect runtime error: Exception: 'sqrt' expected numeric argument, got: nil
