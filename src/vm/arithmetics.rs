@@ -78,7 +78,7 @@ macro_rules! binary_op {
                             .to_value(&$self.heap)
                             .has_field_or_method(gen_method_id, &$self.heap) =>
                     {
-                        if !$self.invoke(gen_method_id, 1) {
+                        if let Err(_) = $self.invoke(gen_method_id, 1) {
                             return InterpretResult::RuntimeError;
                         }
                         // If the invoke succeeds, decide what to return —
@@ -136,9 +136,7 @@ impl VM {
                         .to_value(&self.heap)
                         .has_field_or_method(gen_method_id, &self.heap) =>
                 {
-                    if !self.invoke(gen_method_id, 1) {
-                        return Err(RuntimeError::new("Method invocation failed".to_string()));
-                    }
+                    self.invoke(gen_method_id, 1)?;
                     // If the invoke succeeds, decide what to return —
                     // keeping same flow as original code
                     true
@@ -159,14 +157,7 @@ impl VM {
                     .join(", ")
             );
 
-            return Err(RuntimeError::new(format!(
-                "Operands must be two numbers or two strings. Got: [{}]",
-                self.stack[slice_start..]
-                    .iter()
-                    .map(|v| v.to_string(&self.heap))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )));
+            return Err(RuntimeError::new());
         }
         Ok(())
     }
@@ -185,7 +176,7 @@ impl VM {
             self.stack_push_value(negated.into());
         } else {
             runtime_error!(self, "Operand must be a number.");
-            return Err(RuntimeError::new("Operand must be a number.".to_string()));
+            return Err(RuntimeError::new());
         }
         Ok(())
     }
@@ -215,11 +206,7 @@ impl VM {
                     numerator.to_string(&self.heap),
                     denominator.to_string(&self.heap)
                 );
-                return Err(RuntimeError::new(format!(
-                    "Invalid operands ({}, {}) for rational construction.",
-                    numerator.to_string(&self.heap),
-                    denominator.to_string(&self.heap)
-                )));
+                return Err(RuntimeError::new());
             }
         }
         Ok(())

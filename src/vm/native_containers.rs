@@ -25,11 +25,7 @@ impl VM {
                     start.to_string(&self.heap),
                     end.to_string(&self.heap)
                 );
-                return Err(RuntimeError::new(format!(
-                    "Invalid operands ({}, {}) for range construction.",
-                    start.to_string(&self.heap),
-                    end.to_string(&self.heap)
-                )));
+                return Err(RuntimeError::new());
             };
 
         let instance = Instance::new(
@@ -97,7 +93,7 @@ impl VM {
 
             if let Err(err) = set.add(value, self) {
                 runtime_error!(self, "{}", err);
-                return Err(RuntimeError::new(err));
+                return Err(RuntimeError::new());
             }
         }
         // Pop all items from stack at once
@@ -126,7 +122,7 @@ impl VM {
 
             if let Err(err) = dict.add(key, value, self) {
                 runtime_error!(self, "{}", err);
-                return Err(RuntimeError::new(err));
+                return Err(RuntimeError::new());
             }
         }
         // Pop all key-value pairs from stack at once

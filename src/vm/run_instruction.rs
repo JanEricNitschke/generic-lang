@@ -363,7 +363,7 @@ macro_rules! run_instruction {
             OpCode::Invoke => {
                 let method_name = $self.read_string("OP_INVOKE");
                 let arg_count = $self.read_byte();
-                if !$self.invoke(method_name, arg_count) {
+                if let Err(_) = $self.invoke(method_name, arg_count) {
                     return InterpretResult::RuntimeError;
                 }
             }
@@ -405,7 +405,7 @@ macro_rules! run_instruction {
                     .stack
                     .pop()
                     .expect("Stack underflow in OP_SUPER_INVOKE");
-                if !$self.invoke_from_class(superclass, method_name, arg_count) {
+                if let Err(_) = $self.invoke_from_class(superclass, method_name, arg_count) {
                     return InterpretResult::RuntimeError;
                 }
             }

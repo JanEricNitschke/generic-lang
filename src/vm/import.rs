@@ -30,9 +30,7 @@ impl VM {
             stem.to_str().unwrap().to_string()
         } else {
             runtime_error!(self, "Import path should have a filestem.");
-            return Err(RuntimeError::new(
-                "Import path should have a filestem.".to_string(),
-            ));
+            return Err(RuntimeError::new());
         };
         let name_id = self.heap.string_id(&name);
 
@@ -43,10 +41,7 @@ impl VM {
                     "Circular import of module `{}` detected.",
                     name_id.to_value(&self.heap)
                 );
-                return Err(RuntimeError::new(format!(
-                    "Circular import of module `{}` detected.",
-                    name_id.to_value(&self.heap)
-                )));
+                return Err(RuntimeError::new());
             }
         }
 
@@ -98,10 +93,7 @@ impl VM {
                 "Could not find the file to be imported. Attempted path `{:?}` and stdlib.",
                 file_path.to_slash_lossy()
             );
-            return Err(RuntimeError::new(format!(
-                "Could not find the file to be imported. Attempted path `{:?}` and stdlib.",
-                file_path.to_slash_lossy()
-            )));
+            return Err(RuntimeError::new());
         }
         Ok(())
     }
@@ -159,10 +151,7 @@ impl VM {
                         "Could not find name to import `{}`.",
                         name.to_value(&self.heap)
                     );
-                    return Err(RuntimeError::new(format!(
-                        "Could not find name to import `{}`.",
-                        name.to_value(&self.heap)
-                    )));
+                    return Err(RuntimeError::new());
                 }
             }
         } else {
@@ -206,9 +195,9 @@ impl VM {
 
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
-            self.execute_call(value_id, 0);
+            self.execute_call(value_id, 0)?;
         } else {
-            return Err(RuntimeError::new("Failed to compile module".to_string()));
+            return Err(RuntimeError::new());
         }
         Ok(())
     }

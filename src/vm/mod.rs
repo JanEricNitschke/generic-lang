@@ -136,7 +136,9 @@ impl VM {
 
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
-            self.execute_call(value_id, 0);
+            if let Err(_) = self.execute_call(value_id, 0) {
+                return InterpretResult::RuntimeError;
+            }
 
             self.run()
         } else {
@@ -195,7 +197,7 @@ impl VM {
 
         let value_id = self.heap.add_closure(closure);
         self.stack_push(value_id);
-        self.execute_call(value_id, 0);
+        let _ = self.execute_call(value_id, 0); // Ignore errors in builtin loading
 
         // Execute the builtin to completion
         let result = self.run();
@@ -337,11 +339,8 @@ impl VM {
         {
             // If the left value is an instance, use its __eq__ method
             // Values are already on stack in correct order for method call
-            return if self.invoke(eq_id, 1) {
-                Ok(()) // Continue execution - method will handle result
-            } else {
-                Err(RuntimeError::new("Method invocation failed".to_string()))
-            };
+            self.invoke(eq_id, 1)?;
+            return Ok(()); // Continue execution - method will handle result
         }
 
         // No custom __eq__ method, fall back to heap equality

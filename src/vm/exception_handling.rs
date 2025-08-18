@@ -38,10 +38,7 @@ impl VM {
                 "Can only throw instances, got: {}",
                 exception.to_string(&self.heap)
             );
-            return Err(RuntimeError::new(format!(
-                "Can only throw instances, got: {}",
-                exception.to_string(&self.heap)
-            )));
+            return Err(RuntimeError::new());
         }
         if let Some(handler) = self.pop_exception_handler() {
             self.callstack.truncate(handler.frames_to_keep, &self.heap);
@@ -55,9 +52,7 @@ impl VM {
                 "{}",
                 self.value_to_string(&exception).to_string(&self.heap)
             );
-            Err(RuntimeError::new(
-                self.value_to_string(&exception).to_string(&self.heap),
-            ))
+            Err(RuntimeError::new())
         }
     }
 
@@ -89,10 +84,7 @@ impl VM {
                 "Exception to catch must be a class, got: {}",
                 class_to_catch.to_string(&self.heap)
             );
-            Err(RuntimeError::new(format!(
-                "Exception to catch must be a class, got: {}",
-                class_to_catch.to_string(&self.heap)
-            )))
+            Err(RuntimeError::new())
         }
     }
 }

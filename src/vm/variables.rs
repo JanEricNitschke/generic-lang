@@ -43,10 +43,7 @@ impl VM {
                         self.stack_push(value);
                     } else {
                         runtime_error!(self, "Undefined variable '{}'.", self.heap.strings[*name]);
-                        return Err(RuntimeError::new(format!(
-                            "Undefined variable '{}'.",
-                            self.heap.strings[*name]
-                        )));
+                        return Err(RuntimeError::new());
                     }
                 }
             }
@@ -75,9 +72,7 @@ impl VM {
         {
             if !global.mutable {
                 runtime_error!(self, "Reassignment to global 'const'.");
-                return Err(RuntimeError::new(
-                    "Reassignment to global 'const'.".to_string(),
-                ));
+                return Err(RuntimeError::new());
             }
             global.value = stack_top_value;
         } else {
@@ -85,17 +80,12 @@ impl VM {
             if let Some(global) = maybe_builtin {
                 if !global.mutable {
                     runtime_error!(self, "Reassignment to global 'const'.");
-                    return Err(RuntimeError::new(
-                        "Reassignment to global 'const'.".to_string(),
-                    ));
+                    return Err(RuntimeError::new());
                 }
                 global.value = stack_top_value;
             } else {
                 runtime_error!(self, "Undefined variable '{}'.", name.to_value(&self.heap));
-                return Err(RuntimeError::new(format!(
-                    "Undefined variable '{}'.",
-                    name.to_value(&self.heap)
-                )));
+                return Err(RuntimeError::new());
             }
         }
 
