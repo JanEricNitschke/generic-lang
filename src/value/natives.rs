@@ -391,11 +391,11 @@ impl Dict {
             |(k, _v, _stored_hash)| vm.compare_values_for_collections(*k, key),
             |(_k, _v, stored_hash)| *stored_hash,
         );
-        
+
         if vm.handling_exception {
             return Err("Exception occurred during equality comparison".to_string());
         }
-        
+
         match entry {
             Entry::Vacant(entry) => {
                 entry.insert((key, value, hash));

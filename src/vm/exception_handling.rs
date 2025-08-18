@@ -1,5 +1,6 @@
 use super::InterpretResult;
 use crate::chunk::CodeOffset;
+use crate::heap::StringId;
 use crate::value::{
     Exception, Instance, NativeClass, Value, is_exception_subclass, is_subclass_of,
 };
@@ -139,14 +140,12 @@ impl VM {
                 builtin.value
             } else {
                 // Panic instead of falling back to Exception
-                panic!(
-                    "Exception type '{}' not found in native classes or builtins",
-                    exception_type
-                );
+                panic!("Exception type '{exception_type}' not found in native classes or builtins");
             }
         };
 
-        self.create_exception_with_class(exception_class, message)
+        let message_id = self.heap.string_id(&message);
+        self.create_exception_with_class(exception_class, message_id)
     }
 
     /// Create a new exception instance with a specific class and message.
@@ -155,9 +154,9 @@ impl VM {
     pub(super) fn create_exception_with_class(
         &mut self,
         exception_class: Value,
-        message: &str,
+        message_id: StringId,
     ) -> Value {
-        let exception_data = self.create_exception_data(message);
+        let exception_data = self.create_exception_data(message_id);
 
         let instance = Instance::new(
             exception_class,
@@ -168,36 +167,35 @@ impl VM {
     }
 
     /// Create exception data with stack trace.
-    /// 
+    ///
     /// This utility function extracts the common logic for creating exception data
     /// to avoid duplication between exception creation and __init__ method.
-    pub fn create_exception_data(&mut self, message: &str) -> Exception {
-        let message_id = self.heap.string_id(&message.to_string());
+    pub fn create_exception_data(&mut self, message_id: StringId) -> Exception {
         let stack_trace = self.capture_stack_trace();
         let stack_trace_id = self.heap.string_id(&stack_trace);
-        
+
         Exception::new(message_id, stack_trace_id)
     }
 
-    /// Create and throw a TypeError with the given message.
+    /// Create and throw a `TypeError` with the given message.
     pub(super) fn throw_type_error(&mut self, message: &str) -> Option<InterpretResult> {
         let exception = self.create_exception("TypeError", message);
         self.unwind(exception)
     }
 
-    /// Create and throw a ValueError with the given message.
+    /// Create and throw a `ValueError` with the given message.
     pub(super) fn throw_value_error(&mut self, message: &str) -> Option<InterpretResult> {
         let exception = self.create_exception("ValueError", message);
         self.unwind(exception)
     }
 
-    /// Create and throw a NameError with the given message.
+    /// Create and throw a `NameError` with the given message.
     pub(super) fn throw_name_error(&mut self, message: &str) -> Option<InterpretResult> {
         let exception = self.create_exception("NameError", message);
         self.unwind(exception)
     }
 
-    /// Create and throw a ConstReassignmentError with the given message.
+    /// Create and throw a `ConstReassignmentError` with the given message.
     pub(super) fn throw_const_reassignment_error(
         &mut self,
         message: &str,
@@ -206,33 +204,33 @@ impl VM {
         self.unwind(exception)
     }
 
-    /// Create and throw an AttributeError with the given message.
+    /// Create and throw an `AttributeError` with the given message.
     pub(super) fn throw_attribute_error(&mut self, message: &str) -> Option<InterpretResult> {
         let exception = self.create_exception("AttributeError", message);
         self.unwind(exception)
     }
 
-    /// Create and throw an ImportError with the given message.
+    /// Create and throw an `ImportError` with the given message.
     pub(super) fn throw_import_error(&mut self, message: &str) -> Option<InterpretResult> {
         let exception = self.create_exception("ImportError", message);
         self.unwind(exception)
     }
 
-    /// Create and throw an ArithmeticError with the given message.
+    /// Create and throw an `ArithmeticError` with the given message.
     #[allow(dead_code)]
     pub(super) fn throw_arithmetic_error(&mut self, message: &str) -> Option<InterpretResult> {
         let exception = self.create_exception("ArithmeticError", message);
         self.unwind(exception)
     }
 
-    /// Create and throw an IndexError with the given message.
+    /// Create and throw an `IndexError` with the given message.
     #[allow(dead_code)]
     pub(super) fn throw_index_error(&mut self, message: &str) -> Option<InterpretResult> {
         let exception = self.create_exception("IndexError", message);
         self.unwind(exception)
     }
 
-    /// Create and throw a RuntimeError with the given message.
+    /// Create and throw a `RuntimeError` with the given message.
     pub(super) fn throw_runtime_error(&mut self, message: &str) -> Option<InterpretResult> {
         let exception = self.create_exception("Exception", message);
         self.unwind(exception)

@@ -6,7 +6,6 @@
 #[macro_use]
 mod runtime_error;
 mod dunder;
-mod errors;
 mod garbage_collection;
 mod import;
 mod setup;
@@ -69,13 +68,6 @@ impl Global {
             self.value.to_string(heap),
             self.mutable
         )
-    }
-
-    pub(super) fn new_mutable(value: Value) -> Self {
-        Self {
-            value,
-            mutable: true,
-        }
     }
 }
 

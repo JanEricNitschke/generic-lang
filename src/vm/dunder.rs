@@ -169,18 +169,18 @@ impl VM {
     }
 
     /// Compare two values for equality, with support for custom __eq__ methods.
-    /// If an exception occurs in __eq__, sets handling_exception flag and returns false.
-    /// Callers should check handling_exception after calling this method.
+    /// If an exception occurs in __eq__, sets `handling_exception` flag and returns false.
+    /// Callers should check `handling_exception` after calling this method.
     pub(crate) fn compare_values_for_collections(&mut self, left: Value, right: Value) -> bool {
         // If we already have an active exception, don't run the comparison
         if self.handling_exception {
             return false;
         }
-        
+
         match self.compare_values(left, right) {
             Ok(result) => result,
             Err(_error) => {
-                // The exception is already set by compare_values if it failed due to __eq__ 
+                // The exception is already set by compare_values if it failed due to __eq__
                 // Just set the handling_exception flag if it wasn't already set
                 self.handling_exception = true;
                 false // Return false as default when __eq__ fails
