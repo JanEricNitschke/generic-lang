@@ -1,12 +1,10 @@
 use super::{InterpretResult, VM};
-use crate::chunk::CodeOffset;
 use crate::value::{GenericRational, Number, Value};
 
 #[derive(PartialEq, Eq)]
 pub(super) enum BinaryOpResult {
     Success,
     InvalidOperands,
-    OperationError,
 }
 
 pub(super) trait IntoResultValue {
@@ -67,8 +65,11 @@ macro_rules! binary_op {
                                     BinaryOpResult::Success
                                 }
                                 Err(error) => {
-                                    runtime_error!($self, "{error}");
-                                    BinaryOpResult::OperationError
+                                    let exception = $self.create_exception("ValueError", &error);
+                                    if let Some(result) = $self.unwind(exception) {
+                                        return result;
+                                    }
+                                    BinaryOpResult::Success // Continue execution if exception was handled
                                 }
                             }
                         }
@@ -92,8 +93,7 @@ macro_rules! binary_op {
         };
 
         if status == BinaryOpResult::InvalidOperands {
-            runtime_error!(
-                $self,
+            let message = format!(
                 "Operands must be {}. Got: [{}]",
                 if $int_only { "integers" } else { "numbers" },
                 $self.stack[slice_start..]
@@ -102,6 +102,9 @@ macro_rules! binary_op {
                     .collect::<Vec<_>>()
                     .join(", ")
             );
+            if let Some(result) = $self.throw_type_error(&message) {
+                return result;
+            }
         }
         if status != BinaryOpResult::Success {
             return InterpretResult::RuntimeError;
@@ -149,8 +152,7 @@ impl VM {
         };
 
         if !ok {
-            runtime_error!(
-                self,
+            let message = format!(
                 "Operands must be two numbers or two strings. Got: [{}]",
                 self.stack[slice_start..]
                     .iter()
@@ -158,8 +160,7 @@ impl VM {
                     .collect::<Vec<_>>()
                     .join(", ")
             );
-
-            return Some(InterpretResult::RuntimeError);
+            return self.throw_type_error(&message);
         }
         None
     }
@@ -177,8 +178,7 @@ impl VM {
             let negated = n.neg(&mut self.heap);
             self.stack_push_value(negated.into());
         } else {
-            runtime_error!(self, "Operand must be a number.");
-            return Some(InterpretResult::RuntimeError);
+            return self.throw_type_error("Operand must be a number.");
         }
         None
     }
@@ -202,13 +202,12 @@ impl VM {
                 self.stack_push_value(Value::Number(Number::Rational(rational)));
             }
             _ => {
-                runtime_error!(
-                    self,
+                let message = format!(
                     "Invalid operands ({}, {}) for rational construction.",
                     numerator.to_string(&self.heap),
                     denominator.to_string(&self.heap)
                 );
-                return Some(InterpretResult::RuntimeError);
+                return self.throw_type_error(&message);
             }
         }
         None

@@ -1,2 +1,8 @@
 class TypeError < Exception {}
 class ValueError < Exception {}
+class NameError < Exception {}
+class ConstReassignmentError < Exception {}
+class AttributeError < Exception {}
+class ImportError < Exception {}
+class ArithmeticError < Exception {}
+class IndexError < Exception {}

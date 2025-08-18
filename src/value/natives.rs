@@ -289,9 +289,12 @@ impl Set {
         let hash = vm.compute_hash(item)?;
         if let Entry::Vacant(entry) = self.items.entry(
             hash,
-            |(val, _stored_hash)| vm.compare_values(*val, item).unwrap(),
+            |(val, _stored_hash)| vm.compare_values_for_collections(*val, item),
             |(_val, stored_hash)| *stored_hash,
         ) {
+            if vm.handling_exception {
+                return Err("Exception occurred during equality comparison".to_string());
+            }
             entry.insert((item, hash));
         }
         Ok(())
@@ -299,25 +302,37 @@ impl Set {
 
     pub(crate) fn remove(&mut self, item: Value, vm: &mut VM) -> Result<bool, String> {
         let hash = vm.compute_hash(item)?;
-        Ok(self
+        let found = self
             .items
             .find_entry(hash, |(val, _stored_hash)| {
-                vm.compare_values(*val, item).unwrap()
+                vm.compare_values_for_collections(*val, item)
             })
             .is_ok_and(|entry| {
                 entry.remove();
                 true
-            }))
+            });
+
+        if vm.handling_exception {
+            return Err("Exception occurred during equality comparison".to_string());
+        }
+
+        Ok(found)
     }
 
     pub(crate) fn contains(&self, item: Value, vm: &mut VM) -> Result<bool, String> {
         let hash = vm.compute_hash(item)?;
-        Ok(self
+        let found = self
             .items
             .find(hash, |(val, _stored_hash)| {
-                vm.compare_values(*val, item).unwrap()
+                vm.compare_values_for_collections(*val, item)
             })
-            .is_some())
+            .is_some();
+
+        if vm.handling_exception {
+            return Err("Exception occurred during equality comparison".to_string());
+        }
+
+        Ok(found)
     }
 }
 
@@ -371,11 +386,17 @@ impl Dict {
 
     pub(crate) fn add(&mut self, key: Value, value: Value, vm: &mut VM) -> Result<(), String> {
         let hash = vm.compute_hash(key)?;
-        match self.items.entry(
+        let entry = self.items.entry(
             hash,
-            |(k, _v, _stored_hash)| vm.compare_values(*k, key).unwrap(),
+            |(k, _v, _stored_hash)| vm.compare_values_for_collections(*k, key),
             |(_k, _v, stored_hash)| *stored_hash,
-        ) {
+        );
+        
+        if vm.handling_exception {
+            return Err("Exception occurred during equality comparison".to_string());
+        }
+        
+        match entry {
             Entry::Vacant(entry) => {
                 entry.insert((key, value, hash));
             }

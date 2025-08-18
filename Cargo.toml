@@ -36,6 +36,7 @@ convert_case = "0.8.0"
 num-bigint   = { version = "0.4.6", features = ["rand"] }
 num-traits   = "0.2.19"
 hashbrown    = "0.15.5"
+thiserror    = "2.0.15"
 
 [features]
 print_code              = []

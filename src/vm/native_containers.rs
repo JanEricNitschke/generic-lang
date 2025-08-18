@@ -1,5 +1,4 @@
 use super::{InterpretResult, VM};
-use crate::chunk::CodeOffset;
 use crate::value::{Dict, List, Set, Tuple};
 use crate::value::{GenericInt, Instance, Number, Range, Value};
 impl VM {
@@ -19,13 +18,12 @@ impl VM {
                     Range::new(start, end.add(GenericInt::Small(1), &mut self.heap))
                 }
             } else {
-                runtime_error!(
-                    self,
+                let message = format!(
                     "Invalid operands ({}, {}) for range construction.",
                     start.to_string(&self.heap),
                     end.to_string(&self.heap)
                 );
-                return Some(InterpretResult::RuntimeError);
+                return self.throw_type_error(&message);
             };
 
         let instance = Instance::new(
@@ -92,8 +90,7 @@ impl VM {
             let value = *self.peek(usize::from(index)).unwrap();
 
             if let Err(err) = set.add(value, self) {
-                runtime_error!(self, "{}", err);
-                return Some(InterpretResult::RuntimeError);
+                return self.throw_value_error(&err);
             }
         }
         // Pop all items from stack at once
@@ -121,8 +118,7 @@ impl VM {
             let value = *self.peek(usize::from(2 * index)).unwrap();
 
             if let Err(err) = dict.add(key, value, self) {
-                runtime_error!(self, "{}", err);
-                return Some(InterpretResult::RuntimeError);
+                return self.throw_value_error(&err);
             }
         }
         // Pop all key-value pairs from stack at once

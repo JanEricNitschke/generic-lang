@@ -4,7 +4,6 @@ use path_slash::PathBufExt;
 use std::path::PathBuf;
 
 use crate::{
-    chunk::CodeOffset,
     heap::StringId,
     value::{Closure, Module, ModuleContents, NativeFunction},
 };
@@ -29,19 +28,17 @@ impl VM {
         let name = if let Some(stem) = file_path.file_stem() {
             stem.to_str().unwrap().to_string()
         } else {
-            runtime_error!(self, "Import path should have a filestem.");
-            return Some(InterpretResult::RuntimeError);
+            return self.throw_import_error("Import path should have a filestem.");
         };
         let name_id = self.heap.string_id(&name);
 
         for module in &self.modules {
             if module.to_value(&self.heap).path.canonicalize().unwrap() == file_path {
-                runtime_error!(
-                    self,
+                let message = format!(
                     "Circular import of module `{}` detected.",
                     name_id.to_value(&self.heap)
                 );
-                return Some(InterpretResult::RuntimeError);
+                return self.throw_import_error(&message);
             }
         }
 
@@ -94,12 +91,11 @@ impl VM {
                 return Some(value);
             }
         } else {
-            runtime_error!(
-                self,
+            let message = format!(
                 "Could not find the file to be imported. Attempted path `{:?}` and stdlib.",
                 file_path.to_slash_lossy()
             );
-            return Some(InterpretResult::RuntimeError);
+            return self.throw_import_error(&message);
         }
         None
     }
@@ -152,12 +148,11 @@ impl VM {
                         self.globals().insert(name, global);
                     }
                 } else {
-                    runtime_error!(
-                        self,
+                    let message = format!(
                         "Could not find name to import `{}`.",
                         name.to_value(&self.heap)
                     );
-                    return Some(InterpretResult::RuntimeError);
+                    return self.throw_import_error(&message);
                 }
             }
         } else {
