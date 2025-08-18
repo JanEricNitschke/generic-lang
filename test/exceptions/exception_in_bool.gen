@@ -20,4 +20,4 @@ try {
 
 if ThrowOnBool() {
     print("Truthy");
-}  # expect runtime error: Exception: __str__ method failed with runtime error
+}  # expect runtime error: TypeError: Native method '__init__' of class Error expected 1 argument, got 0.

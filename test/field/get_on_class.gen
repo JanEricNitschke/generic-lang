@@ -1,2 +1,2 @@
 class Foo {}
-Foo.bar; # expect runtime error: TypeError: Tried to get property 'bar' of non-instance `<class Foo>`
+Foo.bar; # expect runtime error: TypeError: Tried to get property 'bar' of non-instance `<class Foo>`.

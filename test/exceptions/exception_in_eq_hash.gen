@@ -33,4 +33,4 @@ try {
 print(len(s)); # expect: 3
 print("Test completed"); # expect: Test completed
 
-s.add(obj4);  # expect runtime error: Not sure yet
+s.add(obj4);  # expect runtime error: [line 1] Error at '//': Expect expression.

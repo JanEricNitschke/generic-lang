@@ -2,4 +2,4 @@ from "math" import sqrt;
 
 print(sqrt(9)); # expect: 3.0
 
-sqrt(1, 2); # expect runtime error: Exception: 'sqrt' expected 1 argument, got 2.
+sqrt(1, 2); # expect runtime error: TypeError: Native function 'sqrt' expected 1 argument, got 2.
