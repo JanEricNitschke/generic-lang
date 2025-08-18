@@ -1,0 +1,16 @@
+class BaseError < Exception {}
+class SpecificError < BaseError {}
+
+# Test that subclass exceptions are caught by parent handlers
+try {
+    throw SpecificError("specific error");
+} catch BaseError {
+    print("Caught by BaseError handler");  # expect: Caught by BaseError handler
+}
+
+# Test inheritance chain
+try {
+    throw SpecificError("another specific error"); 
+} catch Exception {
+    print("Caught by Exception handler");  # expect: Caught by Exception handler
+}

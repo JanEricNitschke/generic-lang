@@ -1,9 +1,9 @@
-class Error1 {}
-class Error2 {}
+class Error1 < Exception {}
+class Error2 < Exception {}
 
 fun inner_1() {
     try {
-        throw Error2();
+        throw Error2("error message");
         print("Try");
     } catch Error1 as e {
         print(e);
@@ -14,7 +14,7 @@ fun inner_1() {
 
 fun inner_2() {
     try {
-        throw Error1();
+        throw Error1("error message");
         print("Try");
     } catch Error1 as e {
         print(e); 
@@ -27,13 +27,19 @@ fun inner_2() {
 try {
     inner_1();
 } catch Error2 as e {
-    print(e); # expect: <Error2 instance>
+    print(e); # expect: Error2: error message
+              # expect: Stacktrace (most recent call last):
+              # expect:   [line 28] in <script>
+              # expect:   [line 6] in inner_1
 } else {
     print("Else Outer");
 }
 
 try {
-    inner_2(); # expect: <Error1 instance>
+    inner_2(); # expect: Error1: error message
+               # expect: Stacktrace (most recent call last):
+               # expect:   [line 39] in <script>
+               # expect:   [line 17] in inner_2
 } catch Error2 as e {
     print(e);
 } else {

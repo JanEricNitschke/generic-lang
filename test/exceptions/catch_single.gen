@@ -1,7 +1,7 @@
-class Error {}
+class Error < Exception {}
 
 try {
-    throw Error();
+    throw Error("error message");
     print("Try");
 } catch Error {
     print("Catch"); # expect: Catch

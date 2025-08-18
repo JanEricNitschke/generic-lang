@@ -1,15 +1,17 @@
-class Error {}
+class Error < Exception {}
 {
     var a = 1;
     try {
         var b = 2;
-        throw Error();
+        throw Error("error message");
         var c = 3;
         print("Try");
     } catch Error as e {
         var d = 4;
         print(d); # expect: 4
-        print(e); # expect: <Error instance>
+        print(e); # expect: Error: error message
+                  # expect: Stacktrace (most recent call last):
+                  # expect:   [line 6] in <script>
     } else {
         print("Else");
     }

@@ -1,14 +1,16 @@
-class Error1 {}
-class Error2 {}
-class Error3 {}
+class Error1 < Exception {}
+class Error2 < Exception {}
+class Error3 < Exception {}
 
 try {
-    throw Error2();
+    throw Error2("error message");
     print("Try");
 } catch Error1 as e1 {
     print(e1);
 } catch Error2 as e2 {
-    print(e2); # expect: <Error2 instance>
+    print(e2); # expect: Error2: error message
+               # expect: Stacktrace (most recent call last):
+               # expect:   [line 6] in <script>
 } catch Error3 as e3 {
     print(e3);
 } else {

@@ -1,8 +1,7 @@
 //! Module containing free standing rust native functions.
 
-use crate::value::GenericInt;
 use crate::{
-    value::{Number, Value},
+    value::{GenericInt, Number, Value, get_native_class_id, is_subclass_of},
     vm::VM,
 };
 use rand::Rng;
@@ -366,4 +365,83 @@ pub(super) fn len_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, 
     }
 
     Err("Undefined property '__len__'.".into())
+}
+
+/// Check if value is an instance of the given class or any of its subclasses.
+/// Similar to Python's isinstance(value, classinfo).
+pub(super) fn isinstance_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+    let value = *args[0];
+    let class_value = *args[1];
+
+    let Value::Class(class_id) = class_value else {
+        return Err(format!(
+            "'isinstance' expected class as second argument, got: {}",
+            class_value.to_string(&vm.heap)
+        ));
+    };
+
+    match value {
+        Value::Instance(instance) => {
+            let instance_class_id = instance.to_value(&vm.heap).class;
+            Ok(Value::Bool(is_subclass_of(
+                &vm.heap,
+                instance_class_id,
+                class_id,
+            )))
+        }
+        Value::Bool(_) => {
+            // Check if class is Bool proxy class
+            Ok(Value::Bool(
+                class_id == get_native_class_id(&vm.heap, "Bool"),
+            ))
+        }
+        Value::String(_) => {
+            // Check if class is String proxy class
+            Ok(Value::Bool(
+                class_id == get_native_class_id(&vm.heap, "String"),
+            ))
+        }
+        Value::Number(number) => {
+            // Check if class matches the specific number type proxy class
+            match number {
+                Number::Integer(_) => Ok(Value::Bool(
+                    class_id == get_native_class_id(&vm.heap, "Integer"),
+                )),
+                Number::Float(_) => Ok(Value::Bool(
+                    class_id == get_native_class_id(&vm.heap, "Float"),
+                )),
+                Number::Rational(_) => Ok(Value::Bool(
+                    class_id == get_native_class_id(&vm.heap, "Rational"),
+                )),
+            }
+        }
+        // For other types (nil, etc.), isinstance should return False
+        _ => Ok(Value::Bool(false)),
+    }
+}
+
+/// Check if sub is the same class as super or is a subclass of it.
+/// Similar to Python's issubclass(sub, super).
+pub(super) fn issubclass_native(vm: &mut VM, args: &mut [&mut Value]) -> Result<Value, String> {
+    let sub_value = *args[0];
+    let super_value = *args[1];
+
+    match (sub_value, super_value) {
+        (Value::Class(sub_class_id), Value::Class(super_class_id)) => Ok(Value::Bool(
+            is_subclass_of(&vm.heap, sub_class_id, super_class_id),
+        )),
+        (not_class, Value::Class(_)) => Err(format!(
+            "'issubclass' expected class as first argument, got: {}",
+            not_class.to_string(&vm.heap)
+        )),
+        (Value::Class(_), not_class) => Err(format!(
+            "'issubclass' expected class as second argument, got: {}",
+            not_class.to_string(&vm.heap)
+        )),
+        (not_class1, not_class2) => Err(format!(
+            "'issubclass' expected two classes as arguments, got: {} and {}",
+            not_class1.to_string(&vm.heap),
+            not_class2.to_string(&vm.heap)
+        )),
+    }
 }

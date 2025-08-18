@@ -46,8 +46,8 @@ use crate::natives::exception::{
 
 use crate::natives::native_functions::{
     assert_native, clock_native, delattr_native, getattr_native, hasattr_native, input_native,
-    is_int_native, len_native, print_native, rng_native, setattr_native, sleep_native,
-    to_float_native, to_int_native, to_string_native, type_native,
+    is_int_native, isinstance_native, issubclass_native, len_native, print_native, rng_native,
+    setattr_native, sleep_native, to_float_native, to_int_native, to_string_native, type_native,
 };
 
 use crate::natives::value_constructors::{
@@ -90,6 +90,8 @@ pub fn define(vm: &mut VM) {
     vm.define_native_function(&"delattr", &[2], delattr_native);
     vm.define_native_function(&"rng", &[2], rng_native);
     vm.define_native_function(&"len", &[1], len_native);
+    vm.define_native_function(&"isinstance", &[2], isinstance_native);
+    vm.define_native_function(&"issubclass", &[2], issubclass_native);
 
     // The add to builtins is a bit of a workaround for how native instances
     // are instantiated. Currently we either need a way to instantiate them

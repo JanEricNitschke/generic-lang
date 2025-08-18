@@ -1,12 +1,12 @@
-class Error {}
+class Error < Exception {}
 class SubError < Error {}
 
 try {
     try {
-        throw SubError();
+        throw SubError("error message");
     } catch Error {
-        print("Caught Error");
+        print("Caught Error"); # expect: Caught Error
     }
 } catch SubError {
-    print("Caught SubError"); # expect: Caught SubError
+    print("Caught SubError");
 }

@@ -1,9 +1,9 @@
-class Error1 {}
-class Error2 {}
+class Error1 < Exception {}
+class Error2 < Exception {}
 
 try {
     var a;
-    throw Error1();
+    throw Error1("error message");
 } catch Error1 as e1 {
     print(a);  # expect runtime error: Undefined variable 'a'.
 }

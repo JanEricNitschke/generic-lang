@@ -1,0 +1,21 @@
+class CustomError < Exception {}
+
+class UnrelatedClass {}
+class SomethingError {}  # Not inheriting from Exception - should be rejected
+
+# Can throw Exception and its subclasses
+try {
+    throw Exception("base exception works");
+} catch Exception {
+    print("Caught base Exception");  # expect: Caught base Exception
+}
+
+try {
+    throw CustomError("custom error works");  
+} catch CustomError {
+    print("Caught CustomError");     # expect: Caught CustomError
+}
+
+# Cannot throw non-Exception classes (breaking change from name-based checking)
+# This should now cause a runtime error
+throw SomethingError();  # expect runtime error: Can only throw instances of Exception or its subclasses, got instance of: SomethingError

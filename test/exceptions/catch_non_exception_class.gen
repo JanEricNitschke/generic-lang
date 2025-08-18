@@ -1,0 +1,8 @@
+class RegularClass {}
+class Error < Exception {}
+
+try {
+    throw Error("error message");
+} catch RegularClass { # expect runtime error: Can only catch Exception or its subclasses, got: RegularClass
+    print("Should not reach here");
+}

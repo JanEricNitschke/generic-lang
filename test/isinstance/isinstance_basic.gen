@@ -1,0 +1,29 @@
+class Animal {}
+class Dog < Animal {}
+class Cat < Animal {}
+
+var dog = Dog();
+var cat = Cat();
+var animal = Animal();
+
+# Direct matches (true cases)
+print(isinstance(dog, Dog));       # expect: true
+print(isinstance(animal, Animal)); # expect: true
+
+# False cases  
+print(isinstance(dog, Cat));       # expect: false
+print(isinstance(cat, Dog));       # expect: false
+print(isinstance(nil, Animal));    # expect: false
+print(isinstance(42, Animal));     # expect: false
+
+# Primitive type matches
+print(isinstance(true, Bool));     # expect: true
+print(isinstance("hello", String)); # expect: true
+print(isinstance(42, Integer));    # expect: true
+print(isinstance(3.14, Float));    # expect: true
+print(isinstance(2/3, Rational));  # expect: true
+
+# Primitive type mismatches
+print(isinstance(true, String));   # expect: false
+print(isinstance("hello", Bool));  # expect: false
+print(isinstance(42, String));     # expect: false

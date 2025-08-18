@@ -1,0 +1,10 @@
+class Animal {}
+class Dog < Animal {}
+class Puppy < Dog {}
+
+var puppy = Puppy();
+
+# Inheritance chain matches
+print(isinstance(puppy, Puppy));   # expect: true
+print(isinstance(puppy, Dog));     # expect: true
+print(isinstance(puppy, Animal));  # expect: true

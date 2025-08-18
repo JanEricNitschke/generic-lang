@@ -1,10 +1,12 @@
-class Error {}
+class Error < Exception {}
 
 try {
-    throw Error();
+    throw Error("error message");
     print("Try");
 } catch Error as e {
-    print(e); # expect: <Error instance>
+    print(e); # expect: Error: error message
+              # expect: Stacktrace (most recent call last):
+              # expect:   [line 4] in <script>
 } else {
     print("Else");
 }

@@ -1,15 +1,15 @@
-class Error1 {}
-class Error2 {}
-class Error3 {}
+class Error1 < Exception {}
+class Error2 < Exception {}
+class Error3 < Exception {}
 
 fun get_exception() {
-    throw Error1();
+    throw Error1("error message");
 }
 
 
 try{
     try {
-        throw Error2();
+        throw Error2("error message");
     } catch get_exception()  {
         print("Catch");
     } catch Error1 {
