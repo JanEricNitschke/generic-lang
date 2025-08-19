@@ -10,6 +10,7 @@ use crate::{
 
 use super::{Global, InterpretResult, VM};
 use crate::vm::arithmetics::{BinaryOpResult, IntoResultValue};
+use crate::vm::errors::{RuntimeError, RuntimeErrorKind};
 
 // Execute a function (rust side)
 impl VM {
@@ -26,7 +27,7 @@ impl VM {
         arg_count: u8,
         method_is_native: bool,
     ) -> InterpretResult {
-        if !self.invoke(method_name, arg_count) {
+        if self.invoke(method_name, arg_count).is_err() {
             return InterpretResult::RuntimeError;
         }
 
@@ -56,7 +57,7 @@ impl VM {
     pub(super) fn call(&mut self) -> Option<InterpretResult> {
         let arg_count = self.read_byte();
         let callee = self.stack[self.stack.len() - 1 - usize::from(arg_count)];
-        if !self.call_value(callee, arg_count) {
+        if self.call_value(callee, arg_count).is_err() {
             return Some(InterpretResult::RuntimeError);
         }
         None
@@ -66,7 +67,7 @@ impl VM {
     ///
     /// If it is an instance and the attribute is not a property of the instance
     /// then a method is looked up in the class.
-    pub(crate) fn invoke(&mut self, method_name: StringId, arg_count: u8) -> bool {
+    pub(crate) fn invoke(&mut self, method_name: StringId, arg_count: u8) -> RuntimeError {
         let receiver = *self
             .peek(arg_count.into())
             .expect("Stack underflow in OP_INVOKE");
@@ -102,14 +103,10 @@ impl VM {
                         method_name.to_value(&self.heap),
                         module.to_value(&self.heap).name.to_value(&self.heap)
                     );
-                    self.throw_value_error(&message);
-                    false
+                    self.throw_value_error(&message)
                 }
             }
-            _ => {
-                self.throw_type_error("Only instances have methods.");
-                false
-            }
+            _ => self.throw_type_error("Only instances have methods."),
         }
     }
 
@@ -119,7 +116,7 @@ impl VM {
         class: Value,
         method_name: StringId,
         arg_count: u8,
-    ) -> bool {
+    ) -> RuntimeError {
         let Some(method) = class
             .as_class()
             .to_value(&self.heap)
@@ -127,8 +124,7 @@ impl VM {
             .get(&method_name)
         else {
             let message = format!("Undefined property '{}'.", self.heap.strings[method_name]);
-            self.throw_attribute_error(&message);
-            return false;
+            return self.throw_attribute_error(&message);
         };
         match method {
             Value::Closure(_) => self.execute_call(*method, arg_count),
@@ -158,12 +154,12 @@ impl VM {
     /// - Bound methods:
     ///    - If the bound method is a standard one, it is scheduled for execution.
     ///    - If the bound method is a native one, it is executed directly.
-    fn call_value(&mut self, callee: Value, arg_count: u8) -> bool {
+    fn call_value(&mut self, callee: Value, arg_count: u8) -> RuntimeError {
         let call_id = self.heap.string_id(&"__call__");
         match callee {
             Value::NativeMethod(_) => {
                 println!("Got a native method");
-                false
+                Err(RuntimeErrorKind)
             }
             Value::Instance(instance)
                 if instance
@@ -202,10 +198,9 @@ impl VM {
                     }
                 } else if arg_count != 0 {
                     let message = format!("Expected 0 arguments but got {arg_count}.");
-                    self.throw_type_error(&message);
-                    false
+                    self.throw_type_error(&message)
                 } else {
-                    true
+                    Ok(())
                 }
             }
             Value::BoundMethod(bound_method) => match bound_method.to_value(&self.heap).method {
@@ -220,19 +215,12 @@ impl VM {
                     &mut bound_method.to_value(&self.heap).receiver.clone(),
                     arg_count,
                 ),
-                _ => {
-                    self.throw_type_error(
-                        "Native methods only bind over closures or native methods.",
-                    );
-                    false
-                }
+                _ => self
+                    .throw_type_error("Native methods only bind over closures or native methods."),
             },
-            _ => {
-                self.throw_type_error(
-                    "Can only call functions, classes and instances with a `__call__` method.",
-                );
-                false
-            }
+            _ => self.throw_type_error(
+                "Can only call functions, classes and instances with a `__call__` method.",
+            ),
         }
     }
 
@@ -240,7 +228,7 @@ impl VM {
     ///
     /// The arity of the closure is checked against the provided number of arguments.
     /// Then the closure is pushed onto the callstack.
-    pub(super) fn execute_call(&mut self, closure_id: Value, arg_count: u8) -> bool {
+    pub(super) fn execute_call(&mut self, closure_id: Value, arg_count: u8) -> RuntimeError {
         let closure = closure_id.as_closure();
         let arity = closure
             .to_value(&self.heap)
@@ -255,13 +243,11 @@ impl VM {
                 { if arity == 1 { "" } else { "s" } },
                 arg_count
             );
-            self.throw_type_error(&message);
-            return false;
+            return self.throw_type_error(&message);
         }
 
         if self.callstack.len() == crate::config::FRAMES_MAX {
-            self.throw_runtime_error("Stack overflow.");
-            return false;
+            return self.throw_runtime_error("Stack overflow.");
         }
 
         self.callstack.push(
@@ -269,7 +255,7 @@ impl VM {
             self.stack.len() - arg_count - 1,
             &self.heap,
         );
-        true
+        Ok(())
     }
 
     /// Execute a call to a native function.
@@ -278,7 +264,7 @@ impl VM {
     /// After the call the stack is truncated to remove the arguments and the function
     /// and the result is pushed onto the stack.
     #[allow(clippy::branches_sharing_code)]
-    fn execute_native_function_call(&mut self, f: NativeFunctionId, arg_count: u8) -> bool {
+    fn execute_native_function_call(&mut self, f: NativeFunctionId, arg_count: u8) -> RuntimeError {
         let f = f.to_value(&self.heap);
         let arity = f.arity;
         if !arity.contains(&arg_count) {
@@ -298,8 +284,7 @@ impl VM {
                     arg_count
                 )
             };
-            self.throw_type_error(&message);
-            return false;
+            return self.throw_type_error(&message);
         }
         let fun = f.fun;
         let start_index = self.stack.len() - usize::from(arg_count);
@@ -310,12 +295,9 @@ impl VM {
             Ok(value) => {
                 self.stack.truncate(start_index - 1);
                 self.stack_push(value);
-                true
+                Ok(())
             }
-            Err(e) => {
-                self.throw_runtime_error(&e);
-                false
-            }
+            Err(e) => self.throw_runtime_error(&e),
         }
     }
 
@@ -330,7 +312,7 @@ impl VM {
         f: NativeMethodId,
         receiver: &mut Value,
         arg_count: u8,
-    ) -> bool {
+    ) -> RuntimeError {
         let f = f.to_value(&self.heap);
         let arity = f.arity;
         if !arity.contains(&arg_count) {
@@ -352,8 +334,7 @@ impl VM {
                     arg_count
                 )
             };
-            self.throw_type_error(&message);
-            return false;
+            return self.throw_type_error(&message);
         }
         let fun = f.fun;
         let start_index = self.stack.len() - usize::from(arg_count);
@@ -365,12 +346,9 @@ impl VM {
                 self.stack
                     .truncate(self.stack.len() - usize::from(arg_count) - 1);
                 self.stack_push(value);
-                true
+                Ok(())
             }
-            Err(e) => {
-                self.throw_runtime_error(&e);
-                false
-            }
+            Err(e) => self.throw_runtime_error(&e),
         }
     }
 }
@@ -380,10 +358,10 @@ impl VM {
     /// Bind a method to an instance.
     ///
     /// The instance is still on top of the stack.
-    pub(super) fn bind_method(&mut self, class: Value, name: StringId) -> bool {
+    pub(super) fn bind_method(&mut self, class: Value, name: StringId) -> RuntimeError {
         let class = class.as_class();
         let Some(method) = class.to_value(&self.heap).methods.get(&name) else {
-            return false;
+            return Err(RuntimeErrorKind);
         };
         let bound_method = Value::bound_method(
             // the instance
@@ -393,7 +371,7 @@ impl VM {
         );
         self.stack.pop(); // instance
         self.stack_push_value(bound_method);
-        true
+        Ok(())
     }
 
     /// Capture upvalues from the surrounding scope.
@@ -502,7 +480,8 @@ impl VM {
                             "Could not find name to import `{}`.",
                             name.to_value(&self.heap)
                         );
-                        return self.throw_value_error(&message);
+                        self.throw_value_error(&message);
+                        return Some(InterpretResult::RuntimeError);
                     };
                     if was_local_import {
                         self.stack_push(value.value);

@@ -3,6 +3,8 @@
 //! The VM orchestrates the scanning to tokens, parsing of the tokens and creation of bytecode,
 //! as well as the actual execution of the bytecode.
 
+#![allow(unused_must_use, dead_code)]
+
 #[macro_use]
 mod runtime_error;
 mod dunder;
@@ -44,8 +46,8 @@ use crate::{
     types::JumpCondition,
     value::{Class, Closure, Function, ModuleContents, Number, Upvalue, Value},
 };
+use errors::{ExceptionRaisedKind, RuntimeError, RuntimeErrorKind};
 use std::fmt::Write;
-use errors::{RuntimeError, RuntimeErrorKind, ExceptionRaisedKind, VmError};
 
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -158,7 +160,7 @@ impl VM {
 
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
-            self.execute_call(value_id, 0);
+            let _ = self.execute_call(value_id, 0);
 
             self.run().into()
         } else {
@@ -217,13 +219,13 @@ impl VM {
 
         let value_id = self.heap.add_closure(closure);
         self.stack_push(value_id);
-        self.execute_call(value_id, 0);
+        let _ = self.execute_call(value_id, 0);
 
         // Execute the builtin to completion
         let result = self.run();
 
         // Copy globals from the completed module to builtins (excluding __name__)
-        if result == InterpretResult::Ok {
+        if result.is_ok() {
             let module_globals = std::mem::take(self.globals());
             // Extend builtins with all globals from the module
             self.builtins.extend(module_globals);
@@ -369,10 +371,10 @@ impl VM {
         {
             // If the left value is an instance, use its __eq__ method
             // Values are already on stack in correct order for method call
-            return if self.invoke(eq_id, 1) {
-                None // Continue execution - method will handle result
-            } else {
+            return if self.invoke(eq_id, 1).is_err() {
                 Some(InterpretResult::RuntimeError)
+            } else {
+                None // Continue execution - method will handle result
             };
         }
 

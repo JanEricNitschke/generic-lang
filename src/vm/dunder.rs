@@ -203,7 +203,7 @@ impl VM {
             self.stack_push(left);
             self.stack_push(right);
 
-            if self.invoke(eq_id, 1) {
+            if self.invoke(eq_id, 1).is_ok() {
                 // Method call succeeded, run it and get result
                 match self.run_function() {
                     InterpretResult::Ok => {

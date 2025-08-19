@@ -136,7 +136,9 @@ macro_rules! run_instruction {
             }
             // `Negate` and `Not` work on the stack value
             OpCode::Negate => {
-                $self.negate()?;
+                if let Err(_) = $self.negate() {
+                    return InterpretResult::RuntimeError;
+                }
             }
             OpCode::Not => $self.not_(),
             OpCode::Nil => $self.stack_push(Value::Nil),
@@ -156,7 +158,9 @@ macro_rules! run_instruction {
             // All of these work on the top two stack values.
             // Top most is right operand, second is left.
             OpCode::Add => {
-                $self.add()?;
+                if let Err(_) = $self.add() {
+                    return InterpretResult::RuntimeError;
+                }
             }
             OpCode::Subtract => binary_op!($self, sub, "__sub__", false, mut_heap),
             OpCode::Multiply => binary_op!($self, mul, "__mul__", false, mut_heap),
@@ -271,6 +275,7 @@ macro_rules! run_instruction {
                             $self.stack_push(*value);
                         } else if $self
                             .bind_method(instance.to_value(&$self.heap).class.into(), field)
+                            .is_ok()
                         {
                             // Or could be a method that has to be bound to the
                             // instance so that it can later be called separately.
@@ -278,9 +283,8 @@ macro_rules! run_instruction {
                         } else {
                             let message =
                                 format!("Undefined property '{}'.", field.to_value(&$self.heap));
-                            if let Some(result) = $self.throw_attribute_error(&message) {
-                                return result;
-                            }
+                            let _ = $self.throw_attribute_error(&message);
+                            return InterpretResult::RuntimeError;
                         }
                     }
                     Value::Module(module) => {
@@ -293,9 +297,8 @@ macro_rules! run_instruction {
                                 field.to_value(&$self.heap),
                                 module.to_value(&$self.heap).name.to_value(&$self.heap)
                             );
-                            if let Some(result) = $self.throw_value_error(&message) {
-                                return result;
-                            }
+                            let _ = $self.throw_value_error(&message);
+                            return InterpretResult::RuntimeError;
                         }
                     }
                     x => {
@@ -304,9 +307,8 @@ macro_rules! run_instruction {
                             field.to_value(&$self.heap),
                             x.to_string(&$self.heap)
                         );
-                        if let Some(result) = $self.throw_type_error(&message) {
-                            return result;
-                        }
+                        $self.throw_type_error(&message);
+                        return InterpretResult::RuntimeError;
                     }
                 };
             }
@@ -331,11 +333,10 @@ macro_rules! run_instruction {
                             .get_mut(&field_string_id)
                         {
                             if !global.mutable {
-                                if let Some(result) = $self.throw_const_reassignment_error(
+                                $self.throw_const_reassignment_error(
                                     "Cannot reassign const variable.",
-                                ) {
-                                    return result;
-                                }
+                                );
+                                return InterpretResult::RuntimeError;
                             } else {
                                 global.value = value;
                             }
@@ -347,9 +348,8 @@ macro_rules! run_instruction {
                             field,
                             x.to_string(&$self.heap)
                         );
-                        if let Some(result) = $self.throw_type_error(&message) {
-                            return result;
-                        }
+                        $self.throw_type_error(&message);
+                        return InterpretResult::RuntimeError;
                     }
                 };
                 $self.stack_push(value);
@@ -366,7 +366,7 @@ macro_rules! run_instruction {
             OpCode::Invoke => {
                 let method_name = $self.read_string("OP_INVOKE");
                 let arg_count = $self.read_byte();
-                if !$self.invoke(method_name, arg_count) {
+                if let Err(_) = $self.invoke(method_name, arg_count) {
                     return InterpretResult::RuntimeError;
                 }
             }
@@ -376,10 +376,8 @@ macro_rules! run_instruction {
                 let superclass = if let Value::Class(superclass) = &superclass_id {
                     *superclass
                 } else {
-                    if let Some(result) = $self.throw_type_error("Superclass must be a class.") {
-                        return result;
-                    }
-                    return InterpretResult::RuntimeError; // This should never be reached
+                    $self.throw_type_error("Superclass must be a class.");
+                    return InterpretResult::RuntimeError;
                 };
                 let methods = superclass.to_value(&$self.heap).methods.clone();
                 let subclass = $self
@@ -396,7 +394,7 @@ macro_rules! run_instruction {
             OpCode::GetSuper => {
                 let method_name = $self.read_string("OP_GET_SUPER");
                 let superclass = $self.stack.pop().expect("Stack underflow in OP_GET_SUPER");
-                if !$self.bind_method(superclass, method_name) {
+                if let Err(_) = $self.bind_method(superclass, method_name) {
                     return InterpretResult::RuntimeError;
                 }
             }
@@ -410,7 +408,7 @@ macro_rules! run_instruction {
                     .stack
                     .pop()
                     .expect("Stack underflow in OP_SUPER_INVOKE");
-                if !$self.invoke_from_class(superclass, method_name, arg_count) {
+                if let Err(_) = $self.invoke_from_class(superclass, method_name, arg_count) {
                     return InterpretResult::RuntimeError;
                 }
             }
@@ -441,8 +439,8 @@ macro_rules! run_instruction {
                 }
             }
             OpCode::BuildRational => {
-                if let Some(value) = $self.build_rational() {
-                    return value;
+                if let Err(_) = $self.build_rational() {
+                    return InterpretResult::RuntimeError;
                 }
             }
             // Import a module by filepath without qualifiers.
@@ -512,21 +510,21 @@ macro_rules! run_instruction {
             // We pop the exception, unwind to the handler and push the exception again.
             OpCode::Throw => {
                 let exception = $self.stack.pop().expect("Stack underflow in OP_THROW.");
-                if let Some(value) = $self.unwind(exception) {
-                    return value;
+                if let Err(_) = $self.unwind(exception) {
+                    return InterpretResult::RuntimeError;
                 }
             }
             // Layout is Stack Top: [exception_class_to_catch, exception_value_raised]
             OpCode::CompareException => {
-                if let Some(value) = $self.compare_exception() {
-                    return value;
+                if let Err(_) = $self.compare_exception() {
+                    return InterpretResult::RuntimeError;
                 }
             }
             //  We expect either the exception at the stop of the stack that should be reraised
             // or nil if we handled the exception.
             OpCode::Reraise => {
-                if let Some(value) = $self.reraise_exception() {
-                    return value;
+                if let Err(_) = $self.reraise_exception() {
+                    return InterpretResult::RuntimeError;
                 }
             }
         };

@@ -23,7 +23,8 @@ impl VM {
                     start.to_string(&self.heap),
                     end.to_string(&self.heap)
                 );
-                return self.throw_type_error(&message);
+                self.throw_type_error(&message);
+                return Some(InterpretResult::RuntimeError);
             };
 
         let instance = Instance::new(
@@ -90,7 +91,8 @@ impl VM {
             let value = *self.peek(usize::from(index)).unwrap();
 
             if let Err(err) = set.add(value, self) {
-                return self.throw_value_error(&err);
+                self.throw_value_error(&err);
+                return Some(InterpretResult::RuntimeError);
             }
         }
         // Pop all items from stack at once
@@ -118,7 +120,8 @@ impl VM {
             let value = *self.peek(usize::from(2 * index)).unwrap();
 
             if let Err(err) = dict.add(key, value, self) {
-                return self.throw_value_error(&err);
+                self.throw_value_error(&err);
+                return Some(InterpretResult::RuntimeError);
             }
         }
         // Pop all key-value pairs from stack at once

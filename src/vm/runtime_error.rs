@@ -1,6 +1,7 @@
 /// Report runtime errors with the correct line number and function name.
 ///
 /// Macro for borrow checking reasons.
+#[allow(unused_macros)]
 macro_rules! runtime_error {
     ($self:ident, $($arg:expr),* $(,)?) => {
         eprintln!($($arg),*);

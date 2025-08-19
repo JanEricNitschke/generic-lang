@@ -28,7 +28,8 @@ impl VM {
         let name = if let Some(stem) = file_path.file_stem() {
             stem.to_str().unwrap().to_string()
         } else {
-            return self.throw_import_error("Import path should have a filestem.");
+            self.throw_import_error("Import path should have a filestem.");
+            return Some(InterpretResult::RuntimeError);
         };
         let name_id = self.heap.string_id(&name);
 
@@ -38,7 +39,8 @@ impl VM {
                     "Circular import of module `{}` detected.",
                     name_id.to_value(&self.heap)
                 );
-                return self.throw_import_error(&message);
+                self.throw_import_error(&message);
+                return Some(InterpretResult::RuntimeError);
             }
         }
 
@@ -95,7 +97,8 @@ impl VM {
                 "Could not find the file to be imported. Attempted path `{:?}` and stdlib.",
                 file_path.to_slash_lossy()
             );
-            return self.throw_import_error(&message);
+            self.throw_import_error(&message);
+            return Some(InterpretResult::RuntimeError);
         }
         None
     }
@@ -152,7 +155,8 @@ impl VM {
                         "Could not find name to import `{}`.",
                         name.to_value(&self.heap)
                     );
-                    return self.throw_import_error(&message);
+                    self.throw_import_error(&message);
+                    return Some(InterpretResult::RuntimeError);
                 }
             }
         } else {

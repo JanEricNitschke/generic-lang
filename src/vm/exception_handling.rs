@@ -1,11 +1,9 @@
-use super::InterpretResult;
-use crate::vm::errors::{RuntimeError, RuntimeErrorKind};
-use crate::chunk::CodeOffset;
 use crate::heap::StringId;
 use crate::value::{
     Exception, Instance, NativeClass, Value, is_exception_subclass, is_subclass_of,
 };
 use crate::vm::VM;
+use crate::vm::errors::RuntimeError;
 /// An exception handlers
 ///
 /// Holds the index of the frame where the exception handler is located
@@ -38,12 +36,14 @@ impl VM {
     pub(super) fn unwind(&mut self, exception: Value) -> RuntimeError {
         self.handling_exception = true;
         if !matches!(exception, Value::Instance(_)) {
-            runtime_error!(
-                self,
-                "Can only throw instances, got: {}",
-                exception.to_string(&self.heap)
+            let type_exception = self.create_exception(
+                "TypeError",
+                &format!(
+                    "Can only throw instances, got: {}",
+                    exception.to_string(&self.heap)
+                ),
             );
-            return Err(RuntimeErrorKind);
+            return self.unwind(type_exception);
         }
 
         // Check that the exception is an instance of Exception or its subclasses
@@ -51,15 +51,17 @@ impl VM {
 
         // Only allow throwing instances of Exception or its subclasses
         if !is_exception_subclass(&self.heap, exception_class_id) {
-            runtime_error!(
-                self,
-                "Can only throw instances of Exception or its subclasses, got instance of: {}",
-                exception_class_id
-                    .to_value(&self.heap)
-                    .name
-                    .to_value(&self.heap)
+            let type_exception = self.create_exception(
+                "TypeError",
+                &format!(
+                    "Can only throw instances of Exception or its subclasses, got instance of: {}",
+                    exception_class_id
+                        .to_value(&self.heap)
+                        .name
+                        .to_value(&self.heap)
+                ),
             );
-            return Err(RuntimeErrorKind);
+            return self.unwind(type_exception);
         }
 
         if let Some(handler) = self.pop_exception_handler() {
@@ -72,8 +74,9 @@ impl VM {
             let exception_str = self
                 .value_to_string(&exception)
                 .unwrap_or_else(|_| Value::String(self.heap.string_id(&"<unprintable exception>")));
-            runtime_error!(self, "{}", exception_str.to_string(&self.heap));
-            Err(RuntimeErrorKind)
+            let runtime_exception =
+                self.create_exception("RuntimeError", &exception_str.to_string(&self.heap));
+            self.unwind(runtime_exception)
         }
     }
 
@@ -96,12 +99,14 @@ impl VM {
         if let Value::Class(class_id) = class_to_catch {
             // Check that the class to catch is a subclass of Exception
             if !is_exception_subclass(&self.heap, class_id) {
-                runtime_error!(
-                    self,
-                    "Can only catch Exception or its subclasses, got: {}",
-                    class_id.to_value(&self.heap).name.to_value(&self.heap)
+                let type_exception = self.create_exception(
+                    "TypeError",
+                    &format!(
+                        "Can only catch Exception or its subclasses, got: {}",
+                        class_id.to_value(&self.heap).name.to_value(&self.heap)
+                    ),
                 );
-                return Err(RuntimeErrorKind);
+                return self.unwind(type_exception);
             }
 
             let exception_class_id = exception_value.as_instance().to_value(&self.heap).class;
@@ -113,12 +118,14 @@ impl VM {
             )));
             Ok(())
         } else {
-            runtime_error!(
-                self,
-                "Exception to catch must be a class, got: {}",
-                class_to_catch.to_string(&self.heap)
+            let type_exception = self.create_exception(
+                "TypeError",
+                &format!(
+                    "Exception to catch must be a class, got: {}",
+                    class_to_catch.to_string(&self.heap)
+                ),
             );
-            Err(RuntimeErrorKind)
+            self.unwind(type_exception)
         }
     }
 
@@ -196,10 +203,7 @@ impl VM {
     }
 
     /// Create and throw a `ConstReassignmentError` with the given message.
-    pub(super) fn throw_const_reassignment_error(
-        &mut self,
-        message: &str,
-    ) -> RuntimeError {
+    pub(super) fn throw_const_reassignment_error(&mut self, message: &str) -> RuntimeError {
         let exception = self.create_exception("ConstReassignmentError", message);
         self.unwind(exception)
     }

@@ -1,7 +1,6 @@
-use super::{InterpretResult, VM};
-use crate::vm::errors::{RuntimeError, RuntimeErrorKind, VmError, ExceptionRaisedKind};
-use crate::chunk::CodeOffset;
+use super::VM;
 use crate::value::{GenericRational, Number, Value};
+use crate::vm::errors::RuntimeError;
 
 #[derive(PartialEq, Eq)]
 pub(super) enum BinaryOpResult {
@@ -68,7 +67,9 @@ macro_rules! binary_op {
                                 }
                                 Err(error) => {
                                     let exception = $self.create_exception("ValueError", &error);
-                                    $self.unwind(exception)?;
+                                    if let Err(_) = $self.unwind(exception) {
+                                        return InterpretResult::RuntimeError;
+                                    }
                                     BinaryOpResult::Success // Continue execution if exception was handled
                                 }
                             }
@@ -79,8 +80,8 @@ macro_rules! binary_op {
                             .to_value(&$self.heap)
                             .has_field_or_method(gen_method_id, &$self.heap) =>
                     {
-                        if !$self.invoke(gen_method_id, 1) {
-                            return Err(RuntimeErrorKind);
+                        if let Err(_) = $self.invoke(gen_method_id, 1) {
+                            return InterpretResult::RuntimeError;
                         }
                         // If the invoke succeeds, decide what to return —
                         // keeping same flow as original code
@@ -93,20 +94,22 @@ macro_rules! binary_op {
         };
 
         if status == BinaryOpResult::InvalidOperands {
-        let message = format!(
-            "Operands must be {} or support `{}`. Got: [{}]",
-            if $int_only { "integers" } else { "numbers" },
-            $gen_method,
-            $self.stack[slice_start..]
-                .iter()
-                .map(|v| v.to_string(&$self.heap))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-            $self.throw_type_error(&message)?;
+            let message = format!(
+                "Operands must be {} or support `{}`. Got: [{}]",
+                if $int_only { "integers" } else { "numbers" },
+                $gen_method,
+                $self.stack[slice_start..]
+                    .iter()
+                    .map(|v| v.to_string(&$self.heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            if let Err(_) = $self.throw_type_error(&message) {
+                return InterpretResult::RuntimeError;
+            }
         }
         if status != BinaryOpResult::Success {
-            return Err(RuntimeErrorKind);
+            return InterpretResult::RuntimeError;
         }
     }};
 }
@@ -138,9 +141,7 @@ impl VM {
                         .to_value(&self.heap)
                         .has_field_or_method(gen_method_id, &self.heap) =>
                 {
-                    if !self.invoke(gen_method_id, 1) {
-                        return Err(RuntimeErrorKind);
-                    }
+                    self.invoke(gen_method_id, 1)?;
                     // If the invoke succeeds, decide what to return —
                     // keeping same flow as original code
                     true
@@ -178,7 +179,10 @@ impl VM {
             self.stack_push_value(negated.into());
             Ok(())
         } else {
-            let message = format!("Operand must be a number. Got: {}", value.to_string(&self.heap));
+            let message = format!(
+                "Operand must be a number. Got: {}",
+                value.to_string(&self.heap)
+            );
             self.throw_type_error(&message)
         }
     }
