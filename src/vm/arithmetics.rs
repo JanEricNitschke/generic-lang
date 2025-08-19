@@ -1,5 +1,5 @@
 use super::{InterpretResult, VM};
-use crate::vm::errors::{RuntimeError, RuntimeErrorKind};
+use crate::vm::errors::{RuntimeError, RuntimeErrorKind, VmError, ExceptionRaisedKind};
 use crate::chunk::CodeOffset;
 use crate::value::{GenericRational, Number, Value};
 
@@ -116,7 +116,7 @@ macro_rules! binary_op {
 }
 
 impl VM {
-    pub(super) fn add(&mut self) -> Option<InterpretResult> {
+    pub(super) fn add(&mut self) -> RuntimeError {
         let slice_start = self.stack.len() - 2;
         let gen_method_id = self.heap.string_id(&"__add__");
         let ok = match &self.stack[slice_start..] {
@@ -143,7 +143,7 @@ impl VM {
                         .has_field_or_method(gen_method_id, &self.heap) =>
                 {
                     if !self.invoke(gen_method_id, 1) {
-                        return Some(InterpretResult::RuntimeError);
+                        return Err(RuntimeErrorKind);
                     }
                     // If the invoke succeeds, decide what to return —
                     // keeping same flow as original code
@@ -165,7 +165,7 @@ impl VM {
             );
             return self.throw_type_error(&message);
         }
-        None
+        Ok(())
     }
 
     /// Negate the top value on the stack.
@@ -173,20 +173,21 @@ impl VM {
     /// # Panics
     ///
     /// If the stack is empty. This is an internal error and should never happen.
-    pub(super) fn negate(&mut self) -> Option<InterpretResult> {
+    pub(super) fn negate(&mut self) -> RuntimeError {
         let value_id = *self.peek(0).expect("stack underflow in OP_NEGATE");
         let value = &value_id;
         if let Value::Number(n) = value {
             self.stack.pop();
             let negated = n.neg(&mut self.heap);
             self.stack_push_value(negated.into());
+            Ok(())
         } else {
-            return self.throw_type_error("Operand must be a number.");
+            let message = format!("Operand must be a number. Got: {}", value.to_string(&self.heap));
+            self.throw_type_error(&message)
         }
-        None
     }
 
-    pub(crate) fn build_rational(&mut self) -> Option<InterpretResult> {
+    pub(crate) fn build_rational(&mut self) -> RuntimeError {
         let denominator = self
             .stack
             .pop()
@@ -203,6 +204,7 @@ impl VM {
                 let rational = GenericRational::new(numerator, denominator, &mut self.heap)
                     .expect("Failed to create rational");
                 self.stack_push_value(Value::Number(Number::Rational(rational)));
+                Ok(())
             }
             _ => {
                 let message = format!(
@@ -210,9 +212,8 @@ impl VM {
                     numerator.to_string(&self.heap),
                     denominator.to_string(&self.heap)
                 );
-                return self.throw_type_error(&message);
+                self.throw_type_error(&message)
             }
         }
-        None
     }
 }

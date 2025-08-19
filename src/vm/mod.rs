@@ -45,7 +45,7 @@ use crate::{
     value::{Class, Closure, Function, ModuleContents, Number, Upvalue, Value},
 };
 use std::fmt::Write;
-use errors::{RuntimeError, RuntimeErrorKind, ExceptionRaisedKind};
+use errors::{RuntimeError, RuntimeErrorKind, ExceptionRaisedKind, VmError};
 
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]

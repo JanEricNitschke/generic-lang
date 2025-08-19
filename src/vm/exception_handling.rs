@@ -1,4 +1,5 @@
 use super::InterpretResult;
+use crate::vm::errors::{RuntimeError, RuntimeErrorKind};
 use crate::chunk::CodeOffset;
 use crate::heap::StringId;
 use crate::value::{
@@ -34,7 +35,7 @@ impl VM {
         self.exception_handlers.pop()
     }
 
-    pub(super) fn unwind(&mut self, exception: Value) -> Option<InterpretResult> {
+    pub(super) fn unwind(&mut self, exception: Value) -> RuntimeError {
         self.handling_exception = true;
         if !matches!(exception, Value::Instance(_)) {
             runtime_error!(
@@ -42,7 +43,7 @@ impl VM {
                 "Can only throw instances, got: {}",
                 exception.to_string(&self.heap)
             );
-            return Some(InterpretResult::RuntimeError);
+            return Err(RuntimeErrorKind);
         }
 
         // Check that the exception is an instance of Exception or its subclasses
@@ -58,7 +59,7 @@ impl VM {
                     .name
                     .to_value(&self.heap)
             );
-            return Some(InterpretResult::RuntimeError);
+            return Err(RuntimeErrorKind);
         }
 
         if let Some(handler) = self.pop_exception_handler() {
@@ -66,25 +67,25 @@ impl VM {
             self.callstack.current_mut().ip = handler.ip;
             self.stack.truncate(handler.stack_length);
             self.stack.push(exception);
-            None
+            Ok(())
         } else {
             let exception_str = self
                 .value_to_string(&exception)
                 .unwrap_or_else(|_| Value::String(self.heap.string_id(&"<unprintable exception>")));
             runtime_error!(self, "{}", exception_str.to_string(&self.heap));
-            Some(InterpretResult::RuntimeError)
+            Err(RuntimeErrorKind)
         }
     }
 
-    pub(super) fn reraise_exception(&mut self) -> Option<InterpretResult> {
+    pub(super) fn reraise_exception(&mut self) -> RuntimeError {
         match self.stack.pop().expect("Stack underflow in OP_RERAISE") {
-            Value::Nil => None,
+            Value::Nil => Ok(()),
             exception => self.unwind(exception),
         }
     }
 
     ///Layout is Stack Top: [`exception_class_to_catch`, `exception_value_raised`]
-    pub(super) fn compare_exception(&mut self) -> Option<InterpretResult> {
+    pub(super) fn compare_exception(&mut self) -> RuntimeError {
         let class_to_catch = self
             .stack
             .pop()
@@ -100,7 +101,7 @@ impl VM {
                     "Can only catch Exception or its subclasses, got: {}",
                     class_id.to_value(&self.heap).name.to_value(&self.heap)
                 );
-                return Some(InterpretResult::RuntimeError);
+                return Err(RuntimeErrorKind);
             }
 
             let exception_class_id = exception_value.as_instance().to_value(&self.heap).class;
@@ -110,14 +111,14 @@ impl VM {
                 exception_class_id,
                 class_id,
             )));
-            None
+            Ok(())
         } else {
             runtime_error!(
                 self,
                 "Exception to catch must be a class, got: {}",
                 class_to_catch.to_string(&self.heap)
             );
-            Some(InterpretResult::RuntimeError)
+            Err(RuntimeErrorKind)
         }
     }
 
@@ -178,19 +179,19 @@ impl VM {
     }
 
     /// Create and throw a `TypeError` with the given message.
-    pub(super) fn throw_type_error(&mut self, message: &str) -> Option<InterpretResult> {
+    pub(super) fn throw_type_error(&mut self, message: &str) -> RuntimeError {
         let exception = self.create_exception("TypeError", message);
         self.unwind(exception)
     }
 
     /// Create and throw a `ValueError` with the given message.
-    pub(super) fn throw_value_error(&mut self, message: &str) -> Option<InterpretResult> {
+    pub(super) fn throw_value_error(&mut self, message: &str) -> RuntimeError {
         let exception = self.create_exception("ValueError", message);
         self.unwind(exception)
     }
 
     /// Create and throw a `NameError` with the given message.
-    pub(super) fn throw_name_error(&mut self, message: &str) -> Option<InterpretResult> {
+    pub(super) fn throw_name_error(&mut self, message: &str) -> RuntimeError {
         let exception = self.create_exception("NameError", message);
         self.unwind(exception)
     }
@@ -199,39 +200,39 @@ impl VM {
     pub(super) fn throw_const_reassignment_error(
         &mut self,
         message: &str,
-    ) -> Option<InterpretResult> {
+    ) -> RuntimeError {
         let exception = self.create_exception("ConstReassignmentError", message);
         self.unwind(exception)
     }
 
     /// Create and throw an `AttributeError` with the given message.
-    pub(super) fn throw_attribute_error(&mut self, message: &str) -> Option<InterpretResult> {
+    pub(super) fn throw_attribute_error(&mut self, message: &str) -> RuntimeError {
         let exception = self.create_exception("AttributeError", message);
         self.unwind(exception)
     }
 
     /// Create and throw an `ImportError` with the given message.
-    pub(super) fn throw_import_error(&mut self, message: &str) -> Option<InterpretResult> {
+    pub(super) fn throw_import_error(&mut self, message: &str) -> RuntimeError {
         let exception = self.create_exception("ImportError", message);
         self.unwind(exception)
     }
 
     /// Create and throw an `ArithmeticError` with the given message.
     #[allow(dead_code)]
-    pub(super) fn throw_arithmetic_error(&mut self, message: &str) -> Option<InterpretResult> {
+    pub(super) fn throw_arithmetic_error(&mut self, message: &str) -> RuntimeError {
         let exception = self.create_exception("ArithmeticError", message);
         self.unwind(exception)
     }
 
     /// Create and throw an `IndexError` with the given message.
     #[allow(dead_code)]
-    pub(super) fn throw_index_error(&mut self, message: &str) -> Option<InterpretResult> {
+    pub(super) fn throw_index_error(&mut self, message: &str) -> RuntimeError {
         let exception = self.create_exception("IndexError", message);
         self.unwind(exception)
     }
 
     /// Create and throw a `RuntimeError` with the given message.
-    pub(super) fn throw_runtime_error(&mut self, message: &str) -> Option<InterpretResult> {
+    pub(super) fn throw_runtime_error(&mut self, message: &str) -> RuntimeError {
         let exception = self.create_exception("Exception", message);
         self.unwind(exception)
     }
