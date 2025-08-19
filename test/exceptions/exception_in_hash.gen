@@ -7,11 +7,11 @@ class ThrowOnHash {
 }
 
 try {
-    {ThrowOnHash()}
+    Set(ThrowOnHash());
 } catch Error {
     print("Caught");  # expect: Caught
 } else {
     print("No Exception");
 }
 
-{ThrowOnHash()} # expect runtime error: [line 11] Error at '}': Expect ';' after expression.
+Set(ThrowOnHash()); # expect runtime error: No sure

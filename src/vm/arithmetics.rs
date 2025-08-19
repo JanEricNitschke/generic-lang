@@ -93,15 +93,16 @@ macro_rules! binary_op {
         };
 
         if status == BinaryOpResult::InvalidOperands {
-            let message = format!(
-                "Operands must be {}. Got: [{}]",
-                if $int_only { "integers" } else { "numbers" },
-                $self.stack[slice_start..]
-                    .iter()
-                    .map(|v| format!("{}", v.to_string(&$self.heap)))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
+        let message = format!(
+            "Operands must be {} or support `{}`. Got: [{}]",
+            if $int_only { "integers" } else { "numbers" },
+            $gen_method,
+            $self.stack[slice_start..]
+                .iter()
+                .map(|v| v.to_string(&$self.heap))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
             if let Some(result) = $self.throw_type_error(&message) {
                 return result;
             }
@@ -153,7 +154,7 @@ impl VM {
 
         if !ok {
             let message = format!(
-                "Operands must be two numbers or two strings. Got: [{}]",
+                "Operands must be two numbers, strings or support `__add__`. Got: [{}]",
                 self.stack[slice_start..]
                     .iter()
                     .map(|v| v.to_string(&self.heap))

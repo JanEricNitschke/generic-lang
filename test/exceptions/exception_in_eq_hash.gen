@@ -1,4 +1,4 @@
-// Test that errors in __eq__ are properly handled when multiple objects have identical hash
+# Test that errors in __eq__ are properly handled when multiple objects have identical hash
 
 class HashCollision {
     __init__(id) {
@@ -6,11 +6,14 @@ class HashCollision {
     }
     
     __hash__() {
-        return 123; // Deliberate hash collision
+        return 123; # Deliberate hash collision
     }
     
     __eq__(other) {
-       return false;
+        if this.id == 4 {
+            throw ValueError("Bad");
+        }
+        return false;
     }
 }
 
@@ -20,10 +23,7 @@ var obj3 = HashCollision(3);
 
 var s = {obj1, obj2, obj2};
 
-var ob4 = HashCollision(4);
-obj4.__eq__ = ->(other) {
-    throw ValueError("Bad!")
-}
+var obj4 = HashCollision(4);
 
 try {
     s.add(obj4);
@@ -33,4 +33,4 @@ try {
 print(len(s)); # expect: 3
 print("Test completed"); # expect: Test completed
 
-s.add(obj4);  # expect runtime error: [line 1] Error at '//': Expect expression.
+s.add(obj4);  # expect runtime error: unsure

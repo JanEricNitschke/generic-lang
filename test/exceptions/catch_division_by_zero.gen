@@ -4,7 +4,7 @@ try {
     print("This should not print");
 } catch TypeError as e {
     print("Caught type error"); # expect: Caught type error
-    print(e.message()); # expect: Operands must be numbers. Got: [hello, 5]
+    print(e.message()); # expect: Operands must be two numbers, strings or support `__add__`. Got: [hello, 5]
 } else {
     print("This should not print");
 }

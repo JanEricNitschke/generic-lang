@@ -2,8 +2,8 @@ class Base {}
 
 class Derived < Base {
   foo() {
-    super.doesNotExist(1); # expect runtime error: AttributeError: Undefined property 'doesNotExist'.
+    super.doesNotExist(1);
   }
 }
 
-Derived().foo();
+Derived().foo();  # expect runtime error: AttributeError: Undefined property 'doesNotExist'.

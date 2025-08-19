@@ -18,4 +18,4 @@ fun foo() {
   foo(); # expect runtime error: Exception: Stack overflow.
 }
 
-foo();
+foo();  # expect runtime error: Exception: Stack overflow.
