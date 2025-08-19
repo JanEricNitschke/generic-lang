@@ -10,6 +10,7 @@ mod garbage_collection;
 mod import;
 mod setup;
 mod stack;
+mod errors;
 
 #[macro_use]
 mod arithmetics;
