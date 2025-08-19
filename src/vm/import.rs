@@ -4,6 +4,7 @@ use path_slash::PathBufExt;
 use std::path::PathBuf;
 
 use crate::{
+    config::GENERIC_STDLIB_DIR,
     heap::StringId,
     value::{Closure, Module, ModuleContents, NativeFunction},
     vm::errors::VmError,
@@ -33,29 +34,28 @@ impl VM {
         };
         let name_id = self.heap.string_id(&name);
 
-        for module in &self.modules {
-            if module.to_value(&self.heap).path.canonicalize().unwrap() == file_path {
+        // User defined generic module
+        if let Ok(contents) = std::fs::read(&file_path) {
+            // Check for circular imports only for user-defined modules
+            // Skip stdlib modules since they're under our control and can't have circular imports
+            if self.modules.iter().any(|module| {
+                let module_path = &module.to_value(&self.heap).path;
+
+                // Check if this is NOT a stdlib module
+                let is_not_stdlib = module_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_none_or(|filename| GENERIC_STDLIB_DIR.get_file(filename).is_none());
+
+                is_not_stdlib && module_path.canonicalize().unwrap() == file_path
+            }) {
                 let message = format!(
                     "Circular import of module `{}` detected.",
                     name_id.to_value(&self.heap)
                 );
                 return self.throw_import_error(&message);
             }
-        }
 
-        // TODO: Can i just directly get the path to the project root?
-        let mut generic_stdlib_path = PathBuf::from(file!());
-        generic_stdlib_path.pop();
-        generic_stdlib_path.pop();
-        generic_stdlib_path.push("stdlib");
-        generic_stdlib_path.push(format!("{name}.gen"));
-        let generic_stdlib_path = match generic_stdlib_path.canonicalize() {
-            Ok(path) => path,
-            Err(_) => generic_stdlib_path,
-        };
-
-        // User defined generic module
-        if let Ok(contents) = std::fs::read(&file_path) {
             self.import_generic_module(
                 &contents,
                 &name,
@@ -64,10 +64,11 @@ impl VM {
                 alias,
                 local_import,
             )?;
-        } else if let Ok(contents) = std::fs::read(generic_stdlib_path) {
-            // stdlib generic module
+        } else if let Some(stdlib_file) = GENERIC_STDLIB_DIR.get_file(format!("{name}.gen")) {
+            // stdlib generic module from embedded directory - no circular import check needed
+            // since we have full control of stdlib modules
             self.import_generic_module(
-                &contents,
+                stdlib_file.contents(),
                 &name,
                 file_path,
                 names_to_import,
