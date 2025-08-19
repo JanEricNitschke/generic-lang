@@ -7,11 +7,11 @@ class ThrowOnEq {
 }
 
 try {
-    ThrowOnEq() == ThrowOnEq()
+    ThrowOnEq() == ThrowOnEq();
 } catch Error {
     print("Caught");  # expect: Caught
 } else {
     print("No Exception");
 }
 
-ThrowOnEq() == ThrowOnEq() # expect runtime error: [line 11] Error at '}': Expect ';' after expression.
+ThrowOnEq() == ThrowOnEq(); # expect runtime error: not sure

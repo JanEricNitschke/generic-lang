@@ -1,4 +1,4 @@
-class Error {}
+class Error < Exception {}
 
 class ThrowOnBool {
     __bool__() {

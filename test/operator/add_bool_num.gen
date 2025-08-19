@@ -1,1 +1,1 @@
-true + 123; # expect runtime error: TypeError: Operands must be two numbers or two strings. Got: [true, 123]
+true + 123; # expect runtime error: TypeError: Operands must be two numbers, strings or support `__add__`. Got: [true, 123]
