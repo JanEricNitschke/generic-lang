@@ -1,5 +1,7 @@
 //! Collection of global config variables.
 
+use include_dir::{Dir, include_dir};
+
 /// Maximum number of frames that can be active simultaneously.
 pub const FRAMES_MAX: usize = 64;
 /// Maximum size of the total stack.
@@ -11,3 +13,8 @@ pub const STACK_MAX: usize = FRAMES_MAX * 256;
 pub const GC_HEAP_GROW_FACTOR: usize = 2;
 
 pub const LAMBDA_NAME: &str = "lambda";
+
+/// Embedded directory containing generic builtin modules.
+pub static GENERIC_BUILTINS_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/src/builtins");
+/// Embedded directory containing generic stdlib modules.
+pub static GENERIC_STDLIB_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/src/stdlib/generic");

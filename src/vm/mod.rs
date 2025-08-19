@@ -36,6 +36,7 @@ use std::path::PathBuf;
 
 #[cfg(feature = "trace_execution")]
 use crate::chunk::InstructionDisassembler;
+use crate::config::GENERIC_BUILTINS_DIR;
 use crate::natives;
 use crate::vm::errors::VmError;
 use crate::{
@@ -187,7 +188,7 @@ impl VM {
         compiler.compile()
     }
 
-    /// Load and execute generic builtin files from the `src/builtins` directory.
+    /// Load and execute generic builtin files from the embedded `src/builtins` directory.
     ///
     /// Each builtin file is compiled and executed to completion. Then its globals
     /// (excluding `__name__`) are copied to the VM builtins and the module is
@@ -195,30 +196,25 @@ impl VM {
     ///
     /// Panics if builtin loading fails, as this indicates an internal error.
     fn load_generic_builtins(&mut self) {
-        // Use path relative to the rust file, consistent with stdlib handling
-        let builtins_dir = std::path::Path::new(file!())
-            .parent()
-            .unwrap() // drop mod.rs
-            .parent()
-            .unwrap() // drop vm/
-            .join("builtins");
-
-        std::fs::read_dir(&builtins_dir)
-            .expect("Failed to read builtins directory")
-            .map(|entry| entry.expect("Failed to read directory entry").path())
-            .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("gen"))
-            .for_each(|path| self.load_builtin_file(&path));
+        // Iterate over embedded builtin files
+        GENERIC_BUILTINS_DIR
+            .files()
+            .filter(|file| file.path().extension().is_some_and(|ext| ext == "gen"))
+            .for_each(|file| {
+                self.load_builtin_file_from_embedded(
+                    file.path().to_string_lossy().as_ref(),
+                    file.contents(),
+                );
+            });
     }
 
-    /// Load and execute a single builtin file in the current VM.
-    fn load_builtin_file(&mut self, path: &std::path::Path) {
-        let source = std::fs::read(path).expect("Failed to read builtin file");
-
-        let name = format!("<builtin:{}>", path.file_name().unwrap().to_string_lossy());
+    /// Load and execute a single builtin file from embedded content in the current VM.
+    fn load_builtin_file_from_embedded(&mut self, file_name: &str, source: &[u8]) {
+        let name = format!("<builtin:{file_name}>");
 
         let function = self
             .compile(
-                &source,
+                source,
                 &name,
                 #[cfg(feature = "print_code")]
                 true,
@@ -228,7 +224,9 @@ impl VM {
         let function_id = self.heap.add_function(function);
         let closure = Closure::new(*function_id.as_function(), true, None, &self.heap);
 
-        self.add_closure_to_modules(&closure, path.to_path_buf(), None, None, false);
+        // Create a dummy path for the builtin file - this is only used for module tracking
+        let builtin_path = PathBuf::from(format!("builtins/{file_name}"));
+        self.add_closure_to_modules(&closure, builtin_path.clone(), None, None, false);
 
         let value_id = self.heap.add_closure(closure);
         self.stack_push(value_id);
@@ -236,8 +234,9 @@ impl VM {
             .expect("Internal Error: Executing call of builtin module failed.");
 
         // Execute the builtin to completion
-        self.run()
-            .unwrap_or_else(|_| panic!("Failed to execute builtin file {}.", path.display()));
+        self.run().unwrap_or_else(|_| {
+            panic!("Failed to execute builtin file {}.", builtin_path.display())
+        });
 
         // Copy globals from the completed module to builtins (excluding __name__)
         let module_globals = std::mem::take(self.globals());
