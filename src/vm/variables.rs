@@ -1,5 +1,5 @@
 use super::{Global, VM, errors::VmError};
-use crate::{chunk::OpCode, value::Value};
+use crate::{chunk::OpCode, types::NumberEncoding, value::Value};
 
 impl VM {
     pub(super) fn set_local(&mut self, op: OpCode) {
@@ -21,7 +21,11 @@ impl VM {
     }
 
     pub(super) fn get_global(&mut self, op: OpCode) -> VmError {
-        let constant_index = self.read_constant_index(op == OpCode::GetGlobalLong);
+        let constant_index = self.read_constant_index(if op == OpCode::GetGlobalLong {
+            NumberEncoding::Long
+        } else {
+            NumberEncoding::Short
+        });
         let constant_value = self.read_constant_value(constant_index);
         match &constant_value {
             Value::String(name) => {
@@ -50,7 +54,11 @@ impl VM {
     }
 
     pub(super) fn set_global(&mut self, op: OpCode) -> VmError {
-        let constant_index = self.read_constant_index(op == OpCode::SetGlobalLong);
+        let constant_index = self.read_constant_index(if op == OpCode::SetGlobalLong {
+            NumberEncoding::Long
+        } else {
+            NumberEncoding::Short
+        });
         let constant_value = self.read_constant_value(constant_index);
         let name = match &constant_value {
             Value::String(name) => *name,
@@ -87,7 +95,11 @@ impl VM {
     }
 
     pub(super) fn define_global(&mut self, op: OpCode) {
-        let constant = self.read_constant(op == OpCode::DefineGlobalLong);
+        let constant = self.read_constant(if op == OpCode::DefineGlobalLong {
+            NumberEncoding::Long
+        } else {
+            NumberEncoding::Short
+        });
         match &constant {
             Value::String(name) => {
                 let name = *name;

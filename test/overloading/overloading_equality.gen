@@ -21,10 +21,17 @@ var eq2 = Eq(1);
 var eq3 = Eq(2);
 
 print(noeq1 == noeq1); # expect: true
+print(noeq1 != noeq1); # expect: false
 print(noeq1 == noeq2); # expect: false
+print(noeq1 != noeq2); # expect: true
 print(eq1 == eq1);     # expect: true
+print(eq1 != eq1);     # expect: false
 print(eq1 == eq2);     # expect: true
+print(eq1 != eq2);     # expect: false
 print(eq1 == eq3);     # expect: false
+print(eq1 != eq3);     # expect: true
 
 print(eq1 == noeq1);  # expect: true
+print(eq1 != noeq1);  # expect: false
 print(noeq1 == eq1);  # expect: false
+print(noeq1 != eq1);  # expect: true

@@ -65,3 +65,17 @@ pub enum CollectionType {
     Dict,
     Set,
 }
+
+/// Enum for equality comparison modes
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EqualityMode {
+    Equal,
+    NotEqual,
+}
+
+/// Enum for range boundary types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RangeType {
+    Inclusive,
+    Exclusive,
+}

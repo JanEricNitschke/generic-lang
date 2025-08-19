@@ -1,5 +1,6 @@
 use super::VM;
 use crate::heap::StringId;
+use crate::types::NumberEncoding;
 use crate::value::Value;
 
 impl VM {
@@ -29,12 +30,11 @@ impl VM {
 
     /// Read a constant index from the current frame's bytecode.
     ///
-    /// If `long` is true then a 24 bit number is read, otherwise a single byte.
-    pub(super) fn read_constant_index(&mut self, long: bool) -> usize {
-        if long {
-            self.read_24bit_number()
-        } else {
-            usize::from(self.read_byte())
+    /// Uses the specified `encoding` to determine whether to read a 24-bit number or a single byte.
+    pub(super) fn read_constant_index(&mut self, encoding: NumberEncoding) -> usize {
+        match encoding {
+            NumberEncoding::Long => self.read_24bit_number(),
+            NumberEncoding::Short => usize::from(self.read_byte()),
         }
     }
 
@@ -51,14 +51,14 @@ impl VM {
     ///
     /// First reads the index of the constant from the bytecode.
     /// Then grabs the value corresponding to that index from the current function's constants.
-    pub(super) fn read_constant(&mut self, long: bool) -> Value {
-        let index = self.read_constant_index(long);
+    pub(super) fn read_constant(&mut self, encoding: NumberEncoding) -> Value {
+        let index = self.read_constant_index(encoding);
         self.read_constant_value(index)
     }
 
     /// Read the value of the string constant specified by the next byte.
     pub(super) fn read_string(&mut self, opcode_name: &str) -> StringId {
-        let constant = self.read_constant(false);
+        let constant = self.read_constant(NumberEncoding::Short);
         match &constant {
             Value::String(string_id) => *string_id,
             x => {

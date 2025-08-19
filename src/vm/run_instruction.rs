@@ -140,12 +140,12 @@ macro_rules! run_instruction {
             },
             // Index of the constant is the operand, value is in the constants table
             OpCode::Constant => {
-                let value = $self.read_constant(false);
+                let value = $self.read_constant(NumberEncoding::Short);
                 $self.stack_push(value);
                 Ok(())
             }
             OpCode::ConstantLong => {
-                let value = $self.read_constant(true);
+                let value = $self.read_constant(NumberEncoding::Long);
                 $self.stack_push(value);
                 Ok(())
             }
@@ -156,8 +156,8 @@ macro_rules! run_instruction {
             OpCode::True => Ok($self.stack_push(Value::Bool(true))),
             OpCode::False => Ok($self.stack_push(Value::Bool(false))),
             OpCode::StopIteration => Ok($self.stack.push(Value::StopIteration)),
-            OpCode::Equal => $self.equal(false),
-            OpCode::NotEqual => $self.equal(true),
+            OpCode::Equal => $self.equal(EqualityMode::Equal),
+            OpCode::NotEqual => $self.equal(EqualityMode::NotEqual),
             // All of these work on the top two stack values.
             // Top most is right operand, second is left.
             OpCode::Add => $self.add(),
@@ -188,7 +188,7 @@ macro_rules! run_instruction {
             // Get the function with the actual bytecode as a value from the operand
             // Capture the upvalues and push the closure onto the stack
             OpCode::Closure => {
-                let value = $self.read_constant(false);
+                let value = $self.read_constant(NumberEncoding::Short);
                 let function = value.as_function();
                 let mut closure =
                     Closure::new(*function, false, $self.modules.last().copied(), &$self.heap);
@@ -431,8 +431,8 @@ macro_rules! run_instruction {
             OpCode::BuildTuple => Ok($self.build_tuple()),
             OpCode::BuildSet => $self.build_set(),
             OpCode::BuildDict => $self.build_dict(),
-            OpCode::BuildRangeExclusive => $self.build_range(true),
-            OpCode::BuildRangeInclusive => $self.build_range(false),
+            OpCode::BuildRangeExclusive => $self.build_range(RangeType::Exclusive),
+            OpCode::BuildRangeInclusive => $self.build_range(RangeType::Inclusive),
             OpCode::BuildRational => $self.build_rational(),
             // Import a module by filepath without qualifiers.
             // Expects either the path to the module or the name of
