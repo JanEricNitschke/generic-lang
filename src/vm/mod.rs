@@ -6,11 +6,11 @@
 #[macro_use]
 mod runtime_error;
 mod dunder;
+mod errors;
 mod garbage_collection;
 mod import;
 mod setup;
 mod stack;
-mod errors;
 
 #[macro_use]
 mod arithmetics;
