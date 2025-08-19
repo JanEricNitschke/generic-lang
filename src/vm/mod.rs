@@ -45,6 +45,7 @@ use crate::{
     value::{Class, Closure, Function, ModuleContents, Number, Upvalue, Value},
 };
 use std::fmt::Write;
+use errors::{RuntimeError, RuntimeErrorKind, ExceptionRaisedKind};
 
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -52,6 +53,26 @@ pub enum InterpretResult {
     Ok,
     CompileError,
     RuntimeError,
+}
+
+impl From<RuntimeError> for InterpretResult {
+    fn from(result: RuntimeError) -> Self {
+        match result {
+            Ok(()) => InterpretResult::Ok,
+            Err(_) => InterpretResult::RuntimeError,
+        }
+    }
+}
+
+// Helper function to create a RuntimeError
+impl VM {
+    fn runtime_error(&self) -> RuntimeErrorKind {
+        RuntimeErrorKind
+    }
+
+    fn exception_raised(&self) -> ExceptionRaisedKind {
+        ExceptionRaisedKind
+    }
 }
 
 /// Wrapper around a global value to store whether it is mutable or not.

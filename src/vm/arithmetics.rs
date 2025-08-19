@@ -1,4 +1,6 @@
 use super::{InterpretResult, VM};
+use crate::vm::errors::{RuntimeError, RuntimeErrorKind};
+use crate::chunk::CodeOffset;
 use crate::value::{GenericRational, Number, Value};
 
 #[derive(PartialEq, Eq)]
