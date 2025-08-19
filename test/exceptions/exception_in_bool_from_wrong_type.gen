@@ -1,0 +1,15 @@
+class ThrowOnBool {
+    __bool__() {
+        return 3;
+    }
+}
+
+try {
+    Bool(ThrowOnBool());
+} catch TypeError {
+    print("Caught");  # expect: Caught
+} else {
+    print("No Exception");
+}
+
+Bool(ThrowOnBool()); # expect runtime error: TypeError: `__bool__` must return a boolean, got: 3

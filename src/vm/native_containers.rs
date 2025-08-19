@@ -1,9 +1,8 @@
-use super::VM;
-use crate::value::{Dict, List, Set, Tuple};
-use crate::value::{GenericInt, Instance, Number, Range, Value};
-use crate::vm::errors::VmError;
+use super::{VM, errors::VmError};
+use crate::types::RangeType;
+use crate::value::{Dict, GenericInt, Instance, List, Number, Range, Set, Tuple, Value};
 impl VM {
-    pub fn build_range(&mut self, was_exclusive: bool) -> VmError {
+    pub fn build_range(&mut self, range_type: RangeType) -> VmError {
         let end = self.stack.pop().expect("Stack underflow in OP_BUILD_RANGE");
         let start = self.stack.pop().expect("Stack underflow in OP_BUILD_RANGE");
 
@@ -11,12 +10,19 @@ impl VM {
             if let (Value::Number(Number::Integer(start)), Value::Number(Number::Integer(end))) =
                 (start, end)
             {
-                if was_exclusive {
-                    Range::new(start, end)
-                } else {
-                    // Internally ranges are always exclusive.
-                    // So 1..=10 -> 1..<11
-                    Range::new(start, end.add(GenericInt::Small(1), &mut self.heap))
+                match range_type {
+                    RangeType::Exclusive => Range::new(start, end),
+                    RangeType::Inclusive => {
+                        // Internally ranges are always exclusive.
+                        // For ascending ranges (start <= end): 1..=10 -> 1..<11 (add 1 to end)
+                        // For descending ranges (start > end): 10..=5 -> 10..<4 (subtract 1 from end)
+                        let adjusted_end = if start.le(&end, &self.heap) {
+                            end.add(GenericInt::Small(1), &mut self.heap)
+                        } else {
+                            end.sub(GenericInt::Small(1), &mut self.heap)
+                        };
+                        Range::new(start, adjusted_end)
+                    }
                 }
             } else {
                 let message = format!(

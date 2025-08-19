@@ -5,7 +5,7 @@ use crate::vm::errors::{ExceptionRaisedKind, Return, RuntimeErrorKind, VmError, 
 use crate::{
     chunk::OpCode,
     heap::{NativeFunctionId, NativeMethodId, StringId, UpvalueId},
-    types::JumpCondition,
+    types::{EqualityMode, JumpCondition, NumberEncoding, RangeType},
     value::{Class, Closure, Instance, Number, Upvalue, Value},
 };
 

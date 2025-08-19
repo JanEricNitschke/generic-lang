@@ -1,0 +1,13 @@
+class ThrowOnEq {
+    __eq__(other) {
+       return 3;
+    }
+}
+
+try {
+    ThrowOnEq() == ThrowOnEq();
+} catch TypeError {
+    print("Caught");  # expect: Caught
+} else {
+    print("No Exception");
+}

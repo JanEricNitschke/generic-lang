@@ -1,0 +1,25 @@
+# Test that errors in __eq__ are properly handled when multiple objects have identical hash
+
+class HashCollision {
+    __init__(id) {
+        this.id = id;
+    }
+    
+    __hash__() {
+        return 123; # Deliberate hash collision
+    }
+    
+    __eq__(other) {
+        return 3;
+    }
+}
+
+var obj1 = HashCollision(1);
+var obj2 = HashCollision(2);
+
+
+try {
+    var s = {obj1, obj2};
+} catch TypeError as e {
+    print("Caught TypeError: " + e.message()); # expect: Caught TypeError: Return value of `__eq__` has to be bool, got 3
+}

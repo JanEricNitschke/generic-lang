@@ -45,7 +45,7 @@ use crate::{
     heap::{Heap, ModuleId, StringId, UpvalueId},
     scanner::Scanner,
     stdlib,
-    types::JumpCondition,
+    types::{EqualityMode, JumpCondition, NumberEncoding, RangeType},
     value::{Class, Closure, Function, ModuleContents, Number, Upvalue, Value},
 };
 use std::fmt::Write;
@@ -360,24 +360,37 @@ impl VM {
 
     /// Check if the top two values on the stack are equal.
     ///
-    /// If `negate` is true then the result is negated.
+    /// Uses the specified `mode` to determine if equality should be negated.
     ///
     /// # Panics
     ///
     /// If the stack does not have two values. This is an internal error and should never happen.
-    fn equal(&mut self, negate: bool) -> VmError {
+    fn equal(&mut self, mode: EqualityMode) -> VmError {
         let eq_id = self.heap.string_id(&"__eq__");
-        let left_id = self.peek(1).expect("Stack underflow in OP EQUAL (left)");
+        let left_id = self.peek(1).expect("Stack underflow in OP_EQUAL (left)");
 
         // Check if left value is an instance with __eq__ method
         if let Value::Instance(instance) = left_id
-            && instance
+            && let Some(eq_method) = instance
                 .to_value(&self.heap)
-                .has_field_or_method(eq_id, &self.heap)
+                .get_field_or_method(eq_id, &self.heap)
         {
             // If the left value is an instance, use its __eq__ method
             // Values are already on stack in correct order for method call
-            return self.invoke(eq_id, 1);
+            self.invoke_and_run_function(eq_id, 1, matches!(eq_method, Value::NativeMethod(_)))?;
+            let result = *self.peek(0).expect("Stack underflow in OP_EQUAL");
+            return if let Value::Bool(bool) = result {
+                if mode == EqualityMode::NotEqual {
+                    self.stack.pop().expect("Stack underflow in OP_EQUAL");
+                    self.stack_push((!bool).into());
+                }
+                Ok(())
+            } else {
+                self.throw_type_error(&format!(
+                    "Return value of `__eq__` has to be bool, got {}",
+                    result.to_string(&self.heap)
+                ))
+            };
         }
 
         // No custom __eq__ method, fall back to heap equality
@@ -390,7 +403,10 @@ impl VM {
             .pop()
             .expect("stack underflow in OP_EQUAL (left)");
 
-        let result = left_id.eq(&right_id, &self.heap) != negate;
+        let result = match mode {
+            EqualityMode::Equal => left_id.eq(&right_id, &self.heap),
+            EqualityMode::NotEqual => !left_id.eq(&right_id, &self.heap),
+        };
         self.stack_push(result.into());
         Ok(())
     }

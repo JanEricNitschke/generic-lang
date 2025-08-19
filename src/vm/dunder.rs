@@ -199,8 +199,17 @@ impl VM {
             self.stack_push(right);
 
             self.invoke_and_run_function(eq_id, 1, matches!(eq_method, Value::NativeMethod(_)))?;
-            let result = self.stack.pop().expect("Stack underflow in IS_FALSEY");
-            return Ok(!self.is_falsey(result)?);
+            let result = self.stack.pop().expect("Stack underflow in OP_EQUAL");
+            return if let Value::Bool(bool) = result {
+                Ok(bool)
+            } else {
+                Err(self
+                    .throw_type_error(&format!(
+                        "Return value of `__eq__` has to be bool, got {}",
+                        result.to_string(&self.heap)
+                    ))
+                    .unwrap_err())
+            };
         }
 
         // Fall back to heap-level equality
