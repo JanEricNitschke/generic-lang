@@ -178,7 +178,6 @@ impl VM {
         Exception::new(message_id, stack_trace_id)
     }
 
-    /// Create and throw a `TypeError` with the given message.
     pub(super) fn throw_type_error(&mut self, message: &str) -> RuntimeError {
         let exception = self.create_exception("TypeError", message);
         self.unwind(exception)

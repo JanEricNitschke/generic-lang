@@ -68,9 +68,7 @@ macro_rules! binary_op {
                                 }
                                 Err(error) => {
                                     let exception = $self.create_exception("ValueError", &error);
-                                    if let Some(result) = $self.unwind(exception) {
-                                        return result;
-                                    }
+                                    $self.unwind(exception)?;
                                     BinaryOpResult::Success // Continue execution if exception was handled
                                 }
                             }
@@ -82,7 +80,7 @@ macro_rules! binary_op {
                             .has_field_or_method(gen_method_id, &$self.heap) =>
                     {
                         if !$self.invoke(gen_method_id, 1) {
-                            return InterpretResult::RuntimeError;
+                            return Err(RuntimeErrorKind);
                         }
                         // If the invoke succeeds, decide what to return —
                         // keeping same flow as original code
@@ -105,12 +103,10 @@ macro_rules! binary_op {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-            if let Some(result) = $self.throw_type_error(&message) {
-                return result;
-            }
+            $self.throw_type_error(&message)?;
         }
         if status != BinaryOpResult::Success {
-            return InterpretResult::RuntimeError;
+            return Err(RuntimeErrorKind);
         }
     }};
 }

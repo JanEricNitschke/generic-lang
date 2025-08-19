@@ -160,7 +160,7 @@ impl VM {
             self.stack_push(value_id);
             self.execute_call(value_id, 0);
 
-            self.run()
+            self.run().into()
         } else {
             InterpretResult::CompileError
         };
@@ -245,10 +245,20 @@ impl VM {
     ///
     /// Returns when a return instruction is hit at the top level.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn run(&mut self) -> InterpretResult {
+    fn run(&mut self) -> RuntimeError {
         loop {
-            run_instruction!(self);
+            match self.run_single_instruction() {
+                InterpretResult::Ok => continue,
+                InterpretResult::RuntimeError => return Err(RuntimeErrorKind),
+                InterpretResult::CompileError => return Err(RuntimeErrorKind), // This shouldn't happen in run
+            }
         }
+    }
+
+    /// Execute a single instruction and return the result.
+    fn run_single_instruction(&mut self) -> InterpretResult {
+        run_instruction!(self);
+        InterpretResult::Ok
     }
 
     /// Capture the current stack trace directly as a string.

@@ -136,9 +136,7 @@ macro_rules! run_instruction {
             }
             // `Negate` and `Not` work on the stack value
             OpCode::Negate => {
-                if let Some(value) = $self.negate() {
-                    return value;
-                }
+                $self.negate()?;
             }
             OpCode::Not => $self.not_(),
             OpCode::Nil => $self.stack_push(Value::Nil),
@@ -158,9 +156,7 @@ macro_rules! run_instruction {
             // All of these work on the top two stack values.
             // Top most is right operand, second is left.
             OpCode::Add => {
-                if let Some(value) = $self.add() {
-                    return value;
-                }
+                $self.add()?;
             }
             OpCode::Subtract => binary_op!($self, sub, "__sub__", false, mut_heap),
             OpCode::Multiply => binary_op!($self, mul, "__mul__", false, mut_heap),
