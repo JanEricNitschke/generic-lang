@@ -158,20 +158,7 @@ impl VM {
         };
 
         if result == InterpretResult::Ok {
-            // Check for stack cleanup issues but don't fail immediately for all cases
-            if self.stack.len() != 0 {
-                // This can happen when exceptions occur during native method calls
-                // For now, just reset the flag that might be causing the issue
-                self.handling_exception = false;
-                
-                // Only fail if there are many items (>2) left, which indicates a more serious problem
-                if self.stack.len() > 2 {
-                    eprintln!("Serious stack cleanup issue - {} items remaining", self.stack.len());
-                    assert_eq!(self.stack.len(), 0);
-                } else {
-                    eprintln!("Minor stack cleanup issue - {} items remaining (known issue with exception handling)", self.stack.len());
-                }
-            }
+            assert_eq!(self.stack.len(), 0);
         }
         result
     }
