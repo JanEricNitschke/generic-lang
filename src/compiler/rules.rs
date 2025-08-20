@@ -455,10 +455,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
     }
 
-    // TODO: Make this also create tuples?
     /// Used for grouping expressions to overwrite default precedence.
     ///
     /// The full expression within the grouping will be parsed as one.
+    /// Empty parens create an empty tuple instead.
     fn grouping(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         if self.match_(TK::RightParen) {
             self.emit_bytes(OpCode::BuildTuple, 0, self.line());

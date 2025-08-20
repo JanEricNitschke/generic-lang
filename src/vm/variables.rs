@@ -1,6 +1,5 @@
+use super::{Global, VM, errors::VmError};
 use crate::{chunk::OpCode, value::Value};
-
-use super::{Global, InterpretResult, VM};
 
 impl VM {
     pub(super) fn set_local(&mut self, op: OpCode) {
@@ -21,7 +20,7 @@ impl VM {
         self.stack_push(*self.stack_get(slot));
     }
 
-    pub(super) fn get_global(&mut self, op: OpCode) -> Option<InterpretResult> {
+    pub(super) fn get_global(&mut self, op: OpCode) -> VmError {
         let constant_index = self.read_constant_index(op == OpCode::GetGlobalLong);
         let constant_value = self.read_constant_value(constant_index);
         match &constant_value {
@@ -47,10 +46,10 @@ impl VM {
 
             x => panic!("Internal error: non-string operand to {op:?}: {x:?}"),
         }
-        None
+        Ok(())
     }
 
-    pub(super) fn set_global(&mut self, op: OpCode) -> Option<InterpretResult> {
+    pub(super) fn set_global(&mut self, op: OpCode) -> VmError {
         let constant_index = self.read_constant_index(op == OpCode::SetGlobalLong);
         let constant_value = self.read_constant_value(constant_index);
         let name = match &constant_value {
@@ -84,7 +83,7 @@ impl VM {
             }
         }
 
-        None
+        Ok(())
     }
 
     pub(super) fn define_global(&mut self, op: OpCode) {

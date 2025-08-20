@@ -12,7 +12,7 @@ try {
     print("This should not print");
 } catch ValueError as e {
     print("Caught __str__ error"); # expect: Caught __str__ error
-    print(e.message()); # expect: __str__ method failed with runtime error
+    print(e.message()); # expect: String conversion failed
 } else {
     print("This should not print");
 }

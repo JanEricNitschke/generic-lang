@@ -152,7 +152,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"RangeIterator", &"__next__", &[0], range_iter_next_native);
 
     vm.define_native_class(&"Exception", true);
-    vm.define_native_method(&"Exception", &"__init__", &[1], exception_init_native);
+    vm.define_native_method(&"Exception", &"__init__", &[0, 1], exception_init_native);
     vm.define_native_method(&"Exception", &"message", &[0], exception_message_native);
     vm.define_native_method(
         &"Exception",

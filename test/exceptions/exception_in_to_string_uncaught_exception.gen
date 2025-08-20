@@ -5,4 +5,4 @@ class Error < Exception {
 
 }
 
-throw Error();  # expect runtime error: TypeError: Native method '__init__' of class Error expected 1 argument, got 0.
+throw Error();  # expect runtime error: Exception

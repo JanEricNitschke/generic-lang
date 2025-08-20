@@ -13,4 +13,4 @@ foo.bar = "42";
 delattr(foo, field);
 print(hasattr(foo, "bar")); # expect: false
 
-delattr(foo, field); # expect runtime error: Exception: Undefined property 'bar'.
+delattr(foo, field); # expect runtime error: AttributeError: Undefined property 'bar'.

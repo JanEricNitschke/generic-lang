@@ -1,1 +1,1 @@
-throw 3;  # expect runtime error: Can only throw instances, got: 3
+throw 3;  # expect runtime error: TypeError: Can only throw instances, got: 3

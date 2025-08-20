@@ -1,7 +1,7 @@
 class Error < Exception {}
 
 class ThrowOnHash {
-    __eq__() {
+    __hash__() {
         throw Error();
     }
 }
@@ -14,4 +14,4 @@ try {
     print("No Exception");
 }
 
-Set(ThrowOnHash()); # expect runtime error: No sure
+Set(ThrowOnHash()); # expect runtime error: Error

@@ -1,7 +1,7 @@
 class Animal {}
 
 # First argument must be a class
-issubclass("not a class", Animal);  # expect runtime error: Exception: 'issubclass' expected class as first argument, got: not a class
+issubclass("not a class", Animal);  # expect runtime error: TypeError: 'issubclass' expected class as first argument, got: not a class
 
 # This line should not be reached due to the error above
 print("This should not print");

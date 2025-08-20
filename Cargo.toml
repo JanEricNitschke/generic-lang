@@ -40,6 +40,7 @@ thiserror = "2.0.15"
 
 [features]
 print_code              = []
+print_code_verbose      = ["print_code"]
 trace_execution         = []
 trace_execution_verbose = ["trace_execution"]
 log_gc                  = []

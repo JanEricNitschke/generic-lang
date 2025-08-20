@@ -18,6 +18,6 @@ try {
     print("No Exception");
 }
 
-if ThrowOnBool() {
+if ThrowOnBool() { # expect runtime error: Error
     print("Truthy");
-}  # expect runtime error: TypeError: Native method '__init__' of class Error expected 1 argument, got 0.
+}  

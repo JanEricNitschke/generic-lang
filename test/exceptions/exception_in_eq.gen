@@ -1,7 +1,7 @@
 class Error < Exception {}
 
 class ThrowOnEq {
-    __eq__() {
+    __eq__(other) {
         throw Error();
     }
 }
@@ -14,4 +14,4 @@ try {
     print("No Exception");
 }
 
-ThrowOnEq() == ThrowOnEq(); # expect runtime error: not sure
+ThrowOnEq() == ThrowOnEq(); # expect runtime error: Error

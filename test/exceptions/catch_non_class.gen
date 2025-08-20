@@ -2,6 +2,6 @@ class Error < Exception {}
 
 try {
     throw Error("error message");
-} catch "Apple" {  # expect runtime error: Exception to catch must be a class, got: Apple
+} catch "Apple" {  # expect runtime error: TypeError: Exception to catch must be a class, got: Apple
     print("Catch");
 }

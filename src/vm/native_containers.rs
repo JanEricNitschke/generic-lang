@@ -1,8 +1,9 @@
-use super::{InterpretResult, VM};
+use super::VM;
 use crate::value::{Dict, List, Set, Tuple};
 use crate::value::{GenericInt, Instance, Number, Range, Value};
+use crate::vm::errors::VmError;
 impl VM {
-    pub fn build_range(&mut self, was_exclusive: bool) -> Option<InterpretResult> {
+    pub fn build_range(&mut self, was_exclusive: bool) -> VmError {
         let end = self.stack.pop().expect("Stack underflow in OP_BUILD_RANGE");
         let start = self.stack.pop().expect("Stack underflow in OP_BUILD_RANGE");
 
@@ -32,7 +33,7 @@ impl VM {
         );
         let instance_value = self.heap.add_instance(instance);
         self.stack_push_value(instance_value);
-        None
+        Ok(())
     }
 
     // Build a list. The number of items is the operand.
@@ -82,16 +83,14 @@ impl VM {
     // Build a set. The number of items is the operand.
     // Items are on the stack in order from left to right
     // (... --- item1 --- item2 --- ... --- itemN)
-    pub(crate) fn build_set(&mut self) -> Option<InterpretResult> {
+    pub(crate) fn build_set(&mut self) -> VmError {
         let mut set = Set::default();
 
         let arg_count = self.read_byte();
         for index in (0..arg_count).rev() {
             let value = *self.peek(usize::from(index)).unwrap();
 
-            if let Err(err) = set.add(value, self) {
-                return self.throw_value_error(&err);
-            }
+            set.add(value, self)?;
         }
         // Pop all items from stack at once
         self.stack
@@ -103,13 +102,13 @@ impl VM {
         );
         let instance_value = self.heap.add_instance(instance);
         self.stack_push_value(instance_value);
-        None
+        Ok(())
     }
 
     // Build a dict. The number of key-value-pairs is the operand.
     // Items are on the stack in order from left to right
     // (... --- key1 --- value1 --- key2 --- value2 --- ... --- keyN --- valueN)
-    pub(crate) fn build_dict(&mut self) -> Option<InterpretResult> {
+    pub(crate) fn build_dict(&mut self) -> VmError {
         let mut dict = Dict::default();
         // Number of key, value pairs.
         let arg_count = self.read_byte();
@@ -117,9 +116,7 @@ impl VM {
             let key = *self.peek(usize::from(2 * index + 1)).unwrap();
             let value = *self.peek(usize::from(2 * index)).unwrap();
 
-            if let Err(err) = dict.add(key, value, self) {
-                return self.throw_value_error(&err);
-            }
+            dict.add(key, value, self)?;
         }
         // Pop all key-value pairs from stack at once
         self.stack
@@ -130,6 +127,6 @@ impl VM {
         );
         let instance_value = self.heap.add_instance(instance);
         self.stack_push_value(instance_value);
-        None
+        Ok(())
     }
 }

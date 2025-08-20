@@ -6,11 +6,11 @@
 #[macro_use]
 mod runtime_error;
 mod dunder;
+pub mod errors;
 mod garbage_collection;
 mod import;
 mod setup;
 mod stack;
-mod errors;
 
 #[macro_use]
 mod arithmetics;
@@ -24,8 +24,10 @@ mod native_containers;
 mod state;
 mod variables;
 
-use arithmetics::{BinaryOpResult, IntoResultValue};
+use arithmetics::IntoResultValue;
 use callstack::CallStack;
+use errors::RuntimeError;
+use errors::{Return, RuntimeErrorKind, VmErrorKind};
 use exception_handling::ExceptionHandler;
 
 use rustc_hash::FxHashMap as HashMap;
@@ -35,6 +37,7 @@ use std::path::PathBuf;
 #[cfg(feature = "trace_execution")]
 use crate::chunk::InstructionDisassembler;
 use crate::natives;
+use crate::vm::errors::VmError;
 use crate::{
     chunk::{CodeOffset, OpCode},
     compiler::Compiler,
@@ -52,6 +55,15 @@ pub enum InterpretResult {
     Ok,
     CompileError,
     RuntimeError,
+}
+
+impl From<RuntimeError> for InterpretResult {
+    fn from(result: RuntimeError) -> Self {
+        match result {
+            Ok(()) => Self::Ok,
+            Err(_) => Self::RuntimeError,
+        }
+    }
 }
 
 /// Wrapper around a global value to store whether it is mutable or not.
@@ -128,7 +140,7 @@ impl VM {
         // Register stdlib modules
         stdlib::register(self);
 
-        let result = if let Some(function) = self.compile(source, "<script>") {
+        let result = if let Some(function) = self.compile(source, "<script>", #[cfg(feature = "print_code")]false) {
             let function_id = self.heap.add_function(function);
 
             let closure = Closure::new(*function_id.as_function(), true, None, &self.heap);
@@ -137,9 +149,10 @@ impl VM {
 
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
-            self.execute_call(value_id, 0);
+            self.execute_call(value_id, 0)
+                .expect("Internal Error: Executing call of the main script failed.");
 
-            self.run()
+            self.run().into()
         } else {
             InterpretResult::CompileError
         };
@@ -150,9 +163,9 @@ impl VM {
         result
     }
 
-    fn compile(&mut self, source: &[u8], name: &str) -> Option<Function> {
+    fn compile(&mut self, source: &[u8], name: &str, #[cfg(feature = "print_code")] is_builtin: bool) -> Option<Function> {
         let scanner = Scanner::new(source);
-        let compiler = Compiler::new(scanner, &mut self.heap, name);
+        let compiler = Compiler::new(scanner, &mut self.heap, name, #[cfg(feature = "print_code")]is_builtin);
         compiler.compile()
     }
 
@@ -186,7 +199,7 @@ impl VM {
         let name = format!("<builtin:{}>", path.file_name().unwrap().to_string_lossy());
 
         let function = self
-            .compile(&source, &name)
+            .compile(&source, &name, #[cfg(feature = "print_code")]true)
             .expect("Failed to compile builtin file");
 
         let function_id = self.heap.add_function(function);
@@ -196,25 +209,20 @@ impl VM {
 
         let value_id = self.heap.add_closure(closure);
         self.stack_push(value_id);
-        self.execute_call(value_id, 0);
+        self.execute_call(value_id, 0)
+            .expect("Internal Error: Executing call of builtin module failed.");
 
         // Execute the builtin to completion
-        let result = self.run();
+        self.run()
+            .unwrap_or_else(|_| panic!("Failed to execute builtin file {}.", path.display()));
 
         // Copy globals from the completed module to builtins (excluding __name__)
-        if result == InterpretResult::Ok {
-            let module_globals = std::mem::take(self.globals());
-            // Extend builtins with all globals from the module
-            self.builtins.extend(module_globals);
-            // Remove __name__ from builtins
-            self.builtins
-                .remove(&self.heap.builtin_constants().script_name);
-        } else {
-            panic!(
-                "Failed to execute builtin file {}: {result:?}",
-                path.display()
-            );
-        }
+        let module_globals = std::mem::take(self.globals());
+        // Extend builtins with all globals from the module
+        self.builtins.extend(module_globals);
+        // Remove __name__ from builtins
+        self.builtins
+            .remove(&self.heap.builtin_constants().script_name);
 
         // Clean up the builtin module
         self.modules.pop();
@@ -224,9 +232,14 @@ impl VM {
     ///
     /// Returns when a return instruction is hit at the top level.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn run(&mut self) -> InterpretResult {
+    fn run(&mut self) -> RuntimeError {
         loop {
-            run_instruction!(self);
+            if matches!(
+                run_instruction!(self),
+                Err(VmErrorKind::Runtime(RuntimeErrorKind))
+            ) {
+                return Err(RuntimeErrorKind);
+            }
         }
     }
 
@@ -260,17 +273,18 @@ impl VM {
 
 // Remaining opcode handlers
 impl VM {
-    fn jump_conditional(&mut self, condition: JumpCondition) {
+    fn jump_conditional(&mut self, condition: JumpCondition) -> VmError {
         let offset = self.read_16bit_number();
         // condition = IfTrue -> jump_if_true
         // -> ! (is_falsey())
         // condition = IfFalse -> jump_if_false
         // -> is_falsey
-        let is_falsey = self.is_falsey(*self.peek(0).expect("Stack underflow in JUMP"));
+        let is_falsey = self.is_falsey(*self.peek(0).expect("Stack underflow in JUMP"))?;
 
         if is_falsey ^ bool::from(condition) {
             self.callstack.current_mut().ip += offset;
         }
+        Ok(())
     }
 
     /// Pop from stack and jump conditionally based on the popped value.
@@ -278,14 +292,15 @@ impl VM {
     /// Similar to `jump_conditional` but pops the condition value from the stack
     /// before checking if it should jump. This combines the common pattern of
     /// conditional jump followed by pop.
-    fn pop_jump_conditional(&mut self, condition: JumpCondition) {
+    fn pop_jump_conditional(&mut self, condition: JumpCondition) -> VmError {
         let offset = self.read_16bit_number();
         let condition_value = self.stack.pop().expect("Stack underflow in POP_JUMP_IF");
 
         // Same logic as jump_conditional but with the popped condition
-        if self.is_falsey(condition_value) ^ bool::from(condition) {
+        if self.is_falsey(condition_value)? ^ bool::from(condition) {
             self.callstack.current_mut().ip += offset;
         }
+        Ok(())
     }
 
     /// Jump if the top of stack matches the condition, leaving the value on the stack.
@@ -293,17 +308,18 @@ impl VM {
     ///
     /// This is useful for and/or operators where we want to preserve
     /// the operand value when short-circuiting.
-    fn jump_if_or_pop(&mut self, condition: JumpCondition) {
+    fn jump_if_or_pop(&mut self, condition: JumpCondition) -> VmError {
         let offset = self.read_16bit_number();
         let condition_value = *self.peek(0).expect("Stack underflow in JUMP_IF_OR_POP");
 
-        if self.is_falsey(condition_value) ^ bool::from(condition) {
+        if self.is_falsey(condition_value)? ^ bool::from(condition) {
             // Condition matches, jump and leave value on stack
             self.callstack.current_mut().ip += offset;
         } else {
             // Condition doesn't match, pop it
             self.stack.pop().expect("Stack underflow in JUMP_IF_OR_POP");
         }
+        Ok(())
     }
 
     /// Logical not the top value on the stack.
@@ -313,10 +329,11 @@ impl VM {
     /// # Panics
     ///
     /// If the stack is empty. This is an internal error and should never happen.
-    pub(super) fn not_(&mut self) {
+    pub(super) fn not_(&mut self) -> VmError {
         let value = self.stack.pop().expect("Stack underflow in OP_NOT");
-        let result = self.is_falsey(value);
+        let result = self.is_falsey(value)?;
         self.stack_push(result.into());
+        Ok(())
     }
 
     /// Check if the top two values on the stack are equal.
@@ -326,7 +343,7 @@ impl VM {
     /// # Panics
     ///
     /// If the stack does not have two values. This is an internal error and should never happen.
-    fn equal(&mut self, negate: bool) -> Option<InterpretResult> {
+    fn equal(&mut self, negate: bool) -> VmError {
         let eq_id = self.heap.string_id(&"__eq__");
         let left_id = self.peek(1).expect("Stack underflow in OP EQUAL (left)");
 
@@ -338,11 +355,7 @@ impl VM {
         {
             // If the left value is an instance, use its __eq__ method
             // Values are already on stack in correct order for method call
-            return if self.invoke(eq_id, 1) {
-                None // Continue execution - method will handle result
-            } else {
-                Some(InterpretResult::RuntimeError)
-            };
+            return self.invoke(eq_id, 1);
         }
 
         // No custom __eq__ method, fall back to heap equality
@@ -357,6 +370,6 @@ impl VM {
 
         let result = left_id.eq(&right_id, &self.heap) != negate;
         self.stack_push(result.into());
-        None
+        Ok(())
     }
 }

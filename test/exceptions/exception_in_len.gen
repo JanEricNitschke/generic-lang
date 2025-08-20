@@ -12,4 +12,4 @@ try {
     print("Caught");  # expect: Caught
 }
 
-len(ThrowOnLen());  # expect runtime error: TypeError: Native method '__init__' of class Error expected 1 argument, got 0.
+len(ThrowOnLen());  # expect runtime error: Error

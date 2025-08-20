@@ -3,4 +3,4 @@ print(my_list.__len__());  # expect: 3
 print(len(my_list)); # expect: 3
 my_list = [];
 print(len(my_list)); # expect: 0
-len("Test"); # expect runtime error: Exception: Undefined property '__len__'.
+len("Test"); # expect runtime error: AttributeError: Undefined property '__len__'.

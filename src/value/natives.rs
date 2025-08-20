@@ -1,7 +1,10 @@
 use crate::{
     heap::{Heap, StringId},
     value::GenericInt,
-    vm::VM,
+    vm::{
+        VM,
+        errors::{ExceptionRaisedKind, VmErrorKind},
+    },
 };
 
 use hashbrown::HashTable;
@@ -9,6 +12,7 @@ use hashbrown::hash_table::Entry;
 
 use super::Value;
 use crate::heap::InstanceId;
+use crate::vm::errors::VmError;
 use derivative::Derivative;
 
 // Values related to natives
@@ -75,8 +79,8 @@ impl std::fmt::Display for NativeMethod {
     }
 }
 
-pub type NativeFunctionImpl = fn(&mut VM, &mut [&mut Value]) -> Result<Value, String>;
-pub type NativeMethodImpl = fn(&mut VM, &mut Value, &mut [&mut Value]) -> Result<Value, String>;
+pub type NativeFunctionImpl = fn(&mut VM, &mut [&mut Value]) -> VmError<Value>;
+pub type NativeMethodImpl = fn(&mut VM, &mut Value, &mut [&mut Value]) -> VmError<Value>;
 pub type ModuleContents = Vec<(&'static str, &'static [u8], NativeFunctionImpl)>;
 
 // Actual Natives
@@ -285,7 +289,7 @@ impl Set {
         )
     }
 
-    pub(crate) fn add(&mut self, item: Value, vm: &mut VM) -> Result<(), String> {
+    pub(crate) fn add(&mut self, item: Value, vm: &mut VM) -> VmError {
         let hash = vm.compute_hash(item)?;
         if let Entry::Vacant(entry) = self.items.entry(
             hash,
@@ -293,14 +297,14 @@ impl Set {
             |(_val, stored_hash)| *stored_hash,
         ) {
             if vm.handling_exception {
-                return Err("Exception occurred during equality comparison".to_string());
+                return Err(VmErrorKind::Exception(ExceptionRaisedKind));
             }
             entry.insert((item, hash));
         }
         Ok(())
     }
 
-    pub(crate) fn remove(&mut self, item: Value, vm: &mut VM) -> Result<bool, String> {
+    pub(crate) fn remove(&mut self, item: Value, vm: &mut VM) -> VmError<bool> {
         let hash = vm.compute_hash(item)?;
         let found = self
             .items
@@ -313,13 +317,13 @@ impl Set {
             });
 
         if vm.handling_exception {
-            return Err("Exception occurred during equality comparison".to_string());
+            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
         }
 
         Ok(found)
     }
 
-    pub(crate) fn contains(&self, item: Value, vm: &mut VM) -> Result<bool, String> {
+    pub(crate) fn contains(&self, item: Value, vm: &mut VM) -> VmError<bool> {
         let hash = vm.compute_hash(item)?;
         let found = self
             .items
@@ -329,7 +333,7 @@ impl Set {
             .is_some();
 
         if vm.handling_exception {
-            return Err("Exception occurred during equality comparison".to_string());
+            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
         }
 
         Ok(found)
@@ -384,7 +388,7 @@ impl Dict {
         )
     }
 
-    pub(crate) fn add(&mut self, key: Value, value: Value, vm: &mut VM) -> Result<(), String> {
+    pub(crate) fn add(&mut self, key: Value, value: Value, vm: &mut VM) -> VmError {
         let hash = vm.compute_hash(key)?;
         let entry = self.items.entry(
             hash,
@@ -393,7 +397,7 @@ impl Dict {
         );
 
         if vm.handling_exception {
-            return Err("Exception occurred during equality comparison".to_string());
+            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
         }
 
         match entry {
@@ -407,7 +411,7 @@ impl Dict {
         Ok(())
     }
 
-    pub(crate) fn get(&self, key: Value, vm: &mut VM) -> Result<Option<&Value>, String> {
+    pub(crate) fn get(&self, key: Value, vm: &mut VM) -> VmError<Option<&Value>> {
         let hash = vm.compute_hash(key)?;
         Ok(self
             .items
@@ -417,7 +421,7 @@ impl Dict {
             .map(|(_k, v, _stored_hash)| v))
     }
 
-    pub(crate) fn contains(&self, key: Value, vm: &mut VM) -> Result<bool, String> {
+    pub(crate) fn contains(&self, key: Value, vm: &mut VM) -> VmError<bool> {
         let hash = vm.compute_hash(key)?;
         Ok(self
             .items
@@ -643,20 +647,20 @@ impl std::fmt::Display for TupleIterator {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Exception {
-    message: StringId,
+    message: Option<StringId>,
     stack_trace: StringId,
 }
 
 impl Exception {
     #[must_use]
-    pub(crate) fn new(message: StringId, stack_trace: StringId) -> Self {
+    pub(crate) fn new(message: Option<StringId>, stack_trace: StringId) -> Self {
         Self {
             message,
             stack_trace,
         }
     }
 
-    pub(crate) fn message(&self) -> StringId {
+    pub(crate) fn message(&self) -> Option<StringId> {
         self.message
     }
 
@@ -665,7 +669,10 @@ impl Exception {
     }
 
     pub(crate) fn to_string(&self, heap: &Heap) -> String {
-        let mut result = format!("Exception: {}\n", self.message.to_value(heap));
+        let mut result = match self.message {
+            Some(message) => format!("Exception: {}\n", message.to_value(heap)),
+            None => "Exception\n".to_string(),
+        };
         result.push_str(self.stack_trace.to_value(heap));
         result
     }

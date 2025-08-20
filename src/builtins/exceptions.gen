@@ -4,5 +4,7 @@ class NameError < Exception {}
 class ConstReassignmentError < Exception {}
 class AttributeError < Exception {}
 class ImportError < Exception {}
-class ArithmeticError < Exception {}
 class IndexError < Exception {}
+class AssertionError < Exception {}
+class IoError < Exception {}
+class KeyError < Exception {}

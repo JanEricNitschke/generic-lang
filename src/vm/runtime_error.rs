@@ -2,11 +2,7 @@
 ///
 /// Macro for borrow checking reasons.
 macro_rules! runtime_error {
-    ($self:ident, $($arg:expr),* $(,)?) => {
+    ($($arg:expr),* $(,)?) => {
         eprintln!($($arg),*);
-        for frame in $self.callstack.iter().rev() {
-            let line = frame.closure(&$self.heap).function.to_value(&$self.heap).chunk.get_line(CodeOffset(frame.ip - 1));
-            eprintln!("[line {}] in {}", *line, frame.closure(&$self.heap).function.to_value(&$self.heap).name.to_value(&$self.heap));
-        }
     };
 }

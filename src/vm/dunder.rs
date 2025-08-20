@@ -1,5 +1,8 @@
-use super::{InterpretResult, VM};
-use crate::value::{GenericInt, Number, Value};
+use super::VM;
+use crate::{
+    value::{GenericInt, Number, Value},
+    vm::errors::VmError,
+};
 use num_bigint::BigInt;
 use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
@@ -7,7 +10,7 @@ use std::hash::{Hash, Hasher};
 impl VM {
     /// Convert a value to string, handling instances with __str__ methods.
     /// This function is shared between value constructors, `to_string_native`, and `print_native`.
-    pub fn value_to_string(&mut self, value: &Value) -> Result<Value, String> {
+    pub fn value_to_string(&mut self, value: &Value) -> VmError<Value> {
         let str_id = self.heap.string_id(&"__str__");
 
         if let Value::Instance(instance) = value
@@ -17,24 +20,12 @@ impl VM {
         {
             // Push the value onto the stack temporarily so invoke_and_run_function can access it
             self.stack.push(*value);
-            let result = self.invoke_and_run_function(
-                str_id,
-                0,
-                matches!(str_method, Value::NativeMethod(_)),
-            );
+            self.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)))?;
 
-            match result {
-                InterpretResult::Ok => Ok(self
-                    .stack
-                    .pop()
-                    .expect("Stack underflow in value_to_string")),
-                InterpretResult::RuntimeError => {
-                    Err("__str__ method failed with runtime error".to_string())
-                }
-                InterpretResult::CompileError => {
-                    Err("__str__ method failed with compile error".to_string())
-                }
-            }
+            Ok(self
+                .stack
+                .pop()
+                .expect("Stack underflow in value_to_string"))
         } else {
             Ok(Value::String(
                 self.heap.string_id(&value.to_string(&self.heap)),
@@ -42,7 +33,7 @@ impl VM {
         }
     }
 
-    pub(crate) fn is_falsey(&mut self, value: Value) -> bool {
+    pub(crate) fn is_falsey(&mut self, value: Value) -> VmError<bool> {
         let bool_id = self.heap.string_id(&"__bool__");
         if let Value::Instance(instance) = value
             && let Some(bool_method) = instance
@@ -51,20 +42,33 @@ impl VM {
         {
             // Value needs to be on top of the stack to invoke this check.
             self.stack_push_value(value);
-            self.invoke_and_run_function(bool_id, 0, matches!(bool_method, Value::NativeMethod(_)));
+            self.invoke_and_run_function(
+                bool_id,
+                0,
+                matches!(bool_method, Value::NativeMethod(_)),
+            )?;
             let result = self.stack.pop().expect("Stack underflow in IS_FALSEY");
-            result == Value::Bool(false)
+            if let Value::Bool(result) = result {
+                Ok(!result)
+            } else {
+                Err(self
+                    .throw_type_error(&format!(
+                        "`__bool__` must return a boolean, got: {}",
+                        result.to_string(&self.heap)
+                    ))
+                    .unwrap_err())
+            }
         } else {
-            match value {
+            Ok(match value {
                 Value::Nil | Value::Bool(false) => true,
                 Value::Number(n) => n == 0.into(),
                 Value::String(id) => (id.to_value(&self.heap)).to_string().is_empty(),
                 _ => false,
-            }
+            })
         }
     }
 
-    pub(crate) fn compute_hash(&mut self, value: Value) -> Result<u64, String> {
+    pub(crate) fn compute_hash(&mut self, value: Value) -> VmError<u64> {
         let mut state = FxHasher::default();
 
         match value {
@@ -79,25 +83,23 @@ impl VM {
                     // Push the instance onto the stack for method call
                     self.stack.push(value);
 
-                    let invoke_result = self.invoke_and_run_function(
+                    self.invoke_and_run_function(
                         hash_method_id,
                         0,
                         matches!(hash_method, Value::NativeMethod(_)),
-                    );
-
-                    if invoke_result != InterpretResult::Ok {
-                        return Err("__hash__ method failed".to_string());
-                    }
+                    )?;
 
                     let result = self.stack.pop().expect("Stack underflow in compute_hash");
                     return match result {
                         Value::Number(Number::Integer(GenericInt::Small(n))) => {
                             Ok(n.unsigned_abs())
                         }
-                        _ => Err(format!(
-                            "__hash__ method must return an integer, got: {}",
-                            result.to_string(&self.heap)
-                        )),
+                        _ => Err(self
+                            .throw_type_error(&format!(
+                                "__hash__ method must return an integer, got: {}",
+                                result.to_string(&self.heap)
+                            ))
+                            .unwrap_err()),
                     };
                 }
                 // Fall back to object ID hashing
@@ -190,38 +192,22 @@ impl VM {
 
     /// Compare two values for equality, with support for custom __eq__ methods.
     /// Optimized for use by hash collections - only pushes to stack when needed.
-    pub(crate) fn compare_values(&mut self, left: Value, right: Value) -> Result<bool, String> {
+    pub(crate) fn compare_values(&mut self, left: Value, right: Value) -> VmError<bool> {
         let eq_id = self.heap.string_id(&"__eq__");
 
         // Check if left value is an instance with __eq__ method
         if let Value::Instance(instance) = left
-            && instance
+            && let Some(eq_method) = instance
                 .to_value(&self.heap)
-                .has_field_or_method(eq_id, &self.heap)
+                .get_field_or_method(eq_id, &self.heap)
         {
             // Only push to stack if we have an instance with __eq__ method
             self.stack_push(left);
             self.stack_push(right);
 
-            if self.invoke(eq_id, 1) {
-                // Method call succeeded, run it and get result
-                match self.run_function() {
-                    InterpretResult::Ok => {
-                        let result = self
-                            .stack
-                            .pop()
-                            .expect("Stack underflow in compare_values_equal");
-                        return Ok(!self.is_falsey(result));
-                    }
-                    InterpretResult::RuntimeError => {
-                        return Err("__eq__ method failed with runtime error".to_string());
-                    }
-                    InterpretResult::CompileError => {
-                        return Err("__eq__ method failed with compile error".to_string());
-                    }
-                }
-            }
-            return Err("Failed to invoke __eq__ method".to_string());
+            self.invoke_and_run_function(eq_id, 1, matches!(eq_method, Value::NativeMethod(_)))?;
+            let result = self.stack.pop().expect("Stack underflow in IS_FALSEY");
+            return Ok(!self.is_falsey(result)?);
         }
 
         // Fall back to heap-level equality

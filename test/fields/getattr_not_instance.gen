@@ -1,3 +1,3 @@
 var obj = "whee";
 var field = "whoo";
-print(getattr(obj, field)); # expect runtime error: Exception: `getattr` only works on instances, got `whee`
+print(getattr(obj, field)); # expect runtime error: TypeError: `getattr` only works on instances, got `whee`
