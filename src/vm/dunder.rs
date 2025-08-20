@@ -174,6 +174,11 @@ impl VM {
     /// If an exception occurs in __eq__, sets `handling_exception` flag and returns false.
     /// Callers should check `handling_exception` after calling this method.
     pub(crate) fn compare_values_for_collections(&mut self, left: Value, right: Value) -> bool {
+        // If we're already handling an exception, don't do any more comparisons
+        if self.handling_exception {
+            return false;
+        }
+        
         match self.compare_values(left, right) {
             Ok(result) => result,
             Err(error) => {

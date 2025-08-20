@@ -55,7 +55,12 @@ impl VM {
             ));
         }
 
-        assert!(!self.handling_exception, "Shouldnt happen i think");
+        // If we're already handling an exception, don't try to handle another one
+        // Just return the existing exception error
+        if self.handling_exception {
+            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
+        }
+
         self.handling_exception = true;
         if let Some(handler) = self.pop_exception_handler() {
             self.callstack.truncate(handler.frames_to_keep, &self.heap);
