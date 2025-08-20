@@ -49,7 +49,6 @@ macro_rules! run_instruction {
             );
             print!("{disassembler:?}");
         }
-        $self.handling_exception = false;
         $self.collect_garbage();
         match OpCode::try_from($self.read_byte()).expect("Internal error: unrecognized opcode") {
             OpCode::Pop => {
