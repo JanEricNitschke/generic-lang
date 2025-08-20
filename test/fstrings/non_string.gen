@@ -1,0 +1,12 @@
+class Printable {
+    __init__(value) {
+        this.value = value;
+    }
+
+    __str__() {
+        return f"Printable(value=${this.value})";
+    }
+}
+
+var printable = Printable(42);
+print(f"Stuff: ${printable}"); # expect: Stuff: Printable(value=42)

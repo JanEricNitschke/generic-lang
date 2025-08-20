@@ -1,0 +1,2 @@
+var name = "Bob";
+print("Hi, my name is ${name}");  # expect: Hi, my name is ${name}

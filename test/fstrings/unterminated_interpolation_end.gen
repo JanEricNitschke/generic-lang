@@ -1,0 +1,3 @@
+# [line 4] Error: Unterminated interpolation.
+var name = "Bob";
+print(f"Hi, my name is ${name

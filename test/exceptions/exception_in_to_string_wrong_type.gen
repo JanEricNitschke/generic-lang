@@ -1,0 +1,15 @@
+class Error < Exception {}
+
+class ThrowOnToString {
+    __str__() {
+        return 3;
+    }
+}
+
+try {
+    str(ThrowOnToString());
+} catch TypeError {
+    print("Caught");  # expect: Caught
+}
+
+str(ThrowOnToString());  # expect runtime error: TypeError: `__str__` must return a string, got 3
