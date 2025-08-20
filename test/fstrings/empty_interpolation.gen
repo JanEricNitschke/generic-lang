@@ -1,0 +1,1 @@
+print(f"Some random ${}");  # Error at '}': Expect expression.

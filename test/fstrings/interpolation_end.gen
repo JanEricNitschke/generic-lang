@@ -1,0 +1,1 @@
+print(f"Hi ${1+1}"); # expect: Hi 2

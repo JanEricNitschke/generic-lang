@@ -1,0 +1,9 @@
+var str = 3;
+var name ="Bob";
+var age = 42;
+class Custom {
+    __str__() {
+        return "Hi";
+    }
+}
+print(f"Hi, i am ${name} and i'm ${age} years old. ${str}, ${Custom()}"); # expect: Hi, i am Bob and i'm 42 years old. 3, Hi
