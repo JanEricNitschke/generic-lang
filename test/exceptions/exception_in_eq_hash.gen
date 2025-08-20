@@ -10,7 +10,7 @@ class HashCollision {
     }
     
     __eq__(other) {
-        if this.id == 4 {
+        if other.id == 4 {
             throw ValueError("Bad");
         }
         return false;

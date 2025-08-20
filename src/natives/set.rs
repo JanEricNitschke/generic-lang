@@ -13,8 +13,10 @@ pub(super) fn set_insert_native(
     args: &mut [&mut Value],
 ) -> VmError<Value> {
     let mut set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
-    set.add(*args[0], vm)?;
+    let result = set.add(*args[0], vm);
+    // Always restore the set, even if an error occurred
     *receiver.as_set_mut(&mut vm.heap) = set;
+    result?;
     Ok(Value::Nil)
 }
 
