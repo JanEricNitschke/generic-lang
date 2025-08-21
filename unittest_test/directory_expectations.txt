@@ -1,0 +1,36 @@
+# expect: Found 3 test file(s) in unittest_test...
+# expect:
+# expect: Running tests in unittest_test/errors/test_errors.gen...
+# expect: Running 4 test(s)...
+# expect:
+# expect:   test_that_errors           ... ERROR
+# expect:     Failed to call test function
+# expect:   test_that_fails            ... FAIL
+# expect:     Runtime error occurred
+# expect:   test_that_fails_type_error ... FAIL
+# expect:     Runtime error occurred
+# expect:   test_that_passes           ... PASS
+# expect:   4 tests in unittest_test/errors/test_errors.gen: 1 passed
+# expect:     2 failures
+# expect:     1 errors
+# expect:
+# expect: Running tests in unittest_test/test_basic.gen...
+# expect: Running 5 test(s)...
+# expect:
+# expect:   test_assert_builtin         ... PASS
+# expect:   test_numeric_operations     ... PASS
+# expect:   test_simple_pass            ... PASS
+# expect:   test_string_operations      ... PASS
+# expect:   test_with_stdlib_assertions ... PASS
+# expect:   5 tests in unittest_test/test_basic.gen: 5 passed
+# expect:
+# expect: Running tests in unittest_test/test_empty.gen...
+# expect:
+# expect: === Overall Test Results ===
+# expect: === Test Results ===
+# expect: Tests run: 9
+# expect: ✓ Passed: 6
+# expect: ⚠ Failed: 2
+# expect: ❌ Errors: 1
+# expect:
+# expect: Some tests failed or had errors.

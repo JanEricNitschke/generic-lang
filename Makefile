@@ -25,12 +25,24 @@ setup-dart:
 custom-dart-test: $(DEBUG_BIN)
 	dart tool/bin/test.dart clox --interpreter ./$(DEBUG_BIN)
 
+.PHONY: unittest-test
+unittest-test: $(DEBUG_BIN)
+	dart tool/bin/test.dart generic-unittest --interpreter $(DEBUG_BIN) --arguments --test
+
+.PHONY: unittest-test-single
+unittest-test-single: $(DEBUG_BIN)
+	dart tool/bin/test.dart generic-unittest-single --interpreter $(DEBUG_BIN) --arguments --test
+
+.PHONY: unittest-test-directory
+unittest-test-directory: $(DEBUG_BIN)
+	dart tool/bin/test.dart generic-unittest-directory --interpreter $(DEBUG_BIN) --arguments --test
+
 .PHONY: stress-gc-test
 stress-gc-test: $(STRESS_GC_BIN)
 	dart tool/bin/test.dart clox --interpreter ./$(STRESS_GC_BIN)
 
 .PHONY: test
-test: cargo-test setup-dart custom-dart-test stress-gc-test
+test: cargo-test setup-dart custom-dart-test stress-gc-test unittest-test unittest-test-single unittest-test-directory
 
 .PHONY: benchmark
 benchmark: fib-benchmark more-benchmark

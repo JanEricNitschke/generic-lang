@@ -1,0 +1,55 @@
+# Testing module providing assertion functions and testing utilities.
+
+fun assert_equal(actual, expected, message) {
+    if (actual != expected) {
+        var error_msg = f"${message}: expected ${expected}, got ${actual}";
+        throw AssertionError(error_msg);
+    }
+}
+
+fun assert_not_equal(actual, expected, message) {
+    if (actual == expected) {
+        var error_msg = f"${message}: expected values to be different, but both were ${actual}";
+        throw AssertionError(error_msg);
+    }
+}
+
+fun assert_true(condition, message) {
+    if (!condition) {
+        var error_msg = f"${message}: expected true, got ${condition}";
+        throw AssertionError(error_msg);
+    }
+}
+
+fun assert_false(condition, message) {
+    if (condition) {
+        var error_msg = f"${message}: expected false, got ${condition}";
+        throw AssertionError(error_msg);
+    }
+}
+
+fun assert_nil(value, message) {
+    if (value != nil) {
+        var error_msg = f"${message}: expected nil, got ${value}";
+        throw AssertionError(error_msg);
+    }
+}
+
+fun assert_not_nil(value, message) {
+    if (value == nil) {
+        var error_msg = f"${message}: expected non-nil value, got nil";
+        throw AssertionError(error_msg);
+    }
+}
+
+fun assert_throws(func, exception, message) {
+    try {
+        func();
+    } catch exception {
+        # Success - exception was thrown and caught
+    } else {
+        # If we reach here, no exception was thrown
+        var error_msg = f"${message}: expected function to throw an exception, but none was thrown";
+        throw AssertionError(error_msg);
+    }
+}

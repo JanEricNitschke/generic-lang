@@ -1,0 +1,60 @@
+# Test for the unit testing framework
+# This file contains test functions that should be discovered and run by --test flag
+# expect: Running tests in unittest_test/test_basic.gen...
+# expect: 
+# expect: Running 5 test(s)...
+# expect: 
+# expect:   test_assert_builtin         ... PASS
+# expect:   test_numeric_operations     ... PASS
+# expect:   test_simple_pass            ... PASS
+# expect:   test_string_operations      ... PASS
+# expect:   test_with_stdlib_assertions ... PASS
+# expect: === Test Results ===
+# expect: Tests run: 5
+# expect: ✓ Passed: 5
+# expect: 
+# expect: All tests passed! ✓
+
+import "testing";
+
+fun test_simple_pass() {
+    var x = 1 + 1;
+    assert(x == 2);  # Use assertion instead of print
+}
+
+fun test_string_operations() {
+    var hello = "Hello";
+    var world = "World";
+    var result = hello + " " + world;
+    assert(result == "Hello World");  # Proper test assertion
+}
+
+fun test_numeric_operations() {
+    var result = 10 * 2;
+    assert(result == 20);  # Use assertion to verify result
+}
+
+fun test_assert_builtin() {
+    # Test the builtin assert function
+    assert(true);
+    assert(2 + 2 == 4);
+    assert("hello" != "world");
+}
+
+fun test_with_stdlib_assertions() {
+    # Test some of the testing stdlib functions
+    testing.assert_equal(10, 5 + 5, "Math should work");
+    testing.assert_true(true, "Boolean logic should work");
+    testing.assert_not_nil("hello", "Strings should not be nil");
+    testing.assert_false(false, "False should be false");
+}
+
+# This function should not be run because it doesn't start with test_
+fun helper_function() {
+    return "I'm just a helper";
+}
+
+# This should also not be run
+fun another_regular_function() {
+    return 42;
+}

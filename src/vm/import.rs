@@ -139,7 +139,7 @@ impl VM {
                     if local_import {
                         self.stack_push(global.value);
                     } else {
-                        self.globals().insert(name, global);
+                        self.globals_mut().insert(name, global);
                     }
                 } else {
                     let message = format!(
@@ -155,7 +155,7 @@ impl VM {
             if local_import {
                 self.stack_push(module_id);
             } else {
-                self.globals().insert(
+                self.globals_mut().insert(
                     string_id,
                     Global {
                         value: module_id,

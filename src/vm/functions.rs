@@ -469,13 +469,13 @@ impl VM {
                     if was_local_import {
                         self.stack_push(value.value);
                     } else {
-                        self.globals().insert(name, value);
+                        self.globals_mut().insert(name, value);
                     }
                 }
             } else if was_local_import {
                 self.stack_push(last_module.into());
             } else {
-                self.globals().insert(
+                self.globals_mut().insert(
                     last_module_alias,
                     Global {
                         value: last_module.into(),
@@ -492,7 +492,7 @@ impl VM {
                 .to_value(&self.heap)
                 .name
                 .into();
-            self.globals().insert(
+            self.globals_mut().insert(
                 script_name,
                 Global {
                     value: module_name,
