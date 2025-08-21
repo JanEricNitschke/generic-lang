@@ -34,7 +34,7 @@ impl VM {
             ));
             self.modules.push(*module_id.as_module());
             // Scriptname has to be set in the globals of the new module.
-            self.globals().insert(
+            self.globals_mut().insert(
                 script_name,
                 Global {
                     value: value_id.into(),

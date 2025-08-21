@@ -1,0 +1,14 @@
+# Test file with no test functions
+# This should report "No test functions found" when run with --test
+# expect: Running tests in unittest_test/test_empty.gen...
+# expect: 
+# expect: === Test Results ===
+# expect: No test functions found.
+
+fun regular_function() {
+    return "I'm not a test";
+}
+
+fun another_function() {
+    # This function doesn't start with "test_" so it won't be run
+}

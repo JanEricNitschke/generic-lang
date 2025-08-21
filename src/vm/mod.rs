@@ -23,6 +23,7 @@ mod exception_handling;
 mod functions;
 mod native_containers;
 mod state;
+mod testing;
 mod variables;
 
 use arithmetics::IntoResultValue;
@@ -56,6 +57,8 @@ pub enum InterpretResult {
     CompileError,
     RuntimeError,
 }
+
+pub use testing::TestResult;
 
 impl From<RuntimeResult> for InterpretResult {
     fn from(result: RuntimeResult) -> Self {
@@ -259,7 +262,7 @@ impl VM {
         });
 
         // Copy globals from the completed module to builtins (excluding __name__)
-        let module_globals = std::mem::take(self.globals());
+        let module_globals = std::mem::take(self.globals_mut());
         // Extend builtins with all globals from the module
         self.builtins.extend(module_globals);
         // Remove __name__ from builtins

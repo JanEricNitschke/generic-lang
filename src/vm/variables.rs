@@ -107,7 +107,7 @@ impl VM {
                     .stack
                     .last()
                     .unwrap_or_else(|| panic!("stack underflow in {op:?}"));
-                self.globals().insert(
+                self.globals_mut().insert(
                     name,
                     Global {
                         value: stack_top_value,

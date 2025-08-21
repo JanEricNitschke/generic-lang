@@ -22,11 +22,25 @@ cargo build --release
 
 ## Testing
 
-A test suite and driver for the implementation can be found in [test](test) and [tool](tool) respectively.
+**Generic** supports two types of testing:
+
+### Unit Testing (Built-in)
+
+The language includes built-in unit testing support. Write test functions (starting with `test_`) and run them with:
+
+```bash
+generic --test your_file.gen
+```
+
+This will discover and run all test functions in isolation, providing detailed reporting. See [TESTING.md](TESTING.md) for complete documentation.
+
+### Integration Testing
+
+A comprehensive integration test suite and driver can be found in [test](test) and [tool](tool) respectively.
 The driver is written in [Dart](https://dart.dev/) and taken directly from the [book repo](https://github.com/munificent/craftinginterpreters) of Crafting Interpreters.
 The suite is an extension of the one that can be found in the same repository.
 
-To run it:
+To run the full integration test suite:
 ```bash
 make test
 ```

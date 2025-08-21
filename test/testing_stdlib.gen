@@ -1,0 +1,47 @@
+# Test the testing stdlib module functionality
+
+import "testing";
+
+# Test assert_equal
+testing.assert_equal(2 + 2, 4, "Math should work");
+print("Assert equal passed"); # expect: Assert equal passed
+
+# Test assert_not_equal 
+testing.assert_not_equal(5, 3, "Different numbers");
+print("Assert not equal passed"); # expect: Assert not equal passed
+
+# Test assert_true
+testing.assert_true(5 > 3, "5 should be greater than 3");
+print("Assert true passed"); # expect: Assert true passed
+
+# Test assert_false
+testing.assert_false(false, "False should be false");
+print("Assert false passed"); # expect: Assert false passed
+
+# Test assert_nil
+testing.assert_nil(nil, "Nil should be nil");
+print("Assert nil passed"); # expect: Assert nil passed
+
+# Test assert_not_nil
+testing.assert_not_nil("hello", "String should not be nil");
+print("Assert not nil passed"); # expect: Assert not nil passed
+
+# Test assert_throws
+fun test_function_that_throws() {
+    throw TypeError("test error");
+}
+testing.assert_throws(test_function_that_throws, TypeError, "Should throw type error");
+print("Assert throws passed"); # expect: Assert throws passed
+
+# Test that assert functions actually DO throw when they should
+try {
+    testing.assert_equal(1, 2, "Should fail");
+} catch AssertionError as e {
+    print("Caught expected assertion error"); # expect: Caught expected assertion error
+}
+
+try {
+    testing.assert_true(false, "Should fail");
+} catch AssertionError as e {
+    print("Caught another assertion error"); # expect: Caught another assertion error
+}

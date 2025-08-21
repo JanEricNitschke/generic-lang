@@ -5,7 +5,11 @@ use crate::heap::{ModuleId, StringId};
 use super::{Global, VM};
 
 impl VM {
-    pub(super) fn globals(&mut self) -> &mut HashMap<StringId, Global> {
+    pub(super) fn globals(&self) -> &HashMap<StringId, Global> {
+        &self.modules.last().unwrap().to_value(&self.heap).globals
+    }
+
+    pub(super) fn globals_mut(&mut self) -> &mut HashMap<StringId, Global> {
         &mut self
             .modules
             .last_mut()

@@ -11,8 +11,10 @@
 use std::{io::Write, path::PathBuf};
 
 use clap::Parser;
-
+use testing::run_tests;
 use vm::{InterpretResult, VM};
+
+mod testing;
 
 mod bitwise;
 mod chunk;
@@ -32,13 +34,25 @@ mod vm;
 #[command(version)]
 struct Args {
     file: Option<PathBuf>,
+
+    /// Run in test mode, discovering and executing test functions from a file or directory
+    #[arg(short, long)]
+    test: bool,
 }
 
 /// Main entry point for the generic interpreter
 pub fn main() {
     let args = Args::parse();
 
-    args.file.map_or_else(repl, run_file);
+    match (args.file, args.test) {
+        (Some(file), true) => run_tests(&file),
+        (Some(file), false) => run_file(file),
+        (None, true) => {
+            eprintln!("Error: --test flag requires a file or directory to be specified");
+            std::process::exit(64);
+        }
+        (None, false) => repl(),
+    }
 }
 
 /// Run the REPL.

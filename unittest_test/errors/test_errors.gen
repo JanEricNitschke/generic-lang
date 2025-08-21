@@ -1,0 +1,35 @@
+# expect: Running tests in unittest_test/errors/test_errors.gen...
+# expect: 
+# expect: Running 4 test(s)...
+# expect: 
+# expect:   test_that_errors           ... ERROR
+# expect:     Failed to call test function
+# expect:   test_that_fails            ... FAIL
+# expect:     Runtime error occurred
+# expect:   test_that_fails_type_error ... FAIL
+# expect:     Runtime error occurred
+# expect:   test_that_passes           ... PASS
+# expect: === Test Results ===
+# expect: Tests run: 4
+# expect: ✓ Passed: 1
+# expect: ⚠ Failed: 2
+# expect: ❌ Errors: 1
+# expect: 
+# expect: Some tests failed or had errors.
+
+fun test_that_passes() {
+    assert(1 + 1 == 2);
+}
+
+
+fun test_that_fails() {
+    assert(false); # expect runtime error: TypeError: Expected 2 arguments but got 0.
+}
+fun test_that_fails_type_error() {
+    throw TypeError("BAD TYPE");
+}
+
+
+fun test_that_errors(a, b) {
+    assert(a+b == a+a-a+b);
+}

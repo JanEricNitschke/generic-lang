@@ -38,8 +38,11 @@ class Suite {
   final String executable;
   final List<String> args;
   final Map<String, String> tests;
+  final String? testGlobPattern;
+  final String? expectationFile;
+  final bool? isUnitTest;
 
-  Suite(this.name, this.language, this.executable, this.args, this.tests);
+  Suite(this.name, this.language, this.executable, this.args, this.tests, {this.testGlobPattern, this.expectationFile, this.isUnitTest});
 }
 
 void main(List<String> arguments) {
@@ -118,8 +121,20 @@ bool _runSuite(String name) {
   _skipped = 0;
   _expectations = 0;
 
-  for (var file in Glob("test/**.gen").listSync()) {
-    _runTest(file.path);
+  // Use suite-specific test glob pattern if provided, otherwise default to test/**
+  String testGlobPattern = _suite!.testGlobPattern ?? "test/**.gen";
+
+  if (_suite!.expectationFile != null && _suite!.testGlobPattern == null) {
+    // Special case for directory testing with external expectation file
+    // Run tests directly from the suite.tests map instead of using glob discovery
+    for (var testPath in _suite!.tests.keys) {
+      _runTest(testPath);
+    }
+  } else {
+    // Standard glob-based discovery
+    for (var file in Glob(testGlobPattern).listSync()) {
+      _runTest(file.path);
+    }
   }
 
   term.clearLine();
@@ -156,7 +171,7 @@ void _runTest(String path) {
       "Skipped: ${term.yellow(_skipped)} $grayPath");
 
   // Read the test and parse out the expectations.
-  var test = Test(path);
+  var test = Test(path, expectationFile: _suite!.expectationFile, isUnitTest: _suite!.isUnitTest == true);
 
   // See if it's a skipped or non-test file.
   if (!test.parse()) return;
@@ -177,6 +192,7 @@ void _runTest(String path) {
   }
 }
 
+
 class ExpectedOutput {
   final int line;
   final String output;
@@ -189,6 +205,8 @@ class ExpectedOutput {
 
 class Test {
   final String _path;
+  final String? _expectationFile;
+  final bool _isUnitTest;
 
   final _expectedOutput = <ExpectedOutput>[];
 
@@ -206,12 +224,19 @@ class Test {
   /// The list of failure message lines.
   final _failures = <String>[];
 
-  Test(this._path);
+  Test(
+    this._path, {
+    String? expectationFile,
+    bool isUnitTest = false,
+  })  : _expectationFile = expectationFile,
+        _isUnitTest = isUnitTest;
 
   @override
   String toString() {
     return 'Test('
         'path: $_path, '
+        'expectationFile: $_expectationFile, '
+        'isUnitTest: $_isUnitTest, '
         'expectedOutput: $_expectedOutput, '
         'expectedErrors: $_expectedErrors, '
         'expectedRuntimeError: $_expectedRuntimeError, '
@@ -219,6 +244,7 @@ class Test {
         'expectedExitCode: $_expectedExitCode'
         ')';
   }
+
 
   bool parse() {
     // Get the path components.
@@ -244,7 +270,22 @@ class Test {
       return false;
     }
 
-    var lines = File(_path).readAsLinesSync();
+    var lines = <String>[];
+
+    if (_expectationFile != null) {
+      // Read expectations from external file
+      if (!File(_expectationFile!).existsSync()) {
+        print("${term.magenta('TEST ERROR')} $_path");
+        print("     Expectation file not found: $_expectationFile");
+        print("");
+        return false;
+      }
+      lines = File(_expectationFile!).readAsLinesSync();
+    } else {
+      // Read expectations from the test file itself (standard behavior)
+      lines = File(_path).readAsLinesSync();
+    }
+
     for (var lineNum = 1; lineNum <= lines.length; lineNum++) {
       var line = lines[lineNum - 1];
 
@@ -314,8 +355,13 @@ class Test {
       if (_customInterpreter != null) ...?_customArguments else ..._suite!.args,
       _path
     ];
-    var result =
-        Process.runSync(_customInterpreter ?? _suite!.executable, args);
+
+    var result = Process.runSync(
+      _customInterpreter ?? _suite!.executable,
+      args,
+      stdoutEncoding: utf8,
+      stderrEncoding: utf8,
+    );
 
 
     // Normalize Windows line endings.
@@ -323,13 +369,15 @@ class Test {
     var errorLines = const LineSplitter().convert(result.stderr as String);
 
     // Validate that an expected runtime error occurred.
-    if (_expectedRuntimeError != null) {
-      _validateRuntimeError(errorLines);
-    } else {
-      _validateCompileErrors(errorLines);
+    if (!_isUnitTest) {
+      if (_expectedRuntimeError != null) {
+        _validateRuntimeError(errorLines);
+      } else {
+        _validateCompileErrors(errorLines);
+      }
+      _validateExitCode(result.exitCode, errorLines);
     }
 
-    _validateExitCode(result.exitCode, errorLines);
     _validateOutput(outputLines);
     return _failures;
   }
@@ -846,4 +894,22 @@ void _defineTestSuites() {
     "test": "pass",
     ...earlyChapters,
   });
+
+  // Unit testing functionality suite - using custom glob pattern to only find unit tests
+  _allSuites["generic-unittest"] = Suite("generic-unittest", "generic", "generic", [], {
+    "unittest_test/test_basic.gen": "pass",
+    "unittest_test/test_empty.gen": "pass",
+    "unittest_test/errors/test_errors.gen": "pass",
+  }, testGlobPattern: "unittest_test/**.gen", isUnitTest: true);
+
+  // Single file unit testing
+  _allSuites["generic-unittest-single"] = Suite("generic-unittest-single", "generic", "generic", [], {
+    "unittest_test/test_basic.gen": "pass",
+  }, testGlobPattern: "unittest_test/test_basic.gen", isUnitTest: true);
+
+  // Directory-based unit testing with external expectation file
+  _allSuites["generic-unittest-directory"] = Suite("generic-unittest-directory", "generic", "generic", [], {
+    "unittest_test": "pass",
+  }, expectationFile: "unittest_test/directory_expectations.txt", isUnitTest: true);
+
 }
