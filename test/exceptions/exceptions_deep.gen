@@ -1,0 +1,13 @@
+from "exception_modules/level_one.gen" import some_function;  # expect: 5
+try {
+    import "exception_modules/crashes_on_import.gen" as crashes;
+} catch TypeError {
+    print("Caught"); # expect: Caught
+}
+
+print(some_function(1)); # expect: 5
+try {
+    some_function(0);
+} catch ValueError {
+    print("Caught"); # expect: Caught
+}

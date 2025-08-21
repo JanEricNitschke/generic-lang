@@ -13,6 +13,7 @@ pub(super) struct ExceptionHandler {
     pub(super) frames_to_keep: usize,
     pub(super) ip: usize,
     pub(super) stack_length: usize,
+    pub(super) modules_to_keep: usize,
 }
 
 impl VM {
@@ -21,11 +22,13 @@ impl VM {
         frames_to_keep: usize,
         ip: usize,
         stack_length: usize,
+        modules_to_keep: usize,
     ) {
         self.exception_handlers.push(ExceptionHandler {
             frames_to_keep,
             ip,
             stack_length,
+            modules_to_keep,
         });
     }
 
@@ -61,6 +64,7 @@ impl VM {
         );
         if let Some(handler) = self.pop_exception_handler() {
             self.handling_exception = true;
+            self.modules.truncate(handler.modules_to_keep);
             self.callstack.truncate(handler.frames_to_keep, &self.heap);
             self.callstack.current_mut().ip = handler.ip;
             self.stack.truncate(handler.stack_length);

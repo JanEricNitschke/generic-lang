@@ -154,7 +154,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         if let Some(index) = self.globals_by_name().get(&string_id) {
             *index
         } else {
-            let index = self.current_chunk().make_constant(string_id.into());
+            let index = self.current_chunk_mut().make_constant(string_id.into());
             self.globals_by_name_mut().insert(string_id, index);
             index
         }

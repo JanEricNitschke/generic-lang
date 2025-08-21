@@ -1,0 +1,9 @@
+var some_function;
+
+fun import_local() {
+    from "level_two.gen" import some_func;
+    some_function = some_func;
+}
+
+import_local();
+print(some_function(1));  # expect: 5

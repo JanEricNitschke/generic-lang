@@ -5,6 +5,7 @@
 
 #[macro_use]
 mod runtime_error;
+mod debug;
 mod dunder;
 pub mod errors;
 mod garbage_collection;
@@ -34,8 +35,6 @@ use rustc_hash::FxHashMap as HashMap;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 
-#[cfg(feature = "trace_execution")]
-use crate::chunk::InstructionDisassembler;
 use crate::config::GENERIC_BUILTINS_DIR;
 use crate::natives;
 use crate::vm::errors::VmResult;
@@ -82,6 +81,11 @@ impl Global {
             self.value.to_string(heap),
             self.mutable
         )
+    }
+
+    #[cfg(feature = "trace_execution_verbose")]
+    pub(super) fn is_mutable(&self) -> bool {
+        self.mutable
     }
 }
 

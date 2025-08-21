@@ -9,52 +9,8 @@
 macro_rules! run_instruction {
     ($self:ident) => {{
         #[cfg(feature = "trace_execution")]
-        if cfg!(feature = "trace_execution_builtin")
-            || !$self
-                .modules
-                .last()
-                .unwrap()
-                .to_value(&$self.heap)
-                .path
-                .iter()
-                .any(|comp| comp == "builtins")
-        {
-            let function = &$self.callstack.function();
-            let mut disassembler =
-                InstructionDisassembler::new(&function.to_value(&$self.heap).chunk, &$self.heap);
-            *disassembler.offset = $self.callstack.current().ip;
-            #[cfg(feature = "trace_execution_verbose")]
-            {
-                println!(
-                    "Current module: {} at module depth {} and Function: {} at total call depth {}.",
-                    $self
-                        .modules
-                        .last()
-                        .expect("Module underflow in disassembler")
-                        .to_value(&$self.heap)
-                        .name
-                        .to_value(&$self.heap),
-                    $self.modules.len(),
-                    $self
-                        .callstack
-                        .function()
-                        .to_value(&$self.heap)
-                        .name
-                        .to_value(&$self.heap),
-                    $self.callstack.len()
-                );
-            }
-            println!(
-                "          [ { } ]",
-                $self
-                    .stack
-                    .iter()
-                    .map(|v| format!("{}", v.to_string(&$self.heap)))
-                    .collect::<Vec<_>>()
-                    .join(" ][ ")
-            );
-            print!("{disassembler:?}");
-        }
+        $self.trace_execution();
+
         $self.handling_exception = false;
         $self.collect_garbage();
         match OpCode::try_from($self.read_byte()).expect("Internal error: unrecognized opcode") {
@@ -483,7 +439,13 @@ macro_rules! run_instruction {
                 let target_ip = $self.callstack.current().ip + offset;
                 let frames_to_keep = $self.callstack.len();
                 let stack_length = $self.stack.len();
-                $self.register_exception_handler(frames_to_keep, target_ip, stack_length);
+                let modules_to_keep = $self.modules.len();
+                $self.register_exception_handler(
+                    frames_to_keep,
+                    target_ip,
+                    stack_length,
+                    modules_to_keep,
+                );
                 Ok(())
             }
             // Just pop the top most handler. No operand, no work with the stack.

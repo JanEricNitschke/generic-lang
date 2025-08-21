@@ -1,5 +1,3 @@
-#[cfg(feature = "trace_execution")]
-use crate::chunk::InstructionDisassembler;
 use crate::heap::ClassId;
 use crate::value::NativeClass;
 use crate::vm::arithmetics::IntoResultValue;
