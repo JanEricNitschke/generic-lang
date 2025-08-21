@@ -372,3 +372,183 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         self.class_state.last_mut()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{chunk::OpCode, heap::Heap, scanner::Scanner};
+
+    fn create_test_heap() -> Heap {
+        Heap::new()
+    }
+
+    /// Helper macro to create bytecode vectors without needing "as u8" for opcodes
+    /// Usage: bytecode![`OpCode::LoadOne`, `OpCode::LoadTwo`, 0, `OpCode::Add`]
+    macro_rules! bytecode {
+        ($($item:expr),* $(,)?) => {
+            vec![
+                $(
+                    // Convert OpCode to u8 using Into trait, or keep u8 values as-is
+                    $item.into(),
+                )*
+            ]
+        };
+    }
+
+    fn compile_and_get_bytecode(source: &str) -> Vec<u8> {
+        let mut heap = create_test_heap();
+        let scanner = Scanner::new(
+            source,
+            #[cfg(feature = "debug_scanner")]
+            false,
+        );
+        let compiler = Compiler::new(
+            scanner,
+            &mut heap,
+            "test",
+            #[cfg(any(feature = "print_code", feature = "debug_parser"))]
+            false,
+        );
+
+        match compiler.compile() {
+            Some(function) => function.chunk.code().to_vec(),
+            None => Vec::new(),
+        }
+    }
+
+    #[test]
+    fn test_compile_empty_program() {
+        // Input
+        let source = "";
+
+        // Expected outputs
+        let expected_bytecode = bytecode![
+            OpCode::Nil,    // Load nil (26)
+            OpCode::Return, // Return (61)
+        ];
+        // Action
+        let bytecode = compile_and_get_bytecode(source);
+
+        // Comparisons
+        assert_eq!(bytecode, expected_bytecode);
+    }
+
+    #[test]
+    fn test_compile_literal_numbers() {
+        // Input
+        let source = "1; 2;";
+
+        // Expected outputs
+        let expected_bytecode = bytecode![
+            OpCode::LoadOne, // Load 1 (36)
+            OpCode::Pop,     // Pop 1 (54)
+            OpCode::LoadTwo, // Load 2 (37)
+            OpCode::Pop,     // Pop 2 (54)
+            OpCode::Nil,     // Load nil (26)
+            OpCode::Return,  // Return (61)
+        ];
+
+        // Action
+        let bytecode = compile_and_get_bytecode(source);
+
+        // Comparisons
+        assert_eq!(bytecode, expected_bytecode);
+    }
+
+    #[test]
+    fn test_compile_arithmetic_expression() {
+        // Input
+        let source = "1 + 2 * 3;";
+
+        // Expected outputs
+        let expected_bytecode = bytecode![
+            OpCode::LoadOne,  // Load 1 (36)
+            OpCode::LoadTwo,  // Load 2 (37)
+            OpCode::Constant, // Load constant at index 0 (0)
+            0,                // Constant index 0
+            OpCode::Multiply, // Multiply (46)
+            OpCode::Add,      // Add (44)
+            OpCode::Pop,      // Pop result (54)
+            OpCode::Nil,      // Load nil (26)
+            OpCode::Return,   // Return (61)
+        ];
+
+        // Action
+        let bytecode = compile_and_get_bytecode(source);
+
+        // Comparisons
+        assert_eq!(bytecode, expected_bytecode);
+    }
+
+    #[test]
+    fn test_compile_variable_declaration() {
+        // Input
+        let source = "var x = 42;";
+
+        // Action
+        let bytecode = compile_and_get_bytecode(source);
+
+        // Expected outputs (computed after action due to heap dependency)
+        let expected_bytecode = bytecode![
+            OpCode::Constant,     // Load constant at index 1 (0)
+            1,                    // Constant index 1
+            OpCode::DefineGlobal, // Define global at index 0 (2)
+            0,                    // Variable name index 0
+            OpCode::Nil,          // Load nil (26)
+            OpCode::Return,       // Return (61)
+        ];
+
+        // Comparisons
+        assert_eq!(bytecode, expected_bytecode);
+    }
+
+    #[test]
+    fn test_compile_basic_function_program() {
+        // Input - similar to test/basic.gen content
+        let source = r#"
+fun f(a, b, c) {
+    print(a);
+    return c;
+    print(b);
+}
+
+var x = f("foo", "bar", "baz");
+print(x);
+"#;
+
+        // Expected exact bytecode sequence
+        let expected_bytecode = bytecode![
+            OpCode::Closure,
+            1, // Create closure from function at constant[1]
+            OpCode::DefineGlobal,
+            0, // Define global "f" (constant[0])
+            OpCode::GetGlobal,
+            0, // Get global "f"
+            OpCode::Constant,
+            3, // Load "foo" (constant[3])
+            OpCode::Constant,
+            4, // Load "bar" (constant[4])
+            OpCode::Constant,
+            5, // Load "baz" (constant[5])
+            OpCode::Call,
+            3, // Call f with 3 arguments
+            OpCode::DefineGlobal,
+            2, // Define global "x" (constant[2])
+            OpCode::GetGlobal,
+            6, // Get global "print" (constant[6])
+            OpCode::GetGlobal,
+            2, // Get global "x" (constant[2])
+            OpCode::Call,
+            1,              // Call print with 1 argument
+            OpCode::Pop,    // Pop result
+            OpCode::Nil,    // Push nil for program result
+            OpCode::Return, // Return from main
+        ];
+
+        // Action
+        let bytecode = compile_and_get_bytecode(source);
+
+        // Comparisons
+        assert_eq!(bytecode, expected_bytecode);
+    }
+}

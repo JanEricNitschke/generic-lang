@@ -116,6 +116,11 @@ pub enum TokenKind {
     InterpolationStart,
     InterpolationEnd,
 }
+#[cfg(test)]
+#[test]
+fn test_token_kind_size() {
+    assert_eq!(std::mem::size_of::<TokenKind>(), 1);
+}
 
 impl std::fmt::Display for TokenKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -133,6 +138,12 @@ pub struct Token<'a> {
     pub(super) kind: TokenKind,
     pub(super) lexeme: &'a str,
     pub(super) line: Line,
+}
+
+#[cfg(test)]
+#[test]
+fn test_token_size() {
+    assert_eq!(std::mem::size_of::<Token<'_>>(), 32);
 }
 
 impl<'a> Token<'a> {
@@ -549,96 +560,97 @@ impl<'a> Scanner<'a> {
 
     /// Parse identifiers using a `trie` strategy.
     fn identifier_type(&self) -> TokenKind {
+        use TokenKind as TK;
         match self.source.as_bytes()[self.start] {
             b'a' => match self.source.as_bytes().get(self.start + 1) {
-                Some(b'n') => self.check_keyword(2, "d", TokenKind::And),
-                Some(b's') => match self.check_keyword(2, "", TokenKind::As) {
-                    TokenKind::As => TokenKind::As,
+                Some(b'n') => self.check_keyword(2, "d", TK::And),
+                Some(b's') => match self.check_keyword(2, "", TK::As) {
+                    TK::As => TK::As,
                     _ => match self.source.as_bytes().get(self.start + 2) {
-                        Some(b'y') => self.check_keyword(3, "nc", TokenKind::Async),
-                        _ => TokenKind::Identifier,
+                        Some(b'y') => self.check_keyword(3, "nc", TK::Async),
+                        _ => TK::Identifier,
                     },
                 },
-                Some(b'w') => self.check_keyword(2, "ait", TokenKind::Await),
-                _ => TokenKind::Identifier,
+                Some(b'w') => self.check_keyword(2, "ait", TK::Await),
+                _ => TK::Identifier,
             },
-            b'b' => self.check_keyword(1, "reak", TokenKind::Break),
+            b'b' => self.check_keyword(1, "reak", TK::Break),
             b'c' => match self.source.as_bytes().get(self.start + 1) {
                 Some(b'a') => match self.source.as_bytes().get(self.start + 2) {
-                    Some(b's') => self.check_keyword(3, "e", TokenKind::Case),
-                    Some(b't') => self.check_keyword(3, "ch", TokenKind::Catch),
-                    _ => TokenKind::Identifier,
+                    Some(b's') => self.check_keyword(3, "e", TK::Case),
+                    Some(b't') => self.check_keyword(3, "ch", TK::Catch),
+                    _ => TK::Identifier,
                 },
-                Some(b'l') => self.check_keyword(2, "ass", TokenKind::Class),
+                Some(b'l') => self.check_keyword(2, "ass", TK::Class),
                 Some(b'o') => match self.source.as_bytes().get(self.start + 2) {
                     Some(b'n') => match self.source.as_bytes().get(self.start + 3) {
-                        Some(b's') => self.check_keyword(4, "t", TokenKind::Const),
-                        Some(b't') => self.check_keyword(4, "inue", TokenKind::Continue),
-                        _ => TokenKind::Identifier,
+                        Some(b's') => self.check_keyword(4, "t", TK::Const),
+                        Some(b't') => self.check_keyword(4, "inue", TK::Continue),
+                        _ => TK::Identifier,
                     },
-                    _ => TokenKind::Identifier,
+                    _ => TK::Identifier,
                 },
-                _ => TokenKind::Identifier,
+                _ => TK::Identifier,
             },
-            b'd' => self.check_keyword(1, "efault", TokenKind::Default),
-            b'e' => self.check_keyword(1, "lse", TokenKind::Else),
+            b'd' => self.check_keyword(1, "efault", TK::Default),
+            b'e' => self.check_keyword(1, "lse", TK::Else),
             b'f' => match self.source.as_bytes().get(self.start + 1) {
-                Some(b'a') => self.check_keyword(2, "lse", TokenKind::False),
-                Some(b'i') => self.check_keyword(2, "nally", TokenKind::Finally),
+                Some(b'a') => self.check_keyword(2, "lse", TK::False),
+                Some(b'i') => self.check_keyword(2, "nally", TK::Finally),
                 Some(b'o') => match self.source.as_bytes().get(self.start + 2) {
-                    Some(b'r') => match self.check_keyword(3, "", TokenKind::For) {
-                        TokenKind::For => TokenKind::For,
+                    Some(b'r') => match self.check_keyword(3, "", TK::For) {
+                        TK::For => TK::For,
                         _ => match self.source.as_bytes().get(self.start + 3) {
-                            Some(b'e') => self.check_keyword(4, "ach", TokenKind::ForEach),
-                            _ => TokenKind::Identifier,
+                            Some(b'e') => self.check_keyword(4, "ach", TK::ForEach),
+                            _ => TK::Identifier,
                         },
                     },
-                    _ => TokenKind::Identifier,
+                    _ => TK::Identifier,
                 },
-                Some(b'r') => self.check_keyword(2, "om", TokenKind::From),
-                Some(b'u') => self.check_keyword(2, "n", TokenKind::Fun),
-                _ => TokenKind::Identifier,
+                Some(b'r') => self.check_keyword(2, "om", TK::From),
+                Some(b'u') => self.check_keyword(2, "n", TK::Fun),
+                _ => TK::Identifier,
             },
             b'i' => match self.source.as_bytes().get(self.start + 1) {
-                Some(b'f') => self.check_keyword(2, "", TokenKind::If),
-                Some(b'n') => self.check_keyword(2, "", TokenKind::In),
-                Some(b'm') => self.check_keyword(2, "port", TokenKind::Import),
-                _ => TokenKind::Identifier,
+                Some(b'f') => self.check_keyword(2, "", TK::If),
+                Some(b'n') => self.check_keyword(2, "", TK::In),
+                Some(b'm') => self.check_keyword(2, "port", TK::Import),
+                _ => TK::Identifier,
             },
-            b'n' => self.check_keyword(1, "il", TokenKind::Nil),
-            b'o' => self.check_keyword(1, "r", TokenKind::Or),
-            b'r' => self.check_keyword(1, "eturn", TokenKind::Return),
+            b'n' => self.check_keyword(1, "il", TK::Nil),
+            b'o' => self.check_keyword(1, "r", TK::Or),
+            b'r' => self.check_keyword(1, "eturn", TK::Return),
             b's' => match self.source.as_bytes().get(self.start + 1) {
-                Some(b'u') => self.check_keyword(2, "per", TokenKind::Super),
-                Some(b'w') => self.check_keyword(2, "itch", TokenKind::Switch),
-                _ => TokenKind::Identifier,
+                Some(b'u') => self.check_keyword(2, "per", TK::Super),
+                Some(b'w') => self.check_keyword(2, "itch", TK::Switch),
+                _ => TK::Identifier,
             },
-            b'S' => self.check_keyword(1, "topIteration", TokenKind::StopIteration),
+            b'S' => self.check_keyword(1, "topIteration", TK::StopIteration),
             b't' => match self.source.as_bytes().get(self.start + 1) {
                 Some(b'h') => match self.source.as_bytes().get(self.start + 2) {
-                    Some(b'i') => self.check_keyword(3, "s", TokenKind::This),
-                    Some(b'r') => self.check_keyword(3, "ow", TokenKind::Throw),
-                    _ => TokenKind::Identifier,
+                    Some(b'i') => self.check_keyword(3, "s", TK::This),
+                    Some(b'r') => self.check_keyword(3, "ow", TK::Throw),
+                    _ => TK::Identifier,
                 },
                 Some(b'r') => match self.source.as_bytes().get(self.start + 2) {
-                    Some(b'u') => self.check_keyword(3, "e", TokenKind::True),
-                    Some(b'y') => self.check_keyword(3, "", TokenKind::Try),
-                    _ => TokenKind::Identifier,
+                    Some(b'u') => self.check_keyword(3, "e", TK::True),
+                    Some(b'y') => self.check_keyword(3, "", TK::Try),
+                    _ => TK::Identifier,
                 },
-                _ => TokenKind::Identifier,
+                _ => TK::Identifier,
             },
             b'u' => match self.source.as_bytes().get(self.start + 1) {
                 Some(b'n') => match self.source.as_bytes().get(self.start + 2) {
-                    Some(b'l') => self.check_keyword(3, "ess", TokenKind::Unless),
-                    Some(b't') => self.check_keyword(3, "il", TokenKind::Until),
-                    _ => TokenKind::Identifier,
+                    Some(b'l') => self.check_keyword(3, "ess", TK::Unless),
+                    Some(b't') => self.check_keyword(3, "il", TK::Until),
+                    _ => TK::Identifier,
                 },
-                _ => TokenKind::Identifier,
+                _ => TK::Identifier,
             },
-            b'v' => self.check_keyword(1, "ar", TokenKind::Var),
-            b'w' => self.check_keyword(1, "hile", TokenKind::While),
-            b'y' => self.check_keyword(1, "ield", TokenKind::Yield),
-            _ => TokenKind::Identifier,
+            b'v' => self.check_keyword(1, "ar", TK::Var),
+            b'w' => self.check_keyword(1, "hile", TK::While),
+            b'y' => self.check_keyword(1, "ield", TK::Yield),
+            _ => TK::Identifier,
         }
     }
 
@@ -682,5 +694,198 @@ impl<'a> Scanner<'a> {
             lexeme: msg,
             line: self.line,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use TokenKind as TK;
+
+    fn scan_tokens(source: &str) -> Vec<Token<'_>> {
+        let mut scanner = Scanner::new(
+            source,
+            #[cfg(feature = "debug_scanner")]
+            false,
+        );
+        let mut tokens = Vec::new();
+        loop {
+            let token = scanner.scan();
+            if token.kind == TK::Eof {
+                break;
+            }
+            // Skip EOF tokens to reduce clutter
+            tokens.push(token);
+        }
+        tokens
+    }
+
+    fn assert_token_kinds(source: &str, expected: &[TokenKind]) {
+        let actual: Vec<_> = scan_tokens(source).into_iter().map(|t| t.kind).collect();
+        assert_eq!(actual, expected, "Mismatch for source: '{source}'");
+    }
+
+    #[test]
+    fn test_numbers() {
+        assert_token_kinds("123", &[TK::Integer]);
+        assert_token_kinds("123.456", &[TK::Float]);
+        assert_token_kinds("0", &[TK::Integer]);
+        assert_token_kinds("0.5", &[TK::Float]);
+
+        // Test number content parsing
+        let tokens = scan_tokens("123");
+        assert_eq!(tokens[0].as_str(), "123");
+        let tokens = scan_tokens("456.789");
+        assert_eq!(tokens[0].as_str(), "456.789");
+    }
+
+    #[test]
+    fn test_identifiers() {
+        assert_token_kinds("foo", &[TK::Identifier]);
+        assert_token_kinds("_var", &[TK::Identifier]);
+        assert_token_kinds("camelCase", &[TK::Identifier]);
+        assert_token_kinds("snake_case", &[TK::Identifier]);
+
+        // Test identifier content
+        let tokens = scan_tokens("myVariable");
+        assert_eq!(tokens[0].as_str(), "myVariable");
+        let tokens = scan_tokens("test_123");
+        assert_eq!(tokens[0].as_str(), "test_123");
+    }
+
+    #[test]
+    fn test_strings() {
+        assert_token_kinds("\"hello\"", &[TK::String]);
+        assert_token_kinds("\"\"", &[TK::String]);
+        assert_token_kinds("\"hello world\"", &[TK::String]);
+
+        // Test string content preservation
+        let tokens = scan_tokens("\"test string\"");
+        assert_eq!(tokens[0].as_str(), "\"test string\"");
+        let tokens = scan_tokens("\"simple\"");
+        assert_eq!(tokens[0].as_str(), "\"simple\"");
+    }
+
+    #[test]
+    fn test_fstring_parsing() {
+        // F-string without expressions
+        assert_token_kinds("f\"hello\"", &[TK::FstringStart, TK::FstringEnd]);
+
+        // Test f-string content
+        assert_token_kinds(
+            "f\"hello world, my name is ${name}.\"",
+            &[
+                TK::FstringStart,
+                TK::FstringPart,
+                TK::InterpolationStart,
+                TK::Identifier,
+                TK::InterpolationEnd,
+                TK::FstringEnd,
+            ],
+        );
+    }
+
+    #[test]
+    fn test_complex_expression() {
+        let source = "var x = (a + b) * c / d;";
+        let expected = &[
+            TK::Var,
+            TK::Identifier,
+            TK::Equal,
+            TK::LeftParen,
+            TK::Identifier,
+            TK::Plus,
+            TK::Identifier,
+            TK::RightParen,
+            TK::Star,
+            TK::Identifier,
+            TK::Slash,
+            TK::Identifier,
+            TK::Semicolon,
+        ];
+        assert_token_kinds(source, expected);
+
+        // Test that identifier content is preserved
+        let tokens = scan_tokens(source);
+        assert_eq!(tokens[1].as_str(), "x"); // variable name
+        assert_eq!(tokens[4].as_str(), "a"); // first identifier in expression
+    }
+
+    #[test]
+    fn test_keywords_and_operators() {
+        assert_token_kinds("if else for while", &[TK::If, TK::Else, TK::For, TK::While]);
+
+        assert_token_kinds(
+            "== != <= >= < >",
+            &[
+                TK::EqualEqual,
+                TK::BangEqual,
+                TK::LessEqual,
+                TK::GreaterEqual,
+                TK::Less,
+                TK::Greater,
+            ],
+        );
+    }
+
+    #[test]
+    fn test_medium_program() {
+        let source = r"
+            fun fibonacci(n) {
+                if (n <= 1) return n;
+                return fibonacci(n - 1) + fibonacci(n - 2);
+            }
+        ";
+
+        assert_token_kinds(
+            source,
+            &[
+                TK::Fun,
+                TK::Identifier,
+                TK::LeftParen,
+                TK::Identifier,
+                TK::RightParen,
+                TK::LeftBrace,
+                TK::If,
+                TK::LeftParen,
+                TK::Identifier,
+                TK::LessEqual,
+                TK::Integer,
+                TK::RightParen,
+                TK::Return,
+                TK::Identifier,
+                TK::Semicolon,
+                TK::Return,
+                TK::Identifier,
+                TK::LeftParen,
+                TK::Identifier,
+                TK::Minus,
+                TK::Integer,
+                TK::RightParen,
+                TK::Plus,
+                TK::Identifier,
+                TK::LeftParen,
+                TK::Identifier,
+                TK::Minus,
+                TK::Integer,
+                TK::RightParen,
+                TK::Semicolon,
+                TK::RightBrace,
+            ],
+        );
+    }
+
+    #[test]
+    fn test_whitespace_and_newlines() {
+        assert_token_kinds("  \t  ", &[]); // Only whitespace - no tokens
+        assert_token_kinds(" + ", &[TK::Plus]);
+        assert_token_kinds("\n+\n", &[TK::Plus]);
+
+        // Multiple tokens with whitespace
+        let tokens = scan_tokens("a   +   b");
+        assert_eq!(tokens.len(), 3);
+        assert_eq!(tokens[0].as_str(), "a");
+        assert_eq!(tokens[1].kind, TK::Plus);
+        assert_eq!(tokens[2].as_str(), "b");
     }
 }

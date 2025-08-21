@@ -6,14 +6,6 @@
 //!
 //! The heap is managed via arenas for each type of `Value`.
 //!
-//! Currently, for ease of use, each value holds an `Id` that wraps
-//! the key of the object in its respective arena as well as a pointer to the arena.
-//! This makes for short syntax via `deref` and allows the retrieval of the objects
-//! without direct access to the heap instance.
-//!
-//! However it requires the use of unsafe and `Pin` and also has a memory
-//! overhead as each `Id` has to store the key AND the pointer.
-//!
 //! Garbage collection occurs via `mark and sweep`.
 
 mod arenas;

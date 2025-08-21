@@ -31,6 +31,7 @@ jobs:
         # Run normal configuration and fail on default warnings
         cargo clippy -- -D warnings
         # Run pedantic
+        cargo clippy --all-targets -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
         cargo hack clippy --each-feature --no-dev-deps -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
     - name: Test
       run: cargo test --verbose
