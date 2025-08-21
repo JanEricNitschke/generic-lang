@@ -7,6 +7,7 @@ use num_traits::Signed;
 use num_traits::identities::Zero;
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Rem, Sub};
+
 // These could probably be individual entries in the enum tbh.
 /// Enum summarizing all of the generic number types.
 #[derive(Debug, Clone, From, Copy, PartialEq)]
@@ -14,6 +15,19 @@ pub enum Number {
     Float(f64),
     Integer(GenericInt),
     Rational(GenericRational),
+}
+
+#[cfg(test)]
+#[test]
+fn test_number_size() {
+    let sizes = [
+        size_of::<f64>(),
+        size_of::<GenericInt>(),
+        size_of::<GenericRational>(),
+    ];
+    // GenericRational, because a GenericInt is 16 in size
+    assert_eq!(sizes.iter().copied().max().unwrap(), 32);
+    assert_eq!(std::mem::size_of::<Number>(), 32);
 }
 
 // Conversions
@@ -332,6 +346,16 @@ impl Number {
 pub enum GenericInt {
     Small(i64),
     Big(BigIntId),
+}
+
+#[cfg(test)]
+#[test]
+fn test_generic_int_size() {
+    let sizes = [size_of::<i64>(), size_of::<BigIntId>()];
+    // Because we dont have a niche for the i64.
+    // The Ids actually have niches.
+    assert_eq!(sizes.iter().copied().max().unwrap(), 8);
+    assert_eq!(std::mem::size_of::<GenericInt>(), 16);
 }
 
 // General handling and conversions

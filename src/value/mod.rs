@@ -47,6 +47,28 @@ pub enum Value {
     BoundMethod(BoundMethodId),
 }
 
+#[cfg(test)]
+#[test]
+fn test_value_size() {
+    let sizes = [
+        size_of::<bool>(),
+        size_of::<Number>(),
+        size_of::<StringId>(),
+        size_of::<ClosureId>(),
+        size_of::<FunctionId>(),
+        size_of::<ModuleId>(),
+        size_of::<UpvalueId>(),
+        size_of::<NativeFunctionId>(),
+        size_of::<NativeMethodId>(),
+        size_of::<ClassId>(),
+        size_of::<InstanceId>(),
+        size_of::<BoundMethodId>(),
+    ];
+    // From Number, because of GenericRational, because of GenericInt being 16
+    assert_eq!(sizes.iter().copied().max().unwrap(), 32);
+    assert_eq!(std::mem::size_of::<Value>(), 32);
+}
+
 // This is fake btw. But it is only used for hash,
 // which throws unreachable for all the variants where it doesnt actually hold.
 impl Value {
@@ -417,5 +439,164 @@ impl Value {
             },
             _ => unreachable!("Expected Exception, found `{:?}`", self),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::heap::Heap;
+
+    fn create_test_heap() -> Heap {
+        Heap::new()
+    }
+
+    #[test]
+    fn test_value_bool() {
+        let val_true = Value::Bool(true);
+        let val_false = Value::Bool(false);
+
+        assert_eq!(val_true, Value::Bool(true));
+        assert_eq!(val_false, Value::Bool(false));
+        assert_ne!(val_true, val_false);
+    }
+
+    #[test]
+    fn test_value_nil() {
+        let val_nil = Value::Nil;
+
+        assert_eq!(val_nil, Value::Nil);
+    }
+
+    #[test]
+    fn test_value_stop_iteration() {
+        let val_stop = Value::StopIteration;
+
+        assert_eq!(val_stop, Value::StopIteration);
+    }
+
+    #[test]
+    fn test_value_number_integer() {
+        let num_int = Value::Number(Number::Integer(GenericInt::Small(42)));
+        assert_eq!(
+            num_int,
+            Value::Number(Number::Integer(GenericInt::Small(42)))
+        );
+
+        let heap = create_test_heap();
+        assert_eq!(num_int.to_string(&heap), "42");
+    }
+
+    #[test]
+    fn test_value_number_float() {
+        let num_float = Value::Number(Number::Float(7.42));
+        assert_eq!(num_float, Value::Number(Number::Float(7.42)));
+
+        let heap = create_test_heap();
+        assert_eq!(num_float.to_string(&heap), "7.42");
+    }
+
+    #[test]
+    fn test_value_number_comparison() {
+        let num_int = Value::Number(Number::Integer(GenericInt::Small(42)));
+        let num_float = Value::Number(Number::Float(7.42));
+        assert_ne!(num_int, num_float);
+
+        let zero_int = Value::Number(Number::Integer(GenericInt::Small(0)));
+        let zero_float = Value::Number(Number::Float(0.0));
+        let heap = create_test_heap();
+        assert_eq!(zero_int.to_string(&heap), "0");
+        assert_eq!(zero_float.to_string(&heap), "0.0");
+    }
+
+    #[test]
+    fn test_value_from_bool() {
+        let bool_val: Value = true.into();
+        assert_eq!(bool_val, Value::Bool(true));
+
+        let bool_val2: Value = false.into();
+        assert_eq!(bool_val2, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_value_from_float() {
+        let float_val: Value = 7.42.into();
+        assert_eq!(float_val, Value::Number(Number::Float(7.42)));
+    }
+
+    #[test]
+    fn test_value_from_integer() {
+        let int_val: Value = 42i64.into();
+        assert_eq!(
+            int_val,
+            Value::Number(Number::Integer(GenericInt::Small(42)))
+        );
+    }
+
+    #[test]
+    fn test_value_from_number() {
+        let number = Number::Integer(GenericInt::Small(100));
+        let number_val: Value = number.into();
+        assert_eq!(
+            number_val,
+            Value::Number(Number::Integer(GenericInt::Small(100)))
+        );
+    }
+
+    #[test]
+    fn test_value_equality() {
+        let mut heap = create_test_heap();
+
+        // Same values should be equal
+        assert!(Value::Bool(true).eq(&Value::Bool(true), &heap));
+        assert!(Value::Nil.eq(&Value::Nil, &heap));
+        assert!(Value::StopIteration.eq(&Value::StopIteration, &heap));
+
+        let num1 = Value::Number(Number::Integer(GenericInt::Small(42)));
+        let num2 = Value::Number(Number::Integer(GenericInt::Small(42)));
+        assert!(num1.eq(&num2, &heap));
+
+        // Different values should not be equal
+        assert!(!Value::Bool(true).eq(&Value::Bool(false), &heap));
+        assert!(!Value::Bool(true).eq(&Value::Nil, &heap));
+
+        // Test string equality
+        let str1_val = heap.add_string("hello".to_string());
+        let str2_val = heap.add_string("hello".to_string());
+        let str3_val = heap.add_string("world".to_string());
+
+        // Same content strings should be equal
+        assert!(str1_val.eq(&str2_val, &heap));
+        // Different content strings should not be equal
+        assert!(!str1_val.eq(&str3_val, &heap));
+    }
+
+    #[test]
+    fn test_value_as_methods() {
+        let mut heap = create_test_heap();
+
+        // Test as_string
+        let string_val = heap.add_string("test".to_string());
+        let string_id = string_val.as_string();
+        assert_eq!(string_id.to_value(&heap), "test");
+
+        // Test as_generic_int (numbers use this instead of as_number)
+        let number_val = Value::Number(Number::Integer(GenericInt::Small(42)));
+        let generic_int = number_val.as_generic_int();
+        assert_eq!(*generic_int, GenericInt::Small(42));
+    }
+
+    #[test]
+    #[should_panic(expected = "Expected String")]
+    fn test_value_as_string_panic() {
+        let val = Value::Bool(true);
+        val.as_string(); // Should panic
+    }
+
+    #[test]
+    #[should_panic(expected = "Expected Number")]
+    fn test_value_as_generic_int_panic() {
+        let val = Value::Bool(true);
+        val.as_generic_int(); // Should panic
     }
 }

@@ -151,7 +151,7 @@ pub enum OpCode {
 
 #[cfg(test)]
 #[test]
-fn opcode_size() {
+fn test_opcode_size() {
     assert_eq!(std::mem::size_of::<OpCode>(), 1);
 }
 
@@ -826,5 +826,88 @@ impl Debug for InstructionDisassembler<'_, '_> {
             ),
         )?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{heap::Heap, types::Line, value::Value};
+
+    fn create_test_heap() -> Heap {
+        Heap::new()
+    }
+
+    fn create_test_chunk(heap: &mut Heap) -> Chunk {
+        let name_val = heap.add_string("test_chunk".to_string());
+        let name_id = *name_val.as_string();
+        Chunk::new(name_id)
+    }
+
+    #[test]
+    fn test_line_encoding() {
+        let mut heap = create_test_heap();
+        let mut chunk = create_test_chunk(&mut heap);
+
+        // Write multiple bytes on the same line
+        chunk.write(OpCode::Constant, Line(1));
+        chunk.write(0u8, Line(1));
+        chunk.write(OpCode::Return, Line(1));
+
+        // Write bytes on different line
+        chunk.write(OpCode::Pop, Line(2));
+
+        assert_eq!(chunk.lines.len(), 2);
+        assert_eq!(chunk.lines[0], (3, Line(1))); // 3 bytes on line 1
+        assert_eq!(chunk.lines[1], (1, Line(2))); // 1 byte on line 2
+    }
+
+    #[test]
+    fn test_constant_management() {
+        let mut heap = create_test_heap();
+        let mut chunk = create_test_chunk(&mut heap);
+
+        let index1 = chunk.make_constant(Value::Bool(true));
+        let index2 = chunk.make_constant(Value::Bool(false));
+
+        assert_eq!(*index1, 0);
+        assert_eq!(*index2, 1);
+        assert_eq!(chunk.constants().len(), 2);
+        assert_eq!(*chunk.get_constant(0usize), Value::Bool(true));
+        assert_eq!(*chunk.get_constant(1usize), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_code_patching() {
+        let mut heap = create_test_heap();
+        let mut chunk = create_test_chunk(&mut heap);
+
+        chunk.write(OpCode::Jump, Line(1));
+        let patch_offset = CodeOffset(chunk.code().len());
+        chunk.write(0u8, Line(1)); // Placeholder for jump offset
+
+        // Patch the jump offset
+        chunk.patch(patch_offset, 42u8);
+        assert_eq!(chunk.code()[1], 42);
+    }
+
+    #[test]
+    fn test_24bit_number_handling() {
+        let mut heap = create_test_heap();
+        let mut chunk = create_test_chunk(&mut heap);
+
+        // Test valid 24-bit number
+        let result = chunk.write_24bit_number(0x0012_3456, Line(1));
+        assert!(result);
+        assert_eq!(chunk.code().len(), 3);
+        assert_eq!(chunk.code()[0], 0x12);
+        assert_eq!(chunk.code()[1], 0x34);
+        assert_eq!(chunk.code()[2], 0x56);
+
+        // Test number too large for 24-bit
+        let mut chunk2 = create_test_chunk(&mut heap);
+        let result2 = chunk2.write_24bit_number(0x0100_0000, Line(1)); // Requires 25 bits
+        assert!(!result2); // Should fail
+        assert_eq!(chunk2.code().len(), 0); // Nothing should be written
     }
 }
