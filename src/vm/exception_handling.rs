@@ -68,9 +68,10 @@ impl VM {
             Err(VmErrorKind::Exception(ExceptionRaisedKind))
         } else {
             self.encountered_hard_exception = true;
-            let exception_str = self.value_to_string(&exception).unwrap_or_else(|_| {
-                Value::String(self.heap.string_id(&exception.to_string(&self.heap)))
-            });
+            let exception_str = Value::String(
+                self.value_to_string(&exception)
+                    .unwrap_or_else(|_| self.heap.string_id(&exception.to_string(&self.heap))),
+            );
             runtime_error!("{}", exception_str.to_string(&self.heap));
             Err(VmErrorKind::Runtime(RuntimeErrorKind))
         }

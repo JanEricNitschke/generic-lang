@@ -21,7 +21,7 @@ jobs:
       uses: actions-rust-lang/setup-rust-toolchain@v1
     - name: Build
       run: |
-        cargo build --features "log_gc trace_execution_verbose print_code stress_gc debug_parser"
+        cargo build --all-features
         cargo build --verbose
     - name: Lint
       run: |
@@ -53,6 +53,9 @@ jobs:
     - name: Check debug_parser
       run: |
         ! cargo run --features "debug_parser" test/function_literals/neither_block_nor_expression.gen
+    - name: Check debug_scanner
+      run: |
+        ! cargo run --features "debug_scanner" test/function_literals/neither_block_nor_expression.gen
     - name: Setup dart
       uses: dart-lang/setup-dart@v1
       with:

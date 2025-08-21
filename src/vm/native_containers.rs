@@ -42,9 +42,10 @@ impl VM {
         Ok(())
     }
 
-    // Build a list. The number of items is the operand.
-    // Items are on the stack in order from left to right
-    // (... --- item1 --- item2 --- ... --- itemN)
+    /// Build a list. The number of items is the operand.
+    ///
+    /// Items are on the stack in order from left to right
+    /// (... --- item1 --- item2 --- ... --- itemN)
     pub(crate) fn build_list(&mut self) {
         let arg_count = self.read_byte();
         let items: Vec<Value> = (0..arg_count)
@@ -64,9 +65,10 @@ impl VM {
         self.stack_push_value(instance_value);
     }
 
-    // Build a tuple. The number of items is the operand.
-    // Items are on the stack in order from left to right
-    // (... --- item1 --- item2 --- ... --- itemN)
+    /// Build a tuple. The number of items is the operand.
+    ///
+    /// Items are on the stack in order from left to right
+    /// (... --- item1 --- item2 --- ... --- itemN)
     pub(crate) fn build_tuple(&mut self) {
         let arg_count = self.read_byte();
         let items: Vec<Value> = (0..arg_count)
@@ -86,9 +88,10 @@ impl VM {
         self.stack_push_value(instance_value);
     }
 
-    // Build a set. The number of items is the operand.
-    // Items are on the stack in order from left to right
-    // (... --- item1 --- item2 --- ... --- itemN)
+    /// Build a set. The number of items is the operand.
+    ///
+    ///  Items are on the stack in order from left to right
+    /// (... --- item1 --- item2 --- ... --- itemN)
     pub(crate) fn build_set(&mut self) -> VmError {
         let mut set = Set::default();
 
@@ -111,9 +114,10 @@ impl VM {
         Ok(())
     }
 
-    // Build a dict. The number of key-value-pairs is the operand.
-    // Items are on the stack in order from left to right
-    // (... --- key1 --- value1 --- key2 --- value2 --- ... --- keyN --- valueN)
+    /// Build a dict. The number of key-value-pairs is the operand.
+    ///
+    ///  Items are on the stack in order from left to right
+    /// (... --- key1 --- value1 --- key2 --- value2 --- ... --- keyN --- valueN)
     pub(crate) fn build_dict(&mut self) -> VmError {
         let mut dict = Dict::default();
         // Number of key, value pairs.
@@ -133,6 +137,33 @@ impl VM {
         );
         let instance_value = self.heap.add_instance(instance);
         self.stack_push_value(instance_value);
+        Ok(())
+    }
+
+    /// Build a formatted string. The number of parts is the operand.
+    ///
+    /// Items are on the stack in order from left to right
+    /// (... --- item1 --- item2 --- ... --- itemN)
+    /// So for f"Hi ${1+1}, i'm ${name}"
+    /// We would have (... --- "Hi " --- 2 --- ", i'm " --- <`VALUE_OF_NAME`> --- ""
+    pub(crate) fn build_fstring(&mut self) -> VmError {
+        let mut string = String::new();
+
+        let arg_count = self.read_byte();
+        for index in (0..arg_count).rev() {
+            let value = *self.peek(usize::from(index)).unwrap();
+            let string_id = match value {
+                Value::String(string_id) => string_id,
+                _ => self.value_to_string(&value)?,
+            };
+            string.push_str(string_id.to_value(&self.heap));
+        }
+        // Pop all items from stack at once
+        self.stack
+            .truncate(self.stack.len() - usize::from(arg_count));
+
+        let value = self.heap.string_id(&string).into();
+        self.stack_push_value(value);
         Ok(())
     }
 }

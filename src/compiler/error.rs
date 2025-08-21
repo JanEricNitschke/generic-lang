@@ -32,21 +32,21 @@ impl Compiler<'_, '_> {
         }
         self.had_error = true;
         #[cfg(feature = "debug_parser")]
-        {
+        if cfg!(feature = "debug_parser_builtin") || !self.is_builtin {
             println!("Hit error, set panic_mode: {}", self.panic_mode);
         }
     }
 
     pub(super) fn synchronize(&mut self) {
         #[cfg(feature = "debug_parser")]
-        {
+        if cfg!(feature = "debug_parser_builtin") || !self.is_builtin {
             println!("Synchronizing after error");
         }
         self.panic_mode = false;
         while !self.check(TK::Eof) {
             if self.check_previous(TK::Semicolon) {
                 #[cfg(feature = "debug_parser")]
-                {
+                if cfg!(feature = "debug_parser_builtin") || !self.is_builtin {
                     println!("Found semicolon, resuming parsing");
                 }
 
@@ -65,7 +65,7 @@ impl Compiler<'_, '_> {
             ) = self.current_token_kind()
             {
                 #[cfg(feature = "debug_parser")]
-                {
+                if cfg!(feature = "debug_parser_builtin") || !self.is_builtin {
                     println!(
                         "Found statement start at {:?}, resuming parsing",
                         self.current_token_kind()

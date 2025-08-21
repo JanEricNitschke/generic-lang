@@ -19,7 +19,7 @@ impl Compiler<'_, '_> {
             let token = self.scanner.scan();
             self.current = Some(token);
             #[cfg(feature = "debug_parser")]
-            {
+            if cfg!(feature = "debug_parser_builtin") || !self.is_builtin {
                 println!(
                     "Current: {:<25} Previous: {:<25} Panic: {:<5}",
                     format!("{:?}", self.current_token_kind()),

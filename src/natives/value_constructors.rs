@@ -22,7 +22,7 @@ pub(super) fn string_init_native(
     _receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> VmError<Value> {
-    vm.value_to_string(args[0])
+    Ok(Value::String(vm.value_to_string(args[0])?))
 }
 
 /// Integer.__init__(value) - Convert string or number to integer

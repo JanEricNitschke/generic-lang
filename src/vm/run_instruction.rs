@@ -434,6 +434,7 @@ macro_rules! run_instruction {
             OpCode::BuildRangeExclusive => $self.build_range(RangeType::Exclusive),
             OpCode::BuildRangeInclusive => $self.build_range(RangeType::Inclusive),
             OpCode::BuildRational => $self.build_rational(),
+            OpCode::BuildFstring => $self.build_fstring(),
             // Import a module by filepath without qualifiers.
             // Expects either the path to the module or the name of
             // a stdlib module as a string as an operand.
