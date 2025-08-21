@@ -1,5 +1,6 @@
 use super::VM;
 use crate::{
+    heap::StringId,
     value::{GenericInt, Number, Value},
     vm::errors::VmError,
 };
@@ -10,7 +11,7 @@ use std::hash::{Hash, Hasher};
 impl VM {
     /// Convert a value to string, handling instances with __str__ methods.
     /// This function is shared between value constructors, `to_string_native`, and `print_native`.
-    pub fn value_to_string(&mut self, value: &Value) -> VmError<Value> {
+    pub fn value_to_string(&mut self, value: &Value) -> VmError<StringId> {
         let str_id = self.heap.string_id(&"__str__");
 
         if let Value::Instance(instance) = value
@@ -22,14 +23,23 @@ impl VM {
             self.stack.push(*value);
             self.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)))?;
 
-            Ok(self
+            let result = self
                 .stack
                 .pop()
-                .expect("Stack underflow in value_to_string"))
+                .expect("Stack underflow in value_to_string");
+
+            if let Value::String(string_id) = result {
+                Ok(string_id)
+            } else {
+                Err(self
+                    .throw_type_error(&format!(
+                        "`__str__` must return a string, got {}",
+                        result.to_string(&self.heap)
+                    ))
+                    .unwrap_err())
+            }
         } else {
-            Ok(Value::String(
-                self.heap.string_id(&value.to_string(&self.heap)),
-            ))
+            Ok(self.heap.string_id(&value.to_string(&self.heap)))
         }
     }
 

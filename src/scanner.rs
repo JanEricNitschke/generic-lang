@@ -109,6 +109,12 @@ pub enum TokenKind {
 
     DotDotLess,
     DotDotEqual,
+
+    FstringStart,
+    FstringEnd,
+    FstringPart,
+    InterpolationStart,
+    InterpolationEnd,
 }
 
 impl std::fmt::Display for TokenKind {
@@ -135,6 +141,13 @@ impl<'a> Token<'a> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+enum ScannerMode {
+    Normal,
+    Fstring,
+    Interpolation(u8),
+}
+
 /// Main struct for parsing the source characters to tokens.
 #[derive(Debug, Clone)]
 pub struct Scanner<'a> {
@@ -143,17 +156,151 @@ pub struct Scanner<'a> {
     /// Always points at the next character to be consumed.
     current: usize,
     line: Line,
+    modes: Vec<ScannerMode>,
+    #[cfg(feature = "debug_scanner")]
+    is_builtin: bool,
 }
 
 impl<'a> Scanner<'a> {
     #[must_use]
-    pub(super) const fn new(source: &'a [u8]) -> Self {
+    pub(super) fn new(
+        source: &'a [u8],
+        #[cfg(feature = "debug_scanner")] is_builtin: bool,
+    ) -> Self {
         Self {
             source,
             start: 0,
             current: 0,
             line: Line(1),
+            modes: vec![ScannerMode::Normal],
+            #[cfg(feature = "debug_scanner")]
+            is_builtin,
         }
+    }
+
+    fn mode(&self) -> &ScannerMode {
+        self.modes
+            .last()
+            .expect("Internal Error: Scanner mode underflow")
+    }
+
+    fn mode_mut(&mut self) -> &mut ScannerMode {
+        self.modes
+            .last_mut()
+            .expect("Internal Error: Scanner mode underflow")
+    }
+
+    fn unclosed_braces(&mut self) -> &mut u8 {
+        match self.mode_mut() {
+            ScannerMode::Interpolation(unclosed_braces) => unclosed_braces,
+            _ => unreachable!("Should only call `unclosed_braces` while in Interpolation mode!"),
+        }
+    }
+
+    /// Main scan that turns raw characters to tokens.
+    ///
+    /// Switch between `Normal` mode for most parts of source files,
+    /// `Fstring` mode for the raw string parts of fstrings and
+    /// `Interpolation` mode for the interpolations of fstrings.
+    pub(super) fn scan(&mut self) -> Token<'a> {
+        #[cfg(feature = "debug_scanner")]
+        if cfg!(feature = "debug_scanner_builtin") || !self.is_builtin {
+            println!(
+                "Mode: {:<15} current char {:<10} at pos {}",
+                format!("{:?}", self.mode()),
+                format!("{:?}", self.source.get(self.current).map(|&b| b as char)),
+                self.current,
+            );
+        }
+        match self.mode() {
+            ScannerMode::Normal => self.scan_normal(),
+            ScannerMode::Fstring => self.scan_fstring(),
+            ScannerMode::Interpolation(_) => self.scan_interpolation(),
+        }
+    }
+
+    /// Scan function for the string bodies of fstrings.
+    ///
+    /// Scans everything AFTER `f"` up to and including the closing `"` or
+    /// the start of the interpolation `${`
+    ///
+    /// Switches to `Normal` mode on closing quotes and
+    /// `Interpolation` mode after consuming `${`.
+    fn scan_fstring(&mut self) -> Token<'a> {
+        self.start = self.current;
+
+        if self.peek() == Some(&b'$') {
+            self.advance(); // consume $
+            if self.match_(b'{') {
+                self.modes.push(ScannerMode::Interpolation(1));
+                return self.make_token(TokenKind::InterpolationStart);
+            }
+        }
+
+        self.fstring_part()
+    }
+
+    fn fstring_part(&mut self) -> Token<'a> {
+        while let Some(&c) = self.peek() {
+            if c == b'"' {
+                // End of f-string
+                self.advance(); // consume closing "
+                self.modes.pop(); // Transition back to normal mode
+                return self.make_token(TokenKind::FstringEnd);
+            }
+            if c == b'$' && self.peek_next() == Some(&b'{') {
+                // Stop before interpolation
+                return self.make_token(TokenKind::FstringPart);
+            }
+            if c == b'\n' {
+                *self.line += 1;
+            }
+
+            self.advance();
+        }
+
+        // This way we get the proper EOF afterwards from the main loop.
+        self.modes.pop();
+        // Fell out of loop => EOF
+        self.error_token("Unterminated f-string.")
+    }
+
+    /// Scans function for the interpolation part of fstrings.
+    ///
+    /// Scans everything AFTER the interpolation opening `${`
+    /// up to and including the closing `}`.
+    ///
+    /// Does so by keeping count of the opening and closing braces
+    /// and switches back to fstring mode when they match.
+    fn scan_interpolation(&mut self) -> Token<'a> {
+        use TokenKind as TK;
+        self.skip_whitespace();
+        self.start = self.current;
+        // In interpolation mode you already consumed the '{'
+        let c = match self.advance() {
+            None => {
+                // This way we get the unterminated fstring and later the EOF from the other modes.
+                self.modes.pop();
+                return self.error_token("Unterminated interpolation.");
+            }
+            Some(b'{') => {
+                *self.unclosed_braces() += 1;
+                return self.make_token(TK::LeftBrace);
+            }
+            Some(b'}') => {
+                *self.unclosed_braces() -= 1;
+                let token_kind = if *self.unclosed_braces() == 0 {
+                    self.modes.pop();
+                    TK::InterpolationEnd
+                } else {
+                    TK::RightBrace
+                };
+                return self.make_token(token_kind);
+            }
+            Some(c) => *c,
+        };
+        // Reuse the same match logic
+        self.scan_core(c)
     }
 
     /// Main scan that turns raw characters to tokens.
@@ -162,138 +309,151 @@ impl<'a> Scanner<'a> {
     /// to return exactly one token.
     ///
     /// Uses a trie strategy to identify tokens.
-    #[allow(clippy::too_many_lines)]
-    pub(super) fn scan(&mut self) -> Token<'a> {
-        use TokenKind as TK;
+    ///
+    /// Switches to fstring mode when it encounters an fstring start `f"`.
+    fn scan_normal(&mut self) -> Token<'a> {
         self.skip_whitespace();
         self.start = self.current;
-        let token_kind = match self.advance() {
-            None => TK::Eof,
-            Some(c) => match c {
-                b'\'' => TK::Apostrophe,
-                b'?' => TK::QuestionMark,
-                b':' => TK::Colon,
-                b'(' => TK::LeftParen,
-                b')' => TK::RightParen,
-                b'{' => TK::LeftBrace,
-                b'}' => TK::RightBrace,
-                b'[' => TK::LeftBracket,
-                b']' => TK::RightBracket,
-                b';' => TK::Semicolon,
-                b',' => TK::Comma,
-                b'.' => {
-                    // Check for range operators ..= and ..<
-                    if self.match_(b'.') {
-                        if self.match_(b'=') {
-                            TK::DotDotEqual
-                        } else if self.match_(b'<') {
-                            TK::DotDotLess
-                        } else {
-                            // This is an error - we've consumed two dots but can't make a valid token
-                            return self
-                                .error_token("Invalid token '..' - expected '..=' or '..<'");
-                        }
-                    } else {
-                        TK::Dot
-                    }
-                }
-                b'@' => TK::At,
-                b'-' => {
-                    if self.match_(b'=') {
-                        TK::MinusEqual
-                    } else if self.match_(b'>') {
-                        TK::RightArrow
-                    } else {
-                        TK::Minus
-                    }
-                }
-                b'+' => {
-                    if self.match_(b'=') {
-                        TK::PlusEqual
-                    } else {
-                        TK::Plus
-                    }
-                }
-                b'/' => {
-                    if self.match_(b'=') {
-                        TK::SlashEqual
-                    } else if self.match_(b'/') {
-                        TK::SlashSlash
-                    } else {
-                        TK::Slash
-                    }
-                }
-                b'*' => {
-                    if self.match_(b'=') {
-                        TK::StarEqual
-                    } else if self.match_(b'*') {
-                        TK::StarStar
-                    } else {
-                        TK::Star
-                    }
-                }
-                b'%' => {
-                    if self.match_(b'=') {
-                        TK::PercentEqual
-                    } else {
-                        TK::Percent
-                    }
-                }
-                b'&' => {
-                    if self.match_(b'=') {
-                        TK::AmperEqual
-                    } else {
-                        TK::Amper
-                    }
-                }
-                b'|' => {
-                    if self.match_(b'=') {
-                        TK::PipeEqual
-                    } else {
-                        TK::Pipe
-                    }
-                }
-                b'^' => {
-                    if self.match_(b'=') {
-                        TK::HatEqual
-                    } else {
-                        TK::Hat
-                    }
-                }
-                b'!' => {
-                    if self.match_(b'=') {
-                        TK::BangEqual
-                    } else {
-                        TK::Bang
-                    }
-                }
-                b'=' => {
-                    if self.match_(b'=') {
-                        TK::EqualEqual
-                    } else {
-                        TK::Equal
-                    }
-                }
-                b'<' => {
-                    if self.match_(b'=') {
-                        TK::LessEqual
-                    } else {
-                        TK::Less
-                    }
-                }
-                b'>' => {
-                    if self.match_(b'=') {
-                        TK::GreaterEqual
-                    } else {
-                        TK::Greater
-                    }
-                }
-                b'"' => return self.string(),
-                c if c.is_ascii_digit() => return self.number(),
-                c if c.is_ascii_alphabetic() || c == &b'_' => return self.identifier(),
-                _ => return self.error_token("Unexpected character."),
-            },
+        let c = match self.advance() {
+            None => return self.make_token(TokenKind::Eof),
+            Some(c) => *c,
         };
+        self.scan_core(c)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn scan_core(&mut self, c: u8) -> Token<'a> {
+        use TokenKind as TK;
+        let token_kind = match c {
+            b'\'' => TK::Apostrophe,
+            b'?' => TK::QuestionMark,
+            b':' => TK::Colon,
+            b'(' => TK::LeftParen,
+            b')' => TK::RightParen,
+            b'{' => TK::LeftBrace,
+            b'}' => TK::RightBrace,
+            b'[' => TK::LeftBracket,
+            b']' => TK::RightBracket,
+            b';' => TK::Semicolon,
+            b',' => TK::Comma,
+            b'.' => {
+                if self.match_(b'.') {
+                    if self.match_(b'=') {
+                        TK::DotDotEqual
+                    } else if self.match_(b'<') {
+                        TK::DotDotLess
+                    } else {
+                        return self.error_token("Invalid token '..' - expected '..=' or '..<'");
+                    }
+                } else {
+                    TK::Dot
+                }
+            }
+            b'@' => TK::At,
+            b'-' => {
+                if self.match_(b'=') {
+                    TK::MinusEqual
+                } else if self.match_(b'>') {
+                    TK::RightArrow
+                } else {
+                    TK::Minus
+                }
+            }
+            b'+' => {
+                if self.match_(b'=') {
+                    TK::PlusEqual
+                } else {
+                    TK::Plus
+                }
+            }
+            b'/' => {
+                if self.match_(b'=') {
+                    TK::SlashEqual
+                } else if self.match_(b'/') {
+                    TK::SlashSlash
+                } else {
+                    TK::Slash
+                }
+            }
+            b'*' => {
+                if self.match_(b'=') {
+                    TK::StarEqual
+                } else if self.match_(b'*') {
+                    TK::StarStar
+                } else {
+                    TK::Star
+                }
+            }
+            b'%' => {
+                if self.match_(b'=') {
+                    TK::PercentEqual
+                } else {
+                    TK::Percent
+                }
+            }
+            b'&' => {
+                if self.match_(b'=') {
+                    TK::AmperEqual
+                } else {
+                    TK::Amper
+                }
+            }
+            b'|' => {
+                if self.match_(b'=') {
+                    TK::PipeEqual
+                } else {
+                    TK::Pipe
+                }
+            }
+            b'^' => {
+                if self.match_(b'=') {
+                    TK::HatEqual
+                } else {
+                    TK::Hat
+                }
+            }
+            b'!' => {
+                if self.match_(b'=') {
+                    TK::BangEqual
+                } else {
+                    TK::Bang
+                }
+            }
+            b'=' => {
+                if self.match_(b'=') {
+                    TK::EqualEqual
+                } else {
+                    TK::Equal
+                }
+            }
+            b'<' => {
+                if self.match_(b'=') {
+                    TK::LessEqual
+                } else {
+                    TK::Less
+                }
+            }
+            b'>' => {
+                if self.match_(b'=') {
+                    TK::GreaterEqual
+                } else {
+                    TK::Greater
+                }
+            }
+            b'"' => return self.string(),
+            b'f' => {
+                if self.match_(b'"') {
+                    self.modes.push(ScannerMode::Fstring);
+                    TK::FstringStart
+                } else {
+                    return self.identifier();
+                }
+            }
+            c if c.is_ascii_digit() => return self.number(),
+            c if c.is_ascii_alphabetic() || c == b'_' => return self.identifier(),
+            _ => return self.error_token("Unexpected character."),
+        };
+
         self.make_token(token_kind)
     }
 
@@ -335,18 +495,19 @@ impl<'a> Scanner<'a> {
     /// Strings are sequences of any characters starting and ending
     /// with `"`. Strings can span multiple lines.
     fn string(&mut self) -> Token<'a> {
-        while self.peek().is_some_and(|c| c != &b'"') {
-            if self.peek() == Some(&b'\n') {
+        while let Some(&c) = self.peek() {
+            if c == b'"' {
+                self.advance(); // consume closing "
+                return self.make_token(TokenKind::String);
+            }
+            if c == b'\n' {
                 *self.line += 1;
             }
             self.advance();
         }
 
-        if !self.match_(b'"') {
-            return self.error_token("Unterminated string.");
-        }
-
-        self.make_token(TokenKind::String)
+        // Fell out of loop => EOF
+        self.error_token("Unterminated string.")
     }
 
     /// Numbers are any sequence of ascii digits with an optional decimal point in the middle.

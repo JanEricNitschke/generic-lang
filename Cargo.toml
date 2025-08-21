@@ -48,6 +48,9 @@ trace_execution_builtin = ["trace_execution_verbose"]
 log_gc                  = []
 stress_gc               = []
 debug_parser            = []
+debug_parser_builtin    = ["debug_parser"]
+debug_scanner           = []
+debug_scanner_builtin   = []
 
 [profile.release]
 lto           = true

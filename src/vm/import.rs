@@ -185,7 +185,7 @@ impl VM {
         if let Some(function) = self.compile(
             contents,
             name,
-            #[cfg(feature = "print_code")]
+            #[cfg(any(feature = "print_code", feature = "debug_scanner"))]
             false,
         ) {
             let function = self.heap.add_function(function);

@@ -185,7 +185,7 @@ pub(super) fn is_int_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Val
 /// Turn the value into a string.
 /// Fixed implementations for basic types, instances use the `__str__` method if present.
 pub(super) fn to_string_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
-    vm.value_to_string(args[0])
+    Ok(Value::String(vm.value_to_string(args[0])?))
 }
 
 /// Return the type of the value as a string.
@@ -246,8 +246,8 @@ pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Valu
     };
 
     // Use the shared value_to_string utility for consistent behavior
-    let string_value = vm.value_to_string(args[0])?;
-    print!("{}{end}", string_value.to_string(&vm.heap));
+    let string_id = vm.value_to_string(args[0])?;
+    print!("{}{end}", string_id.to_value(&vm.heap));
 
     Ok(Value::Nil)
 }
