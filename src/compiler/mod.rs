@@ -48,7 +48,7 @@ struct Local<'scanner> {
 /// - Method is a method on a class. It is special because the local slot 0 is always `this`.
 /// - Script is the top-level code in a file (main script or imported modules).
 ///   Does not allow `return` statements.
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 enum FunctionType {
     Function,
     Initializer,
@@ -356,11 +356,15 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         &mut self.nestable_state.last_mut().unwrap().upvalues
     }
 
-    fn current_chunk(&mut self) -> &mut Chunk {
+    fn current_chunk(&self) -> &Chunk {
+        &self.current_function().chunk
+    }
+
+    fn current_chunk_mut(&mut self) -> &mut Chunk {
         &mut self.current_function_mut().chunk
     }
 
-    fn current_chunk_len(&mut self) -> usize {
+    fn current_chunk_len(&self) -> usize {
         self.current_chunk().code().len()
     }
 
@@ -370,6 +374,77 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
 
     fn current_class_mut(&mut self) -> Option<&mut ClassState> {
         self.class_state.last_mut()
+    }
+}
+
+#[cfg(feature = "print_code")]
+impl Compiler<'_, '_> {
+    fn print_code_info(&self) {
+        if !self.had_error && (cfg!(feature = "print_code_builtin") || !self.is_builtin) {
+            println!("{}", self.current_chunk().to_string(self.heap));
+
+            #[cfg(feature = "print_code_verbose")]
+            self.print_verbose_compiler_info();
+        }
+    }
+
+    #[cfg(feature = "print_code_verbose")]
+    fn print_verbose_compiler_info(&self) {
+        println!("== VERBOSE DEBUG INFO ==");
+        println!("Function Type: {:?}", self.function_type());
+        println!("Scope Depth: {}", *self.scope_depth());
+
+        self.print_locals();
+        self.print_upvalues();
+
+        println!("== END VERBOSE DEBUG INFO ==");
+        println!();
+    }
+
+    #[cfg(feature = "print_code_verbose")]
+    fn print_locals(&self) {
+        let locals = self.locals();
+        if locals.is_empty() {
+            println!("No locals");
+            return;
+        }
+        println!("Locals ({} total):", locals.len());
+
+        let max_name_width = locals
+            .iter()
+            .map(|local| local.name.lexeme.len())
+            .max()
+            .unwrap_or(0);
+
+        for (i, local) in locals.iter().enumerate() {
+            println!(
+                "  [{:3}] '{:width_name$}' (depth: {:3}, mutability: {:10}, captured: {})",
+                i,
+                local.name.lexeme,
+                *local.depth,
+                format!("{:?}", local.mutability),
+                local.is_captured,
+                width_name = max_name_width,
+            );
+        }
+    }
+
+    #[cfg(feature = "print_code_verbose")]
+    fn print_upvalues(&self) {
+        let upvalues = &self.nestable_state.last().unwrap().upvalues;
+        if upvalues.is_empty() {
+            println!("No upvalues");
+            return;
+        }
+        println!("Upvalues ({} total):", upvalues.len());
+
+        // Calculate maximum widths for alignment
+        for (i, upvalue) in upvalues.iter().enumerate() {
+            println!(
+                "  [{:3}] index: {:3}, is_local: {}",
+                i, upvalue.index, upvalue.is_local,
+            );
+        }
     }
 }
 

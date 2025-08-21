@@ -14,12 +14,12 @@ impl<'scanner> Compiler<'scanner, '_> {
     where
         T: Into<u8>,
     {
-        self.current_chunk().write(byte, line);
+        self.current_chunk_mut().write(byte, line);
     }
 
     pub(super) fn emit_24bit_number(&mut self, number: usize) -> bool {
         let line = self.line();
-        self.current_chunk().write_24bit_number(number, line)
+        self.current_chunk_mut().write_24bit_number(number, line)
     }
 
     pub(super) fn emit_bytes<T1, T2>(&mut self, byte1: T1, byte2: T2, line: Line)
@@ -27,8 +27,8 @@ impl<'scanner> Compiler<'scanner, '_> {
         T1: Into<u8>,
         T2: Into<u8>,
     {
-        self.current_chunk().write(byte1, line);
-        self.current_chunk().write(byte2, line);
+        self.current_chunk_mut().write(byte1, line);
+        self.current_chunk_mut().write(byte2, line);
     }
 
     pub(super) fn emit_return(&mut self) {
@@ -48,9 +48,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         }
 
         #[cfg(feature = "print_code")]
-        if !self.had_error && (cfg!(feature = "print_code_builtin") || !self.is_builtin) {
-            println!("{}", self.current_chunk().clone().to_string(self.heap));
-        }
+        self.print_code_info();
     }
 
     pub(super) fn emit_constant<T>(&mut self, value: T)
@@ -75,7 +73,7 @@ impl<'scanner> Compiler<'scanner, '_> {
             Value::Number(Number::Float(0.0)) => self.emit_byte(OpCode::LoadZerof, line),
             Value::Number(Number::Float(1.0)) => self.emit_byte(OpCode::LoadOnef, line),
             _ => {
-                if !self.current_chunk().write_constant(value, line) {
+                if !self.current_chunk_mut().write_constant(value, line) {
                     self.error("Too many constants in one chunk.");
                 }
             }
@@ -99,9 +97,9 @@ impl<'scanner> Compiler<'scanner, '_> {
             self.error("Too much code to jump over.");
         }
 
-        self.current_chunk()
+        self.current_chunk_mut()
             .patch(CodeOffset(*jump_offset + 1), (jump_length >> 8) as u8);
-        self.current_chunk()
+        self.current_chunk_mut()
             .patch(CodeOffset(*jump_offset + 2), jump_length as u8);
     }
 

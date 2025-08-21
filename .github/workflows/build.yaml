@@ -45,12 +45,12 @@ jobs:
     - name: Run an example with MIRI
       run: |
         MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri run -- test/overloading/overloading_for_in.gen
-    - name: Check print_code
+    - name: Check print_code_verbose
       run: |
-        cargo run --features "print_code" test/number/equality.gen
+        cargo run --features "print_code_verbose" test/function_literals/literals_as_decorators.gen
     - name: Check trace_execution_verbose
       run: |
-        cargo run --features "trace_execution_verbose" test/number/equality.gen
+        cargo run --features "trace_execution_verbose" test/exceptions/exceptions_deep.gen
     - name: Check debug_parser
       run: |
         ! cargo run --features "debug_parser" test/function_literals/neither_block_nor_expression.gen

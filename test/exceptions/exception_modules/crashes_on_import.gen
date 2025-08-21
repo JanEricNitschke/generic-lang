@@ -1,0 +1,1 @@
+throw TypeError("Bad");  # expect runtime error: TypeError: Bad

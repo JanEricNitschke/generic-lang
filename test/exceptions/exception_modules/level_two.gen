@@ -1,0 +1,16 @@
+
+
+fun func1(a) {
+    if a == 0 {
+        throw ValueError("Got 0");
+    }
+    return a + 3;
+}
+
+fun func2(a) {
+    return func1(a) * 2;
+}
+
+fun some_func(a) {
+    return func2(a) - 3;
+}

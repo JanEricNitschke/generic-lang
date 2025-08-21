@@ -962,7 +962,7 @@ impl Compiler<'_, '_> {
         self.emit_byte(OpCode::Closure, line);
         let function_id = self.heap.add_function(nested_function);
         let value_id_byte =
-            u8::try_from(self.current_chunk().make_constant(function_id).0).unwrap();
+            u8::try_from(self.current_chunk_mut().make_constant(function_id).0).unwrap();
         self.emit_byte(value_id_byte, line);
 
         for upvalue in nested_upvalues {
