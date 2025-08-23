@@ -152,13 +152,12 @@ impl<'scanner> Compiler<'scanner, '_> {
                 TokenKind::Super => "super",
                 TokenKind::This => "this",
                 _ => unimplemented!(),
-            }
-            .as_bytes(),
+            },
             line: self.line(),
         }
     }
 
-    pub(super) fn synthetic_identifier_token(&self, identifier: &'scanner [u8]) -> Token<'scanner> {
+    pub(super) fn synthetic_identifier_token(&self, identifier: &'scanner str) -> Token<'scanner> {
         Token {
             kind: TokenKind::Identifier,
             lexeme: identifier,

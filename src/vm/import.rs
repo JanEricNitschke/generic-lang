@@ -35,7 +35,7 @@ impl VM {
         let name_id = self.heap.string_id(&name);
 
         // User defined generic module
-        if let Ok(contents) = std::fs::read(&file_path) {
+        if let Ok(contents) = std::fs::read_to_string(&file_path) {
             // Check for circular imports only for user-defined modules
             // Skip stdlib modules since they're under our control and can't have circular imports
             if self.modules.iter().any(|module| {
@@ -68,7 +68,8 @@ impl VM {
             // stdlib generic module from embedded directory - no circular import check needed
             // since we have full control of stdlib modules
             self.import_generic_module(
-                stdlib_file.contents(),
+                std::str::from_utf8(stdlib_file.contents())
+                    .unwrap_or_else(|_| panic!("Invalid UTF-8 in generic stdlib module: {name}")),
                 &name,
                 file_path,
                 names_to_import,
@@ -175,7 +176,7 @@ impl VM {
     /// Creates the module, adds it to the module list, and schedules the closure to be run.
     fn import_generic_module(
         &mut self,
-        contents: &[u8],
+        contents: &str,
         name: &str,
         file_path: PathBuf,
         names_to_import: Option<Vec<StringId>>,

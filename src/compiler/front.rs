@@ -262,7 +262,7 @@ impl Compiler<'_, '_> {
             let exception_var_name = "@exception";
             // Declare space for where the exception variable will be sitting on the stack.
             self.add_local(
-                self.synthetic_identifier_token(exception_var_name.as_bytes()),
+                self.synthetic_identifier_token(exception_var_name),
                 Mutability::Immutable,
             );
             self.define_variable(None, Mutability::Immutable);
@@ -669,7 +669,7 @@ impl Compiler<'_, '_> {
 
         // Do i even need this? This never actually needs a name.
         self.add_local(
-            self.synthetic_identifier_token(b"@iter"),
+            self.synthetic_identifier_token("@iter"),
             Mutability::Mutable,
         );
         self.define_variable(None, Mutability::Mutable);
@@ -837,7 +837,7 @@ impl Compiler<'_, '_> {
                     stem
                 } else {
                     self.error(&format!("Could not extract file stem from path: {path}"));
-                    b"unknown"
+                    "unknown"
                 };
                 self.add_local(
                     Token {
@@ -974,7 +974,7 @@ impl Compiler<'_, '_> {
         self.consume(TK::Identifier, "Expect method name.");
         let name_constant =
             self.identifier_constant(&self.previous.as_ref().unwrap().as_str().to_string());
-        let function_type = if self.previous.as_ref().unwrap().lexeme == b"__init__" {
+        let function_type = if self.previous.as_ref().unwrap().lexeme == "__init__" {
             FunctionType::Initializer
         } else {
             FunctionType::Method

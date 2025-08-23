@@ -102,8 +102,6 @@ pub struct VM {
     open_upvalues: VecDeque<UpvalueId>,
     // Could also keep a cache of the last module or its globals for performance
     modules: Vec<ModuleId>,
-    // This could also just be passed to the interperet function.
-    path: PathBuf,
     builtins: HashMap<StringId, Global>,
     stdlib: HashMap<StringId, ModuleContents>,
     pub(crate) handling_exception: bool,
@@ -113,7 +111,7 @@ pub struct VM {
 // Core functionality for running a script.
 impl VM {
     #[must_use]
-    pub(super) fn new(path: PathBuf) -> Self {
+    pub(super) fn new() -> Self {
         Self {
             heap: Heap::new(),
             stack: Vec::with_capacity(crate::config::STACK_MAX),
@@ -121,7 +119,6 @@ impl VM {
             exception_handlers: Vec::new(),
             open_upvalues: VecDeque::new(),
             modules: Vec::new(),
-            path,
             builtins: HashMap::default(),
             stdlib: HashMap::default(),
             handling_exception: false,
@@ -133,7 +130,7 @@ impl VM {
     ///
     /// Works by compiling the source to bytecode and then running it.
     /// Even the main script is compiled as a function.
-    pub(super) fn interpret(&mut self, source: &[u8]) -> InterpretResult {
+    pub(super) fn interpret(&mut self, source: &str, path: PathBuf) -> InterpretResult {
         // Load native functions and classes first
         natives::define(self);
 
@@ -153,7 +150,7 @@ impl VM {
 
             let closure = Closure::new(*function_id.as_function(), true, None, &self.heap);
 
-            self.add_closure_to_modules(&closure, self.path.clone(), None, None, false);
+            self.add_closure_to_modules(&closure, path, None, None, false);
 
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
@@ -173,7 +170,7 @@ impl VM {
 
     fn compile(
         &mut self,
-        source: &[u8],
+        source: &str,
         name: &str,
         #[cfg(any(feature = "print_code", feature = "debug_scanner"))] is_builtin: bool,
     ) -> Option<Function> {
@@ -207,13 +204,15 @@ impl VM {
             .for_each(|file| {
                 self.load_builtin_file_from_embedded(
                     file.path().to_string_lossy().as_ref(),
-                    file.contents(),
+                    std::str::from_utf8(file.contents()).unwrap_or_else(|_| {
+                        panic!("Invalid UTF-8 in builtin module: {}", file.path().display())
+                    }),
                 );
             });
     }
 
     /// Load and execute a single builtin file from embedded content in the current VM.
-    fn load_builtin_file_from_embedded(&mut self, file_name: &str, source: &[u8]) {
+    fn load_builtin_file_from_embedded(&mut self, file_name: &str, source: &str) {
         let name = format!("<builtin:{file_name}>");
 
         let function = self
