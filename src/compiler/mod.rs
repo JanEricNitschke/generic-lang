@@ -125,9 +125,9 @@ impl NestableState<'_> {
                     lexeme: if function_type == FunctionType::Method
                         || function_type == FunctionType::Initializer
                     {
-                        b"this"
+                        "this"
                     } else {
-                        &[]
+                        ""
                     },
                     line: Line(0),
                 },

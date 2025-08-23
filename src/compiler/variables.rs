@@ -171,8 +171,7 @@ impl<'scanner> Compiler<'scanner, '_> {
     where
         S: ToString,
     {
-        let name_string = name.to_string();
-        let name = name_string.as_bytes();
+        let name = &name.to_string();
         let retval = self
             .locals()
             .iter()

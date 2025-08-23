@@ -131,13 +131,13 @@ impl std::fmt::Display for TokenKind {
 #[derive(Clone, Debug)]
 pub struct Token<'a> {
     pub(super) kind: TokenKind,
-    pub(super) lexeme: &'a [u8],
+    pub(super) lexeme: &'a str,
     pub(super) line: Line,
 }
 
 impl<'a> Token<'a> {
     pub(super) fn as_str(&'a self) -> &'a str {
-        std::str::from_utf8(self.lexeme).unwrap()
+        self.lexeme
     }
 }
 
@@ -151,7 +151,7 @@ enum ScannerMode {
 /// Main struct for parsing the source characters to tokens.
 #[derive(Debug, Clone)]
 pub struct Scanner<'a> {
-    source: &'a [u8],
+    source: &'a str,
     start: usize,
     /// Always points at the next character to be consumed.
     current: usize,
@@ -163,10 +163,7 @@ pub struct Scanner<'a> {
 
 impl<'a> Scanner<'a> {
     #[must_use]
-    pub(super) fn new(
-        source: &'a [u8],
-        #[cfg(feature = "debug_scanner")] is_builtin: bool,
-    ) -> Self {
+    pub(super) fn new(source: &'a str, #[cfg(feature = "debug_scanner")] is_builtin: bool) -> Self {
         Self {
             source,
             start: 0,
@@ -208,7 +205,10 @@ impl<'a> Scanner<'a> {
             println!(
                 "Mode: {:<15} current char {:<10} at pos {}",
                 format!("{:?}", self.mode()),
-                format!("{:?}", self.source.get(self.current).map(|&b| b as char)),
+                format!(
+                    "{:?}",
+                    self.source.as_bytes().get(self.current).map(|&b| b as char)
+                ),
                 self.current,
             );
         }
@@ -459,11 +459,11 @@ impl<'a> Scanner<'a> {
 
     fn advance(&mut self) -> Option<&u8> {
         self.current += 1;
-        self.source.get(self.current - 1)
+        self.source.as_bytes().get(self.current - 1)
     }
 
     fn match_(&mut self, expected: u8) -> bool {
-        match self.source.get(self.current) {
+        match self.source.as_bytes().get(self.current) {
             Some(actual) if actual == &expected => {
                 self.current += 1;
                 true
@@ -549,12 +549,12 @@ impl<'a> Scanner<'a> {
 
     /// Parse identifiers using a `trie` strategy.
     fn identifier_type(&self) -> TokenKind {
-        match self.source[self.start] {
-            b'a' => match self.source.get(self.start + 1) {
+        match self.source.as_bytes()[self.start] {
+            b'a' => match self.source.as_bytes().get(self.start + 1) {
                 Some(b'n') => self.check_keyword(2, "d", TokenKind::And),
                 Some(b's') => match self.check_keyword(2, "", TokenKind::As) {
                     TokenKind::As => TokenKind::As,
-                    _ => match self.source.get(self.start + 2) {
+                    _ => match self.source.as_bytes().get(self.start + 2) {
                         Some(b'y') => self.check_keyword(3, "nc", TokenKind::Async),
                         _ => TokenKind::Identifier,
                     },
@@ -563,15 +563,15 @@ impl<'a> Scanner<'a> {
                 _ => TokenKind::Identifier,
             },
             b'b' => self.check_keyword(1, "reak", TokenKind::Break),
-            b'c' => match self.source.get(self.start + 1) {
-                Some(b'a') => match self.source.get(self.start + 2) {
+            b'c' => match self.source.as_bytes().get(self.start + 1) {
+                Some(b'a') => match self.source.as_bytes().get(self.start + 2) {
                     Some(b's') => self.check_keyword(3, "e", TokenKind::Case),
                     Some(b't') => self.check_keyword(3, "ch", TokenKind::Catch),
                     _ => TokenKind::Identifier,
                 },
                 Some(b'l') => self.check_keyword(2, "ass", TokenKind::Class),
-                Some(b'o') => match self.source.get(self.start + 2) {
-                    Some(b'n') => match self.source.get(self.start + 3) {
+                Some(b'o') => match self.source.as_bytes().get(self.start + 2) {
+                    Some(b'n') => match self.source.as_bytes().get(self.start + 3) {
                         Some(b's') => self.check_keyword(4, "t", TokenKind::Const),
                         Some(b't') => self.check_keyword(4, "inue", TokenKind::Continue),
                         _ => TokenKind::Identifier,
@@ -582,13 +582,13 @@ impl<'a> Scanner<'a> {
             },
             b'd' => self.check_keyword(1, "efault", TokenKind::Default),
             b'e' => self.check_keyword(1, "lse", TokenKind::Else),
-            b'f' => match self.source.get(self.start + 1) {
+            b'f' => match self.source.as_bytes().get(self.start + 1) {
                 Some(b'a') => self.check_keyword(2, "lse", TokenKind::False),
                 Some(b'i') => self.check_keyword(2, "nally", TokenKind::Finally),
-                Some(b'o') => match self.source.get(self.start + 2) {
+                Some(b'o') => match self.source.as_bytes().get(self.start + 2) {
                     Some(b'r') => match self.check_keyword(3, "", TokenKind::For) {
                         TokenKind::For => TokenKind::For,
-                        _ => match self.source.get(self.start + 3) {
+                        _ => match self.source.as_bytes().get(self.start + 3) {
                             Some(b'e') => self.check_keyword(4, "ach", TokenKind::ForEach),
                             _ => TokenKind::Identifier,
                         },
@@ -599,7 +599,7 @@ impl<'a> Scanner<'a> {
                 Some(b'u') => self.check_keyword(2, "n", TokenKind::Fun),
                 _ => TokenKind::Identifier,
             },
-            b'i' => match self.source.get(self.start + 1) {
+            b'i' => match self.source.as_bytes().get(self.start + 1) {
                 Some(b'f') => self.check_keyword(2, "", TokenKind::If),
                 Some(b'n') => self.check_keyword(2, "", TokenKind::In),
                 Some(b'm') => self.check_keyword(2, "port", TokenKind::Import),
@@ -608,27 +608,27 @@ impl<'a> Scanner<'a> {
             b'n' => self.check_keyword(1, "il", TokenKind::Nil),
             b'o' => self.check_keyword(1, "r", TokenKind::Or),
             b'r' => self.check_keyword(1, "eturn", TokenKind::Return),
-            b's' => match self.source.get(self.start + 1) {
+            b's' => match self.source.as_bytes().get(self.start + 1) {
                 Some(b'u') => self.check_keyword(2, "per", TokenKind::Super),
                 Some(b'w') => self.check_keyword(2, "itch", TokenKind::Switch),
                 _ => TokenKind::Identifier,
             },
             b'S' => self.check_keyword(1, "topIteration", TokenKind::StopIteration),
-            b't' => match self.source.get(self.start + 1) {
-                Some(b'h') => match self.source.get(self.start + 2) {
+            b't' => match self.source.as_bytes().get(self.start + 1) {
+                Some(b'h') => match self.source.as_bytes().get(self.start + 2) {
                     Some(b'i') => self.check_keyword(3, "s", TokenKind::This),
                     Some(b'r') => self.check_keyword(3, "ow", TokenKind::Throw),
                     _ => TokenKind::Identifier,
                 },
-                Some(b'r') => match self.source.get(self.start + 2) {
+                Some(b'r') => match self.source.as_bytes().get(self.start + 2) {
                     Some(b'u') => self.check_keyword(3, "e", TokenKind::True),
                     Some(b'y') => self.check_keyword(3, "", TokenKind::Try),
                     _ => TokenKind::Identifier,
                 },
                 _ => TokenKind::Identifier,
             },
-            b'u' => match self.source.get(self.start + 1) {
-                Some(b'n') => match self.source.get(self.start + 2) {
+            b'u' => match self.source.as_bytes().get(self.start + 1) {
+                Some(b'n') => match self.source.as_bytes().get(self.start + 2) {
                     Some(b'l') => self.check_keyword(3, "ess", TokenKind::Unless),
                     Some(b't') => self.check_keyword(3, "il", TokenKind::Until),
                     _ => TokenKind::Identifier,
@@ -645,9 +645,10 @@ impl<'a> Scanner<'a> {
     fn check_keyword(&self, start: usize, rest: &str, kind: TokenKind) -> TokenKind {
         let from = self.source.len().min(self.start + start);
         let to = self.source.len().min(from + rest.len());
-        if &self.source[from..to] == rest.as_bytes()
+        if &self.source.as_bytes()[from..to] == rest.as_bytes()
             && self
                 .source
+                .as_bytes()
                 .get(to)
                 .is_none_or(|c| !Self::is_identifier_char(c))
         {
@@ -658,11 +659,11 @@ impl<'a> Scanner<'a> {
     }
 
     fn peek(&self) -> Option<&u8> {
-        self.source.get(self.current)
+        self.source.as_bytes().get(self.current)
     }
 
     fn peek_next(&self) -> Option<&u8> {
-        self.source.get(self.current + 1)
+        self.source.as_bytes().get(self.current + 1)
     }
 
     fn make_token(&self, kind: TokenKind) -> Token<'a> {
@@ -678,7 +679,7 @@ impl<'a> Scanner<'a> {
     const fn error_token(&self, msg: &'static str) -> Token<'a> {
         Token {
             kind: TokenKind::Error,
-            lexeme: msg.as_bytes(),
+            lexeme: msg,
             line: self.line,
         }
     }

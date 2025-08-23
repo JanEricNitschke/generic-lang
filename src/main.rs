@@ -50,13 +50,13 @@ pub fn main() {
 ///
 /// If stdout can not be flushed or if `read_line` returns an error.
 pub fn repl() {
-    let mut vm = VM::new(PathBuf::from(""));
+    let mut vm = VM::new();
     loop {
         print!("> ");
         std::io::stdout().flush().unwrap();
         let mut line = String::new();
         if std::io::stdin().read_line(&mut line).unwrap() > 0 {
-            vm.interpret(line.as_bytes());
+            vm.interpret(&line, PathBuf::from(""));
         } else {
             println!();
             break;
@@ -70,14 +70,14 @@ pub fn repl() {
 /// The VM will compile and then interpret the code.
 /// Compile or Runtime errors will cause the program to exit with the appropriate error code.
 pub fn run_file(file: PathBuf) {
-    match std::fs::read(&file) {
+    match std::fs::read_to_string(&file) {
         Err(e) => {
             eprintln!("{e}");
             std::process::exit(74);
         }
         Ok(contents) => {
-            let mut vm = VM::new(file);
-            match vm.interpret(&contents) {
+            let mut vm = VM::new();
+            match vm.interpret(&contents, file) {
                 InterpretResult::CompileError => std::process::exit(65),
                 InterpretResult::RuntimeError => std::process::exit(70),
                 InterpretResult::Ok => {}
