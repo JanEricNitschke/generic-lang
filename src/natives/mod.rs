@@ -8,52 +8,61 @@ mod list;
 mod native_functions;
 mod range;
 mod set;
+mod string;
 mod tuple;
 mod value_constructors;
 
-use crate::vm::VM;
+use crate::{
+    natives::string::{
+        string_bytes_native, string_chars_native, string_clusters_native, string_contains_native,
+        string_find_native, string_get_byte_native, string_get_char_native,
+        string_get_cluster_native, string_replace_native,
+    },
+    vm::VM,
+};
 
-use crate::natives::list::{
+use list::{
     list_add_native, list_append_native, list_bool_native, list_contains_native, list_get_native,
     list_init_native, list_insert_native, list_iter_native, list_iter_next_native, list_len_native,
     list_pop_native, list_set_native,
 };
 
-use crate::natives::range::{
+use range::{
     range_bool_native, range_contains_native, range_init_native, range_iter_native,
     range_iter_next_native, range_len_native,
 };
 
-use crate::natives::set::{
+use set::{
     set_bool_native, set_contains_native, set_init_native, set_insert_native, set_len_native,
     set_remove_native,
 };
 
-use crate::natives::tuple::{
+use tuple::{
     tuple_add_native, tuple_bool_native, tuple_contains_native, tuple_get_native,
     tuple_init_native, tuple_iter_native, tuple_iter_next_native, tuple_len_native,
 };
 
-use crate::natives::dict::{
+use dict::{
     dict_bool_native, dict_contains_native, dict_get_native, dict_init_native, dict_len_native,
     dict_set_native,
 };
 
-use crate::natives::exception::{
+use exception::{
     exception_init_native, exception_message_native, exception_stack_trace_native,
     exception_str_native,
 };
 
-use crate::natives::native_functions::{
+use native_functions::{
     assert_native, clock_native, delattr_native, getattr_native, hasattr_native, input_native,
     is_int_native, isinstance_native, issubclass_native, len_native, print_native, rng_native,
     setattr_native, sleep_native, to_float_native, to_int_native, to_string_native, type_native,
 };
 
-use crate::natives::value_constructors::{
+use value_constructors::{
     bool_init_native, float_init_native, integer_init_native, rational_init_native,
-    string_init_native,
 };
+
+use string::string_init_native;
 
 /// Static arity arrays for common variadic argument patterns.
 /// Arity for "0 or more arguments" (up to 255 for maximum u8 range)
@@ -168,6 +177,15 @@ pub fn define(vm: &mut VM) {
 
     vm.define_native_class(&"String", true);
     vm.define_native_method(&"String", &"__init__", &[1], string_init_native);
+    vm.define_native_method(&"String", &"replace", &[2], string_replace_native);
+    vm.define_native_method(&"String", &"find", &[1], string_find_native);
+    vm.define_native_method(&"String", &"contains", &[1], string_contains_native);
+    vm.define_native_method(&"String", &"bytes", &[0], string_bytes_native);
+    vm.define_native_method(&"String", &"chars", &[0], string_chars_native);
+    vm.define_native_method(&"String", &"clusters", &[0], string_clusters_native);
+    vm.define_native_method(&"String", &"get_byte", &[1], string_get_byte_native);
+    vm.define_native_method(&"String", &"get_char", &[1], string_get_char_native);
+    vm.define_native_method(&"String", &"get_cluster", &[1], string_get_cluster_native);
 
     vm.define_native_class(&"Integer", true);
     vm.define_native_method(&"Integer", &"__init__", &[1], integer_init_native);

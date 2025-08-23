@@ -116,9 +116,6 @@ impl VM {
         );
         for (name, arity, fun) in stdlib_functions {
             let name_id = self.heap.string_id(name);
-            self.heap
-                .strings_by_name
-                .insert((*name).to_string(), name_id);
             let value = self.heap.add_native_function(NativeFunction {
                 name: name_id,
                 arity,

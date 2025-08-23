@@ -21,6 +21,8 @@ pub use natives::{
 };
 pub use number::{GenericInt, GenericRational, Number};
 
+use unicode_normalization::UnicodeNormalization;
+
 /// Central enum for the types of runtime values that exist in generic.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Value {
@@ -53,7 +55,9 @@ impl Value {
             (Self::Bool(a), Self::Bool(b)) => a == b,
             (Self::Nil, Self::Nil) | (Self::StopIteration, Self::StopIteration) => true,
             (Self::Number(a), Self::Number(b)) => a.eq(b, heap),
-            (Self::String(a), Self::String(b)) => a == b || a.to_value(heap) == b.to_value(heap),
+            (Self::String(a), Self::String(b)) => {
+                a == b || a.to_value(heap).nfc().eq(b.to_value(heap).nfc())
+            }
             (Self::Function(a), Self::Function(b)) => {
                 a == b || a.to_value(heap) == b.to_value(heap)
             }

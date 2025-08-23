@@ -1,0 +1,26 @@
+# Normalization in equality.
+# Precomposed Å (single code point)
+var s1 = "ÅBC";
+# Decomposed Å (A + combining ring above)
+var s2 = "ÅBC";
+
+print(s1 == s2);  # expect: true
+print(s2 == s1);  # expect: true
+
+# Contains
+print(s1.contains("Å"));  # expect: true
+print(s1.contains("Å"));  # expect: true
+print(s2.contains("Å"));  # expect: true
+print(s2.contains("Å"));  # expect: true
+
+# Find
+print(s1.find("Å") == 0);  # expect: true
+print(s1.find("Å") == 0);  # expect: true
+print(s2.find("Å") == 0);  # expect: true
+print(s2.find("Å") == 0);  # expect: true
+
+# Replace
+var s3 = s1.replace("Å", "X");
+print(s3 == "XBC");  # expect: true
+var s4 = s2.replace("Å", "Y");
+print(s4 == "YBC");  # expect: true

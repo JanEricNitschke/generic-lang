@@ -1,16 +1,17 @@
 #[cfg(feature = "trace_execution")]
 use crate::chunk::InstructionDisassembler;
+use crate::heap::ClassId;
 use crate::value::NativeClass;
+use crate::vm::arithmetics::IntoResultValue;
 use crate::vm::errors::{ExceptionRaisedKind, Return, RuntimeErrorKind, VmError, VmErrorKind};
 use crate::{
     chunk::OpCode,
     heap::{NativeFunctionId, NativeMethodId, StringId, UpvalueId},
     types::{EqualityMode, JumpCondition, NumberEncoding, RangeType},
-    value::{Class, Closure, Instance, Number, Upvalue, Value},
+    value::{Class, Closure, Instance, Number, Upvalue, Value, get_native_class_id},
 };
 
 use super::{Global, VM};
-use crate::vm::arithmetics::IntoResultValue;
 
 // Execute a function (rust side)
 impl VM {
@@ -83,7 +84,7 @@ impl VM {
                 // Method of the class. Attributes on the instance overwrite methods on the class.
                 else {
                     self.invoke_from_class(
-                        instance.to_value(&self.heap).class.into(),
+                        instance.to_value(&self.heap).class,
                         method_name,
                         arg_count,
                     )
@@ -103,23 +104,24 @@ impl VM {
                     self.throw_value_error(&message)
                 }
             }
-            _ => self.throw_type_error("Only instances have methods."),
+            _ => {
+                if let Some(proxy_class) = self.get_proxy_class(receiver) {
+                    self.invoke_from_class(proxy_class, method_name, arg_count)
+                } else {
+                    self.throw_type_error("Only instances have methods.")
+                }
+            }
         }
     }
 
     /// Invoke a method on an instance directly from its class.
     pub(super) fn invoke_from_class(
         &mut self,
-        class: Value,
+        class: ClassId,
         method_name: StringId,
         arg_count: u8,
     ) -> VmError {
-        let Some(method) = class
-            .as_class()
-            .to_value(&self.heap)
-            .methods
-            .get(&method_name)
-        else {
+        let Some(method) = class.to_value(&self.heap).methods.get(&method_name) else {
             let message = format!("Undefined property '{}'.", self.heap.strings[method_name]);
             return self.throw_attribute_error(&message);
         };
@@ -177,7 +179,7 @@ impl VM {
                     },
                 );
 
-                let mut instance_id = self.heap.add_instance(Instance::new(callee, backing));
+                let mut instance_id = self.heap.add_instance(Instance::new(class, backing));
                 let stack_index = self.stack.len() - usize::from(arg_count) - 1;
                 self.stack[stack_index] = instance_id;
                 if let Some(initializer) = maybe_initializer {
@@ -507,5 +509,14 @@ impl VM {
         self.stack.truncate(frame.stack_base);
         self.stack_push(result.expect("Stack underflow in OP_RETURN"));
         Ok(Return::Function)
+    }
+}
+
+impl VM {
+    fn get_proxy_class(&self, value: Value) -> Option<ClassId> {
+        match value {
+            Value::String(_) => Some(get_native_class_id(&self.heap, "String")),
+            _ => None,
+        }
     }
 }

@@ -71,7 +71,6 @@ pub fn get_native_class_id(heap: &Heap, native_class: &str) -> ClassId {
         .native_classes
         .get(native_class)
         .expect("Internal error: Exception class should be defined in native_classes")
-        .as_class()
 }
 
 /// Check if a class is a subclass of Exception
@@ -106,10 +105,9 @@ pub struct Instance {
 
 impl Instance {
     #[must_use]
-    pub(crate) fn new(class: Value, backing: Option<NativeClass>) -> Self {
-        let id = *class.as_class();
+    pub(crate) fn new(class: ClassId, backing: Option<NativeClass>) -> Self {
         Self {
-            class: id,
+            class,
             fields: HashMap::default(),
             backing,
         }

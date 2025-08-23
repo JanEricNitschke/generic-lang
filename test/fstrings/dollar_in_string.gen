@@ -1,2 +1,2 @@
 var name = "Bob";
-print(f"Hi ${name}, i got Euro or $."); # expect: Hi Bob, i got Euro or $.
+print(f"Hi ${name}, i got € or $." == "Hi Bob, i got € or $."); # expect: true
