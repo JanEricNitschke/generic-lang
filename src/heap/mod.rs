@@ -21,7 +21,6 @@ mod arenas;
 use num_bigint::BigInt;
 use paste::paste;
 use rustc_hash::FxHashMap as HashMap;
-use std::collections::hash_map::Entry;
 use std::fmt::Debug;
 
 use crate::heap::arenas::Arena;
@@ -175,7 +174,7 @@ macro_rules! gray_value {
 pub struct Heap {
     builtin_constants: Option<BuiltinConstants>,
     pub(super) strings_by_name: HashMap<String, StringId>,
-    pub(super) native_classes: HashMap<String, Value>,
+    pub(super) native_classes: HashMap<String, ClassId>,
 
     pub(super) strings: Arena<StringId, String>,
     big_ints: Arena<BigIntId, BigInt>,
@@ -236,12 +235,15 @@ impl Heap {
     where
         S: ToString,
     {
-        if let Entry::Occupied(entry) = self.strings_by_name.entry(s.to_string()) {
-            return *entry.get();
+        let key = s.to_string();
+
+        if let Some(&id) = self.strings_by_name.get(&key) {
+            return id;
         }
-        let string_val = self.add_string(s.to_string());
+
+        let string_val = self.add_string(key.clone());
         let string_id = string_val.as_string();
-        self.strings_by_name.insert(s.to_string(), *string_id);
+        self.strings_by_name.insert(key, *string_id);
         *string_id
     }
 
@@ -278,8 +280,8 @@ impl Heap {
         self.strings.gray.push(self.builtin_constants().init_string);
         self.strings.gray.push(self.builtin_constants().script_name);
 
-        for value in self.native_classes.values() {
-            gray_value!(self, value);
+        for class in self.native_classes.values() {
+            self.classes.gray.push(*class);
         }
     }
 

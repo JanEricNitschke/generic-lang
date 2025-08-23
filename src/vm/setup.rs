@@ -52,7 +52,6 @@ impl VM {
         fun: NativeFunctionImpl,
     ) {
         let name_id = self.heap.string_id(name);
-        self.heap.strings_by_name.insert(name.to_string(), name_id);
         let value = self.heap.add_native_function(NativeFunction {
             name: name_id,
             arity,
@@ -70,7 +69,6 @@ impl VM {
     /// Define a native class by adding it to the heap and optionally the VM builtins.
     pub(crate) fn define_native_class<T: ToString>(&mut self, name: &T, add_to_builtins: bool) {
         let name_id = self.heap.string_id(name);
-        self.heap.strings_by_name.insert(name.to_string(), name_id);
         let value = self.heap.add_class(Class::new(name_id, true));
         if add_to_builtins {
             self.builtins.insert(
@@ -83,7 +81,7 @@ impl VM {
         }
         self.heap
             .native_classes
-            .insert(name_id.to_value(&self.heap).clone(), value);
+            .insert(name_id.to_value(&self.heap).clone(), *value.as_class());
     }
 
     /// Define a native method by adding it to the heap and the class.
@@ -95,11 +93,7 @@ impl VM {
         fun: NativeMethodImpl,
     ) {
         let class_id = self.heap.string_id(class);
-        self.heap
-            .strings_by_name
-            .insert(class.to_string(), class_id);
         let name_id = self.heap.string_id(name);
-        self.heap.strings_by_name.insert(name.to_string(), name_id);
         let value_id = self.heap.add_native_method(NativeMethod {
             class: class_id,
             name: name_id,
@@ -111,7 +105,6 @@ impl VM {
             .native_classes
             .get_mut(&class_id.to_value(&self.heap).clone())
             .unwrap()
-            .as_class_mut()
             .clone()
             .to_value_mut(&mut self.heap);
         target_class.methods.insert(name_id, value_id);
@@ -127,7 +120,6 @@ impl VM {
         functions: Vec<(&'static str, &'static [u8], NativeFunctionImpl)>,
     ) {
         let name_id = self.heap.string_id(name);
-        self.heap.strings_by_name.insert(name.to_string(), name_id);
         self.stdlib.insert(name_id, functions);
     }
 }

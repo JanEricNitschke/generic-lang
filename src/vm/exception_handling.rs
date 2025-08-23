@@ -1,4 +1,4 @@
-use crate::heap::StringId;
+use crate::heap::{ClassId, StringId};
 use crate::value::{
     Exception, Instance, NativeClass, Value, is_exception_subclass, is_subclass_of,
 };
@@ -128,18 +128,21 @@ impl VM {
     /// Panics if the exception type is not found instead of falling back to a general exception.
     pub(super) fn create_exception(&mut self, exception_type: &str, message: &str) -> Value {
         // First try to get from native classes
-        let exception_class = if let Some(class) = self.heap.native_classes.get(exception_type) {
-            *class
-        } else {
-            // Try to get from builtins
-            let exception_type_id = self.heap.string_id(&exception_type.to_string());
-            if let Some(builtin) = self.builtins.get(&exception_type_id) {
-                builtin.value
+        let exception_class =
+            if let Some(class) = self.heap.native_classes.get(exception_type) {
+                *class
             } else {
-                // Panic instead of falling back to Exception
-                panic!("Exception type '{exception_type}' not found in native classes or builtins");
-            }
-        };
+                // Try to get from builtins
+                let exception_type_id = self.heap.string_id(&exception_type.to_string());
+                *self.builtins
+                .get(&exception_type_id)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Exception type '{exception_type}' not found in native classes or builtins"
+                    )
+                })
+                .value.as_class()
+            };
 
         let message_id = self.heap.string_id(&message);
         self.create_exception_with_class(exception_class, Some(message_id))
@@ -150,7 +153,7 @@ impl VM {
     /// This utility function handles the common logic for creating exceptions with stack traces.
     pub(super) fn create_exception_with_class(
         &mut self,
-        exception_class: Value,
+        exception_class: ClassId,
         message_id: Option<StringId>,
     ) -> Value {
         let exception_data = self.create_exception_data(message_id);

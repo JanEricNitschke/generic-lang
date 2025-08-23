@@ -1,0 +1,14 @@
+var s = "A😃B🎉C";
+var chars = s.chars();
+print(chars == ["A", "😃", "B", "🎉", "C"]);  # expect: true
+print(s.get_char(0) == "A");  # expect: true
+print(s.get_char(1) == "😃");  # expect: true
+print(s.get_char(4) == "C");  # expect: true
+
+try {
+    s.get_char(5);
+} catch IndexError {
+    print("Caught");  # expect: Caught
+} else {
+    print("Wrong");
+}

@@ -425,7 +425,7 @@ macro_rules! run_instruction {
                     .stack
                     .pop()
                     .expect("Stack underflow in OP_SUPER_INVOKE");
-                $self.invoke_from_class(superclass, method_name, arg_count)
+                $self.invoke_from_class(*superclass.as_class(), method_name, arg_count)
             }
             OpCode::BuildList => Ok($self.build_list()),
             OpCode::BuildTuple => Ok($self.build_tuple()),

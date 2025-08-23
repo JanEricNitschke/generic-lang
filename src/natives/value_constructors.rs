@@ -16,15 +16,6 @@ pub(super) fn bool_init_native(
     Ok(Value::Bool(!is_falsey))
 }
 
-/// String.__init__(value) - Convert any value to string using `to_string_native` logic
-pub(super) fn string_init_native(
-    vm: &mut VM,
-    _receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmError<Value> {
-    Ok(Value::String(vm.value_to_string(args[0])?))
-}
-
 /// Integer.__init__(value) - Convert string or number to integer
 pub(super) fn integer_init_native(
     vm: &mut VM,

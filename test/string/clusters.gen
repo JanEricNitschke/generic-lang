@@ -1,0 +1,20 @@
+# ------------------ Grapheme Clusters with Emoji ------------------
+
+# Construct string with complex graphemes: 👨‍👩‍👧 family emoji (ZWJ sequence)
+var s = "A👨‍👩‍👧B😃";
+var clusters = s.clusters();
+print(clusters[0] == "A");  # expect: true
+print(clusters[1] == "👨‍👩‍👧");  # expect: true
+print(clusters[2] == "B");  # expect: true
+print(clusters[3] == "😃");  # expect: true
+
+print(s.get_cluster(1) == "👨‍👩‍👧");  # expect: true
+print(s.get_cluster(3) == "😃"); # expect: true
+
+try {
+    s.get_cluster(5);
+} catch IndexError {
+    print("Caught");  # expect: Caught
+} else {
+    print("Wrong");
+}
