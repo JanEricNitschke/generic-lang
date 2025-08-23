@@ -2,7 +2,7 @@
 
 use crate::{
     value::{GenericInt, Number, Value, get_native_class_id, is_subclass_of},
-    vm::{VM, errors::VmError},
+    vm::{VM, errors::VmResult},
 };
 use rand::Rng;
 use std::io;
@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Get the time since the `UNIX_EPOCH` in seconds.
 /// Useful for timing durations by calling this twice and subtracting the results.
-pub(super) fn clock_native(_vm: &mut VM, _args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn clock_native(_vm: &mut VM, _args: &mut [&mut Value]) -> VmResult<Value> {
     Ok(Value::Number(
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -23,7 +23,7 @@ pub(super) fn clock_native(_vm: &mut VM, _args: &mut [&mut Value]) -> VmError<Va
 }
 
 /// Sleep for a non-negative number of seconds.
-pub(super) fn sleep_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn sleep_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     match &args[0] {
         Value::Number(Number::Integer(i)) if i.ge_i64(0, &vm.heap) => {
             match i.try_to_u64(&vm.heap) {
@@ -51,7 +51,7 @@ pub(super) fn sleep_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Valu
 }
 
 /// Error if the argument is falsey.
-pub(super) fn assert_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn assert_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     let value = &args[0];
     if vm.is_falsey(**value)? {
         Err(vm
@@ -67,7 +67,7 @@ pub(super) fn assert_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Val
 
 // Could also make a zero arg version of this if a prompt is not desired..
 /// Read input from the command line after providing a prompt.
-pub(super) fn input_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn input_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     match &args[0] {
         Value::String(prompt) => {
             println!("{}", &vm.heap.strings[*prompt]);
@@ -94,7 +94,7 @@ pub(super) fn input_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Valu
 /// Turn a value into a float.
 /// Works on numbers, bools or sensible strings.
 #[allow(clippy::option_if_let_else)]
-pub(super) fn to_float_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn to_float_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     match &args[0] {
         Value::String(string_id) => {
             let string = &vm.heap.strings[*string_id];
@@ -122,7 +122,7 @@ pub(super) fn to_float_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<V
 /// Convert a value into an integer.
 /// Works on numbers, bools or sensible strings.
 #[allow(clippy::option_if_let_else)]
-pub(super) fn to_int_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn to_int_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     match &args[0] {
         Value::String(string_id) => {
             let string = &vm.heap.strings[*string_id];
@@ -167,7 +167,7 @@ pub(super) fn to_int_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Val
 
 /// Check if the provided value can be turned into an integer.
 #[allow(clippy::option_if_let_else)]
-pub(super) fn is_int_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn is_int_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     match &args[0] {
         Value::String(string_id) => {
             let string = &vm.heap.strings[*string_id];
@@ -184,12 +184,12 @@ pub(super) fn is_int_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Val
 
 /// Turn the value into a string.
 /// Fixed implementations for basic types, instances use the `__str__` method if present.
-pub(super) fn to_string_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn to_string_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     Ok(Value::String(vm.value_to_string(args[0])?))
 }
 
 /// Return the type of the value as a string.
-pub(super) fn type_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn type_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     let string = match &args[0] {
         Value::Bool(_) => Value::String(vm.heap.string_id(&"<type bool>")),
         Value::BoundMethod(_) => Value::String(vm.heap.string_id(&"<type bound method>")),
@@ -228,7 +228,7 @@ pub(super) fn type_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value
 ///
 /// Optionally supply a string to be printed at the end of the value.
 /// Defaults to `\n`.
-pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     let end = if args.len() == 2 {
         match &args[1] {
             Value::String(string_id) => &string_id.to_value(&vm.heap).clone(),
@@ -254,7 +254,7 @@ pub(super) fn print_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Valu
 
 /// Return a random integer between the two arguments.
 /// Lower value is inclusive, upper value is exclusive.
-pub(super) fn rng_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn rng_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     match (&args[0], &args[1]) {
         (Value::Number(Number::Integer(min)), Value::Number(Number::Integer(max))) => {
             match (min, max) {
@@ -279,7 +279,7 @@ pub(super) fn rng_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value>
 }
 
 /// Get an attribute from a value by name.
-pub(super) fn getattr_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn getattr_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     match (&args[0], &args[1]) {
         (Value::Instance(instance), Value::String(string_id)) => {
             let field = &vm.heap.strings[*string_id];
@@ -307,7 +307,7 @@ pub(super) fn getattr_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Va
 }
 
 /// Set an attribute of a value by name.
-pub(super) fn setattr_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn setattr_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     let field = if let &mut Value::String(ref string_id) = args[1] {
         vm.heap.strings[*string_id].clone()
     } else {
@@ -338,7 +338,7 @@ pub(super) fn setattr_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Va
 
 /// Check if the given attribute exists as a property on the instance.
 /// Does NOT check for methods.
-pub(super) fn hasattr_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn hasattr_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     match (&args[0], &args[1]) {
         (Value::Instance(instance), Value::String(string_id)) => Ok(Value::Bool(
             instance
@@ -364,7 +364,7 @@ pub(super) fn hasattr_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Va
 
 /// Delete an attribute on an instance by name.
 /// Does NOT work on methods. Errors if the attribute does not exist in the first place.
-pub(super) fn delattr_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn delattr_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     if let &mut Value::String(ref string_id) = args[1] {
         let field = &vm.heap.strings[*string_id].clone();
         if let Value::Instance(instance) = args[0] {
@@ -395,7 +395,7 @@ pub(super) fn delattr_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Va
 
 /// Return the length of a list.
 #[allow(clippy::cast_possible_wrap)]
-pub(super) fn len_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn len_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     let len_method_id = vm.heap.string_id(&"__len__");
 
     if let Value::Instance(instance) = args[0]
@@ -419,7 +419,7 @@ pub(super) fn len_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value>
 
 /// Check if value is an instance of the given class or any of its subclasses.
 /// Similar to Python's isinstance(value, classinfo).
-pub(super) fn isinstance_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn isinstance_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     let value = *args[0];
     let class_value = *args[1];
 
@@ -474,7 +474,7 @@ pub(super) fn isinstance_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError
 
 /// Check if sub is the same class as super or is a subclass of it.
 /// Similar to Python's issubclass(sub, super).
-pub(super) fn issubclass_native(vm: &mut VM, args: &mut [&mut Value]) -> VmError<Value> {
+pub(super) fn issubclass_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     let sub_value = *args[0];
     let super_value = *args[1];
 

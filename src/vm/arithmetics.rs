@@ -1,7 +1,7 @@
 use super::VM;
 use crate::{
     value::{GenericRational, Number, Value},
-    vm::errors::VmError,
+    vm::errors::VmResult,
 };
 
 pub(super) trait IntoResultValue {
@@ -83,7 +83,7 @@ macro_rules! binary_op {
 }
 
 impl VM {
-    pub(super) fn add(&mut self) -> VmError {
+    pub(super) fn add(&mut self) -> VmResult {
         let slice_start = self.stack.len() - 2;
         let gen_method_id = self.heap.string_id(&"__add__");
         match &self.stack[slice_start..] {
@@ -129,7 +129,7 @@ impl VM {
     /// # Panics
     ///
     /// If the stack is empty. This is an internal error and should never happen.
-    pub(super) fn negate(&mut self) -> VmError {
+    pub(super) fn negate(&mut self) -> VmResult {
         let value_id = *self.peek(0).expect("stack underflow in OP_NEGATE");
         let value = &value_id;
         if let Value::Number(n) = value {
@@ -142,7 +142,7 @@ impl VM {
         Ok(())
     }
 
-    pub(crate) fn build_rational(&mut self) -> VmError {
+    pub(crate) fn build_rational(&mut self) -> VmResult {
         let denominator = self
             .stack
             .pop()

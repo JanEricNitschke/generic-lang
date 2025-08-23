@@ -12,7 +12,7 @@ use hashbrown::hash_table::Entry;
 
 use super::Value;
 use crate::heap::InstanceId;
-use crate::vm::errors::VmError;
+use crate::vm::errors::VmResult;
 use derivative::Derivative;
 
 // Values related to natives
@@ -79,8 +79,8 @@ impl std::fmt::Display for NativeMethod {
     }
 }
 
-pub type NativeFunctionImpl = fn(&mut VM, &mut [&mut Value]) -> VmError<Value>;
-pub type NativeMethodImpl = fn(&mut VM, &mut Value, &mut [&mut Value]) -> VmError<Value>;
+pub type NativeFunctionImpl = fn(&mut VM, &mut [&mut Value]) -> VmResult<Value>;
+pub type NativeMethodImpl = fn(&mut VM, &mut Value, &mut [&mut Value]) -> VmResult<Value>;
 pub type ModuleContents = Vec<(&'static str, &'static [u8], NativeFunctionImpl)>;
 
 // Actual Natives
@@ -289,7 +289,7 @@ impl Set {
         )
     }
 
-    pub(crate) fn add(&mut self, item: Value, vm: &mut VM) -> VmError {
+    pub(crate) fn add(&mut self, item: Value, vm: &mut VM) -> VmResult {
         let hash = vm.compute_hash(item)?;
         let entry = self.items.entry(
             hash,
@@ -310,7 +310,7 @@ impl Set {
         Ok(())
     }
 
-    pub(crate) fn remove(&mut self, item: Value, vm: &mut VM) -> VmError<bool> {
+    pub(crate) fn remove(&mut self, item: Value, vm: &mut VM) -> VmResult<bool> {
         let hash = vm.compute_hash(item)?;
         let found = self
             .items
@@ -332,7 +332,7 @@ impl Set {
         Ok(found)
     }
 
-    pub(crate) fn contains(&self, item: Value, vm: &mut VM) -> VmError<bool> {
+    pub(crate) fn contains(&self, item: Value, vm: &mut VM) -> VmResult<bool> {
         let hash = vm.compute_hash(item)?;
         let found = self
             .items
@@ -400,7 +400,7 @@ impl Dict {
         )
     }
 
-    pub(crate) fn add(&mut self, key: Value, value: Value, vm: &mut VM) -> VmError {
+    pub(crate) fn add(&mut self, key: Value, value: Value, vm: &mut VM) -> VmResult {
         let hash = vm.compute_hash(key)?;
         let entry = self.items.entry(
             hash,
@@ -426,7 +426,7 @@ impl Dict {
         Ok(())
     }
 
-    pub(crate) fn get(&self, key: Value, vm: &mut VM) -> VmError<Option<&Value>> {
+    pub(crate) fn get(&self, key: Value, vm: &mut VM) -> VmResult<Option<&Value>> {
         let hash = vm.compute_hash(key)?;
 
         let result = self
@@ -446,7 +446,7 @@ impl Dict {
         Ok(result)
     }
 
-    pub(crate) fn contains(&self, key: Value, vm: &mut VM) -> VmError<bool> {
+    pub(crate) fn contains(&self, key: Value, vm: &mut VM) -> VmResult<bool> {
         let hash = vm.compute_hash(key)?;
         let result = self
             .items
