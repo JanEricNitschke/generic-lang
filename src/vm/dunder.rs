@@ -2,7 +2,7 @@ use super::VM;
 use crate::{
     heap::StringId,
     value::{GenericInt, Number, Value},
-    vm::errors::VmError,
+    vm::errors::VmResult,
 };
 use num_bigint::BigInt;
 use rustc_hash::FxHasher;
@@ -11,7 +11,7 @@ use std::hash::{Hash, Hasher};
 impl VM {
     /// Convert a value to string, handling instances with __str__ methods.
     /// This function is shared between value constructors, `to_string_native`, and `print_native`.
-    pub fn value_to_string(&mut self, value: &Value) -> VmError<StringId> {
+    pub fn value_to_string(&mut self, value: &Value) -> VmResult<StringId> {
         let str_id = self.heap.string_id(&"__str__");
 
         if let Value::Instance(instance) = value
@@ -43,7 +43,7 @@ impl VM {
         }
     }
 
-    pub(crate) fn is_falsey(&mut self, value: Value) -> VmError<bool> {
+    pub(crate) fn is_falsey(&mut self, value: Value) -> VmResult<bool> {
         let bool_id = self.heap.string_id(&"__bool__");
         if let Value::Instance(instance) = value
             && let Some(bool_method) = instance
@@ -78,7 +78,7 @@ impl VM {
         }
     }
 
-    pub(crate) fn compute_hash(&mut self, value: Value) -> VmError<u64> {
+    pub(crate) fn compute_hash(&mut self, value: Value) -> VmResult<u64> {
         let mut state = FxHasher::default();
 
         match value {
@@ -195,7 +195,7 @@ impl VM {
 
     /// Compare two values for equality, with support for custom __eq__ methods.
     /// Optimized for use by hash collections - only pushes to stack when needed.
-    pub(crate) fn compare_values(&mut self, left: Value, right: Value) -> VmError<bool> {
+    pub(crate) fn compare_values(&mut self, left: Value, right: Value) -> VmResult<bool> {
         let eq_id = self.heap.string_id(&"__eq__");
 
         // Check if left value is an instance with __eq__ method

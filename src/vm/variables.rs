@@ -1,4 +1,4 @@
-use super::{Global, VM, errors::VmError};
+use super::{Global, VM, errors::VmResult};
 use crate::{chunk::OpCode, types::NumberEncoding, value::Value};
 
 impl VM {
@@ -20,7 +20,7 @@ impl VM {
         self.stack_push(*self.stack_get(slot));
     }
 
-    pub(super) fn get_global(&mut self, op: OpCode) -> VmError {
+    pub(super) fn get_global(&mut self, op: OpCode) -> VmResult {
         let constant_index = self.read_constant_index(if op == OpCode::GetGlobalLong {
             NumberEncoding::Long
         } else {
@@ -53,7 +53,7 @@ impl VM {
         Ok(())
     }
 
-    pub(super) fn set_global(&mut self, op: OpCode) -> VmError {
+    pub(super) fn set_global(&mut self, op: OpCode) -> VmResult {
         let constant_index = self.read_constant_index(if op == OpCode::SetGlobalLong {
             NumberEncoding::Long
         } else {

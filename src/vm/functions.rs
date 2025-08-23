@@ -3,7 +3,7 @@ use crate::chunk::InstructionDisassembler;
 use crate::heap::ClassId;
 use crate::value::NativeClass;
 use crate::vm::arithmetics::IntoResultValue;
-use crate::vm::errors::{ExceptionRaisedKind, Return, RuntimeErrorKind, VmError, VmErrorKind};
+use crate::vm::errors::{ExceptionRaisedKind, Return, RuntimeErrorKind, VmErrorKind, VmResult};
 use crate::{
     chunk::OpCode,
     heap::{NativeFunctionId, NativeMethodId, StringId, UpvalueId},
@@ -27,7 +27,7 @@ impl VM {
         method_name: StringId,
         arg_count: u8,
         method_is_native: bool,
-    ) -> VmError {
+    ) -> VmResult {
         self.invoke(method_name, arg_count)?;
 
         if method_is_native {
@@ -44,7 +44,7 @@ impl VM {
 
     /// Run the closure currently on top of the callstack.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    pub(super) fn run_function(&mut self) -> VmError {
+    pub(super) fn run_function(&mut self) -> VmResult {
         let call_depth = self.callstack.len();
         while self.callstack.len() >= call_depth {
             run_instruction!(self)?;
@@ -55,7 +55,7 @@ impl VM {
 
 // Handle a call (generic side)
 impl VM {
-    pub(super) fn call(&mut self) -> VmError {
+    pub(super) fn call(&mut self) -> VmResult {
         let arg_count = self.read_byte();
         let callee = self.stack[self.stack.len() - 1 - usize::from(arg_count)];
         self.call_value(callee, arg_count)
@@ -65,7 +65,7 @@ impl VM {
     ///
     /// If it is an instance and the attribute is not a property of the instance
     /// then a method is looked up in the class.
-    pub(crate) fn invoke(&mut self, method_name: StringId, arg_count: u8) -> VmError {
+    pub(crate) fn invoke(&mut self, method_name: StringId, arg_count: u8) -> VmResult {
         let receiver = *self
             .peek(arg_count.into())
             .expect("Stack underflow in OP_INVOKE");
@@ -120,7 +120,7 @@ impl VM {
         class: ClassId,
         method_name: StringId,
         arg_count: u8,
-    ) -> VmError {
+    ) -> VmResult {
         let Some(method) = class.to_value(&self.heap).methods.get(&method_name) else {
             let message = format!("Undefined property '{}'.", self.heap.strings[method_name]);
             return self.throw_attribute_error(&message);
@@ -153,7 +153,7 @@ impl VM {
     /// - Bound methods:
     ///    - If the bound method is a standard one, it is scheduled for execution.
     ///    - If the bound method is a native one, it is executed directly.
-    fn call_value(&mut self, callee: Value, arg_count: u8) -> VmError {
+    fn call_value(&mut self, callee: Value, arg_count: u8) -> VmResult {
         let call_id = self.heap.string_id(&"__call__");
         match callee {
             Value::Instance(instance)
@@ -223,7 +223,7 @@ impl VM {
     ///
     /// The arity of the closure is checked against the provided number of arguments.
     /// Then the closure is pushed onto the callstack.
-    pub(super) fn execute_call(&mut self, closure_id: Value, arg_count: u8) -> VmError {
+    pub(super) fn execute_call(&mut self, closure_id: Value, arg_count: u8) -> VmResult {
         let closure = closure_id.as_closure();
         let arity = closure
             .to_value(&self.heap)
@@ -259,7 +259,7 @@ impl VM {
     /// After the call the stack is truncated to remove the arguments and the function
     /// and the result is pushed onto the stack.
     #[allow(clippy::branches_sharing_code)]
-    fn execute_native_function_call(&mut self, f: NativeFunctionId, arg_count: u8) -> VmError {
+    fn execute_native_function_call(&mut self, f: NativeFunctionId, arg_count: u8) -> VmResult {
         let f = f.to_value(&self.heap);
         let arity = f.arity;
         if !arity.contains(&arg_count) {
@@ -302,7 +302,7 @@ impl VM {
         f: NativeMethodId,
         receiver: &mut Value,
         arg_count: u8,
-    ) -> VmError {
+    ) -> VmResult {
         let f = f.to_value(&self.heap);
         let arity = f.arity;
         if !arity.contains(&arg_count) {
@@ -434,7 +434,7 @@ impl VM {
     /// from the main loop.
     ///
     /// If the current frame is a function, we return the value and close the upvalues.
-    pub(super) fn return_(&mut self) -> VmError<Return> {
+    pub(super) fn return_(&mut self) -> VmResult<Return> {
         // Pop the return value. If none was specified (empty return, missing return, module)
         // then the value is nil. This is handled by the compiler.
         let result = self.stack.pop();

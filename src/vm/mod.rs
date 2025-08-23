@@ -26,7 +26,7 @@ mod variables;
 
 use arithmetics::IntoResultValue;
 use callstack::CallStack;
-use errors::RuntimeError;
+use errors::RuntimeResult;
 use errors::{Return, RuntimeErrorKind, VmErrorKind};
 use exception_handling::ExceptionHandler;
 
@@ -38,7 +38,7 @@ use std::path::PathBuf;
 use crate::chunk::InstructionDisassembler;
 use crate::config::GENERIC_BUILTINS_DIR;
 use crate::natives;
-use crate::vm::errors::VmError;
+use crate::vm::errors::VmResult;
 use crate::{
     chunk::{CodeOffset, OpCode},
     compiler::Compiler,
@@ -58,8 +58,8 @@ pub enum InterpretResult {
     RuntimeError,
 }
 
-impl From<RuntimeError> for InterpretResult {
-    fn from(result: RuntimeError) -> Self {
+impl From<RuntimeResult> for InterpretResult {
+    fn from(result: RuntimeResult) -> Self {
         match result {
             Ok(()) => Self::Ok,
             Err(_) => Self::RuntimeError,
@@ -257,7 +257,7 @@ impl VM {
     ///
     /// Returns when a return instruction is hit at the top level.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    fn run(&mut self) -> RuntimeError {
+    fn run(&mut self) -> RuntimeResult {
         loop {
             if matches!(
                 run_instruction!(self),
@@ -298,7 +298,7 @@ impl VM {
 
 // Remaining opcode handlers
 impl VM {
-    fn jump_conditional(&mut self, condition: JumpCondition) -> VmError {
+    fn jump_conditional(&mut self, condition: JumpCondition) -> VmResult {
         let offset = self.read_16bit_number();
         // condition = IfTrue -> jump_if_true
         // -> ! (is_falsey())
@@ -317,7 +317,7 @@ impl VM {
     /// Similar to `jump_conditional` but pops the condition value from the stack
     /// before checking if it should jump. This combines the common pattern of
     /// conditional jump followed by pop.
-    fn pop_jump_conditional(&mut self, condition: JumpCondition) -> VmError {
+    fn pop_jump_conditional(&mut self, condition: JumpCondition) -> VmResult {
         let offset = self.read_16bit_number();
         let condition_value = self.stack.pop().expect("Stack underflow in POP_JUMP_IF");
 
@@ -333,7 +333,7 @@ impl VM {
     ///
     /// This is useful for and/or operators where we want to preserve
     /// the operand value when short-circuiting.
-    fn jump_if_or_pop(&mut self, condition: JumpCondition) -> VmError {
+    fn jump_if_or_pop(&mut self, condition: JumpCondition) -> VmResult {
         let offset = self.read_16bit_number();
         let condition_value = *self.peek(0).expect("Stack underflow in JUMP_IF_OR_POP");
 
@@ -354,7 +354,7 @@ impl VM {
     /// # Panics
     ///
     /// If the stack is empty. This is an internal error and should never happen.
-    pub(super) fn not_(&mut self) -> VmError {
+    pub(super) fn not_(&mut self) -> VmResult {
         let value = self.stack.pop().expect("Stack underflow in OP_NOT");
         let result = self.is_falsey(value)?;
         self.stack_push(result.into());
@@ -368,7 +368,7 @@ impl VM {
     /// # Panics
     ///
     /// If the stack does not have two values. This is an internal error and should never happen.
-    fn equal(&mut self, mode: EqualityMode) -> VmError {
+    fn equal(&mut self, mode: EqualityMode) -> VmResult {
         let eq_id = self.heap.string_id(&"__eq__");
         let left_id = self.peek(1).expect("Stack underflow in OP_EQUAL (left)");
 

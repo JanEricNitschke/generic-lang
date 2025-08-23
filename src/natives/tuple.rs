@@ -2,7 +2,7 @@
 
 use crate::{
     value::{Instance, NativeClass, Number, Tuple, TupleIterator, Value},
-    vm::{VM, errors::VmError},
+    vm::{VM, errors::VmResult},
 };
 
 /// Get an item at a specified index `tuple[a]`.
@@ -10,7 +10,7 @@ pub(super) fn tuple_get_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let index = match &args[0] {
         Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
             Ok(index) => index,
@@ -45,7 +45,7 @@ pub(super) fn tuple_contains_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let my_tuple = receiver.as_tuple(&vm.heap);
     Ok(my_tuple
         .items()
@@ -60,7 +60,7 @@ pub(super) fn tuple_iter_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let my_tuple = receiver.as_instance();
     let my_iterator = TupleIterator::new(*my_tuple);
     let target_class = vm.heap.native_classes.get("TupleIterator").unwrap();
@@ -75,7 +75,7 @@ pub(super) fn tuple_iter_next_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let mut my_iter = std::mem::take(receiver.as_tuple_iter_mut(&mut vm.heap));
     let my_tuple = my_iter.get_tuple(&vm.heap);
     let result = if my_iter.index < my_tuple.items().len() {
@@ -94,7 +94,7 @@ pub(super) fn tuple_add_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let my_tuple = receiver.as_tuple(&vm.heap);
     if let Value::Instance(instance) = &args[0]
         && let Some(NativeClass::Tuple(other_tuple)) = &instance.to_value(&vm.heap).backing
@@ -126,7 +126,7 @@ pub(super) fn tuple_len_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let my_tuple = receiver.as_tuple(&vm.heap);
     Ok(Number::from_usize(my_tuple.items().len(), &mut vm.heap).into())
 }
@@ -135,7 +135,7 @@ pub(super) fn tuple_bool_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let is_empty = receiver.as_tuple(&vm.heap).items().is_empty();
     Ok((!is_empty).into())
 }
@@ -146,7 +146,7 @@ pub(super) fn tuple_init_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let items: Vec<Value> = args.iter().map(|arg| **arg).collect();
     let tuple = receiver.as_tuple_mut(&mut vm.heap);
     *tuple = Tuple::new(items);

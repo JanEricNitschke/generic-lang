@@ -18,8 +18,8 @@ pub enum VmErrorKind {
     Exception(#[from] ExceptionRaisedKind),
 }
 
-pub type RuntimeError<T = ()> = Result<T, RuntimeErrorKind>;
-pub type VmError<T = ()> = Result<T, VmErrorKind>;
+pub type RuntimeResult<T = ()> = Result<T, RuntimeErrorKind>;
+pub type VmResult<T = ()> = Result<T, VmErrorKind>;
 
 pub enum Return {
     Function,

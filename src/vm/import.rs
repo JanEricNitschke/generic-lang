@@ -7,7 +7,7 @@ use crate::{
     config::GENERIC_STDLIB_DIR,
     heap::StringId,
     value::{Closure, Module, ModuleContents, NativeFunction},
-    vm::errors::VmError,
+    vm::errors::VmResult,
 };
 
 impl VM {
@@ -24,7 +24,7 @@ impl VM {
         names_to_import: Option<Vec<StringId>>,
         alias: Option<StringId>,
         local_import: bool,
-    ) -> VmError {
+    ) -> VmResult {
         let file_path = self.clean_filepath(file_path_string_id);
 
         let name = if let Some(stem) = file_path.file_stem() {
@@ -106,7 +106,7 @@ impl VM {
         stdlib_functions: &ModuleContents,
         names_to_import: Option<Vec<StringId>>,
         local_import: bool,
-    ) -> VmError {
+    ) -> VmResult {
         let mut module = Module::new(
             string_id,
             file_path,
@@ -179,7 +179,7 @@ impl VM {
         names_to_import: Option<Vec<StringId>>,
         alias: Option<StringId>,
         local_import: bool,
-    ) -> VmError {
+    ) -> VmResult {
         if let Some(function) = self.compile(
             contents,
             name,

@@ -1,8 +1,8 @@
-use super::{VM, errors::VmError};
+use super::{VM, errors::VmResult};
 use crate::types::RangeType;
 use crate::value::{Dict, GenericInt, Instance, List, Number, Range, Set, Tuple, Value};
 impl VM {
-    pub fn build_range(&mut self, range_type: RangeType) -> VmError {
+    pub fn build_range(&mut self, range_type: RangeType) -> VmResult {
         let end = self.stack.pop().expect("Stack underflow in OP_BUILD_RANGE");
         let start = self.stack.pop().expect("Stack underflow in OP_BUILD_RANGE");
 
@@ -92,7 +92,7 @@ impl VM {
     ///
     ///  Items are on the stack in order from left to right
     /// (... --- item1 --- item2 --- ... --- itemN)
-    pub(crate) fn build_set(&mut self) -> VmError {
+    pub(crate) fn build_set(&mut self) -> VmResult {
         let mut set = Set::default();
 
         let arg_count = self.read_byte();
@@ -118,7 +118,7 @@ impl VM {
     ///
     ///  Items are on the stack in order from left to right
     /// (... --- key1 --- value1 --- key2 --- value2 --- ... --- keyN --- valueN)
-    pub(crate) fn build_dict(&mut self) -> VmError {
+    pub(crate) fn build_dict(&mut self) -> VmResult {
         let mut dict = Dict::default();
         // Number of key, value pairs.
         let arg_count = self.read_byte();
@@ -146,7 +146,7 @@ impl VM {
     /// (... --- item1 --- item2 --- ... --- itemN)
     /// So for f"Hi ${1+1}, i'm ${name}"
     /// We would have (... --- "Hi " --- 2 --- ", i'm " --- <`VALUE_OF_NAME`> --- ""
-    pub(crate) fn build_fstring(&mut self) -> VmError {
+    pub(crate) fn build_fstring(&mut self) -> VmResult {
         let mut string = String::new();
 
         let arg_count = self.read_byte();

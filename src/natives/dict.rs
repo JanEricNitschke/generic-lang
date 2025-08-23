@@ -2,7 +2,7 @@
 
 use crate::{
     value::{NativeClass, Number, Value},
-    vm::{VM, errors::VmError},
+    vm::{VM, errors::VmResult},
 };
 
 /// Get an item via `dict[a]`, where `a` is a hashable value type.
@@ -12,7 +12,7 @@ pub(super) fn dict_get_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     // Create a temporary dict to avoid borrowing conflicts
     let dict = std::mem::take(receiver.as_dict_mut(&mut vm.heap));
     let result = dict.get(*args[0], vm).map(|opt| opt.copied());
@@ -32,7 +32,7 @@ pub(super) fn dict_set_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let mut dict = std::mem::take(receiver.as_dict_mut(&mut vm.heap));
     let result = dict.add(*args[0], *args[1], vm);
     *receiver.as_dict_mut(&mut vm.heap) = dict;
@@ -44,7 +44,7 @@ pub(super) fn dict_contains_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     // Create a temporary set to avoid borrowing conflicts
     let dict = std::mem::take(receiver.as_dict_mut(&mut vm.heap));
     let result = dict.contains(*args[0], vm);
@@ -57,7 +57,7 @@ pub(super) fn dict_len_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let dict = receiver.as_dict(&vm.heap);
     Ok(Number::from_usize(dict.items.len(), &mut vm.heap).into())
 }
@@ -66,7 +66,7 @@ pub(super) fn dict_bool_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let is_empty = receiver.as_dict(&vm.heap).items.is_empty();
     Ok((!is_empty).into())
 }
@@ -80,7 +80,7 @@ pub(super) fn dict_init_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let mut dict = std::mem::take(receiver.as_dict_mut(&mut vm.heap));
     dict.items.clear(); // reset
 

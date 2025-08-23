@@ -3,14 +3,14 @@
 use crate::value::utils::{parse_string_to_float, parse_string_to_integer};
 use crate::value::{GenericInt, GenericRational, Number, Value};
 use crate::vm::VM;
-use crate::vm::errors::VmError;
+use crate::vm::errors::VmResult;
 
 /// Bool.__init__(value) - Convert any value to boolean using `is_falsey` logic
 pub(super) fn bool_init_native(
     vm: &mut VM,
     _receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let value = *args[0];
     let is_falsey = vm.is_falsey(value)?;
     Ok(Value::Bool(!is_falsey))
@@ -21,7 +21,7 @@ pub(super) fn integer_init_native(
     vm: &mut VM,
     _receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     match &args[0] {
         Value::String(string_id) => {
             let string = string_id.to_value(&vm.heap).clone();
@@ -56,7 +56,7 @@ pub(super) fn float_init_native(
     vm: &mut VM,
     _receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     match &args[0] {
         Value::String(string_id) => {
             let string = string_id.to_value(&vm.heap).clone();
@@ -81,7 +81,7 @@ pub(super) fn rational_init_native(
     vm: &mut VM,
     _receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     match (&args[0], &args[1]) {
         (
             Value::Number(Number::Integer(numerator)),

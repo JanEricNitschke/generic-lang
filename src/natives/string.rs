@@ -1,6 +1,6 @@
 use crate::value::{GenericInt, Instance, List, NativeClass, Number, Value};
 use crate::vm::VM;
-use crate::vm::errors::VmError;
+use crate::vm::errors::VmResult;
 
 use unicode_normalization::UnicodeNormalization;
 use unicode_segmentation::UnicodeSegmentation;
@@ -10,7 +10,7 @@ pub(super) fn string_init_native(
     vm: &mut VM,
     _receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     if let Value::Instance(instance) = &args[0]
         && let Some(NativeClass::List(list)) = &instance.to_value(&vm.heap).backing
         && !list.items.is_empty()
@@ -38,7 +38,7 @@ pub(super) fn string_replace_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let s = receiver
         .as_string()
         .to_value(&vm.heap)
@@ -66,7 +66,7 @@ pub(super) fn string_contains_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let s = receiver
         .as_string()
         .to_value(&vm.heap)
@@ -90,7 +90,7 @@ pub(super) fn string_find_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let s = receiver
         .as_string()
         .to_value(&vm.heap)
@@ -124,7 +124,7 @@ pub(super) fn string_bytes_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let s = receiver.as_string().to_value(&vm.heap);
     let items = s
         .bytes()
@@ -137,7 +137,7 @@ pub(super) fn string_get_byte_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let index = match &args[0] {
         Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
             Ok(index) => index,
@@ -174,7 +174,7 @@ pub(super) fn string_chars_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let s = receiver.as_string().to_value(&vm.heap).clone();
     let items = s
         .chars()
@@ -187,7 +187,7 @@ pub(super) fn string_get_char_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let index = match &args[0] {
         Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
             Ok(index) => index,
@@ -222,7 +222,7 @@ pub(super) fn string_clusters_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let s = receiver.as_string().to_value(&vm.heap).clone();
     let items = s
         .graphemes(true)
@@ -235,7 +235,7 @@ pub(super) fn string_get_cluster_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let index = match &args[0] {
         Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
             Ok(index) => index,

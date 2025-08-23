@@ -3,7 +3,7 @@ use crate::value::{
     Exception, Instance, NativeClass, Value, is_exception_subclass, is_subclass_of,
 };
 use crate::vm::VM;
-use crate::vm::errors::{ExceptionRaisedKind, RuntimeErrorKind, VmError, VmErrorKind};
+use crate::vm::errors::{ExceptionRaisedKind, RuntimeErrorKind, VmErrorKind, VmResult};
 /// An exception handlers
 ///
 /// Holds the index of the frame where the exception handler is located
@@ -33,7 +33,7 @@ impl VM {
         self.exception_handlers.pop()
     }
 
-    pub(super) fn unwind(&mut self, exception: Value) -> VmError {
+    pub(super) fn unwind(&mut self, exception: Value) -> VmResult {
         if !matches!(exception, Value::Instance(_)) {
             return self.throw_type_error(&format!(
                 "Can only throw instances, got: {}",
@@ -77,7 +77,7 @@ impl VM {
         }
     }
 
-    pub(super) fn reraise_exception(&mut self) -> VmError {
+    pub(super) fn reraise_exception(&mut self) -> VmResult {
         match self.stack.pop().expect("Stack underflow in OP_RERAISE") {
             Value::Nil => Ok(()),
             exception => self.unwind(exception),
@@ -85,7 +85,7 @@ impl VM {
     }
 
     ///Layout is Stack Top: [`exception_class_to_catch`, `exception_value_raised`]
-    pub(super) fn compare_exception(&mut self) -> VmError {
+    pub(super) fn compare_exception(&mut self) -> VmResult {
         let class_to_catch = self
             .stack
             .pop()
@@ -178,67 +178,67 @@ impl VM {
     }
 
     /// Create and throw a `TypeError` with the given message.
-    pub(crate) fn throw_type_error(&mut self, message: &str) -> VmError {
+    pub(crate) fn throw_type_error(&mut self, message: &str) -> VmResult {
         let exception = self.create_exception("TypeError", message);
         self.unwind(exception)
     }
 
     /// Create and throw a `ValueError` with the given message.
-    pub(crate) fn throw_value_error(&mut self, message: &str) -> VmError {
+    pub(crate) fn throw_value_error(&mut self, message: &str) -> VmResult {
         let exception = self.create_exception("ValueError", message);
         self.unwind(exception)
     }
 
     /// Create and throw a `NameError` with the given message.
-    pub(crate) fn throw_name_error(&mut self, message: &str) -> VmError {
+    pub(crate) fn throw_name_error(&mut self, message: &str) -> VmResult {
         let exception = self.create_exception("NameError", message);
         self.unwind(exception)
     }
 
     /// Create and throw a `ConstReassignmentError` with the given message.
-    pub(crate) fn throw_const_reassignment_error(&mut self, message: &str) -> VmError {
+    pub(crate) fn throw_const_reassignment_error(&mut self, message: &str) -> VmResult {
         let exception = self.create_exception("ConstReassignmentError", message);
         self.unwind(exception)
     }
 
     /// Create and throw an `AttributeError` with the given message.
-    pub(crate) fn throw_attribute_error(&mut self, message: &str) -> VmError {
+    pub(crate) fn throw_attribute_error(&mut self, message: &str) -> VmResult {
         let exception = self.create_exception("AttributeError", message);
         self.unwind(exception)
     }
 
     /// Create and throw an `ImportError` with the given message.
-    pub(crate) fn throw_import_error(&mut self, message: &str) -> VmError {
+    pub(crate) fn throw_import_error(&mut self, message: &str) -> VmResult {
         let exception = self.create_exception("ImportError", message);
         self.unwind(exception)
     }
 
     /// Create and throw an `AssertionError` with the given message.
-    pub(crate) fn throw_assertion_error(&mut self, message: &str) -> VmError {
+    pub(crate) fn throw_assertion_error(&mut self, message: &str) -> VmResult {
         let exception = self.create_exception("AssertionError", message);
         self.unwind(exception)
     }
 
     /// Create and throw an `IoError` with the given message.
-    pub(crate) fn throw_io_error(&mut self, message: &str) -> VmError {
+    pub(crate) fn throw_io_error(&mut self, message: &str) -> VmResult {
         let exception = self.create_exception("IoError", message);
         self.unwind(exception)
     }
 
     /// Create and throw an `KeyError` with the given message.
-    pub(crate) fn throw_key_error(&mut self, message: &str) -> VmError {
+    pub(crate) fn throw_key_error(&mut self, message: &str) -> VmResult {
         let exception = self.create_exception("KeyError", message);
         self.unwind(exception)
     }
 
     /// Create and throw an `IndexError` with the given message.
-    pub(crate) fn throw_index_error(&mut self, message: &str) -> VmError {
+    pub(crate) fn throw_index_error(&mut self, message: &str) -> VmResult {
         let exception = self.create_exception("IndexError", message);
         self.unwind(exception)
     }
 
     /// Create and throw a `RuntimeError` with the given message.
-    pub(crate) fn throw_runtime_error(&mut self, message: &str) -> VmError {
+    pub(crate) fn throw_runtime_error(&mut self, message: &str) -> VmResult {
         let exception = self.create_exception("Exception", message);
         self.unwind(exception)
     }

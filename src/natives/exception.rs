@@ -2,7 +2,7 @@
 
 use crate::{
     value::{NativeClass, Value},
-    vm::{VM, errors::VmError},
+    vm::{VM, errors::VmResult},
 };
 
 /// Initialize an Exception with a message and current stack trace.
@@ -10,7 +10,7 @@ pub(super) fn exception_init_native(
     vm: &mut VM,
     receiver: &mut Value,
     args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let message = if args.is_empty() {
         None
     } else {
@@ -40,7 +40,7 @@ pub(super) fn exception_message_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     match receiver.as_exception(&vm.heap).message() {
         Some(message) => Ok(Value::String(message)),
         None => Ok(Value::Nil),
@@ -52,7 +52,7 @@ pub(super) fn exception_stack_trace_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     Ok(Value::String(receiver.as_exception(&vm.heap).stack_trace()))
 }
 
@@ -63,7 +63,7 @@ pub(super) fn exception_str_native(
     vm: &mut VM,
     receiver: &mut Value,
     _args: &mut [&mut Value],
-) -> VmError<Value> {
+) -> VmResult<Value> {
     let exception = receiver.as_exception(&vm.heap);
     let class_name = receiver
         .as_instance()
