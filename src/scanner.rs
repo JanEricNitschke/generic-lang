@@ -203,7 +203,7 @@ impl<'a> Scanner<'a> {
         #[cfg(feature = "debug_scanner")]
         if cfg!(feature = "debug_scanner_builtin") || !self.is_builtin {
             println!(
-                "Mode: {:<15} current char {:<10} at pos {}",
+                "Mode: {:<20} current char {:<10} at pos {}",
                 format!("{:?}", self.mode()),
                 format!(
                     "{:?}",

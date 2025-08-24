@@ -52,7 +52,7 @@ stress_gc               = []
 debug_parser            = []
 debug_parser_builtin    = ["debug_parser"]
 debug_scanner           = []
-debug_scanner_builtin   = []
+debug_scanner_builtin   = ["debug_scanner"]
 
 [profile.release]
 lto           = true
