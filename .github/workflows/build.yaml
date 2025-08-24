@@ -19,9 +19,11 @@ jobs:
       uses: actions/checkout@v4
     - name: Set up Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
+    - name: Install cargo-hack
+      run: cargo install cargo-hack --locked
     - name: Build
       run: |
-        cargo build --all-features
+        cargo hack build --feature-powerset --skip print_code_builtin,trace_execution_builtin,debug_parser_builtin,debug_scanner_builtin --no-dev-deps
         cargo build --verbose
     - name: Lint
       run: |
@@ -29,9 +31,7 @@ jobs:
         # Run normal configuration and fail on default warnings
         cargo clippy -- -D warnings
         # Run pedantic
-        cargo clippy -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
-        # Run with all features pedantic
-        cargo clippy --all-features -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
+        cargo hack clippy --each-feature --no-dev-deps -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
     - name: Test
       run: cargo test --verbose
     - name: Install Miri
@@ -55,7 +55,7 @@ jobs:
         ! cargo run --features "debug_parser" test/function_literals/neither_block_nor_expression.gen
     - name: Check debug_scanner
       run: |
-        ! cargo run --features "debug_scanner" test/function_literals/neither_block_nor_expression.gen
+        cargo run --features "debug_scanner" test/fstrings/nested.gen
     - name: Setup dart
       uses: dart-lang/setup-dart@v1
       with:

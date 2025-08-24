@@ -143,7 +143,11 @@ impl VM {
         let result = if let Some(function) = self.compile(
             source,
             "<script>",
-            #[cfg(any(feature = "print_code", feature = "debug_scanner"))]
+            #[cfg(any(
+                feature = "print_code",
+                feature = "debug_scanner",
+                feature = "debug_parser"
+            ))]
             false,
         ) {
             let function_id = self.heap.add_function(function);
@@ -172,7 +176,12 @@ impl VM {
         &mut self,
         source: &str,
         name: &str,
-        #[cfg(any(feature = "print_code", feature = "debug_scanner"))] is_builtin: bool,
+        #[cfg(any(
+            feature = "print_code",
+            feature = "debug_scanner",
+            feature = "debug_parser"
+        ))]
+        is_builtin: bool,
     ) -> Option<Function> {
         let scanner = Scanner::new(
             source,
@@ -183,7 +192,7 @@ impl VM {
             scanner,
             &mut self.heap,
             name,
-            #[cfg(feature = "print_code")]
+            #[cfg(any(feature = "print_code", feature = "debug_parser"))]
             is_builtin,
         );
         compiler.compile()
@@ -219,7 +228,11 @@ impl VM {
             .compile(
                 source,
                 &name,
-                #[cfg(any(feature = "print_code", feature = "debug_scanner"))]
+                #[cfg(any(
+                    feature = "print_code",
+                    feature = "debug_scanner",
+                    feature = "debug_parser"
+                ))]
                 true,
             )
             .expect("Failed to compile builtin file");
