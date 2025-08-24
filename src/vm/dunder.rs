@@ -7,6 +7,7 @@ use crate::{
 use num_bigint::BigInt;
 use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
+use unicode_normalization::UnicodeNormalization;
 
 impl VM {
     /// Convert a value to string, handling instances with __str__ methods.
@@ -148,7 +149,10 @@ impl VM {
                 }
             }
             Value::String(s) => {
-                s.hash(&mut state);
+                s.to_value(&self.heap)
+                    .nfc()
+                    .collect::<String>()
+                    .hash(&mut state);
             }
             // For other object types, use their object ID as hash
             Value::Function(id) => {
