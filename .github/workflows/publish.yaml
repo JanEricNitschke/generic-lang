@@ -15,6 +15,7 @@ env:
 jobs:
   crates-io:
     runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -26,7 +27,7 @@ jobs:
       - name: Publish package
         run: cargo publish --allow-dirty
 
-  build:
+  build-binaries:
     name: Build Binaries
     continue-on-error: true
     strategy:
@@ -34,10 +35,27 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-          - target: x86_64-apple-darwin
-            os: macos-latest
+            command: cargo
+          - target: i686-unknown-linux-gnu
+            os: ubuntu-latest
+            command: cross
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            command: cross
+
+          - target: aarch64-apple-darwin
+            os: macos-14
+            command: cargo
+
           - target: x86_64-pc-windows-msvc
             os: windows-latest
+            command: cargo
+          - target: i686-pc-windows-msvc
+            os: windows-latest
+            command: cargo
+          - target: x86_64-pc-windows-gnu
+            os: windows-latest
+            command: cargo
 
     runs-on: ${{ matrix.os }}
 
@@ -51,8 +69,17 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
 
+      # Only install cross if we need it
+      # Install via cargo-binstall which I found faster
+      - name: Install Cross
+        if: matrix.command == 'cross'
+        shell: bash
+        run: |
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+          cargo binstall --no-confirm cross
+
       - name: Build for ${{ matrix.target }}
-        run: cargo build --release --target=${{ matrix.target }}
+        run: ${{ matrix.command }} build --locked --release --target=${{ matrix.target }}
 
       - name: Rename and move binaries
         run: |
@@ -70,7 +97,7 @@ jobs:
           name: binary-${{ matrix.target }}
           path: artifacts/*
 
-  package:
+  build-package:
     name: Package Crate
     runs-on: ubuntu-latest
 
@@ -96,10 +123,131 @@ jobs:
           name: crate
           path: target/package/*.crate
 
-  release:
-    name: Create GitHub Release & Publish Crate
-    needs: [build, package]
+  linux:
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        platform:
+          - runner: ubuntu-22.04
+            target: x86_64
+          - runner: ubuntu-22.04
+            target: x86
+          - runner: ubuntu-22.04
+            target: aarch64
+          - runner: ubuntu-22.04
+            target: armv7
+          - runner: ubuntu-22.04
+            target: s390x
+          - runner: ubuntu-22.04
+            target: ppc64le
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist
+          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          manylinux: auto
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-${{ matrix.platform.target }}
+          path: dist
+
+  musllinux:
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        platform:
+          - runner: ubuntu-22.04
+            target: x86_64
+          - runner: ubuntu-22.04
+            target: x86
+          - runner: ubuntu-22.04
+            target: aarch64
+          - runner: ubuntu-22.04
+            target: armv7
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist
+          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          manylinux: musllinux_1_2
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-musllinux-${{ matrix.platform.target }}
+          path: dist
+
+  windows:
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        platform:
+          - runner: windows-latest
+            target: x64
+          - runner: windows-latest
+            target: x86
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist
+          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows-${{ matrix.platform.target }}
+          path: dist
+
+  macos:
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        platform:
+          - runner: macos-14
+            target: aarch64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist
+          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos-${{ matrix.platform.target }}
+          path: dist
+
+  sdist:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: dist
+
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    needs: [linux, musllinux, windows, macos, sdist, build-package, build-binaries]
     permissions:
       # Use to sign the release artifacts
       id-token: write
@@ -108,33 +256,30 @@ jobs:
       # Used to generate artifact attestation
       attestations: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download all built binaries
-        uses: actions/download-artifact@v5
-
+      - uses: actions/download-artifact@v5
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
+            wheels-*/*
             binary-*/*
             crate/*
-
-      - name: Download crate package
-        uses: actions/download-artifact@v5
+      - name: Publish to PyPI
+        uses: PyO3/maturin-action@v1
+        env:
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         with:
-          name: crate
-          path: target/package
-
-      - name: Create GitHub Release
+          command: upload
+          args: --non-interactive --skip-existing wheels-*/*
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ env.VERSION }}
           body: "Automated release for version ${{ env.VERSION }}"
           files: |
+            wheels-*/*
             binary-*/*
             crate/*
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
