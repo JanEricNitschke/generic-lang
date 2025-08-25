@@ -90,6 +90,12 @@ cd generic-lang
 cargo install --path .
 ```
 
+Or more simply:
+
+```bash
+cargo install generic-lang
+```
+
 Now to use generic, in your terminal, run:
 ```bash
 generic
