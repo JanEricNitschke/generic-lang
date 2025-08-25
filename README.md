@@ -96,6 +96,19 @@ Or more simply:
 cargo install generic-lang
 ```
 
+Or install with uv (recommended), pip, or pipx:
+
+```bash
+# With uv.
+uv tool install generic-lang  # Install generic globally
+
+# With pip.
+pip install generic-lang
+
+# With pipx.
+pipx install generic-lang
+```
+
 Now to use generic, in your terminal, run:
 ```bash
 generic
