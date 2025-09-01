@@ -2,7 +2,7 @@
 
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-use crate::types::Line;
+use crate::types::Location;
 
 /// `Token` types that exist in the generic language.
 #[derive(IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Clone, Copy, Debug)]
@@ -137,13 +137,13 @@ impl std::fmt::Display for TokenKind {
 pub struct Token<'a> {
     pub(super) kind: TokenKind,
     pub(super) lexeme: &'a str,
-    pub(super) line: Line,
+    pub(super) location: Location,
 }
 
 #[cfg(test)]
 #[test]
 fn test_token_size() {
-    assert_eq!(std::mem::size_of::<Token<'_>>(), 32);
+    assert_eq!(std::mem::size_of::<Token<'_>>(), 56);
 }
 
 impl<'a> Token<'a> {
@@ -166,7 +166,7 @@ pub struct Scanner<'a> {
     start: usize,
     /// Always points at the next character to be consumed.
     current: usize,
-    line: Line,
+    location: Location,
     modes: Vec<ScannerMode>,
     #[cfg(feature = "debug_scanner")]
     is_builtin: bool,
@@ -179,7 +179,7 @@ impl<'a> Scanner<'a> {
             source,
             start: 0,
             current: 0,
-            line: Line(1),
+            location: Location::default(),
             modes: vec![ScannerMode::Normal],
             #[cfg(feature = "debug_scanner")]
             is_builtin,
@@ -238,7 +238,7 @@ impl<'a> Scanner<'a> {
     /// Switches to `Normal` mode on closing quotes and
     /// `Interpolation` mode after consuming `${`.
     fn scan_fstring(&mut self) -> Token<'a> {
-        self.start = self.current;
+        self.set_current();
 
         if self.peek() == Some(&b'$') {
             self.advance(); // consume $
@@ -264,7 +264,7 @@ impl<'a> Scanner<'a> {
                 return self.make_token(TokenKind::FstringPart);
             }
             if c == b'\n' {
-                *self.line += 1;
+                self.next_line();
             }
 
             self.advance();
@@ -286,7 +286,7 @@ impl<'a> Scanner<'a> {
     fn scan_interpolation(&mut self) -> Token<'a> {
         use TokenKind as TK;
         self.skip_whitespace();
-        self.start = self.current;
+        self.set_current();
         // In interpolation mode you already consumed the '{'
         let c = match self.advance() {
             None => {
@@ -324,7 +324,7 @@ impl<'a> Scanner<'a> {
     /// Switches to fstring mode when it encounters an fstring start `f"`.
     fn scan_normal(&mut self) -> Token<'a> {
         self.skip_whitespace();
-        self.start = self.current;
+        self.set_current();
         let c = match self.advance() {
             None => return self.make_token(TokenKind::Eof),
             Some(c) => *c,
@@ -470,6 +470,7 @@ impl<'a> Scanner<'a> {
 
     fn advance(&mut self) -> Option<&u8> {
         self.current += 1;
+        *self.location.end_column += 1;
         self.source.as_bytes().get(self.current - 1)
     }
 
@@ -490,7 +491,7 @@ impl<'a> Scanner<'a> {
                     self.advance();
                 }
                 Some(b'\n') => {
-                    *self.line += 1;
+                    self.next_line();
                     self.advance();
                 }
                 Some(b'#') => {
@@ -512,7 +513,7 @@ impl<'a> Scanner<'a> {
                 return self.make_token(TokenKind::String);
             }
             if c == b'\n' {
-                *self.line += 1;
+                self.next_line();
             }
             self.advance();
         }
@@ -684,7 +685,7 @@ impl<'a> Scanner<'a> {
         Token {
             kind,
             lexeme: &self.source[from..to],
-            line: self.line,
+            location: self.location,
         }
     }
 
@@ -692,8 +693,19 @@ impl<'a> Scanner<'a> {
         Token {
             kind: TokenKind::Error,
             lexeme: msg,
-            line: self.line,
+            location: self.location,
         }
+    }
+
+    fn set_current(&mut self) {
+        self.start = self.current;
+        self.location.start_line = self.location.end_line;
+        self.location.start_column = self.location.end_column;
+    }
+
+    fn next_line(&mut self) {
+        *self.location.end_line += 1;
+        *self.location.end_column = 0;
     }
 }
 

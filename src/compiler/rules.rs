@@ -265,7 +265,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Then emit the bytecode for the respective operation which will act on the value on the stack.
     fn unary(&mut self, _can_assign: bool, ignore_operators: &[TK]) {
         let operator = self.previous.as_ref().unwrap().kind;
-        let line = self.line();
+        let line = self.location();
 
         self.parse_precedence_ignoring(Precedence::Unary, ignore_operators);
 
@@ -283,7 +283,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     fn binary(&mut self, _can_assign: bool, ignore_operators: &[TK]) {
         // First operand is already on the stack
         let operator = self.previous.as_ref().unwrap().kind;
-        let line = self.line();
+        let line = self.location();
         let rule = self.get_rule(operator);
 
         // Correctly put the second operand on the stack
@@ -375,7 +375,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     // We need container -- element
     /// Then call `OP_INVOKE` with "contains" and `1`
     fn in_(&mut self) {
-        let line = self.line();
+        let line = self.location();
         // Swap the order
         self.emit_byte(OpCode::Swap, line);
         self.invoke_fixed(&"contains", 1, "Too many constants created for OP_IN.");
@@ -384,7 +384,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Parsing any call just means parsing the arguments and then emitting the correct bytecode.
     fn call(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let arg_count = self.argument_list();
-        self.emit_bytes(OpCode::Call, arg_count, self.line());
+        self.emit_bytes(OpCode::Call, arg_count, self.location());
     }
 
     /// Parse property access.
@@ -395,7 +395,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         self.consume(TK::Identifier, "Expect property name after '.'.");
         let name_constant =
             self.identifier_constant(&self.previous.as_ref().unwrap().as_str().to_string());
-        let line = self.line();
+        let line = self.location();
         if can_assign
             && (self.match_(TK::Equal)
                 | self.match_(TK::PlusEqual)
@@ -452,10 +452,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     fn literal(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let literal = self.previous.as_ref().unwrap().kind;
         match literal {
-            TK::False => self.emit_byte(OpCode::False, self.line()),
-            TK::Nil => self.emit_byte(OpCode::Nil, self.line()),
-            TK::StopIteration => self.emit_byte(OpCode::StopIteration, self.line()),
-            TK::True => self.emit_byte(OpCode::True, self.line()),
+            TK::False => self.emit_byte(OpCode::False, self.location()),
+            TK::Nil => self.emit_byte(OpCode::Nil, self.location()),
+            TK::StopIteration => self.emit_byte(OpCode::StopIteration, self.location()),
+            TK::True => self.emit_byte(OpCode::True, self.location()),
             _ => unreachable!("Unknown literal: {}", literal),
         }
     }
@@ -466,7 +466,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Empty parens create an empty tuple instead.
     fn grouping(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         if self.match_(TK::RightParen) {
-            self.emit_bytes(OpCode::BuildTuple, 0, self.line());
+            self.emit_bytes(OpCode::BuildTuple, 0, self.location());
             return;
         }
         self.expression();
@@ -549,7 +549,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                     let string_id = self.heap.string_id(&value);
                     self.emit_constant(string_id);
 
-                    self.emit_bytes(OpCode::BuildFstring, part_count, self.line());
+                    self.emit_bytes(OpCode::BuildFstring, part_count, self.location());
                     break; // done with the fstring
                 }
 
@@ -581,7 +581,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             }
         }
         self.consume(TK::RightBracket, "Expect ']' after list literal.");
-        self.emit_bytes(OpCode::BuildList, item_count, self.line());
+        self.emit_bytes(OpCode::BuildList, item_count, self.location());
     }
 
     /// Parse a tuple literal 'a, b, c(,)'
@@ -609,7 +609,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             }
         }
 
-        self.emit_bytes(OpCode::BuildTuple, item_count, self.line());
+        self.emit_bytes(OpCode::BuildTuple, item_count, self.location());
     }
 
     /// Handle the hashed collection `set`and `dict``.`
@@ -689,7 +689,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 CollectionType::Set => OpCode::BuildSet,
             },
             item_count,
-            self.line(),
+            self.location(),
         );
     }
 
@@ -709,7 +709,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     fn subscript(&mut self, can_assign: bool, _ignore_operators: &[TK]) {
         self.parse_precedence(Precedence::non_assigning());
         self.consume(TK::RightBracket, "Expect ']' after index.");
-        let line = self.line();
+        let line = self.location();
         if can_assign
             && (self.match_(TK::Equal)
                 | self.match_(TK::PlusEqual)
@@ -814,7 +814,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         self.consume(TK::Identifier, "Expect superclass method name.");
         let name = self.identifier_constant(&self.previous.as_ref().unwrap().as_str().to_string());
 
-        let line = self.line();
+        let line = self.location();
 
         self.named_variable(&self.synthetic_token(TK::This).as_str(), false);
         if self.match_(TK::LeftParen) {
@@ -827,7 +827,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             self.emit_byte(arg_count, line);
         } else {
             self.named_variable(&self.synthetic_token(TK::Super).as_str(), false);
-            self.emit_byte(OpCode::GetSuper, self.line());
+            self.emit_byte(OpCode::GetSuper, self.location());
             if !self.emit_number(*name, NumberEncoding::Short) {
                 self.error("Too many constants while compiling OP_SUPER_INVOKE");
             }
@@ -837,7 +837,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Helper function to deal with operators that delegate to overloaded methods.
     fn invoke_fixed<S: ToString>(&mut self, name: &S, arg_count: u8, error_message: &str) {
         let name_constant = self.identifier_constant(name);
-        let line = self.line();
+        let line = self.location();
         self.emit_byte(OpCode::Invoke, line);
         if !self.emit_number(name_constant.0, NumberEncoding::Short) {
             self.error(error_message);

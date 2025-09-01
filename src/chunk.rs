@@ -4,7 +4,7 @@
 
 use crate::config::LAMBDA_NAME;
 use crate::heap::Heap;
-use crate::{heap::StringId, types::Line, value::Value};
+use crate::{heap::StringId, types::Location, value::Value};
 use convert_case::{Case, Casing};
 use derivative::Derivative;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -183,7 +183,7 @@ impl OpCode {
 ///
 /// Each main script, module and function has its own `Chunk`.
 /// Each chunk has a name, mainly for debugging purposes, its code,
-/// line information for each entry in the code array as well as a constant
+/// location information for each entry in the code array as well as a constant
 /// table for literal constants that appear in the chunk.
 #[derive(Derivative, Clone, Debug)]
 #[derivative(PartialEq)]
@@ -191,9 +191,7 @@ pub struct Chunk {
     name: StringId,
     code: Vec<u8>,
     #[derivative(PartialEq = "ignore")]
-    /// Lines are runlength encoded as there are usually
-    /// multiple bytes that originate from the same line.
-    lines: Vec<(usize, Line)>,
+    locations: Vec<Location>,
     #[derivative(PartialEq = "ignore")]
     constants: Vec<Value>,
 }
@@ -204,7 +202,7 @@ impl Chunk {
         Self {
             name,
             code: Vec::default(),
-            lines: Vec::default(),
+            locations: Vec::default(),
             constants: Vec::default(),
         }
     }
@@ -226,18 +224,13 @@ impl Chunk {
     }
 
     /// Write a byte (`OpCode` or operand) into the chunk.
-    /// Also update the line information accordingly.
-    pub(super) fn write<T>(&mut self, what: T, line: Line)
+    /// Also update the location information accordingly.
+    pub(super) fn write<T>(&mut self, what: T, location: Location)
     where
         T: Into<u8>,
     {
         self.code.push(what.into());
-        match self.lines.last_mut() {
-            Some((count, last_line)) if last_line.as_ref() == line.as_ref() => {
-                *count += 1;
-            }
-            _ => self.lines.push((1, line)),
-        }
+        self.locations.push(location);
     }
 
     /// Patch an existing entry in the code.
@@ -260,39 +253,31 @@ impl Chunk {
     /// Write a constant into the code.
     /// Create it in the constant table and write the index preceded by
     /// the corresponding `OpCode`.
-    pub(super) fn write_constant(&mut self, what: Value, line: Line) -> bool {
+    pub(super) fn write_constant(&mut self, what: Value, location: Location) -> bool {
         let long_index = self.make_constant(what);
         if let Ok(short_index) = u8::try_from(*long_index) {
-            self.write(OpCode::Constant, line);
-            self.write(short_index, line);
+            self.write(OpCode::Constant, location);
+            self.write(short_index, location);
             true
         } else {
-            self.write(OpCode::ConstantLong, line);
-            self.write_24bit_number(*long_index, line)
+            self.write(OpCode::ConstantLong, location);
+            self.write_24bit_number(*long_index, location)
         }
     }
 
-    pub(super) fn write_24bit_number(&mut self, what: usize, line: Line) -> bool {
+    pub(super) fn write_24bit_number(&mut self, what: usize, location: Location) -> bool {
         let (a, b, c, d) = crate::bitwise::get_4_bytes(what);
         if a > 0 {
             return false;
         }
-        self.write(b, line);
-        self.write(c, line);
-        self.write(d, line);
+        self.write(b, location);
+        self.write(c, location);
+        self.write(d, location);
         true
     }
 
-    /// Decode the runlength encoded lines for a specific offset.
-    pub(super) fn get_line(&self, offset: CodeOffset) -> Line {
-        let mut iter = self.lines.iter();
-        let &(mut consumed, mut line) = iter.next().unwrap();
-        while consumed <= *offset.as_ref() {
-            let entry = iter.next().unwrap();
-            consumed += entry.0;
-            line = entry.1;
-        }
-        line
+    pub(super) fn get_location(&self, offset: CodeOffset) -> Location {
+        self.locations[*offset.as_ref()]
     }
 }
 
@@ -301,7 +286,10 @@ impl Chunk {
         let name = self.name.to_value(heap);
 
         let mut result = if name == LAMBDA_NAME {
-            format!("== {name} ({:?}) ==\n", self.lines)
+            format!(
+                "== {name} ({:?}) ==\n",
+                self.locations.first().map(|loc| loc.end_line)
+            )
         } else {
             format!("== {name} ==\n")
         };
@@ -710,14 +698,15 @@ impl Debug for InstructionDisassembler<'_, '_> {
 
         write!(f, "{:04} ", *offset.as_ref())?;
         if *offset.as_ref() > 0
-            && self.chunk.get_line(offset) == self.chunk.get_line(CodeOffset(offset.as_ref() - 1))
+            && self.chunk.get_location(offset)
+                == self.chunk.get_location(CodeOffset(offset.as_ref() - 1))
         {
             write!(f, "   | ")?;
         } else {
             write!(
                 f,
                 "{:>OPERAND_ALIGNMENT$} ",
-                *self.chunk.get_line(offset),
+                *self.chunk.get_location(offset).end_line,
                 OPERAND_ALIGNMENT = self.operand_alignment
             )?;
         }
@@ -832,7 +821,7 @@ impl Debug for InstructionDisassembler<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{heap::Heap, types::Line, value::Value};
+    use crate::{heap::Heap, types::Location, value::Value};
 
     fn create_test_heap() -> Heap {
         Heap::new()
@@ -842,24 +831,6 @@ mod tests {
         let name_val = heap.add_string("test_chunk".to_string());
         let name_id = *name_val.as_string();
         Chunk::new(name_id)
-    }
-
-    #[test]
-    fn test_line_encoding() {
-        let mut heap = create_test_heap();
-        let mut chunk = create_test_chunk(&mut heap);
-
-        // Write multiple bytes on the same line
-        chunk.write(OpCode::Constant, Line(1));
-        chunk.write(0u8, Line(1));
-        chunk.write(OpCode::Return, Line(1));
-
-        // Write bytes on different line
-        chunk.write(OpCode::Pop, Line(2));
-
-        assert_eq!(chunk.lines.len(), 2);
-        assert_eq!(chunk.lines[0], (3, Line(1))); // 3 bytes on line 1
-        assert_eq!(chunk.lines[1], (1, Line(2))); // 1 byte on line 2
     }
 
     #[test]
@@ -882,9 +853,9 @@ mod tests {
         let mut heap = create_test_heap();
         let mut chunk = create_test_chunk(&mut heap);
 
-        chunk.write(OpCode::Jump, Line(1));
+        chunk.write(OpCode::Jump, Location::default());
         let patch_offset = CodeOffset(chunk.code().len());
-        chunk.write(0u8, Line(1)); // Placeholder for jump offset
+        chunk.write(0u8, Location::default()); // Placeholder for jump offset
 
         // Patch the jump offset
         chunk.patch(patch_offset, 42u8);
@@ -897,7 +868,7 @@ mod tests {
         let mut chunk = create_test_chunk(&mut heap);
 
         // Test valid 24-bit number
-        let result = chunk.write_24bit_number(0x0012_3456, Line(1));
+        let result = chunk.write_24bit_number(0x0012_3456, Location::default());
         assert!(result);
         assert_eq!(chunk.code().len(), 3);
         assert_eq!(chunk.code()[0], 0x12);
@@ -906,7 +877,7 @@ mod tests {
 
         // Test number too large for 24-bit
         let mut chunk2 = create_test_chunk(&mut heap);
-        let result2 = chunk2.write_24bit_number(0x0100_0000, Line(1)); // Requires 25 bits
+        let result2 = chunk2.write_24bit_number(0x0100_0000, Location::default()); // Requires 25 bits
         assert!(!result2); // Should fail
         assert_eq!(chunk2.code().len(), 0); // Nothing should be written
     }
