@@ -8,6 +8,10 @@ use shrinkwraprs::Shrinkwrap;
 #[shrinkwrap(mutable)]
 pub struct Line(pub usize);
 
+#[derive(Shrinkwrap, PartialEq, Eq, Clone, Copy, Debug)]
+#[shrinkwrap(mutable)]
+pub struct Column(pub usize);
+
 /// Enum for variable mutability
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mutability {

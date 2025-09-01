@@ -132,7 +132,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         };
 
         // Generate the code.
-        self.emit_byte(op, line);
+        self.emit_byte_at_current_location(op);
 
         if !self.emit_number(arg, encoding) {
             self.error(&format!("Too many globals in {op:?}"));

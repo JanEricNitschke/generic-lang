@@ -8,7 +8,7 @@ use super::{ClassState, Compiler, FunctionType, LoopState, rules::Precedence};
 use crate::{
     chunk::{CodeOffset, ConstantIndex, ConstantLongIndex, OpCode},
     scanner::{Token, TokenKind as TK},
-    types::{ConditionType, Line, LoopType, Mutability, NumberEncoding, ReturnMode},
+    types::{Column, ConditionType, Line, LoopType, Mutability, NumberEncoding, ReturnMode},
     utils::get_file_stem,
 };
 
@@ -103,7 +103,7 @@ impl Compiler<'_, '_> {
         if self.match_(TK::Equal) {
             self.expression();
         } else {
-            self.emit_byte(OpCode::Nil, self.line());
+            self.emit_byte_at_current_location(OpCode::Nil);
         }
 
         self.consume(TK::Semicolon, "Expect ';' after variable declaration.");
@@ -844,6 +844,7 @@ impl Compiler<'_, '_> {
                         kind: path_token.kind,
                         lexeme: name,
                         line: path_token.line,
+                        column: path_token.column,
                     },
                     Mutability::Mutable,
                 );
@@ -990,5 +991,9 @@ impl Compiler<'_, '_> {
 
     pub(super) fn line(&self) -> Line {
         self.previous.as_ref().map_or(Line(0), |x| x.line)
+    }
+
+    pub(super) fn column(&self) -> Column {
+        self.previous.as_ref().map_or(Column(0), |x| x.column)
     }
 }

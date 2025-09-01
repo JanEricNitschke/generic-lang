@@ -15,7 +15,7 @@ final _expectedErrorPattern = RegExp(r"# (Error.*)");
 final _errorLinePattern = RegExp(r"# \[((java|c) )?line (\d+)\] (Error.*)");
 final _expectedRuntimeErrorPattern = RegExp(r"# expect runtime error: (.+)");
 final _syntaxErrorPattern = RegExp(r"\[.*line (\d+)\] (Error.+)");
-final _stackTracePattern = RegExp(r"\[line (\d+)\]");
+final _stackTracePattern = RegExp(r"\[line (\d+)(?::(\d+))?\]");
 final _nonTestPattern = RegExp(r"# nontest");
 
 var _passed = 0;

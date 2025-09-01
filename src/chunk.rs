@@ -4,7 +4,7 @@
 
 use crate::config::LAMBDA_NAME;
 use crate::heap::Heap;
-use crate::{heap::StringId, types::Line, value::Value};
+use crate::{heap::StringId, types::{Column, Line}, value::Value};
 use convert_case::{Case, Casing};
 use derivative::Derivative;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -195,6 +195,10 @@ pub struct Chunk {
     /// multiple bytes that originate from the same line.
     lines: Vec<(usize, Line)>,
     #[derivative(PartialEq = "ignore")]
+    /// Columns are runlength encoded as there are usually
+    /// multiple bytes that originate from the same column.
+    columns: Vec<(usize, Column)>,
+    #[derivative(PartialEq = "ignore")]
     constants: Vec<Value>,
 }
 impl Eq for Chunk {}
@@ -205,6 +209,7 @@ impl Chunk {
             name,
             code: Vec::default(),
             lines: Vec::default(),
+            columns: Vec::default(),
             constants: Vec::default(),
         }
     }
@@ -231,12 +236,29 @@ impl Chunk {
     where
         T: Into<u8>,
     {
+        self.write_with_location(what, line, Column(1)); // Default to column 1 for backward compatibility
+    }
+
+    /// Write a byte (`OpCode` or operand) into the chunk.
+    /// Also update the line and column information accordingly.
+    pub(super) fn write_with_location<T>(&mut self, what: T, line: Line, column: Column)
+    where
+        T: Into<u8>,
+    {
         self.code.push(what.into());
+        // Update line information
         match self.lines.last_mut() {
             Some((count, last_line)) if last_line.as_ref() == line.as_ref() => {
                 *count += 1;
             }
             _ => self.lines.push((1, line)),
+        }
+        // Update column information
+        match self.columns.last_mut() {
+            Some((count, last_column)) if last_column.as_ref() == column.as_ref() => {
+                *count += 1;
+            }
+            _ => self.columns.push((1, column)),
         }
     }
 
@@ -272,6 +294,18 @@ impl Chunk {
         }
     }
 
+    pub(super) fn write_constant_with_location(&mut self, what: Value, line: Line, column: Column) -> bool {
+        let long_index = self.make_constant(what);
+        if let Ok(short_index) = u8::try_from(*long_index) {
+            self.write_with_location(OpCode::Constant, line, column);
+            self.write_with_location(short_index, line, column);
+            true
+        } else {
+            self.write_with_location(OpCode::ConstantLong, line, column);
+            self.write_24bit_number_with_location(*long_index, line, column)
+        }
+    }
+
     pub(super) fn write_24bit_number(&mut self, what: usize, line: Line) -> bool {
         let (a, b, c, d) = crate::bitwise::get_4_bytes(what);
         if a > 0 {
@@ -280,6 +314,17 @@ impl Chunk {
         self.write(b, line);
         self.write(c, line);
         self.write(d, line);
+        true
+    }
+
+    pub(super) fn write_24bit_number_with_location(&mut self, what: usize, line: Line, column: Column) -> bool {
+        let (a, b, c, d) = crate::bitwise::get_4_bytes(what);
+        if a > 0 {
+            return false;
+        }
+        self.write_with_location(b, line, column);
+        self.write_with_location(c, line, column);
+        self.write_with_location(d, line, column);
         true
     }
 
@@ -293,6 +338,18 @@ impl Chunk {
             line = entry.1;
         }
         line
+    }
+
+    /// Decode the runlength encoded columns for a specific offset.
+    pub(super) fn get_column(&self, offset: CodeOffset) -> Column {
+        let mut iter = self.columns.iter();
+        let &(mut consumed, mut column) = iter.next().unwrap();
+        while consumed <= *offset.as_ref() {
+            let entry = iter.next().unwrap();
+            consumed += entry.0;
+            column = entry.1;
+        }
+        column
     }
 }
 

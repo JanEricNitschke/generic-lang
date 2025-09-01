@@ -2,7 +2,7 @@
 
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-use crate::types::Line;
+use crate::types::{Column, Line};
 
 /// `Token` types that exist in the generic language.
 #[derive(IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Clone, Copy, Debug)]
@@ -138,12 +138,13 @@ pub struct Token<'a> {
     pub(super) kind: TokenKind,
     pub(super) lexeme: &'a str,
     pub(super) line: Line,
+    pub(super) column: Column,
 }
 
 #[cfg(test)]
 #[test]
 fn test_token_size() {
-    assert_eq!(std::mem::size_of::<Token<'_>>(), 32);
+    assert_eq!(std::mem::size_of::<Token<'_>>(), 40); // Updated for additional column field
 }
 
 impl<'a> Token<'a> {
@@ -167,6 +168,10 @@ pub struct Scanner<'a> {
     /// Always points at the next character to be consumed.
     current: usize,
     line: Line,
+    #[allow(dead_code)]
+    column: Column,
+    #[allow(dead_code)]
+    line_start: usize, // Tracks the start of the current line for column calculation
     modes: Vec<ScannerMode>,
     #[cfg(feature = "debug_scanner")]
     is_builtin: bool,
@@ -180,6 +185,8 @@ impl<'a> Scanner<'a> {
             start: 0,
             current: 0,
             line: Line(1),
+            column: Column(1),
+            line_start: 0,
             modes: vec![ScannerMode::Normal],
             #[cfg(feature = "debug_scanner")]
             is_builtin,
@@ -492,6 +499,7 @@ impl<'a> Scanner<'a> {
                 Some(b'\n') => {
                     *self.line += 1;
                     self.advance();
+                    self.line_start = self.current; // Reset column tracking for new line
                 }
                 Some(b'#') => {
                     while !matches!(self.peek(), Some(b'\n') | None) {
@@ -513,6 +521,9 @@ impl<'a> Scanner<'a> {
             }
             if c == b'\n' {
                 *self.line += 1;
+                self.advance();
+                self.line_start = self.current;
+                continue;
             }
             self.advance();
         }
@@ -681,18 +692,22 @@ impl<'a> Scanner<'a> {
     fn make_token(&self, kind: TokenKind) -> Token<'a> {
         let to = self.current.min(self.source.len());
         let from = to.min(self.start);
+        let column = Column(self.start.saturating_sub(self.line_start) + 1); // Convert to 1-based indexing
         Token {
             kind,
             lexeme: &self.source[from..to],
             line: self.line,
+            column,
         }
     }
 
     const fn error_token(&self, msg: &'static str) -> Token<'a> {
+        let column = Column(self.current.saturating_sub(self.line_start) + 1); // Convert to 1-based indexing
         Token {
             kind: TokenKind::Error,
             lexeme: msg,
             line: self.line,
+            column,
         }
     }
 }

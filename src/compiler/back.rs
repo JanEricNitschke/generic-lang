@@ -3,7 +3,7 @@
 use crate::{
     chunk::{CodeOffset, OpCode},
     scanner::{Token, TokenKind},
-    types::{Line, NumberEncoding, ReturnMode},
+    types::{Column, Line, NumberEncoding, ReturnMode},
     value::{GenericInt, Number, Value},
 };
 
@@ -17,9 +17,26 @@ impl<'scanner> Compiler<'scanner, '_> {
         self.current_chunk_mut().write(byte, line);
     }
 
+    pub(super) fn emit_byte_with_location<T>(&mut self, byte: T, line: Line, column: Column)
+    where
+        T: Into<u8>,
+    {
+        self.current_chunk_mut().write_with_location(byte, line, column);
+    }
+
+    pub(super) fn emit_byte_at_current_location<T>(&mut self, byte: T)
+    where
+        T: Into<u8>,
+    {
+        let line = self.line();
+        let column = self.column();
+        self.emit_byte_with_location(byte, line, column);
+    }
+
     pub(super) fn emit_24bit_number(&mut self, number: usize) -> bool {
         let line = self.line();
-        self.current_chunk_mut().write_24bit_number(number, line)
+        let column = self.column();
+        self.current_chunk_mut().write_24bit_number_with_location(number, line, column)
     }
 
     pub(super) fn emit_bytes<T1, T2>(&mut self, byte1: T1, byte2: T2, line: Line)
@@ -56,24 +73,25 @@ impl<'scanner> Compiler<'scanner, '_> {
         T: Into<Value>,
     {
         let line = self.line();
+        let column = self.column();
         let value = value.into();
         match value {
             Value::Number(Number::Integer(GenericInt::Small(1))) => {
-                self.emit_byte(OpCode::LoadOne, line);
+                self.emit_byte_with_location(OpCode::LoadOne, line, column);
             }
             Value::Number(Number::Integer(GenericInt::Small(2))) => {
-                self.emit_byte(OpCode::LoadTwo, line);
+                self.emit_byte_with_location(OpCode::LoadTwo, line, column);
             }
             Value::Number(Number::Integer(GenericInt::Small(-1))) => {
-                self.emit_byte(OpCode::LoadMinusOne, line);
+                self.emit_byte_with_location(OpCode::LoadMinusOne, line, column);
             }
             Value::Number(Number::Integer(GenericInt::Small(0))) => {
-                self.emit_byte(OpCode::LoadZero, line);
+                self.emit_byte_with_location(OpCode::LoadZero, line, column);
             }
-            Value::Number(Number::Float(0.0)) => self.emit_byte(OpCode::LoadZerof, line),
-            Value::Number(Number::Float(1.0)) => self.emit_byte(OpCode::LoadOnef, line),
+            Value::Number(Number::Float(0.0)) => self.emit_byte_with_location(OpCode::LoadZerof, line, column),
+            Value::Number(Number::Float(1.0)) => self.emit_byte_with_location(OpCode::LoadOnef, line, column),
             _ => {
-                if !self.current_chunk_mut().write_constant(value, line) {
+                if !self.current_chunk_mut().write_constant_with_location(value, line, column) {
                     self.error("Too many constants in one chunk.");
                 }
             }
@@ -134,7 +152,7 @@ impl<'scanner> Compiler<'scanner, '_> {
             NumberEncoding::Long => self.emit_24bit_number(n),
             NumberEncoding::Short => {
                 if let Ok(n) = u8::try_from(n) {
-                    self.emit_byte(n, self.line());
+                    self.emit_byte_at_current_location(n);
                     true
                 } else {
                     false
@@ -152,6 +170,7 @@ impl<'scanner> Compiler<'scanner, '_> {
                 _ => unimplemented!(),
             },
             line: self.line(),
+            column: Column(1), // Synthetic tokens default to column 1
         }
     }
 
@@ -160,6 +179,7 @@ impl<'scanner> Compiler<'scanner, '_> {
             kind: TokenKind::Identifier,
             lexeme: identifier,
             line: self.line(),
+            column: Column(1), // Synthetic tokens default to column 1
         }
     }
 }
