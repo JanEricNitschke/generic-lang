@@ -23,7 +23,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         **self.scope_depth_mut() -= 1;
         let scope_depth = self.scope_depth();
         let mut instructions = vec![];
-        let line = self.line();
+        let line = self.location();
         {
             let locals = self.locals_mut();
             while locals.last().is_some_and(|local| local.depth > scope_depth) {
@@ -59,7 +59,7 @@ impl<'scanner> Compiler<'scanner, '_> {
     where
         S: ToString,
     {
-        let line = self.line();
+        let line = self.location();
         let mut get_op = OpCode::GetLocal;
         let mut set_op = OpCode::SetLocal;
         let mut arg = self.resolve_local(name);
@@ -339,14 +339,16 @@ impl<'scanner> Compiler<'scanner, '_> {
 
         if let Ok(short) = u8::try_from(*global) {
             match mutability {
-                Mutability::Mutable => self.emit_byte(OpCode::DefineGlobal, self.line()),
-                Mutability::Immutable => self.emit_byte(OpCode::DefineGlobalConst, self.line()),
+                Mutability::Mutable => self.emit_byte(OpCode::DefineGlobal, self.location()),
+                Mutability::Immutable => self.emit_byte(OpCode::DefineGlobalConst, self.location()),
             }
-            self.emit_byte(short, self.line());
+            self.emit_byte(short, self.location());
         } else {
             match mutability {
-                Mutability::Mutable => self.emit_byte(OpCode::DefineGlobalLong, self.line()),
-                Mutability::Immutable => self.emit_byte(OpCode::DefineGlobalConstLong, self.line()),
+                Mutability::Mutable => self.emit_byte(OpCode::DefineGlobalLong, self.location()),
+                Mutability::Immutable => {
+                    self.emit_byte(OpCode::DefineGlobalConstLong, self.location());
+                }
             }
             if !self.emit_24bit_number(*global) {
                 self.error("Too many globals in define_global!");

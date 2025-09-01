@@ -8,6 +8,29 @@ use shrinkwraprs::Shrinkwrap;
 #[shrinkwrap(mutable)]
 pub struct Line(pub usize);
 
+#[derive(Shrinkwrap, PartialEq, Eq, Clone, Copy, Debug)]
+#[shrinkwrap(mutable)]
+pub struct Column(pub usize);
+
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+pub struct Location {
+    pub(super) start_line: Line,
+    pub(super) end_line: Line,
+    pub(super) start_column: Column,
+    pub(super) end_column: Column,
+}
+
+impl Default for Location {
+    fn default() -> Self {
+        Self {
+            start_line: Line(1),
+            end_line: Line(1),
+            start_column: Column(1),
+            end_column: Column(1),
+        }
+    }
+}
+
 /// Enum for variable mutability
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mutability {

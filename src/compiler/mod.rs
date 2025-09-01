@@ -17,7 +17,7 @@ use crate::{
     compiler::rules::{Rules, make_rules},
     heap::{Heap, StringId},
     scanner::{Scanner, Token, TokenKind},
-    types::{Line, Mutability, ReturnMode},
+    types::{Location, Mutability, ReturnMode},
     value::Function,
 };
 
@@ -129,7 +129,7 @@ impl NestableState<'_> {
                     } else {
                         ""
                     },
-                    line: Line(0),
+                    location: Location::default(),
                 },
                 depth: ScopeDepth::default(),
                 mutability: Mutability::Immutable,

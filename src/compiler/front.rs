@@ -8,7 +8,7 @@ use super::{ClassState, Compiler, FunctionType, LoopState, rules::Precedence};
 use crate::{
     chunk::{CodeOffset, ConstantIndex, ConstantLongIndex, OpCode},
     scanner::{Token, TokenKind as TK},
-    types::{ConditionType, Line, LoopType, Mutability, NumberEncoding, ReturnMode},
+    types::{ConditionType, Location, LoopType, Mutability, NumberEncoding, ReturnMode},
     utils::get_file_stem,
 };
 
@@ -103,7 +103,7 @@ impl Compiler<'_, '_> {
         if self.match_(TK::Equal) {
             self.expression();
         } else {
-            self.emit_byte(OpCode::Nil, self.line());
+            self.emit_byte(OpCode::Nil, self.location());
         }
 
         self.consume(TK::Semicolon, "Expect ';' after variable declaration.");
@@ -134,7 +134,7 @@ impl Compiler<'_, '_> {
     }
 
     fn decorated_fun_definition(&mut self) -> Option<ConstantLongIndex> {
-        let line = self.line();
+        let line = self.location();
         self.expression();
         let fun_global = self.fun_definition();
         self.emit_bytes(OpCode::Call, 1, line);
@@ -157,7 +157,7 @@ impl Compiler<'_, '_> {
             OpCode::Class,
             ConstantIndex::try_from(name_constant)
                 .expect("Too many constants when declaring class."),
-            self.line(),
+            self.location(),
         );
         self.define_variable(Some(name_constant), Mutability::Mutable);
         self.class_state.push(ClassState::new());
@@ -175,7 +175,7 @@ impl Compiler<'_, '_> {
             self.define_variable(None, Mutability::Mutable);
 
             self.named_variable(&class_name, true);
-            self.emit_byte(OpCode::Inherit, self.line());
+            self.emit_byte(OpCode::Inherit, self.location());
             self.current_class_mut().unwrap().has_superclass = true;
         }
 
@@ -185,7 +185,7 @@ impl Compiler<'_, '_> {
             self.method();
         }
         self.consume(TK::RightBrace, "Expect '}' after class body.");
-        self.emit_byte(OpCode::Pop, self.line());
+        self.emit_byte(OpCode::Pop, self.location());
 
         if self.current_class().unwrap().has_superclass {
             self.end_scope();
@@ -246,7 +246,7 @@ impl Compiler<'_, '_> {
         self.consume(TK::LeftBrace, "Expect '{' after try");
         self.scoped_block();
 
-        self.emit_byte(OpCode::PopHandler, self.line());
+        self.emit_byte(OpCode::PopHandler, self.location());
         let jump_to_else = self.emit_jump(OpCode::Jump);
         let mut catch_jumps_to_end = Vec::new();
         let mut jump_to_next_catch = None;
@@ -278,7 +278,7 @@ impl Compiler<'_, '_> {
                     self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Comma]);
                     // This compares the exception at STACK[-2] with the class at STACK[-1]
                     // Pops the class and leaves the comparison result above the exception.
-                    self.emit_byte(OpCode::CompareException, self.line());
+                    self.emit_byte(OpCode::CompareException, self.location());
                     jumps_to_catch_body.push(self.emit_jump(OpCode::PopJumpIfTrue));
 
                     if !self.match_(TK::Comma) {
@@ -288,7 +288,7 @@ impl Compiler<'_, '_> {
                 self.consume(TK::RightParen, "Expect ')' after exception types.");
             } else {
                 self.expression();
-                self.emit_byte(OpCode::CompareException, self.line());
+                self.emit_byte(OpCode::CompareException, self.location());
                 jumps_to_catch_body.push(self.emit_jump(OpCode::PopJumpIfTrue));
             }
 
@@ -310,7 +310,7 @@ impl Compiler<'_, '_> {
             self.end_scope();
             // We remove the exception with the end of the scope.
             // Leave nil on the stack to indicate the the reraise that we caught the exception.
-            self.emit_byte(OpCode::Nil, self.line());
+            self.emit_byte(OpCode::Nil, self.location());
             catch_jumps_to_end.push(self.emit_jump(OpCode::Jump));
         }
 
@@ -329,7 +329,7 @@ impl Compiler<'_, '_> {
         for jump in catch_jumps_to_end {
             self.patch_jump(jump);
         }
-        self.emit_byte(OpCode::Reraise, self.line());
+        self.emit_byte(OpCode::Reraise, self.location());
 
         self.patch_jump(jump_over_reraise);
 
@@ -346,7 +346,7 @@ impl Compiler<'_, '_> {
     fn throw_statement(&mut self) {
         self.expression();
         self.consume(TK::Semicolon, "Expect ';' after throw expression.");
-        self.emit_byte(OpCode::Throw, self.line());
+        self.emit_byte(OpCode::Throw, self.location());
     }
 
     /// Parse a conditional statement, either `if` or `unless`.
@@ -451,7 +451,7 @@ impl Compiler<'_, '_> {
     }
 
     fn continue_statement(&mut self) {
-        let line = self.line();
+        let line = self.location();
         let label = self.loop_label();
 
         match self.loop_state_by_label(label.as_deref()) {
@@ -476,7 +476,7 @@ impl Compiler<'_, '_> {
     }
 
     fn break_statement(&mut self) {
-        let line = self.line();
+        let line = self.location();
         let label = self.loop_label();
 
         // First check if we're in a loop and get the depth
@@ -516,7 +516,7 @@ impl Compiler<'_, '_> {
         let label = self.loop_label();
         self.check_duplicate_loop_label(label.as_deref());
         self.consume(TK::LeftParen, "Expect label ('label) or '(' after 'for'.");
-        let line = self.line();
+        let line = self.location();
 
         // Compile initializer, store loop variable
         let loop_var_name_mutable = if self.match_(TK::Semicolon) {
@@ -633,7 +633,7 @@ impl Compiler<'_, '_> {
             TK::LeftParen,
             "Expect label ('label) or '(' after 'foreach'.",
         );
-        let line = self.line();
+        let line = self.location();
 
         // Compile initializer, store loop variable
         if !(self.match_(TK::Var) || self.match_(TK::Const)) {
@@ -648,7 +648,7 @@ impl Compiler<'_, '_> {
             Mutability::Immutable
         };
         let global = self.parse_variable("Expect variable name.", mutability);
-        self.emit_byte(OpCode::Nil, self.line());
+        self.emit_byte(OpCode::Nil, self.location());
         self.consume(TK::In, "Expect 'in' after variable declaration.");
         self.define_variable(global, mutability);
         // Challenge 25/2: alias loop variables
@@ -740,7 +740,7 @@ impl Compiler<'_, '_> {
             }
             self.expression();
             self.consume(TK::Semicolon, "Expect ';' after return value.");
-            self.emit_byte(OpCode::Return, self.line());
+            self.emit_byte(OpCode::Return, self.location());
         }
     }
 
@@ -761,10 +761,10 @@ impl Compiler<'_, '_> {
             // Check condition and build the jump over the case if false
             let miss_jump = if self.match_(TK::Case) {
                 // Have to dup because equality check removes it
-                self.emit_byte(OpCode::Dup, self.line());
+                self.emit_byte(OpCode::Dup, self.location());
                 self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Colon]);
                 self.consume(TK::Colon, "Expect ':' after 'case' value.");
-                self.emit_byte(OpCode::Equal, self.line());
+                self.emit_byte(OpCode::Equal, self.location());
                 let jump = self.emit_jump(OpCode::PopJumpIfFalse);
                 Some(jump)
             } else {
@@ -796,7 +796,7 @@ impl Compiler<'_, '_> {
         for end_jump in end_jumps {
             self.patch_jump(end_jump);
         }
-        self.emit_byte(OpCode::Pop, self.line()); // Get rid of switch value
+        self.emit_byte(OpCode::Pop, self.location()); // Get rid of switch value
 
         self.consume(TK::RightBrace, "Expect '}' after 'switch' body.");
     }
@@ -822,7 +822,7 @@ impl Compiler<'_, '_> {
                 self.mark_initialized();
             }
             self.consume(TK::Semicolon, "Expect ';' after import alias");
-            self.emit_byte(OpCode::ImportAs, self.line());
+            self.emit_byte(OpCode::ImportAs, self.location());
             if !self.emit_number(path_constant.0, NumberEncoding::Short) {
                 self.error("Too many constants created for OP_IMPORT_AS.");
             }
@@ -843,7 +843,7 @@ impl Compiler<'_, '_> {
                     Token {
                         kind: path_token.kind,
                         lexeme: name,
-                        line: path_token.line,
+                        location: path_token.location,
                     },
                     Mutability::Mutable,
                 );
@@ -851,12 +851,12 @@ impl Compiler<'_, '_> {
                 self.mark_initialized();
             }
             self.consume(TK::Semicolon, "Expect ';' after imported file path.");
-            self.emit_byte(OpCode::Import, self.line());
+            self.emit_byte(OpCode::Import, self.location());
             if !self.emit_number(path_constant.0, NumberEncoding::Short) {
                 self.error("Too many constants created for OP_IMPORT.");
             }
         }
-        self.emit_byte(is_local, self.line());
+        self.emit_byte(is_local, self.location());
     }
 
     fn import_from_statement(&mut self) {
@@ -881,18 +881,18 @@ impl Compiler<'_, '_> {
             }
         }
         self.consume(TK::Semicolon, "Expect ';' after names to import name.");
-        self.emit_byte(OpCode::ImportFrom, self.line());
+        self.emit_byte(OpCode::ImportFrom, self.location());
         if !self.emit_number(path_constant.0, NumberEncoding::Short) {
             self.error("Too many constants created for OP_IMPORT_FROM.");
         }
-        self.emit_byte(is_local, self.line());
+        self.emit_byte(is_local, self.location());
         if !self.emit_number(import_tokens.len(), NumberEncoding::Short) {
             self.error("Too many constants created for OP_IMPORT_FROM.");
         }
         for constant in import_tokens {
             let long_index = self.identifier_constant(&constant.as_str().to_string());
             if let Ok(short) = u8::try_from(*long_index) {
-                self.emit_byte(short, self.line());
+                self.emit_byte(short, self.location());
             } else {
                 self.error("Too many names to import from module.");
             }
@@ -904,7 +904,7 @@ impl Compiler<'_, '_> {
     }
 
     fn expression_statement(&mut self) {
-        let line = self.line();
+        let line = self.location();
         self.expression();
         self.consume(TK::Semicolon, "Expect ';' after expression.");
         self.emit_byte(OpCode::Pop, line);
@@ -921,7 +921,7 @@ impl Compiler<'_, '_> {
         function_type: FunctionType,
         allow_expression_body: bool,
     ) {
-        let line = self.line();
+        let line = self.location();
         let nested_state = self.nested(function_name, function_type, |compiler| {
             compiler.begin_scope();
 
@@ -984,11 +984,13 @@ impl Compiler<'_, '_> {
             OpCode::Method,
             ConstantIndex::try_from(name_constant)
                 .expect("Too many constants when declaring method."),
-            self.line(),
+            self.location(),
         );
     }
 
-    pub(super) fn line(&self) -> Line {
-        self.previous.as_ref().map_or(Line(0), |x| x.line)
+    pub(super) fn location(&self) -> Location {
+        self.previous
+            .as_ref()
+            .map_or_else(Location::default, |x| x.location)
     }
 }

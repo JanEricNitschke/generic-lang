@@ -295,12 +295,12 @@ impl VM {
         out.push_str("Stacktrace (most recent call last):");
 
         for frame in self.callstack.iter() {
-            let line = frame
+            let location = frame
                 .closure(&self.heap)
                 .function
                 .to_value(&self.heap)
                 .chunk
-                .get_line(CodeOffset(frame.ip.saturating_sub(1)));
+                .get_location(CodeOffset(frame.ip.saturating_sub(1)));
 
             let name = frame
                 .closure(&self.heap)
@@ -309,7 +309,7 @@ impl VM {
                 .name
                 .to_value(&self.heap);
 
-            write!(out, "\n  [line {}] in {}", *line, name).unwrap();
+            write!(out, "\n  [line {}] in {}", *location.end_line, name).unwrap();
         }
 
         out
