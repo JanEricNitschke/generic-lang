@@ -21,7 +21,8 @@ impl<'scanner> Compiler<'scanner, '_> {
     where
         T: Into<u8>,
     {
-        self.current_chunk_mut().write_with_location(byte, line, column);
+        self.current_chunk_mut()
+            .write_with_location(byte, line, column);
     }
 
     pub(super) fn emit_byte_at_current_location<T>(&mut self, byte: T)
@@ -36,7 +37,8 @@ impl<'scanner> Compiler<'scanner, '_> {
     pub(super) fn emit_24bit_number(&mut self, number: usize) -> bool {
         let line = self.line();
         let column = self.column();
-        self.current_chunk_mut().write_24bit_number_with_location(number, line, column)
+        self.current_chunk_mut()
+            .write_24bit_number_with_location(number, line, column)
     }
 
     pub(super) fn emit_bytes<T1, T2>(&mut self, byte1: T1, byte2: T2, line: Line)
@@ -88,10 +90,17 @@ impl<'scanner> Compiler<'scanner, '_> {
             Value::Number(Number::Integer(GenericInt::Small(0))) => {
                 self.emit_byte_with_location(OpCode::LoadZero, line, column);
             }
-            Value::Number(Number::Float(0.0)) => self.emit_byte_with_location(OpCode::LoadZerof, line, column),
-            Value::Number(Number::Float(1.0)) => self.emit_byte_with_location(OpCode::LoadOnef, line, column),
+            Value::Number(Number::Float(0.0)) => {
+                self.emit_byte_with_location(OpCode::LoadZerof, line, column);
+            }
+            Value::Number(Number::Float(1.0)) => {
+                self.emit_byte_with_location(OpCode::LoadOnef, line, column);
+            }
             _ => {
-                if !self.current_chunk_mut().write_constant_with_location(value, line, column) {
+                if !self
+                    .current_chunk_mut()
+                    .write_constant_with_location(value, line, column)
+                {
                     self.error("Too many constants in one chunk.");
                 }
             }

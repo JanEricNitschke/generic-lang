@@ -300,7 +300,7 @@ impl VM {
                 .function
                 .to_value(&self.heap)
                 .chunk;
-                
+
             let line = chunk.get_line(CodeOffset(frame.ip.saturating_sub(1)));
             let column = chunk.get_column(CodeOffset(frame.ip.saturating_sub(1)));
 

@@ -4,7 +4,11 @@
 
 use crate::config::LAMBDA_NAME;
 use crate::heap::Heap;
-use crate::{heap::StringId, types::{Column, Line}, value::Value};
+use crate::{
+    heap::StringId,
+    types::{Column, Line},
+    value::Value,
+};
 use convert_case::{Case, Casing};
 use derivative::Derivative;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -294,7 +298,12 @@ impl Chunk {
         }
     }
 
-    pub(super) fn write_constant_with_location(&mut self, what: Value, line: Line, column: Column) -> bool {
+    pub(super) fn write_constant_with_location(
+        &mut self,
+        what: Value,
+        line: Line,
+        column: Column,
+    ) -> bool {
         let long_index = self.make_constant(what);
         if let Ok(short_index) = u8::try_from(*long_index) {
             self.write_with_location(OpCode::Constant, line, column);
@@ -317,7 +326,12 @@ impl Chunk {
         true
     }
 
-    pub(super) fn write_24bit_number_with_location(&mut self, what: usize, line: Line, column: Column) -> bool {
+    pub(super) fn write_24bit_number_with_location(
+        &mut self,
+        what: usize,
+        line: Line,
+        column: Column,
+    ) -> bool {
         let (a, b, c, d) = crate::bitwise::get_4_bytes(what);
         if a > 0 {
             return false;
