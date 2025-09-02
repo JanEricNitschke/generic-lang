@@ -5,8 +5,10 @@ try {
     print("Try");
 } catch Error as e {
     print(e); # expect: Error: error message
-              # expect: Stacktrace (most recent call last):
-              # expect:   [line 4] in <script>
+              # expect: Traceback (most recent call last):
+              # expect:   File "test/exceptions/catch_single_named.gen", line 4, in <script>
+              # expect:         throw Error("error message");
+              # expect:               ~~~~~^^^^^^^^^^^^^^^^^ 
 } else {
     print("Else");
 }

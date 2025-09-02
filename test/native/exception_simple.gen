@@ -2,5 +2,7 @@
 var exc = Exception("Something went wrong");
 print(exc);
 # expect: Exception: Something went wrong
-# expect: Stacktrace (most recent call last):
-# expect:   [line 2] in <script>
+# expect: Traceback (most recent call last):
+# expect:   File "test/native/exception_simple.gen", line 2, in <script>
+# expect:     var exc = Exception("Something went wrong");
+# expect:               ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^ 

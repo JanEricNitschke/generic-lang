@@ -4,7 +4,7 @@
 
 use crate::config::LAMBDA_NAME;
 use crate::heap::Heap;
-use crate::{heap::StringId, types::Location, value::Value};
+use crate::{heap::StringId, types::OpcodeLocation, value::Value};
 use convert_case::{Case, Casing};
 use derivative::Derivative;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -191,7 +191,7 @@ pub struct Chunk {
     name: StringId,
     code: Vec<u8>,
     #[derivative(PartialEq = "ignore")]
-    locations: Vec<Location>,
+    locations: Vec<OpcodeLocation>,
     #[derivative(PartialEq = "ignore")]
     constants: Vec<Value>,
 }
@@ -225,7 +225,7 @@ impl Chunk {
 
     /// Write a byte (`OpCode` or operand) into the chunk.
     /// Also update the location information accordingly.
-    pub(super) fn write<T>(&mut self, what: T, location: Location)
+    pub(super) fn write<T>(&mut self, what: T, location: OpcodeLocation)
     where
         T: Into<u8>,
     {
@@ -253,7 +253,7 @@ impl Chunk {
     /// Write a constant into the code.
     /// Create it in the constant table and write the index preceded by
     /// the corresponding `OpCode`.
-    pub(super) fn write_constant(&mut self, what: Value, location: Location) -> bool {
+    pub(super) fn write_constant(&mut self, what: Value, location: OpcodeLocation) -> bool {
         let long_index = self.make_constant(what);
         if let Ok(short_index) = u8::try_from(*long_index) {
             self.write(OpCode::Constant, location);
@@ -265,7 +265,7 @@ impl Chunk {
         }
     }
 
-    pub(super) fn write_24bit_number(&mut self, what: usize, location: Location) -> bool {
+    pub(super) fn write_24bit_number(&mut self, what: usize, location: OpcodeLocation) -> bool {
         let (a, b, c, d) = crate::bitwise::get_4_bytes(what);
         if a > 0 {
             return false;
@@ -276,7 +276,7 @@ impl Chunk {
         true
     }
 
-    pub(super) fn get_location(&self, offset: CodeOffset) -> Location {
+    pub(super) fn get_location(&self, offset: CodeOffset) -> OpcodeLocation {
         self.locations[*offset.as_ref()]
     }
 }
@@ -288,7 +288,7 @@ impl Chunk {
         let mut result = if name == LAMBDA_NAME {
             format!(
                 "== {name} ({:?}) ==\n",
-                self.locations.first().map(|loc| loc.end_line)
+                self.locations.first().map(|loc| loc.source.end_line)
             )
         } else {
             format!("== {name} ==\n")
@@ -706,7 +706,7 @@ impl Debug for InstructionDisassembler<'_, '_> {
             write!(
                 f,
                 "{:>OPERAND_ALIGNMENT$} ",
-                *self.chunk.get_location(offset).end_line,
+                *self.chunk.get_location(offset).source.end_line,
                 OPERAND_ALIGNMENT = self.operand_alignment
             )?;
         }
@@ -821,7 +821,7 @@ impl Debug for InstructionDisassembler<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{heap::Heap, types::Location, value::Value};
+    use crate::{heap::Heap, value::Value};
 
     fn create_test_heap() -> Heap {
         Heap::new()
@@ -853,9 +853,9 @@ mod tests {
         let mut heap = create_test_heap();
         let mut chunk = create_test_chunk(&mut heap);
 
-        chunk.write(OpCode::Jump, Location::default());
+        chunk.write(OpCode::Jump, OpcodeLocation::default());
         let patch_offset = CodeOffset(chunk.code().len());
-        chunk.write(0u8, Location::default()); // Placeholder for jump offset
+        chunk.write(0u8, OpcodeLocation::default()); // Placeholder for jump offset
 
         // Patch the jump offset
         chunk.patch(patch_offset, 42u8);
@@ -868,7 +868,7 @@ mod tests {
         let mut chunk = create_test_chunk(&mut heap);
 
         // Test valid 24-bit number
-        let result = chunk.write_24bit_number(0x0012_3456, Location::default());
+        let result = chunk.write_24bit_number(0x0012_3456, OpcodeLocation::default());
         assert!(result);
         assert_eq!(chunk.code().len(), 3);
         assert_eq!(chunk.code()[0], 0x12);
@@ -877,7 +877,7 @@ mod tests {
 
         // Test number too large for 24-bit
         let mut chunk2 = create_test_chunk(&mut heap);
-        let result2 = chunk2.write_24bit_number(0x0100_0000, Location::default()); // Requires 25 bits
+        let result2 = chunk2.write_24bit_number(0x0100_0000, OpcodeLocation::default()); // Requires 25 bits
         assert!(!result2); // Should fail
         assert_eq!(chunk2.code().len(), 0); // Nothing should be written
     }

@@ -6,17 +6,21 @@ try {
     try {
         throw Error1("error message");
     } catch Error1 as e1 {
-        print(e1); # expect: Error1: error message
-                   # expect: Stacktrace (most recent call last):
-                   # expect:   [line 7] in <script>
+        print(e1);  # expect: Error1: error message
+                    # expect: Traceback (most recent call last):
+                    # expect:   File "test/exceptions/catch_only_try_not_other_catch.gen", line 7, in <script>
+                    # expect:             throw Error1("error message");
+                    # expect:                   ~~~~~~^^^^^^^^^^^^^^^^^ 
         throw Error2("error message");
     } catch Error2 as e2 {
         print(e2); 
     }
 } catch Error2 as e {
-    print(e); # expect: Error2: error message
-              # expect: Stacktrace (most recent call last):
-              # expect:   [line 12] in <script>
+    print(e);   # expect: Error2: error message
+                # expect: Traceback (most recent call last):
+                # expect:   File "test/exceptions/catch_only_try_not_other_catch.gen", line 14, in <script>
+                # expect:             throw Error2("error message");
+                # expect:                   ~~~~~~^^^^^^^^^^^^^^^^^ 
 }
 
 
@@ -27,12 +31,16 @@ try {
         print(e1);
     } catch Error2 as e2 {
         print(e2);  # expect: Error2: error message
-                    # expect: Stacktrace (most recent call last):
-                    # expect:   [line 25] in <script>
+                    # expect: Traceback (most recent call last):
+                    # expect:   File "test/exceptions/catch_only_try_not_other_catch.gen", line 29, in <script>
+                    # expect:             throw Error2("error message");
+                    # expect:                   ~~~~~~^^^^^^^^^^^^^^^^^ 
         throw Error1("error message");
     }
 } catch Error1 as e {
-    print(e); # expect: Error1: error message
-              # expect: Stacktrace (most recent call last):
-              # expect:   [line 32] in <script>
+    print(e);   # expect: Error1: error message
+                # expect: Traceback (most recent call last):
+                # expect:   File "test/exceptions/catch_only_try_not_other_catch.gen", line 38, in <script>
+                # expect:             throw Error1("error message");
+                # expect:                   ~~~~~~^^^^^^^^^^^^^^^^^ 
 }

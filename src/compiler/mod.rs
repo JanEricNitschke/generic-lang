@@ -218,7 +218,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             self.declaration();
         }
 
-        self.end(ReturnMode::Normal);
+        self.end(ReturnMode::Normal, self.op_location());
         if self.had_error {
             None
         } else {
