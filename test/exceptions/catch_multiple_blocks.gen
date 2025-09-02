@@ -9,8 +9,10 @@ try {
     print(e1);
 } catch Error2 as e2 {
     print(e2); # expect: Error2: error message
-               # expect: Stacktrace (most recent call last):
-               # expect:   [line 6] in <script>
+               # expect: Traceback (most recent call last):
+               # expect:   File "test/exceptions/catch_multiple_blocks.gen", line 6, in <script>
+               # expect:         throw Error2("error message");
+               # expect:               ~~~~~~^^^^^^^^^^^^^^^^^ 
 } catch Error3 as e3 {
     print(e3);
 } else {

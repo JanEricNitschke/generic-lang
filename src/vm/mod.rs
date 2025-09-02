@@ -36,8 +36,9 @@ use rustc_hash::FxHashMap as HashMap;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 
-use crate::config::GENERIC_BUILTINS_DIR;
+use crate::config::{GENERIC_BUILTINS_DIR, GENERIC_STDLIB_DIR};
 use crate::natives;
+use crate::types::Location;
 use crate::vm::errors::VmResult;
 use crate::{
     chunk::{CodeOffset, OpCode},
@@ -290,32 +291,122 @@ impl VM {
 
     /// Capture the current stack trace directly as a string.
     pub(super) fn capture_stack_trace(&self) -> String {
-        let mut out = String::with_capacity(64 + self.callstack.len() * 40);
-
-        out.push_str("Stacktrace (most recent call last):");
+        let mut out = String::with_capacity(128 + self.callstack.len() * 96);
+        out.push_str("Traceback (most recent call last):");
 
         for frame in self.callstack.iter() {
-            let location = frame
-                .closure(&self.heap)
-                .function
-                .to_value(&self.heap)
-                .chunk
-                .get_location(CodeOffset(frame.ip.saturating_sub(1)));
+            let closure = frame.closure(&self.heap);
+            let function_val = closure.function.to_value(&self.heap);
+            let function_name = function_val.name.to_value(&self.heap);
 
-            let name = frame
-                .closure(&self.heap)
-                .function
-                .to_value(&self.heap)
-                .name
+            // Resolve module + source text
+            let module = closure
+                .containing_module
+                .unwrap_or(self.modules[0])
                 .to_value(&self.heap);
+            let source_text = std::fs::read_to_string(&module.path).unwrap_or_else(|_| {
+                GENERIC_STDLIB_DIR
+                    .get_file(format!("{}.gen", &module.name.to_value(&self.heap)))
+                    .unwrap()
+                    .contents_utf8()
+                    .unwrap()
+                    .to_string()
+            });
 
-            write!(out, "\n  [line {}] in {}", *location.end_line, name).unwrap();
+            // Get opcode location at the instruction pointer (previous instruction)
+            let oploc = function_val
+                .chunk
+                .get_location(CodeOffset(frame.ip.saturating_sub(1)))
+                .filled();
+
+            // Determine snippet range: from start of preceding to end of following
+            let first_line = oploc
+                .preceding
+                .as_ref()
+                .map_or(*oploc.source.start_line, |p| *p.start_line);
+
+            let last_line = oploc
+                .following
+                .as_ref()
+                .map_or(*oploc.source.end_line, |f| *f.end_line);
+
+            // Header: file, source.start_line, function name
+            writeln!(
+                out,
+                "\n  File \"{}\", line {}, in {}",
+                module
+                    .path
+                    .to_string_lossy()
+                    .replace('\\', "/")
+                    .trim_start_matches("./"),
+                *oploc.source.start_line,
+                function_name,
+            )
+            .unwrap();
+
+            // Render lines + underlines
+            let lines: Vec<&str> = source_text.lines().collect();
+            for line_no in first_line..=last_line {
+                let line = lines.get(line_no.saturating_sub(1)).copied().unwrap_or("");
+                let line_len = line.chars().count();
+
+                if line_len == 0 {
+                    continue;
+                }
+
+                // print code line
+                writeln!(out, "    {line}").unwrap();
+
+                let mut underline: Vec<char> = vec![' '; line_len];
+
+                if let Some(pre) = &oploc.preceding {
+                    mark_location_on_line(&mut underline, pre, line_no, line_len, '~');
+                }
+
+                if let Some(fol) = &oploc.following {
+                    mark_location_on_line(&mut underline, fol, line_no, line_len, '~');
+                }
+                mark_location_on_line(&mut underline, &oploc.source, line_no, line_len, '^');
+
+                let underline_str: String = underline.iter().collect();
+                write!(out, "    {underline_str}").unwrap();
+            }
         }
 
         out
     }
 }
 
+/// If `loc` covers `line_no`, mark the corresponding chars in `underline` with `ch`.
+fn mark_location_on_line(
+    underline: &mut [char],
+    loc: &Location,
+    line_no: usize,
+    line_len: usize,
+    ch: char,
+) {
+    let start_line = *loc.start_line;
+    let end_line = *loc.end_line;
+
+    if line_no < start_line || line_no > end_line {
+        return;
+    }
+
+    let start = if line_no == start_line {
+        (*loc.start_column).saturating_sub(1)
+    } else {
+        0
+    };
+    let end = if line_no == end_line {
+        (*loc.end_column).saturating_sub(1).min(line_len) // subtract 1 for exclusive
+    } else {
+        line_len
+    };
+
+    for item in underline.iter_mut().take(end).skip(start) {
+        *item = ch;
+    }
+}
 // Remaining opcode handlers
 impl VM {
     fn jump_conditional(&mut self, condition: JumpCondition) -> VmResult {

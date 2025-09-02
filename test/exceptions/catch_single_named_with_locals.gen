@@ -10,8 +10,10 @@ class Error < Exception {}
         var d = 4;
         print(d); # expect: 4
         print(e); # expect: Error: error message
-                  # expect: Stacktrace (most recent call last):
-                  # expect:   [line 6] in <script>
+                  # expect: Traceback (most recent call last):
+                  # expect:   File "test/exceptions/catch_single_named_with_locals.gen", line 6, in <script>
+                  # expect:             throw Error("error message");
+                  # expect:                   ~~~~~^^^^^^^^^^^^^^^^^ 
     } else {
         print("Else");
     }

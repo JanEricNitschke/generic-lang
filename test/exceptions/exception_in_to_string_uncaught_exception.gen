@@ -5,4 +5,4 @@ class Error < Exception {
 
 }
 
-throw Error();  # expect runtime error: Exception
+str(Error());  # expect runtime error: Exception

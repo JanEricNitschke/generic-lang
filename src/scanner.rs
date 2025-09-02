@@ -478,6 +478,7 @@ impl<'a> Scanner<'a> {
         match self.source.as_bytes().get(self.current) {
             Some(actual) if actual == &expected => {
                 self.current += 1;
+                *self.location.end_column += 1;
                 true
             }
             _ => false,

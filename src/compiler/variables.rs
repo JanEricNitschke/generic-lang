@@ -6,7 +6,7 @@ use super::{Compiler, Local, ScopeDepth, Upvalue};
 use crate::chunk::{ConstantLongIndex, OpCode};
 use crate::compiler::rules::Precedence;
 use crate::scanner::{Token, TokenKind as TK};
-use crate::types::{Mutability, NumberEncoding};
+use crate::types::{Location, Mutability, NumberEncoding, OpcodeLocation};
 
 impl<'scanner> Compiler<'scanner, '_> {
     /// Start a new scope.
@@ -23,7 +23,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         **self.scope_depth_mut() -= 1;
         let scope_depth = self.scope_depth();
         let mut instructions = vec![];
-        let line = self.location();
+        let location = self.op_location();
         {
             let locals = self.locals_mut();
             while locals.last().is_some_and(|local| local.depth > scope_depth) {
@@ -36,7 +36,7 @@ impl<'scanner> Compiler<'scanner, '_> {
             }
         }
         for instruction in instructions {
-            self.emit_byte(instruction, line);
+            self.emit_byte(instruction, location);
         }
     }
 
@@ -45,21 +45,27 @@ impl<'scanner> Compiler<'scanner, '_> {
         self.named_variable(
             &self.previous.as_ref().unwrap().as_str().to_string(),
             can_assign,
+            self.location(),
         );
     }
 
     /// Handle a named variable with the given name.
     ///
-    /// First checks of the name belongs to a local variable.
+    /// First checks if the name belongs to a local variable.
     /// If none is found, upvalues are searched, before finally it is assumed to
     /// belong to a global variable.
     ///
     /// Also handles whether the variable is to be gotten or set.
-    pub(super) fn named_variable<S>(&mut self, name: &S, can_assign: bool)
-    where
+    pub(super) fn named_variable<S>(
+        &mut self,
+        name: &S,
+        can_assign: bool,
+        variable_location: Location,
+    ) where
         S: ToString,
     {
-        let line = self.location();
+        let getter_location = OpcodeLocation::new(variable_location);
+
         let mut get_op = OpCode::GetLocal;
         let mut set_op = OpCode::SetLocal;
         let mut arg = self.resolve_local(name);
@@ -91,7 +97,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         };
 
         // Get or set?
-        let op = if can_assign
+        let (op, location) = if can_assign
             && (self.match_(TK::Equal)
                 | self.match_(TK::PlusEqual)
                 | self.match_(TK::MinusEqual)
@@ -103,38 +109,51 @@ impl<'scanner> Compiler<'scanner, '_> {
                 | self.match_(TK::PercentEqual))
         {
             let previous_kind = self.previous.as_ref().unwrap().kind;
+            let operator_location = self.location();
             if matches!(previous_kind, TK::Equal) {
                 self.expression();
             } else {
-                self.emit_byte(get_op, line);
-                if !self.emit_number(arg, encoding) {
+                self.emit_byte(get_op, getter_location);
+                if !self.emit_number(arg, encoding, getter_location) {
                     self.error(&format!("Too many globals in {get_op:?}"));
                 }
+                let rhs_start_location = self.current_location();
                 self.expression();
+                let rhs_end_location = self.location();
+                let operator_centered_location = OpcodeLocation {
+                    preceding: Some(variable_location),
+                    source: operator_location,
+                    following: Some(rhs_start_location.merge_ordered(&rhs_end_location)),
+                };
                 match previous_kind {
-                    TK::PlusEqual => self.emit_byte(OpCode::Add, line),
-                    TK::MinusEqual => self.emit_byte(OpCode::Subtract, line),
-                    TK::StarEqual => self.emit_byte(OpCode::Multiply, line),
-                    TK::SlashEqual => self.emit_byte(OpCode::Divide, line),
-                    TK::HatEqual => self.emit_byte(OpCode::BitXor, line),
-                    TK::PipeEqual => self.emit_byte(OpCode::BitOr, line),
-                    TK::AmperEqual => self.emit_byte(OpCode::BitAnd, line),
-                    TK::PercentEqual => self.emit_byte(OpCode::Mod, line),
+                    TK::PlusEqual => self.emit_byte(OpCode::Add, operator_centered_location),
+                    TK::MinusEqual => self.emit_byte(OpCode::Subtract, operator_centered_location),
+                    TK::StarEqual => self.emit_byte(OpCode::Multiply, operator_centered_location),
+                    TK::SlashEqual => self.emit_byte(OpCode::Divide, operator_centered_location),
+                    TK::HatEqual => self.emit_byte(OpCode::BitXor, operator_centered_location),
+                    TK::PipeEqual => self.emit_byte(OpCode::BitOr, operator_centered_location),
+                    TK::AmperEqual => self.emit_byte(OpCode::BitAnd, operator_centered_location),
+                    TK::PercentEqual => self.emit_byte(OpCode::Mod, operator_centered_location),
                     _ => unreachable!("Unexpected byte code "),
                 }
             }
             if set_op == OpCode::SetLocal || set_op == OpCode::SetLocalLong {
                 self.check_local_const(arg);
             }
-            set_op
+            let setter_location = OpcodeLocation {
+                preceding: None,
+                source: variable_location,
+                following: Some(operator_location),
+            };
+            (set_op, setter_location)
         } else {
-            get_op
+            (get_op, getter_location)
         };
 
         // Generate the code.
-        self.emit_byte(op, line);
+        self.emit_byte(op, location);
 
-        if !self.emit_number(arg, encoding) {
+        if !self.emit_number(arg, encoding, location) {
             self.error(&format!("Too many globals in {op:?}"));
         }
     }
@@ -336,21 +355,22 @@ impl<'scanner> Compiler<'scanner, '_> {
         }
 
         let global = global.unwrap();
+        let location = self.op_location();
 
         if let Ok(short) = u8::try_from(*global) {
             match mutability {
-                Mutability::Mutable => self.emit_byte(OpCode::DefineGlobal, self.location()),
-                Mutability::Immutable => self.emit_byte(OpCode::DefineGlobalConst, self.location()),
+                Mutability::Mutable => self.emit_byte(OpCode::DefineGlobal, location),
+                Mutability::Immutable => self.emit_byte(OpCode::DefineGlobalConst, location),
             }
-            self.emit_byte(short, self.location());
+            self.emit_byte(short, location);
         } else {
             match mutability {
-                Mutability::Mutable => self.emit_byte(OpCode::DefineGlobalLong, self.location()),
+                Mutability::Mutable => self.emit_byte(OpCode::DefineGlobalLong, location),
                 Mutability::Immutable => {
-                    self.emit_byte(OpCode::DefineGlobalConstLong, self.location());
+                    self.emit_byte(OpCode::DefineGlobalConstLong, location);
                 }
             }
-            if !self.emit_24bit_number(*global) {
+            if !self.emit_24bit_number(*global, location) {
                 self.error("Too many globals in define_global!");
             }
         }

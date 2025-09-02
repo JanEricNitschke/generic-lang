@@ -3,27 +3,26 @@
 use crate::{
     chunk::{CodeOffset, OpCode},
     scanner::{Token, TokenKind},
-    types::{Location, NumberEncoding, ReturnMode},
+    types::{NumberEncoding, OpcodeLocation, ReturnMode},
     value::{GenericInt, Number, Value},
 };
 
 use super::{Compiler, FunctionType};
 
 impl<'scanner> Compiler<'scanner, '_> {
-    pub(super) fn emit_byte<T>(&mut self, byte: T, location: Location)
+    pub(super) fn emit_byte<T>(&mut self, byte: T, location: OpcodeLocation)
     where
         T: Into<u8>,
     {
         self.current_chunk_mut().write(byte, location);
     }
 
-    pub(super) fn emit_24bit_number(&mut self, number: usize) -> bool {
-        let location = self.location();
+    pub(super) fn emit_24bit_number(&mut self, number: usize, location: OpcodeLocation) -> bool {
         self.current_chunk_mut()
             .write_24bit_number(number, location)
     }
 
-    pub(super) fn emit_bytes<T1, T2>(&mut self, byte1: T1, byte2: T2, location: Location)
+    pub(super) fn emit_bytes<T1, T2>(&mut self, byte1: T1, byte2: T2, location: OpcodeLocation)
     where
         T1: Into<u8>,
         T2: Into<u8>,
@@ -32,8 +31,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         self.current_chunk_mut().write(byte2, location);
     }
 
-    pub(super) fn emit_return(&mut self) {
-        let location = self.location();
+    pub(super) fn emit_return(&mut self, location: OpcodeLocation) {
         if self.function_type() == FunctionType::Initializer {
             self.emit_bytes(OpCode::GetLocal, 0, location);
         } else {
@@ -42,21 +40,20 @@ impl<'scanner> Compiler<'scanner, '_> {
         self.emit_byte(OpCode::Return, location);
     }
 
-    pub(super) fn end(&mut self, return_mode: ReturnMode) {
+    pub(super) fn end(&mut self, return_mode: ReturnMode, location: OpcodeLocation) {
         match return_mode {
-            ReturnMode::Raw => self.emit_byte(OpCode::Return, self.location()),
-            ReturnMode::Normal => self.emit_return(),
+            ReturnMode::Raw => self.emit_byte(OpCode::Return, location),
+            ReturnMode::Normal => self.emit_return(location),
         }
 
         #[cfg(feature = "print_code")]
         self.print_code_info();
     }
 
-    pub(super) fn emit_constant<T>(&mut self, value: T)
+    pub(super) fn emit_constant<T>(&mut self, value: T, location: OpcodeLocation)
     where
         T: Into<Value>,
     {
-        let location = self.location();
         let value = value.into();
         match value {
             Value::Number(Number::Integer(GenericInt::Small(1))) => {
@@ -81,8 +78,11 @@ impl<'scanner> Compiler<'scanner, '_> {
         }
     }
 
-    pub(super) fn emit_jump(&mut self, instruction: OpCode) -> CodeOffset {
-        let location = self.location();
+    pub(super) fn emit_jump(
+        &mut self,
+        instruction: OpCode,
+        location: OpcodeLocation,
+    ) -> CodeOffset {
         self.emit_byte(instruction, location);
         let retval = CodeOffset(self.current_chunk().code().len() - 1);
         self.emit_byte(0xff, location);
@@ -118,8 +118,8 @@ impl<'scanner> Compiler<'scanner, '_> {
 
     #[allow(clippy::cast_possible_truncation)]
     pub(super) fn emit_loop(&mut self, loop_start: CodeOffset) {
+        let location = self.op_location();
         let offset = self.current_chunk().code().len() - *loop_start + 3; // 3: length of the loop instruction + its arg
-        let location = self.location();
 
         self.emit_byte(OpCode::Loop, location);
         if offset > usize::from(u16::MAX) {
@@ -130,12 +130,17 @@ impl<'scanner> Compiler<'scanner, '_> {
         self.emit_byte(offset as u8, location);
     }
 
-    pub(super) fn emit_number(&mut self, n: usize, encoding: NumberEncoding) -> bool {
+    pub(super) fn emit_number(
+        &mut self,
+        n: usize,
+        encoding: NumberEncoding,
+        location: OpcodeLocation,
+    ) -> bool {
         match encoding {
-            NumberEncoding::Long => self.emit_24bit_number(n),
+            NumberEncoding::Long => self.emit_24bit_number(n, location),
             NumberEncoding::Short => {
                 if let Ok(n) = u8::try_from(n) {
-                    self.emit_byte(n, self.location());
+                    self.emit_byte(n, location);
                     true
                 } else {
                     false

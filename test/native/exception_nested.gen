@@ -14,8 +14,16 @@ fun level1() {
 var err = level1();
 print(err);
 # expect: Exception: Deep error
-# expect: Stacktrace (most recent call last):
-# expect:   [line 14] in <script>
-# expect:   [line 11] in level1
-# expect:   [line 7] in level2
-# expect:   [line 3] in level3
+# expect: Traceback (most recent call last):
+# expect:   File "test/native/exception_nested.gen", line 14, in <script>
+# expect:     var err = level1();
+# expect:               ~~~~~~^^ 
+# expect:   File "test/native/exception_nested.gen", line 11, in level1
+# expect:         return level2();
+# expect:                ~~~~~~^^ 
+# expect:   File "test/native/exception_nested.gen", line 7, in level2
+# expect:         return level3();
+# expect:                ~~~~~~^^ 
+# expect:   File "test/native/exception_nested.gen", line 3, in level3
+# expect:         return Exception("Deep error");
+# expect:                ~~~~~~~~~^^^^^^^^^^^^^^ 

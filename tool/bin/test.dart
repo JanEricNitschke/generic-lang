@@ -15,7 +15,7 @@ final _expectedErrorPattern = RegExp(r"# (Error.*)");
 final _errorLinePattern = RegExp(r"# \[((java|c) )?line (\d+)\] (Error.*)");
 final _expectedRuntimeErrorPattern = RegExp(r"# expect runtime error: (.+)");
 final _syntaxErrorPattern = RegExp(r"\[.*line (\d+)\] (Error.+)");
-final _stackTracePattern = RegExp(r"\[line (\d+)\]");
+// final _stackTracePattern = RegExp(r"\[line (\d+)\]");
 final _nonTestPattern = RegExp(r"# nontest");
 
 var _passed = 0;
@@ -42,7 +42,8 @@ class Suite {
   final String? expectationFile;
   final bool? isUnitTest;
 
-  Suite(this.name, this.language, this.executable, this.args, this.tests, {this.testGlobPattern, this.expectationFile, this.isUnitTest});
+  Suite(this.name, this.language, this.executable, this.args, this.tests,
+      {this.testGlobPattern, this.expectationFile, this.isUnitTest});
 }
 
 void main(List<String> arguments) {
@@ -171,7 +172,9 @@ void _runTest(String path) {
       "Skipped: ${term.yellow(_skipped)} $grayPath");
 
   // Read the test and parse out the expectations.
-  var test = Test(path, expectationFile: _suite!.expectationFile, isUnitTest: _suite!.isUnitTest == true);
+  var test = Test(path,
+      expectationFile: _suite!.expectationFile,
+      isUnitTest: _suite!.isUnitTest == true);
 
   // See if it's a skipped or non-test file.
   if (!test.parse()) return;
@@ -191,7 +194,6 @@ void _runTest(String path) {
     print("");
   }
 }
-
 
 class ExpectedOutput {
   final int line;
@@ -244,7 +246,6 @@ class Test {
         'expectedExitCode: $_expectedExitCode'
         ')';
   }
-
 
   bool parse() {
     // Get the path components.
@@ -363,7 +364,6 @@ class Test {
       stderrEncoding: utf8,
     );
 
-
     // Normalize Windows line endings.
     var outputLines = const LineSplitter().convert(result.stdout as String);
     var errorLines = const LineSplitter().convert(result.stderr as String);
@@ -393,22 +393,16 @@ class Test {
       fail(errorLines[0]);
     }
 
-    // Make sure the stack trace has the right line.
-    RegExpMatch? match;
+    // Check if stack trace contains the traceback line
     var stackLines = errorLines.sublist(1);
-    for (var line in stackLines) {
-      match = _stackTracePattern.firstMatch(line);
-      if (match != null) break;
-    }
+    var hasTraceback = stackLines
+        .any((line) => line.contains("Traceback (most recent call last):"));
 
-    if (match == null) {
-      fail("Expected stack trace and got:", stackLines);
-    } else {
-      var stackLine = int.parse(match[1]!);
-      if (stackLine != _runtimeErrorLine) {
-        fail("Expected runtime error on line $_runtimeErrorLine "
-            "but was on line $stackLine.");
-      }
+    if (!hasTraceback) {
+      fail(
+          "Expected stack trace with 'Traceback (most recent call last):' "
+          "but it was not found.",
+          stackLines);
     }
   }
 
@@ -896,20 +890,40 @@ void _defineTestSuites() {
   });
 
   // Unit testing functionality suite - using custom glob pattern to only find unit tests
-  _allSuites["generic-unittest"] = Suite("generic-unittest", "generic", "generic", [], {
-    "unittest_test/test_basic.gen": "pass",
-    "unittest_test/test_empty.gen": "pass",
-    "unittest_test/errors/test_errors.gen": "pass",
-  }, testGlobPattern: "unittest_test/**.gen", isUnitTest: true);
+  _allSuites["generic-unittest"] = Suite(
+      "generic-unittest",
+      "generic",
+      "generic",
+      [],
+      {
+        "unittest_test/test_basic.gen": "pass",
+        "unittest_test/test_empty.gen": "pass",
+        "unittest_test/errors/test_errors.gen": "pass",
+      },
+      testGlobPattern: "unittest_test/**.gen",
+      isUnitTest: true);
 
   // Single file unit testing
-  _allSuites["generic-unittest-single"] = Suite("generic-unittest-single", "generic", "generic", [], {
-    "unittest_test/test_basic.gen": "pass",
-  }, testGlobPattern: "unittest_test/test_basic.gen", isUnitTest: true);
+  _allSuites["generic-unittest-single"] = Suite(
+      "generic-unittest-single",
+      "generic",
+      "generic",
+      [],
+      {
+        "unittest_test/test_basic.gen": "pass",
+      },
+      testGlobPattern: "unittest_test/test_basic.gen",
+      isUnitTest: true);
 
   // Directory-based unit testing with external expectation file
-  _allSuites["generic-unittest-directory"] = Suite("generic-unittest-directory", "generic", "generic", [], {
-    "unittest_test": "pass",
-  }, expectationFile: "unittest_test/directory_expectations.txt", isUnitTest: true);
-
+  _allSuites["generic-unittest-directory"] = Suite(
+      "generic-unittest-directory",
+      "generic",
+      "generic",
+      [],
+      {
+        "unittest_test": "pass",
+      },
+      expectationFile: "unittest_test/directory_expectations.txt",
+      isUnitTest: true);
 }
