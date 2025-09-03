@@ -1,0 +1,11 @@
+gen numbers() {
+    print(yield 3);
+}
+
+var gen1 = numbers();
+print(gen1.send(nil)); # expect: 3
+print(gen1.send(5));    # expect: 5
+                        # expect: StopIteration
+
+var gen2 = numbers();
+print(gen2.send(5)); # expect runtime error: TypeError: Can't send non-nil value to a just-started generator

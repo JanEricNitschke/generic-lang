@@ -1,0 +1,21 @@
+class NotException < Exception {
+    __init__() {
+        throw TypeError("Error in constructor");
+    }
+
+}
+
+gen my_gen() {
+    while true {
+        yield 1;
+    }
+}
+
+var generator = my_gen();
+try {
+    print(generator.raise(NotException));
+} catch TypeError {
+    print("Caught TypeError");  # expect: Caught TypeError
+}
+
+print(next(generator));  # expect: StopIteration

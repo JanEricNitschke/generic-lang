@@ -1,0 +1,22 @@
+gen numbers(a, b) {
+    foreach (var x in [a, b, 3, 4, 5]) {
+        yield x;
+    }
+}
+
+foreach (var n in numbers(1, 2)) {
+    print(n);   # expect: 1
+                # expect: 2
+                # expect: 3
+                # expect: 4
+                # expect: 5
+}
+
+
+foreach (var n in numbers(1, 2)) {
+    print(n);   # expect: 1
+                # expect: 2
+                # expect: 3
+                # expect: 4
+                # expect: 5
+}

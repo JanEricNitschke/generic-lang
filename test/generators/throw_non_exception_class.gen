@@ -1,0 +1,17 @@
+class NotException {}
+
+gen my_gen() {
+    while true {
+        yield 1;
+    }
+}
+
+var generator = my_gen();
+
+try {
+    print(generator.raise(NotException));
+} catch TypeError {
+    print("Caught TypeError");  # expect: Caught TypeError
+}
+
+print(next(generator));  # expect: 1

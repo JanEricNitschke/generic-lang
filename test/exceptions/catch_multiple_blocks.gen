@@ -12,7 +12,7 @@ try {
                # expect: Traceback (most recent call last):
                # expect:   File "test/exceptions/catch_multiple_blocks.gen", line 6, in <script>
                # expect:         throw Error2("error message");
-               # expect:               ~~~~~~^^^^^^^^^^^^^^^^^ 
+               # expect:         ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
 } catch Error3 as e3 {
     print(e3);
 } else {

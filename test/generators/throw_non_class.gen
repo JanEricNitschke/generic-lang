@@ -1,0 +1,15 @@
+gen my_gen() {
+    while true {
+        yield 1;
+    }
+}
+
+var generator = my_gen();
+
+try {
+    print(generator.raise(3));
+} catch TypeError {
+    print("Caught TypeError");  # expect: Caught TypeError
+}
+
+print(next(generator));  # expect: 1

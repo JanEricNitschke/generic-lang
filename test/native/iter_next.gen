@@ -1,0 +1,8 @@
+var my_list = [1, 2, 3];
+
+var my_list_iter = iter(my_list);
+print(my_list_iter); # expect: <list iterator of [1, 2, 3]>
+print(next(my_list_iter)); # expect: 1
+print(next(my_list_iter)); # expect: 2
+print(next(my_list_iter)); # expect: 3
+print(next(my_list_iter)); # expect: StopIteration

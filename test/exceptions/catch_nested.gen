@@ -34,7 +34,7 @@ try {
               # expect:         ~~~~~~~^^ 
               # expect:   File "test/exceptions/catch_nested.gen", line 6, in inner_1
               # expect:             throw Error2("error message");
-              # expect:                   ~~~~~~^^^^^^^^^^^^^^^^^ 
+              # expect:             ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
 } else {
     print("Else Outer");
 }
@@ -47,7 +47,7 @@ try {
                # expect:         ~~~~~~~^^                                 
                # expect:   File "test/exceptions/catch_nested.gen", line 17, in inner_2
                # expect:             throw Error1("error message");
-               # expect:                   ~~~~~~^^^^^^^^^^^^^^^^^ 
+               # expect:             ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
 } catch Error2 as e {
     print(e);
 } else {

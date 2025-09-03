@@ -8,7 +8,7 @@ try {
               # expect: Traceback (most recent call last):
               # expect:   File "test/exceptions/catch_single_named.gen", line 4, in <script>
               # expect:         throw Error("error message");
-              # expect:               ~~~~~^^^^^^^^^^^^^^^^^ 
+              # expect:         ~~~~~~^^^^^^^^^^^^^^^^^^^^^^ 
 } else {
     print("Else");
 }

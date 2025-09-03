@@ -1,0 +1,1 @@
+yield; # Error at 'yield': Can't yield from top-level code.

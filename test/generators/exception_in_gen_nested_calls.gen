@@ -1,0 +1,27 @@
+fun func1() {
+    return 1;
+}
+
+fun func2() {
+    return func1();
+}
+
+fun func3() {
+    return func2();
+}
+
+gen numbers() {
+    while true {
+        func3();
+        yield 1;
+        throw TypeError("An error occurred");
+    }
+}
+
+var generator = numbers();
+print(next(generator));
+try {
+    print(next(generator));  # expect: 1
+} catch TypeError {}
+
+print(next(generator));  # expect: StopIteration

@@ -7,7 +7,7 @@ try {
                # expect: Traceback (most recent call last):
                # expect:   File "test/generic_builtins/type_error.gen", line 2, in <script>
                # expect:         throw TypeError("Types are wrong");
-               # expect:               ~~~~~~~~~^^^^^^^^^^^^^^^^^^^ 
+               # expect:         ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
 }
 
 throw TypeError("Wrong again!");  # expect runtime error: TypeError: Wrong again!

@@ -1,8 +1,12 @@
 # Simple exception creation
-var exc = Exception("Something went wrong");
-print(exc);
+try {
+    throw Exception("Something went wrong");
+} catch Exception as e {
+    print(e);
+}
 # expect: Exception: Something went wrong
 # expect: Traceback (most recent call last):
-# expect:   File "test/native/exception_simple.gen", line 2, in <script>
-# expect:     var exc = Exception("Something went wrong");
-# expect:               ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^ 
+# expect:   File "test/native/exception_simple.gen", line 3, in <script>
+# expect:         throw Exception("Something went wrong");
+# expect:         ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
+

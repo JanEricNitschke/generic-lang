@@ -1,0 +1,26 @@
+fun gen_decorator(gen_func) {
+    gen new_gen() {
+        var generator = gen_func();
+        var val = nil;
+        while true {
+            val = yield (generator.send(val == nil ? val : val + 3) * 2);
+        }
+    }
+    return new_gen;
+}
+
+
+@gen_decorator
+gen my_gen(){
+    while true {
+        print(yield 2);
+    }
+}
+
+
+var generator = my_gen();
+print(generator.send(nil));  # expect: 4
+print(generator.send(5));    # expect: 8
+                             # expect: 4
+print(generator.send(600));  # expect: 603
+                             # expect: 4
