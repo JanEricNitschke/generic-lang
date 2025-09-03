@@ -1,1 +1,1 @@
-await 1; # Error at 'await': Async, await and yield are not yet implemented.
+await 1; # Error at 'await': Async and await are not yet implemented.

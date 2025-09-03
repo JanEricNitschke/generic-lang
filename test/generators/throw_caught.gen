@@ -1,0 +1,16 @@
+gen my_gen() {
+    while true {
+        try {
+            yield 1;
+        } catch ValueError {
+            print("Caught exception: ValueError");
+        }
+    }
+}
+
+var generator = my_gen();
+print(generator.send(nil));  # expect: 1
+print(generator.raise(ValueError)); # expect: Caught exception: ValueError
+                                    # expect: 1
+
+print(next(generator));  # expect: 1

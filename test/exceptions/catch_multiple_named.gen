@@ -9,7 +9,7 @@ try {
               # expect: Traceback (most recent call last):
               # expect:   File "test/exceptions/catch_multiple_named.gen", line 5, in <script>
               # expect:         throw Error1("error message");
-              # expect:               ~~~~~~^^^^^^^^^^^^^^^^^ 
+              # expect:         ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
 } else {
     print("Else");
 }

@@ -1,0 +1,20 @@
+
+fun inner(val) {
+    throw val;
+}
+
+var error = TypeError("An error occurred");
+
+try {
+    print(error.stack_trace());  # expect: nil
+    inner(error);
+} catch TypeError as e {
+    print(e.stack_trace());
+# expect: Traceback (most recent call last):
+# expect:   File "test/exceptions/stacktrace.gen", line 10, in <script>
+# expect:         inner(error);
+# expect:         ~~~~~^^^^^^^ 
+# expect:   File "test/exceptions/stacktrace.gen", line 3, in inner
+# expect:         throw val;
+# expect:         ~~~~~~^^^ 
+}

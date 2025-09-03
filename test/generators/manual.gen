@@ -1,0 +1,15 @@
+gen numbers() {
+    foreach (var x in [1, 2]) {
+        yield x;
+    }
+}
+
+print(numbers);
+var generator = numbers();  # expect: <fn numbers>
+print(generator);  # expect: <generator of numbers>
+var iterator = iter(generator);
+print(generator == iterator); # expect: true
+print(next(iterator)); # expect: 1
+print(next(iterator)); # expect: 2
+print(next(iterator)); # expect: StopIteration
+print(next(iterator)); # expect: StopIteration

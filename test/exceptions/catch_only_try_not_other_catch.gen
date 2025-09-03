@@ -10,7 +10,7 @@ try {
                     # expect: Traceback (most recent call last):
                     # expect:   File "test/exceptions/catch_only_try_not_other_catch.gen", line 7, in <script>
                     # expect:             throw Error1("error message");
-                    # expect:                   ~~~~~~^^^^^^^^^^^^^^^^^ 
+                    # expect:             ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
         throw Error2("error message");
     } catch Error2 as e2 {
         print(e2); 
@@ -20,7 +20,7 @@ try {
                 # expect: Traceback (most recent call last):
                 # expect:   File "test/exceptions/catch_only_try_not_other_catch.gen", line 14, in <script>
                 # expect:             throw Error2("error message");
-                # expect:                   ~~~~~~^^^^^^^^^^^^^^^^^ 
+                # expect:             ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
 }
 
 
@@ -34,7 +34,7 @@ try {
                     # expect: Traceback (most recent call last):
                     # expect:   File "test/exceptions/catch_only_try_not_other_catch.gen", line 29, in <script>
                     # expect:             throw Error2("error message");
-                    # expect:                   ~~~~~~^^^^^^^^^^^^^^^^^ 
+                    # expect:             ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
         throw Error1("error message");
     }
 } catch Error1 as e {
@@ -42,5 +42,5 @@ try {
                 # expect: Traceback (most recent call last):
                 # expect:   File "test/exceptions/catch_only_try_not_other_catch.gen", line 38, in <script>
                 # expect:             throw Error1("error message");
-                # expect:                   ~~~~~~^^^^^^^^^^^^^^^^^ 
+                # expect:             ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
 }

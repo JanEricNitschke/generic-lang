@@ -1,0 +1,19 @@
+gen numbers() {
+    while true {
+        var x = yield 2;
+        print(x);
+        if x == 4 {
+            break;
+        }
+    }
+}
+
+var generator = numbers();
+print(next(generator));     # expect: 2
+print("Called next");       # expect: Called next
+print(generator.send(3));   # expect: 3
+                            # expect: 2
+print("Called send 3");     # expect: Called send 3
+print(generator.send(4));   # expect: 4
+                            # expect: StopIteration
+print("Called send 4");     # expect: Called send 4

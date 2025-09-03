@@ -1,0 +1,12 @@
+gen numbers() {
+    foreach (var x in [1, 2, 3, 4, 5]) {
+        yield x;
+        if x == 2 {
+            return 3; # Error at 'return': Can't return a value from a generator.
+        }
+    }
+}
+
+foreach (var n in numbers()) {
+    print(n);
+}

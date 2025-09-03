@@ -1,0 +1,11 @@
+gen my_gen() {
+    while true {
+        yield 1;
+    }
+}
+
+var generator = my_gen();
+print(generator.send(nil));  # expect: 1
+print(generator.close());    # expect: nil
+print(generator.send(nil));  # expect: StopIteration
+print(generator.send(nil));  # expect: StopIteration

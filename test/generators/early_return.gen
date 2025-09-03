@@ -1,0 +1,13 @@
+gen numbers() {
+    foreach (var x in [1, 2, 3, 4, 5]) {
+        yield x;
+        if x == 2 {
+            return;
+        }
+    }
+}
+
+foreach (var n in numbers()) {
+    print(n);   # expect: 1
+                # expect: 2
+}

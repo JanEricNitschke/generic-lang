@@ -1,0 +1,9 @@
+gen numbers() {
+    var x = [1, 2, yield 3];
+    print(x);
+}
+
+foreach (var x in numbers()) {
+    print(x); # expect: 3
+              # expect: [1, 2, nil]
+}

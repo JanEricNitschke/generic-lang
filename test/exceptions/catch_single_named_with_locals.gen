@@ -13,7 +13,8 @@ class Error < Exception {}
                   # expect: Traceback (most recent call last):
                   # expect:   File "test/exceptions/catch_single_named_with_locals.gen", line 6, in <script>
                   # expect:             throw Error("error message");
-                  # expect:                   ~~~~~^^^^^^^^^^^^^^^^^ 
+                  # expect:             ~~~~~~^^^^^^^^^^^^^^^^^^^^^^ 
+
     } else {
         print("Else");
     }

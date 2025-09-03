@@ -1,0 +1,14 @@
+gen numbers() {
+    while true {
+        yield 1;
+        throw TypeError("An error occurred");
+    }
+}
+
+var generator = numbers();
+print(next(generator));
+try {
+    print(next(generator));  # expect: 1
+} catch TypeError {}
+
+print(next(generator));  # expect: StopIteration

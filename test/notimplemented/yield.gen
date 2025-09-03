@@ -1,1 +1,0 @@
-yield 1; # Error at 'yield': Async, await and yield are not yet implemented.
