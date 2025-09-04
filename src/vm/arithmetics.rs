@@ -63,8 +63,8 @@ macro_rules! binary_op {
                         Ok(value) => {
                             $self.stack.pop();
                             $self.stack.pop();
-                            $self.stack_push_value(value);
-                            Ok(())
+                            $self.stack_push(value);
+                            Ok(None)
                         }
                         Err(error) => $self.throw_value_error(&error),
                     }
@@ -91,8 +91,8 @@ impl VM {
                 let value = (a.add(*b, &mut self.heap)).into();
                 self.stack.pop();
                 self.stack.pop();
-                self.stack_push_value(value);
-                Ok(())
+                self.stack_push(value);
+                Ok(None)
             }
             [Value::String(a), Value::String(b)] => {
                 // This could be optimized by allowing mutations via the heap
@@ -100,8 +100,8 @@ impl VM {
                 let new_string_id = self.heap.string_id(&new_string);
                 self.stack.pop();
                 self.stack.pop();
-                self.stack_push_value(new_string_id.into());
-                Ok(())
+                self.stack_push(new_string_id.into());
+                Ok(None)
             }
             [Value::Instance(instance_id), _]
                 if instance_id
@@ -135,11 +135,11 @@ impl VM {
         if let Value::Number(n) = value {
             self.stack.pop();
             let negated = n.neg(&mut self.heap);
-            self.stack_push_value(negated.into());
+            self.stack_push(negated.into());
         } else {
             return self.throw_type_error("Operand must be a number.");
         }
-        Ok(())
+        Ok(None)
     }
 
     pub(crate) fn build_rational(&mut self) -> VmResult {
@@ -158,7 +158,7 @@ impl VM {
             ) if !denominator.is_zero(&self.heap) => {
                 let rational = GenericRational::new(numerator, denominator, &mut self.heap)
                     .expect("Failed to create rational");
-                self.stack_push_value(Value::Number(Number::Rational(rational)));
+                self.stack_push(Value::Number(Number::Rational(rational)));
             }
             _ => {
                 let message = format!(
@@ -169,6 +169,6 @@ impl VM {
                 return self.throw_type_error(&message);
             }
         }
-        Ok(())
+        Ok(None)
     }
 }

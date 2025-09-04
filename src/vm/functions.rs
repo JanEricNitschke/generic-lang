@@ -29,7 +29,7 @@ impl VM {
         self.invoke(method_name, arg_count)?;
 
         if method_is_native {
-            return Ok(());
+            return Ok(None);
         }
         if self.handling_exception {
             return Err(VmErrorKind::Exception(ExceptionRaisedKind));
@@ -41,13 +41,19 @@ impl VM {
     }
 
     /// Run the closure currently on top of the callstack.
+    pub(crate) fn run_function(&mut self) -> VmResult {
+        self.run_function_from_depth(self.callstack.len())
+    }
+
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
-    pub(super) fn run_function(&mut self) -> VmResult {
-        let call_depth = self.callstack.len();
-        while self.callstack.len() >= call_depth {
-            run_instruction!(self)?;
+    pub(crate) fn run_function_from_depth(&mut self, call_depth: usize) -> VmResult {
+        loop {
+            let val = run_instruction!(self)?;
+
+            if self.callstack.len() < call_depth {
+                return Ok(val);
+            }
         }
-        Ok(())
     }
 }
 
@@ -193,7 +199,7 @@ impl VM {
                     let message = format!("Expected 0 arguments but got {arg_count}.");
                     self.throw_type_error(&message)
                 } else {
-                    Ok(())
+                    Ok(None)
                 }
             }
             Value::BoundMethod(bound_method) => match bound_method.to_value(&self.heap).method {
@@ -248,7 +254,7 @@ impl VM {
             self.stack.len() - arg_count - 1,
             &self.heap,
         );
-        Ok(())
+        Ok(None)
     }
 
     /// Execute a call to a native function.
@@ -286,7 +292,7 @@ impl VM {
         let value = fun(self, ref_args.as_mut_slice())?;
         self.stack.truncate(start_index - 1);
         self.stack_push(value);
-        Ok(())
+        Ok(None)
     }
 
     /// Execute a call to a native method.
@@ -332,7 +338,7 @@ impl VM {
         self.stack
             .truncate(self.stack.len() - usize::from(arg_count) - 1);
         self.stack_push(value);
-        Ok(())
+        Ok(None)
     }
 }
 
@@ -354,7 +360,7 @@ impl VM {
             &mut self.heap,
         );
         self.stack.pop(); // instance
-        self.stack_push_value(bound_method);
+        self.stack_push(bound_method);
         true
     }
 
@@ -434,8 +440,8 @@ impl VM {
     /// If the current frame is a function, we return the value and close the upvalues.
     pub(super) fn return_(&mut self) -> VmResult<Return> {
         // Pop the return value. If none was specified (empty return, missing return, module)
-        // then the value is nil. This is handled by the compiler.
-        let result = self.stack.pop();
+        // then the value is nil (or StopIteration  for return in generators). This is handled by the compiler.
+        let result = self.stack.pop().expect("Stack underflow in OP_RETURN");
         let frame = self
             .callstack
             .pop(&self.heap)
@@ -443,70 +449,81 @@ impl VM {
         // We just popped the main script
         if self.callstack.is_empty() {
             self.stack.pop();
-            return Ok(Return::Program);
+            return Ok(Return::Program(frame));
         }
         if frame.is_module {
-            // Pop the module itself from the stack
-            self.stack.pop();
-            let last_module = self.modules.pop().expect("Module underflow in OP_RETURN");
-            let last_module_alias = last_module.to_value(&self.heap).alias;
-            let names_to_import =
-                std::mem::take(&mut last_module.to_value_mut(&mut self.heap).names_to_import);
-            let was_local_import = last_module.to_value(&self.heap).local_import;
-
-            // This has to be modified to put imports into the correct scope.
-            // Currently they are just put into the global scope.
-            if let Some(names) = names_to_import {
-                for name in names {
-                    let Some(value) = last_module.to_value(&self.heap).globals.get(&name).copied()
-                    else {
-                        let message = format!(
-                            "Could not find name to import `{}`.",
-                            name.to_value(&self.heap)
-                        );
-                        return Err(self.throw_name_error(&message).unwrap_err());
-                    };
-                    if was_local_import {
-                        self.stack_push(value.value);
-                    } else {
-                        self.globals_mut().insert(name, value);
-                    }
-                }
-            } else if was_local_import {
-                self.stack_push(last_module.into());
-            } else {
-                self.globals_mut().insert(
-                    last_module_alias,
-                    Global {
-                        value: last_module.into(),
-                        mutable: true,
-                    },
-                );
-            }
-
-            let script_name = self.heap.builtin_constants().script_name;
-            let module_name: Value = self
-                .modules
-                .last()
-                .expect("Module underflow in OP_RETURN")
-                .to_value(&self.heap)
-                .name
-                .into();
-            self.globals_mut().insert(
-                script_name,
-                Global {
-                    value: module_name,
-                    mutable: true,
-                },
-            );
-            return Ok(Return::Function);
+            self.handle_module_end()?;
+            return Ok(Return::Function(frame));
         }
         // Normal function return
         self.close_upvalue(frame.stack_base);
         // Pop all of the arguments and locals as well as the function itself.
         self.stack.truncate(frame.stack_base);
-        self.stack_push(result.expect("Stack underflow in OP_RETURN"));
-        Ok(Return::Function)
+        self.stack_push(result);
+        Ok(Return::Function(frame))
+    }
+
+    pub(super) fn yield_(&mut self) -> Return {
+        let frame = self
+            .callstack
+            .pop(&self.heap)
+            .expect("Call stack underflow in OP_RETURN");
+        self.close_upvalue(frame.stack_base);
+        Return::Function(frame)
+    }
+
+    fn handle_module_end(&mut self) -> VmResult {
+        // Pop the module itself from the stack
+        self.stack.pop();
+        let last_module = self.modules.pop().expect("Module underflow in OP_RETURN");
+        let last_module_alias = last_module.to_value(&self.heap).alias;
+        let names_to_import =
+            std::mem::take(&mut last_module.to_value_mut(&mut self.heap).names_to_import);
+        let was_local_import = last_module.to_value(&self.heap).local_import;
+        if let Some(names) = names_to_import {
+            for name in names {
+                let Some(value) = last_module.to_value(&self.heap).globals.get(&name).copied()
+                else {
+                    let message = format!(
+                        "Could not find name to import `{}`.",
+                        name.to_value(&self.heap)
+                    );
+                    return Err(self.throw_name_error(&message).unwrap_err());
+                };
+                if was_local_import {
+                    self.stack_push(value.value);
+                } else {
+                    self.globals_mut().insert(name, value);
+                }
+            }
+        } else if was_local_import {
+            self.stack_push(last_module.into());
+        } else {
+            self.globals_mut().insert(
+                last_module_alias,
+                Global {
+                    value: last_module.into(),
+                    mutable: true,
+                },
+            );
+        }
+        let script_name = self.heap.builtin_constants().script_name;
+        let module_name: Value = self
+            .modules
+            .last()
+            .expect("Module underflow in OP_RETURN")
+            .to_value(&self.heap)
+            .name
+            .into();
+        self.globals_mut().insert(
+            script_name,
+            Global {
+                value: module_name,
+                mutable: true,
+            },
+        );
+
+        Ok(None)
     }
 }
 

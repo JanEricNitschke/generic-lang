@@ -52,7 +52,7 @@ impl VM {
                 .get_field_or_method(bool_id, &self.heap)
         {
             // Value needs to be on top of the stack to invoke this check.
-            self.stack_push_value(value);
+            self.stack_push(value);
             self.invoke_and_run_function(
                 bool_id,
                 0,

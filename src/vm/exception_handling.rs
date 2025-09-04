@@ -8,12 +8,12 @@ use crate::vm::errors::{ExceptionRaisedKind, RuntimeErrorKind, VmErrorKind, VmRe
 ///
 /// Holds the index of the frame where the exception handler is located
 /// and the instruction pointer (ip) where the exception handler starts.
-#[derive(Debug)]
-pub(super) struct ExceptionHandler {
-    pub(super) frames_to_keep: usize,
-    pub(super) ip: usize,
-    pub(super) stack_length: usize,
-    pub(super) modules_to_keep: usize,
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ExceptionHandler {
+    pub frames_to_keep: usize,
+    pub ip: usize,
+    pub stack_length: usize,
+    pub modules_to_keep: usize,
 }
 
 impl VM {
@@ -36,7 +36,7 @@ impl VM {
         self.exception_handlers.pop()
     }
 
-    pub(super) fn unwind(&mut self, exception: Value) -> VmResult {
+    pub(crate) fn unwind(&mut self, mut exception: Value) -> VmResult {
         if !matches!(exception, Value::Instance(_)) {
             return self.throw_type_error(&format!(
                 "Can only throw instances, got: {}",
@@ -62,6 +62,12 @@ impl VM {
             !self.handling_exception && !self.encountered_hard_exception,
             "Shouldnt happen i think"
         );
+
+        let stack_trace = self.capture_stack_trace();
+        let stack_trace_id = self.heap.string_id(&stack_trace);
+        let exception_data = exception.as_exception_mut(&mut self.heap);
+        exception_data.stack_trace.get_or_insert(stack_trace_id);
+
         if let Some(handler) = self.pop_exception_handler() {
             self.handling_exception = true;
             self.modules.truncate(handler.modules_to_keep);
@@ -83,7 +89,7 @@ impl VM {
 
     pub(super) fn reraise_exception(&mut self) -> VmResult {
         match self.stack.pop().expect("Stack underflow in OP_RERAISE") {
-            Value::Nil => Ok(()),
+            Value::Nil => Ok(None),
             exception => self.unwind(exception),
         }
     }
@@ -113,7 +119,7 @@ impl VM {
                 exception_class_id,
                 class_id,
             )));
-            Ok(())
+            Ok(None)
         } else {
             self.throw_type_error(&format!(
                 "Exception to catch must be a class, got: {}",
@@ -160,7 +166,7 @@ impl VM {
         exception_class: ClassId,
         message_id: Option<StringId>,
     ) -> Value {
-        let exception_data = self.create_exception_data(message_id);
+        let exception_data = Exception::new(message_id);
 
         let instance = Instance::new(
             exception_class,
@@ -168,17 +174,6 @@ impl VM {
         );
 
         self.heap.add_instance(instance)
-    }
-
-    /// Create exception data with stack trace.
-    ///
-    /// This utility function extracts the common logic for creating exception data
-    /// to avoid duplication between exception creation and __init__ method.
-    pub fn create_exception_data(&mut self, message_id: Option<StringId>) -> Exception {
-        let stack_trace = self.capture_stack_trace();
-        let stack_trace_id = self.heap.string_id(&stack_trace);
-
-        Exception::new(message_id, stack_trace_id)
     }
 
     /// Create and throw a `TypeError` with the given message.

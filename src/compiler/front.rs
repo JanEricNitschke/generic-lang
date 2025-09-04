@@ -83,7 +83,7 @@ impl Compiler<'_, '_> {
             self.var_declaration(Mutability::Mutable);
         } else if self.match_(TK::Const) {
             self.var_declaration(Mutability::Immutable);
-        } else if self.check(TK::Fun) || self.check(TK::At) {
+        } else if self.check(TK::Fun) || self.check(TK::Gen) || self.check(TK::At) {
             // We use `check` instead of `match_` here because
             // `fun_declaration` will handle the advance for us
             // because it needs to do so anyway for multiple decorators
@@ -121,7 +121,9 @@ impl Compiler<'_, '_> {
         if self.match_(TK::At) {
             self.decorated_fun_definition()
         } else if self.match_(TK::Fun) {
-            self.undecorated_fun_definition()
+            self.undecorated_fun_definition(FunctionType::Function)
+        } else if self.match_(TK::Gen) {
+            self.undecorated_fun_definition(FunctionType::Generator)
         } else {
             self.error_at_current(
                 "Expect function declaration or another decorator call after a decorator call.",
@@ -147,10 +149,13 @@ impl Compiler<'_, '_> {
         fun_global
     }
 
-    fn undecorated_fun_definition(&mut self) -> Option<ConstantLongIndex> {
+    fn undecorated_fun_definition(
+        &mut self,
+        function_type: FunctionType,
+    ) -> Option<ConstantLongIndex> {
         let global = self.parse_variable("Expect function name.", Mutability::Mutable);
         self.mark_initialized();
-        self.named_function(FunctionType::Function);
+        self.named_function(function_type);
         global
     }
 
@@ -247,8 +252,8 @@ impl Compiler<'_, '_> {
             self.import_statement();
         } else if self.match_(TK::From) {
             self.import_from_statement();
-        } else if self.match_(TK::Async) || self.match_(TK::Await) || self.match_(TK::Yield) {
-            self.error("Async, await and yield are not yet implemented.");
+        } else if self.match_(TK::Async) || self.match_(TK::Await) {
+            self.error("Async and await are not yet implemented.");
         } else if self.match_(TK::Finally) {
             self.error("Finally is not yet implemented.");
         } else {
@@ -795,6 +800,8 @@ impl Compiler<'_, '_> {
         } else {
             if self.function_type() == FunctionType::Initializer {
                 self.error("Can't return a value from an initializer.");
+            } else if self.function_type() == FunctionType::Generator {
+                self.error("Can't return a value from a generator.");
             }
             let start_location = self.current_location();
             self.expression();
@@ -1040,6 +1047,10 @@ impl Compiler<'_, '_> {
             compiler.consume(TK::RightParen, "Expect ')' after parameters.");
 
             if compiler.match_(TK::LeftBrace) {
+                if function_type == FunctionType::Generator {
+                    compiler.emit_byte(OpCode::ReturnGenerator, location);
+                }
+
                 compiler.block();
                 compiler.end(ReturnMode::Normal, location);
             } else if allow_expression_body {

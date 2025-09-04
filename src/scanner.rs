@@ -88,6 +88,7 @@ pub enum TokenKind {
 
     At,
     Fun,
+    Gen,
     RightArrow,
     Return,
 
@@ -613,6 +614,7 @@ impl<'a> Scanner<'a> {
                 Some(b'u') => self.check_keyword(2, "n", TK::Fun),
                 _ => TK::Identifier,
             },
+            b'g' => self.check_keyword(1, "en", TK::Gen),
             b'i' => match self.source.as_bytes().get(self.start + 1) {
                 Some(b'f') => self.check_keyword(2, "", TK::If),
                 Some(b'n') => self.check_keyword(2, "", TK::In),

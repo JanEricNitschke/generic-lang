@@ -43,14 +43,14 @@ impl VM {
                         self.stack_push(value);
                     } else {
                         let message = format!("Undefined variable '{}'.", self.heap.strings[*name]);
-                        return self.throw_name_error(&message);
+                        return Err(self.throw_name_error(&message).unwrap_err());
                     }
                 }
             }
 
             x => panic!("Internal error: non-string operand to {op:?}: {x:?}"),
         }
-        Ok(())
+        Ok(None)
     }
 
     pub(super) fn set_global(&mut self, op: OpCode) -> VmResult {
@@ -75,23 +75,27 @@ impl VM {
             .get_mut(&name)
         {
             if !global.mutable {
-                return self.throw_const_reassignment_error("Cannot reassign const variable.");
+                return Err(self
+                    .throw_const_reassignment_error("Cannot reassign const variable.")
+                    .unwrap_err());
             }
             global.value = stack_top_value;
         } else {
             let maybe_builtin = self.builtins.get_mut(&name);
             if let Some(global) = maybe_builtin {
                 if !global.mutable {
-                    return self.throw_const_reassignment_error("Cannot reassign const variable.");
+                    return Err(self
+                        .throw_const_reassignment_error("Cannot reassign const variable.")
+                        .unwrap_err());
                 }
                 global.value = stack_top_value;
             } else {
                 let message = format!("Undefined variable '{}'.", name.to_value(&self.heap));
-                return self.throw_name_error(&message);
+                return Err(self.throw_name_error(&message).unwrap_err());
             }
         }
 
-        Ok(())
+        Ok(None)
     }
 
     pub(super) fn define_global(&mut self, op: OpCode) {

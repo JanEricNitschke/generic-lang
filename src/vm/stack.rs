@@ -23,7 +23,7 @@ impl VM {
     }
 
     #[inline]
-    pub(super) fn stack_push(&mut self, value_id: Value) {
+    pub fn stack_push(&mut self, value_id: Value) {
         self.stack.push(value_id);
         // This check has a pretty big performance overhead; disabled for now
         // TODO find a better way: keep the check and minimize overhead
@@ -32,11 +32,6 @@ impl VM {
             runtime_error!(self, "Stack overflow");
         }
         */
-    }
-
-    #[inline]
-    pub(super) fn stack_push_value(&mut self, value: Value) {
-        self.stack.push(value);
     }
 
     pub(super) fn stack_get(&self, slot: usize) -> &Value {
