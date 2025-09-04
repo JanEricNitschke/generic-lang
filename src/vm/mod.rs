@@ -18,7 +18,7 @@ mod arithmetics;
 #[macro_use]
 mod run_instruction;
 mod bytecode;
-mod callstack;
+pub mod callstack;
 mod exception_handling;
 mod functions;
 mod native_containers;
@@ -30,7 +30,7 @@ use arithmetics::IntoResultValue;
 use callstack::CallStack;
 use errors::RuntimeResult;
 use errors::{Return, RuntimeErrorKind, VmErrorKind};
-use exception_handling::ExceptionHandler;
+pub use exception_handling::ExceptionHandler;
 
 use rustc_hash::FxHashMap as HashMap;
 use std::collections::VecDeque;
@@ -64,7 +64,7 @@ pub use testing::TestResult;
 impl From<RuntimeResult> for InterpretResult {
     fn from(result: RuntimeResult) -> Self {
         match result {
-            Ok(()) => Self::Ok,
+            Ok(_) => Self::Ok,
             Err(_) => Self::RuntimeError,
         }
     }
@@ -105,8 +105,8 @@ impl std::fmt::Display for Global {
 pub struct VM {
     pub(super) heap: Heap,
     pub(super) stack: Vec<Value>,
-    callstack: CallStack,
-    exception_handlers: Vec<ExceptionHandler>,
+    pub(super) callstack: CallStack,
+    pub(super) exception_handlers: Vec<ExceptionHandler>,
     open_upvalues: VecDeque<UpvalueId>,
     // Could also keep a cache of the last module or its globals for performance
     modules: Vec<ModuleId>,
@@ -420,7 +420,7 @@ impl VM {
         if is_falsey ^ bool::from(condition) {
             self.callstack.current_mut().ip += offset;
         }
-        Ok(())
+        Ok(None)
     }
 
     /// Pop from stack and jump conditionally based on the popped value.
@@ -436,7 +436,7 @@ impl VM {
         if self.is_falsey(condition_value)? ^ bool::from(condition) {
             self.callstack.current_mut().ip += offset;
         }
-        Ok(())
+        Ok(None)
     }
 
     /// Jump if the top of stack matches the condition, leaving the value on the stack.
@@ -455,7 +455,7 @@ impl VM {
             // Condition doesn't match, pop it
             self.stack.pop().expect("Stack underflow in JUMP_IF_OR_POP");
         }
-        Ok(())
+        Ok(None)
     }
 
     /// Logical not the top value on the stack.
@@ -469,7 +469,7 @@ impl VM {
         let value = self.stack.pop().expect("Stack underflow in OP_NOT");
         let result = self.is_falsey(value)?;
         self.stack_push(result.into());
-        Ok(())
+        Ok(None)
     }
 
     /// Check if the top two values on the stack are equal.
@@ -498,7 +498,7 @@ impl VM {
                     self.stack.pop().expect("Stack underflow in OP_EQUAL");
                     self.stack_push((!bool).into());
                 }
-                Ok(())
+                Ok(None)
             } else {
                 self.throw_type_error(&format!(
                     "Return value of `__eq__` has to be bool, got {}",
@@ -522,6 +522,6 @@ impl VM {
             EqualityMode::NotEqual => !left_id.eq(&right_id, &self.heap),
         };
         self.stack_push(result.into());
-        Ok(())
+        Ok(None)
     }
 }

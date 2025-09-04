@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+use crate::vm::callstack::CallFrame;
+
 // === Raw error types ===
 #[derive(Debug, Error, Clone, Copy)]
 #[error("Runtime error occurred")]
@@ -18,10 +20,18 @@ pub enum VmErrorKind {
     Exception(#[from] ExceptionRaisedKind),
 }
 
-pub type RuntimeResult<T = ()> = Result<T, RuntimeErrorKind>;
-pub type VmResult<T = ()> = Result<T, VmErrorKind>;
+pub type RuntimeResult<T = Option<CallFrame>> = Result<T, RuntimeErrorKind>;
+pub type VmResult<T = Option<CallFrame>> = Result<T, VmErrorKind>;
+
+impl From<Return> for VmResult {
+    fn from(value: Return) -> Self {
+        match value {
+            Return::Function(frame) | Return::Program(frame) => Ok(Some(frame)),
+        }
+    }
+}
 
 pub enum Return {
-    Function,
-    Program,
+    Function(CallFrame),
+    Program(CallFrame),
 }

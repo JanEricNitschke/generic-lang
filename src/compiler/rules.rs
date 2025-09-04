@@ -95,7 +95,7 @@ macro_rules! make_rules {
     }};
 }
 
-pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 89];
+pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 90];
 
 // Can't be static because the associated function types include lifetimes
 #[rustfmt::skip]
@@ -155,13 +155,13 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         Apostrophe         = [None,            None,      None      ],
         At                 = [None,            None,      None      ],
         Fun                = [None,            None,      None      ],
+        Gen                = [None,            None,      None      ],
         RightArrow         = [lambda,          None,      None      ],
         QuestionMark       = [None,            ternary,   Ternary   ],
         If                 = [None,            None,      None      ],
         Unless             = [None,            None,      None      ],
         Nil                = [literal,         None,      None      ],
         Or                 = [None,            or,        Or        ],
-        Return             = [None,            None,      None      ],
         Switch             = [None,            None,      None      ],
         Super              = [super_,          None,      None      ],
         This               = [this,            None,      None      ],
@@ -175,7 +175,8 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         As                 = [None,            None,      None      ],
         Error              = [None,            None,      None      ],
         Eof                = [None,            None,      None      ],
-        Yield              = [None,            None,      None      ],
+        Return             = [None,            None,      None      ],
+        Yield              = [yield_,          None,      None      ],
         Await              = [None,            None,      None      ],
         Async              = [None,            None,      None      ],
         StopIteration      = [literal,         None,      None      ],
@@ -966,6 +967,37 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             self.emit_byte(OpCode::GetSuper, getter_location);
             if !self.emit_number(*name, NumberEncoding::Short, getter_location) {
                 self.error("Too many constants while compiling OP_SUPER_INVOKE");
+            }
+        }
+    }
+
+    fn yield_(&mut self, _can_assign: bool, ignore_operators: &[TK]) {
+        let yield_location = self.location();
+        if self.function_type() == FunctionType::Script {
+            self.error("Can't yield from top-level code.");
+        } else if self.function_type() != FunctionType::Generator {
+            self.error("Can only yield from a generator function.");
+        }
+
+        let start_location = self.current_location();
+        match self.try_parse_precedence_ignoring(Precedence::Assignment, ignore_operators) {
+            ParseResult::Success => {
+                let end_location = self.current_location();
+                self.emit_byte(
+                    OpCode::Yield,
+                    OpcodeLocation {
+                        preceding: Some(yield_location),
+                        source: start_location.merge_ordered(&end_location),
+                        following: None,
+                    },
+                );
+            }
+            ParseResult::NoPrefix => {
+                self.emit_bytes(
+                    OpCode::Nil,
+                    OpCode::Yield,
+                    OpcodeLocation::new(yield_location),
+                );
             }
         }
     }

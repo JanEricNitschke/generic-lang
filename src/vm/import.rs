@@ -94,7 +94,7 @@ impl VM {
             );
             return self.throw_import_error(&message);
         }
-        Ok(())
+        Ok(None)
     }
 
     /// Import a rust native stdlib module.
@@ -164,7 +164,7 @@ impl VM {
                 );
             }
         }
-        Ok(())
+        Ok(None)
     }
 
     /// Import a generic module.

@@ -9,17 +9,26 @@ use crate::value::Closure;
 ///
 /// Additionally, it contains a boolean indicating whether the closure is a module,
 /// in order to handle transferring globals on module end.
-#[derive(Debug)]
-pub(super) struct CallFrame {
-    pub(super) closure: ClosureId,
-    pub(super) ip: usize,
-    pub(super) stack_base: usize,
-    pub(super) is_module: bool,
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CallFrame {
+    pub closure: ClosureId,
+    pub ip: usize,
+    pub stack_base: usize,
+    pub is_module: bool,
 }
 
 impl CallFrame {
-    pub(super) fn closure<'a>(&self, heap: &'a Heap) -> &'a Closure {
+    pub fn closure<'a>(&self, heap: &'a Heap) -> &'a Closure {
         self.closure.to_value(heap)
+    }
+
+    pub fn from_closure_id(closure: ClosureId) -> Self {
+        Self {
+            closure,
+            ip: 0,
+            stack_base: 0,
+            is_module: false,
+        }
     }
 }
 
@@ -28,7 +37,7 @@ impl CallFrame {
 /// Contains stored references for the current closure and function,
 /// to not have to grab them from the vector every time.
 #[derive(Debug)]
-pub(super) struct CallStack {
+pub struct CallStack {
     frames: Vec<CallFrame>,
     // Maybe this could either be a straight pointer or at least not an Option.
     current_closure: Option<ClosureId>,
@@ -58,7 +67,7 @@ impl CallStack {
         self.current_function = self.current_closure.map(|c| c.to_value(heap).function);
     }
 
-    pub(super) fn pop(&mut self, heap: &Heap) -> Option<CallFrame> {
+    pub fn pop(&mut self, heap: &Heap) -> Option<CallFrame> {
         let retval = self.frames.pop();
         self.set_currents(heap);
         retval
@@ -78,6 +87,12 @@ impl CallStack {
         });
         self.current_closure = Some(closure);
         self.current_function = Some(closure.to_value(heap).function);
+    }
+
+    pub(crate) fn push_callframe(&mut self, callframe: CallFrame, heap: &Heap) {
+        self.current_closure = Some(callframe.closure);
+        self.current_function = Some(callframe.closure.to_value(heap).function);
+        self.frames.push(callframe);
     }
 
     pub(super) fn current_mut(&mut self) -> &mut CallFrame {
@@ -102,7 +117,7 @@ impl CallStack {
         self.current_function.unwrap()
     }
 
-    pub(super) fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.frames.len()
     }
 }

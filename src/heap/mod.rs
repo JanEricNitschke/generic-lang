@@ -461,7 +461,7 @@ impl Heap {
         }
     }
 
-    /// Closures store their wrapped function ad well as the captured upvalues.
+    /// Closures store their wrapped function as well as the captured upvalues.
     fn blacken_closure(&mut self, index: ClosureId) {
         let item = &mut self.closures.data[index];
         if item.marked == self.black_value {
@@ -589,7 +589,15 @@ impl Heap {
                     if let Some(message_id) = exception.message() {
                         self.strings.gray.push(message_id);
                     }
-                    self.strings.gray.push(exception.stack_trace());
+                    if let Some(stack_trace_id) = exception.stack_trace() {
+                        self.strings.gray.push(stack_trace_id);
+                    }
+                }
+                NativeClass::Generator(generator) => {
+                    self.closures.gray.push(generator.closure());
+                    for item in &generator.stack {
+                        gray_value!(self, item);
+                    }
                 }
                 // Proxy classes don't contain any references to gray
                 NativeClass::BoolProxy

@@ -51,6 +51,7 @@ struct Local<'scanner> {
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 enum FunctionType {
     Function,
+    Generator,
     Initializer,
     Method,
     Script,

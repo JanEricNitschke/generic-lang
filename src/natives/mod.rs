@@ -4,6 +4,7 @@
 
 mod dict;
 mod exception;
+mod generator;
 mod list;
 mod native_functions;
 mod range;
@@ -12,13 +13,12 @@ mod string;
 mod tuple;
 mod value_constructors;
 
-use crate::{
-    natives::string::{
-        string_bytes_native, string_chars_native, string_clusters_native, string_contains_native,
-        string_find_native, string_get_byte_native, string_get_char_native,
-        string_get_cluster_native, string_replace_native,
-    },
-    vm::VM,
+use crate::vm::VM;
+
+use string::{
+    string_bytes_native, string_chars_native, string_clusters_native, string_contains_native,
+    string_find_native, string_get_byte_native, string_get_char_native, string_get_cluster_native,
+    string_init_native, string_replace_native,
 };
 
 use list::{
@@ -52,17 +52,21 @@ use exception::{
     exception_str_native,
 };
 
+use generator::{
+    generator_close_native, generator_iter_native, generator_next_native, generator_raise_native,
+    generator_send_native,
+};
+
 use native_functions::{
     assert_native, clock_native, delattr_native, getattr_native, hasattr_native, input_native,
-    is_int_native, isinstance_native, issubclass_native, len_native, print_native, rng_native,
-    setattr_native, sleep_native, to_float_native, to_int_native, to_string_native, type_native,
+    is_int_native, isinstance_native, issubclass_native, iter_native, len_native, next_native,
+    print_native, rng_native, setattr_native, sleep_native, to_float_native, to_int_native,
+    to_string_native, type_native,
 };
 
 use value_constructors::{
     bool_init_native, float_init_native, integer_init_native, rational_init_native,
 };
-
-use string::string_init_native;
 
 /// Static arity arrays for common variadic argument patterns.
 /// Arity for "0 or more arguments" (up to 255 for maximum u8 range)
@@ -82,6 +86,7 @@ static VARIADIC_0_PLUS: [u8; 256] = [
     250, 251, 252, 253, 254, 255,
 ];
 
+#[allow(clippy::too_many_lines)]
 pub fn define(vm: &mut VM) {
     vm.define_native_function(&"clock", &[0], clock_native);
     vm.define_native_function(&"assert", &[1], assert_native);
@@ -101,6 +106,8 @@ pub fn define(vm: &mut VM) {
     vm.define_native_function(&"len", &[1], len_native);
     vm.define_native_function(&"isinstance", &[2], isinstance_native);
     vm.define_native_function(&"issubclass", &[2], issubclass_native);
+    vm.define_native_function(&"next", &[1], next_native);
+    vm.define_native_function(&"iter", &[1], iter_native);
 
     // The add to builtins is a bit of a workaround for how native instances
     // are instantiated. Currently we either need a way to instantiate them
@@ -170,6 +177,13 @@ pub fn define(vm: &mut VM) {
         exception_stack_trace_native,
     );
     vm.define_native_method(&"Exception", &"__str__", &[0], exception_str_native);
+
+    vm.define_native_class(&"Generator", false);
+    vm.define_native_method(&"Generator", &"__iter__", &[0], generator_iter_native);
+    vm.define_native_method(&"Generator", &"send", &[1], generator_send_native);
+    vm.define_native_method(&"Generator", &"__next__", &[0], generator_next_native);
+    vm.define_native_method(&"Generator", &"close", &[0], generator_close_native);
+    vm.define_native_method(&"Generator", &"raise", &[1], generator_raise_native);
 
     // Value type proxy classes (native classes with special __init__ methods)
     vm.define_native_class(&"Bool", true);

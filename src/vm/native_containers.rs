@@ -1,6 +1,6 @@
 use super::{VM, errors::VmResult};
 use crate::types::RangeType;
-use crate::value::{Dict, GenericInt, Instance, List, Number, Range, Set, Tuple, Value};
+use crate::value::{Dict, Generator, GenericInt, Instance, List, Number, Range, Set, Tuple, Value};
 impl VM {
     pub fn build_range(&mut self, range_type: RangeType) -> VmResult {
         let end = self.stack.pop().expect("Stack underflow in OP_BUILD_RANGE");
@@ -38,8 +38,8 @@ impl VM {
             Some(range.into()),
         );
         let instance_value = self.heap.add_instance(instance);
-        self.stack_push_value(instance_value);
-        Ok(())
+        self.stack_push(instance_value);
+        Ok(None)
     }
 
     /// Build a list. The number of items is the operand.
@@ -62,7 +62,7 @@ impl VM {
             Some(list.into()),
         );
         let instance_value = self.heap.add_instance(instance);
-        self.stack_push_value(instance_value);
+        self.stack_push(instance_value);
     }
 
     /// Build a tuple. The number of items is the operand.
@@ -85,7 +85,7 @@ impl VM {
             Some(list.into()),
         );
         let instance_value = self.heap.add_instance(instance);
-        self.stack_push_value(instance_value);
+        self.stack_push(instance_value);
     }
 
     /// Build a set. The number of items is the operand.
@@ -110,8 +110,8 @@ impl VM {
             Some(set.into()),
         );
         let instance_value = self.heap.add_instance(instance);
-        self.stack_push_value(instance_value);
-        Ok(())
+        self.stack_push(instance_value);
+        Ok(None)
     }
 
     /// Build a dict. The number of key-value-pairs is the operand.
@@ -136,8 +136,8 @@ impl VM {
             Some(dict.into()),
         );
         let instance_value = self.heap.add_instance(instance);
-        self.stack_push_value(instance_value);
-        Ok(())
+        self.stack_push(instance_value);
+        Ok(None)
     }
 
     /// Build a formatted string. The number of parts is the operand.
@@ -163,7 +163,41 @@ impl VM {
             .truncate(self.stack.len() - usize::from(arg_count));
 
         let value = self.heap.string_id(&string).into();
-        self.stack_push_value(value);
-        Ok(())
+        self.stack_push(value);
+        Ok(None)
+    }
+
+    /// Build a generator from the current call stack frame.
+    ///
+    /// Also store the corresponding stack portions and exception handlers.
+    pub(crate) fn create_generator(&mut self) {
+        let generator_frame = self
+            .callstack
+            .pop(&self.heap)
+            .expect("Call stack underflow in OP_RETURN");
+
+        // grab stack slice belonging to this frame
+        let generator_stack: Vec<Value> = self.stack.drain(generator_frame.stack_base..).collect();
+
+        // grab exception handlers belonging to this frame
+        let callstack_len = self.callstack.len();
+        let generator_handlers = self
+            .exception_handlers
+            .drain(
+                self.exception_handlers
+                    .iter()
+                    .position(|h| h.frames_to_keep > callstack_len)
+                    .unwrap_or(self.exception_handlers.len())..,
+            )
+            .collect::<Vec<_>>();
+
+        let generator = Generator::new(generator_frame, generator_handlers, generator_stack);
+
+        let instance = Instance::new(
+            *self.heap.native_classes.get("Generator").unwrap(),
+            Some(generator.into()),
+        );
+        let instance_value = self.heap.add_instance(instance);
+        self.stack_push(instance_value);
     }
 }

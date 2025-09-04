@@ -15,9 +15,9 @@ pub use classes::{
 };
 pub use functions::{Closure, Function, Module, Upvalue};
 pub use natives::{
-    Dict, Exception, List, ListIterator, ModuleContents, NativeClass, NativeFunction,
-    NativeFunctionImpl, NativeMethod, NativeMethodImpl, Range, RangeIterator, Set, Tuple,
-    TupleIterator,
+    Dict, Exception, Generator, GeneratorState, List, ListIterator, ModuleContents, NativeClass,
+    NativeFunction, NativeFunctionImpl, NativeMethod, NativeMethodImpl, Range, RangeIterator, Set,
+    Tuple, TupleIterator,
 };
 pub use number::{GenericInt, GenericRational, Number};
 
@@ -438,6 +438,36 @@ impl Value {
                 _ => unreachable!("Expected Exception, found `{:?}`", self),
             },
             _ => unreachable!("Expected Exception, found `{:?}`", self),
+        }
+    }
+
+    pub(super) fn as_exception_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Exception {
+        match self {
+            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
+                Some(NativeClass::Exception(exception)) => exception,
+                _ => unreachable!("Expected Exception, found `{:?}`", self),
+            },
+            _ => unreachable!("Expected Exception, found `{:?}`", self),
+        }
+    }
+
+    pub(super) fn as_generator<'a>(&self, heap: &'a Heap) -> &'a Generator {
+        match self {
+            Self::Instance(inst) => match &inst.to_value(heap).backing {
+                Some(NativeClass::Generator(generator)) => generator,
+                _ => unreachable!("Expected Generator, found `{:?}`", self),
+            },
+            _ => unreachable!("Expected Generator, found `{:?}`", self),
+        }
+    }
+
+    pub(super) fn as_generator_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Generator {
+        match self {
+            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
+                Some(NativeClass::Generator(generator)) => generator,
+                _ => unreachable!("Expected Generator, found `{:?}`", self),
+            },
+            _ => unreachable!("Expected Generator, found `{:?}`", self),
         }
     }
 }

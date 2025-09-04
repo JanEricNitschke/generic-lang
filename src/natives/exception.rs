@@ -1,7 +1,7 @@
 //! Native methods for Exception class.
 
 use crate::{
-    value::{NativeClass, Value},
+    value::{Exception, NativeClass, Value},
     vm::{VM, errors::VmResult},
 };
 
@@ -25,7 +25,7 @@ pub(super) fn exception_init_native(
     };
 
     // Use the utility function to create the exception data with stack trace
-    let exception_data = vm.create_exception_data(message);
+    let exception_data = Exception::new(message);
 
     if let Value::Instance(instance) = receiver {
         instance.to_value_mut(&mut vm.heap).backing = Some(NativeClass::Exception(exception_data));
@@ -53,7 +53,10 @@ pub(super) fn exception_stack_trace_native(
     receiver: &mut Value,
     _args: &mut [&mut Value],
 ) -> VmResult<Value> {
-    Ok(Value::String(receiver.as_exception(&vm.heap).stack_trace()))
+    match receiver.as_exception(&vm.heap).stack_trace() {
+        Some(stack_trace) => Ok(Value::String(stack_trace)),
+        None => Ok(Value::Nil),
+    }
 }
 
 /// Get the the full string representation of the Exception.
@@ -73,9 +76,12 @@ pub(super) fn exception_str_native(
         .name
         .to_value(&vm.heap);
     let mut result = match exception.message() {
-        Some(message) => format!("{class_name}: {}\n", message.to_value(&vm.heap)),
-        None => format!("{class_name}\n"),
+        Some(message) => format!("{class_name}: {}", message.to_value(&vm.heap)),
+        None => class_name.to_string(),
     };
-    result.push_str(exception.stack_trace().to_value(&vm.heap));
+    if let Some(stack_trace) = exception.stack_trace() {
+        result.push('\n');
+        result.push_str(stack_trace.to_value(&vm.heap));
+    }
     Ok(vm.heap.string_id(&result).into())
 }

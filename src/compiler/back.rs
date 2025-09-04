@@ -34,6 +34,8 @@ impl<'scanner> Compiler<'scanner, '_> {
     pub(super) fn emit_return(&mut self, location: OpcodeLocation) {
         if self.function_type() == FunctionType::Initializer {
             self.emit_bytes(OpCode::GetLocal, 0, location);
+        } else if self.function_type() == FunctionType::Generator {
+            self.emit_byte(OpCode::StopIteration, location);
         } else {
             self.emit_byte(OpCode::Nil, location);
         }

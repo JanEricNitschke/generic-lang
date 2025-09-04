@@ -1,9 +1,10 @@
 use crate::{
     heap::{Heap, StringId},
-    value::GenericInt,
+    value::{ClosureId, GenericInt, Instance, InstanceId, is_exception_subclass},
     vm::{
-        VM,
-        errors::{ExceptionRaisedKind, RuntimeErrorKind, VmErrorKind},
+        ExceptionHandler, VM,
+        callstack::CallFrame,
+        errors::{ExceptionRaisedKind, RuntimeErrorKind, VmErrorKind, VmResult},
     },
 };
 
@@ -11,8 +12,7 @@ use hashbrown::HashTable;
 use hashbrown::hash_table::Entry;
 
 use super::Value;
-use crate::heap::InstanceId;
-use crate::vm::errors::VmResult;
+
 use derivative::Derivative;
 
 // Values related to natives
@@ -95,6 +95,7 @@ pub enum NativeClass {
     Tuple(Tuple),
     TupleIterator(TupleIterator),
     Exception(Exception),
+    Generator(Generator),
     // Proxy classes for value type constructors
     BoolProxy,
     StringProxy,
@@ -133,6 +134,7 @@ impl NativeClass {
             Self::Tuple(tuple) => tuple.to_string(heap),
             Self::TupleIterator(tuple_iter) => tuple_iter.to_string(heap),
             Self::Exception(exception) => exception.to_string(heap),
+            Self::Generator(generator) => generator.to_string(heap),
             // Proxy classes should never be accessed for string conversion
             Self::BoolProxy => unreachable!("BoolProxy should never be converted to string"),
             Self::StringProxy => unreachable!("StringProxy should never be converted to string"),
@@ -196,6 +198,12 @@ impl From<RangeIterator> for NativeClass {
 impl From<Exception> for NativeClass {
     fn from(exception: Exception) -> Self {
         Self::Exception(exception)
+    }
+}
+
+impl From<Generator> for NativeClass {
+    fn from(generator: Generator) -> Self {
+        Self::Generator(generator)
     }
 }
 
@@ -307,7 +315,7 @@ impl Set {
         if let Entry::Vacant(entry) = entry {
             entry.insert((item, hash));
         }
-        Ok(())
+        Ok(None)
     }
 
     pub(crate) fn remove(&mut self, item: Value, vm: &mut VM) -> VmResult<bool> {
@@ -423,7 +431,7 @@ impl Dict {
                 entry.get_mut().1 = value;
             }
         }
-        Ok(())
+        Ok(None)
     }
 
     pub(crate) fn get(&self, key: Value, vm: &mut VM) -> VmResult<Option<&Value>> {
@@ -680,15 +688,15 @@ impl std::fmt::Display for TupleIterator {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Exception {
     message: Option<StringId>,
-    stack_trace: StringId,
+    pub stack_trace: Option<StringId>,
 }
 
 impl Exception {
     #[must_use]
-    pub(crate) fn new(message: Option<StringId>, stack_trace: StringId) -> Self {
+    pub(crate) fn new(message: Option<StringId>) -> Self {
         Self {
             message,
-            stack_trace,
+            stack_trace: None,
         }
     }
 
@@ -696,7 +704,7 @@ impl Exception {
         self.message
     }
 
-    pub(crate) fn stack_trace(&self) -> StringId {
+    pub(crate) fn stack_trace(&self) -> Option<StringId> {
         self.stack_trace
     }
 
@@ -705,7 +713,10 @@ impl Exception {
             Some(message) => format!("Exception: {}\n", message.to_value(heap)),
             None => "Exception\n".to_string(),
         };
-        result.push_str(self.stack_trace.to_value(heap));
+        if let Some(stack_trace) = self.stack_trace {
+            result.push_str(stack_trace.to_value(heap));
+        }
+
         result
     }
 }
@@ -713,5 +724,184 @@ impl Exception {
 impl std::fmt::Display for Exception {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.pad("<Exception Value>")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum GeneratorState {
+    #[default]
+    Suspended,
+    Running,
+    Completed,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Generator {
+    pub(crate) callframe: CallFrame,
+    pub(crate) exception_handlers: Vec<ExceptionHandler>,
+    pub(crate) stack: Vec<Value>,
+    pub(crate) state: GeneratorState,
+}
+
+impl Generator {
+    #[must_use]
+    pub(crate) fn new(
+        callframe: CallFrame,
+        exception_handlers: Vec<ExceptionHandler>,
+        stack: Vec<Value>,
+    ) -> Self {
+        Self {
+            callframe,
+            exception_handlers,
+            stack,
+            state: GeneratorState::default(),
+        }
+    }
+
+    pub(crate) fn from_closure_id(closure: ClosureId) -> Self {
+        Self {
+            callframe: CallFrame::from_closure_id(closure),
+            exception_handlers: Vec::new(),
+            stack: Vec::new(),
+            state: GeneratorState::default(),
+        }
+    }
+
+    pub(crate) fn to_string(&self, heap: &Heap) -> String {
+        format!(
+            "<generator of {}>",
+            self.callframe
+                .closure
+                .to_value(heap)
+                .function
+                .to_value(heap)
+                .name
+                .to_value(heap)
+        )
+    }
+
+    pub(crate) fn closure(&self) -> ClosureId {
+        self.callframe.closure
+    }
+
+    fn resume_with<F>(&mut self, vm: &mut VM, f: F) -> VmResult<Value>
+    where
+        F: FnOnce(&mut VM) -> VmResult<Option<CallFrame>>,
+    {
+        if self.state == GeneratorState::Completed {
+            return Ok(Value::StopIteration);
+        }
+        let closure_id = self.closure();
+        let mut callframe =
+            std::mem::replace(&mut self.callframe, CallFrame::from_closure_id(closure_id));
+        callframe.stack_base = vm.stack.len();
+        vm.callstack.push_callframe(callframe, &vm.heap);
+        vm.exception_handlers
+            .extend(std::mem::take(&mut self.exception_handlers));
+        vm.stack.extend(std::mem::take(&mut self.stack));
+
+        self.state = GeneratorState::Running;
+        let callframe = match f(vm) {
+            Ok(Some(callframe)) => callframe,
+            Ok(None) => {
+                self.state = GeneratorState::Completed;
+                return Err(VmErrorKind::Exception(ExceptionRaisedKind));
+            }
+            Err(err) => {
+                self.state = GeneratorState::Completed;
+                return Err(err);
+            }
+        };
+
+        let yielded_value = vm.stack.pop().expect("Stack underflow in generator");
+        if yielded_value == Value::StopIteration {
+            self.state = GeneratorState::Completed;
+        }
+
+        self.callframe = callframe;
+        self.stack = vm.stack.drain(self.callframe.stack_base..).collect();
+
+        let callstack_len = vm.callstack.len();
+        self.exception_handlers = vm
+            .exception_handlers
+            .drain(
+                vm.exception_handlers
+                    .iter()
+                    .position(|h| h.frames_to_keep > callstack_len)
+                    .unwrap_or(vm.exception_handlers.len())..,
+            )
+            .collect();
+
+        Ok(yielded_value)
+    }
+
+    pub(crate) fn send(&mut self, value: Value, vm: &mut VM) -> VmResult<Value> {
+        if self.state == GeneratorState::Suspended && value != Value::Nil {
+            vm.throw_type_error("Can't send non-nil value to a just-started generator")?;
+        }
+
+        if self.state == GeneratorState::Running {
+            self.stack.push(value);
+        }
+
+        self.resume_with(vm, super::super::vm::VM::run_function)
+    }
+
+    pub(crate) fn raise(&mut self, exception_class: Value, vm: &mut VM) -> VmResult<Value> {
+        let exception_class_id = if let Value::Class(exception_class_id) = exception_class {
+            // Check that the class to catch is a subclass of Exception
+            if !is_exception_subclass(&vm.heap, exception_class_id) {
+                return Err(vm
+                    .throw_type_error(&format!(
+                        "Can only throw Exception or its subclasses, got: {}",
+                        exception_class_id
+                            .to_value(&vm.heap)
+                            .name
+                            .to_value(&vm.heap)
+                    ))
+                    .unwrap_err());
+            }
+            exception_class_id
+        } else {
+            return Err(vm
+                .throw_type_error(&format!(
+                    "Exception to throw must be a class, got: {}",
+                    exception_class.to_string(&vm.heap)
+                ))
+                .unwrap_err());
+        };
+
+        self.resume_with(vm, |vm| {
+            let class_data = exception_class_id.to_value(&vm.heap);
+            let init_method_id = vm.heap.builtin_constants().init_string;
+            let init_method = *class_data.methods.get(&init_method_id).unwrap();
+
+            let backing = NativeClass::new("Exception");
+
+            let instance = vm
+                .heap
+                .add_instance(Instance::new(exception_class_id, Some(backing)));
+            vm.stack.push(instance);
+            vm.invoke_and_run_function(
+                init_method_id,
+                0,
+                matches!(init_method, Value::NativeMethod(_)),
+            )?;
+            let exception = vm.stack.pop().expect("Stack underflow in next_native");
+
+            let call_depth = vm.callstack.len();
+            let _ = vm.unwind(exception);
+            vm.run_function_from_depth(call_depth)
+        })
+    }
+
+    pub(crate) fn next(&mut self, vm: &mut VM) -> VmResult<Value> {
+        self.send(Value::Nil, vm)
+    }
+}
+
+impl std::fmt::Display for Generator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad("<Generator Value>")
     }
 }

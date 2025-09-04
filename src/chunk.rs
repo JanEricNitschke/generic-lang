@@ -121,6 +121,8 @@ pub enum OpCode {
     Method,
     Closure,
     Return,
+    ReturnGenerator,
+    Yield,
 
     Class,
     SetProperty,
@@ -334,12 +336,12 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
         let opcode = OpCode::try_from_primitive(self.chunk.code[offset]).unwrap();
         std::mem::size_of::<OpCode>()
             + match opcode {
-                Negate | Add | Subtract | Multiply | Divide | Mod | Exp | FloorDiv | BitAnd
-                | BitOr | BitXor | BuildRational | BuildRangeExclusive | BuildRangeInclusive
-                | Nil | True | False | StopIteration | Not | Equal | Greater | Less | LessEqual
-                | GreaterEqual | NotEqual | Pop | Dup | CloseUpvalue | Inherit | Return
-                | LoadOne | LoadTwo | LoadZero | LoadMinusOne | LoadOnef | LoadZerof | Swap
-                | PopHandler | CompareException | Throw | Reraise => 0,
+                Add | Subtract | Multiply | Divide | Mod | Exp | FloorDiv | BitAnd | BitOr
+                | BitXor | Equal | Greater | Less | LessEqual | GreaterEqual | NotEqual | Not
+                | Negate | BuildRational | BuildRangeExclusive | BuildRangeInclusive | Nil
+                | True | False | StopIteration | LoadOne | LoadTwo | LoadZero | LoadMinusOne
+                | LoadOnef | LoadZerof | CloseUpvalue | Inherit | Return | ReturnGenerator
+                | Yield | PopHandler | CompareException | Throw | Reraise | Pop | Dup | Swap => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | GetUpvalue | SetUpvalue | Class | GetProperty
                 | SetProperty | Method | GetSuper | BuildList | BuildTuple | BuildSet
@@ -799,6 +801,8 @@ impl Debug for InstructionDisassembler<'_, '_> {
                 Not,
                 Pop,
                 Return,
+                ReturnGenerator,
+                Yield,
                 Subtract,
                 True,
                 LoadOne,

@@ -112,10 +112,10 @@ impl VM {
         self.stack_push(closure_value);
 
         let result = match self.execute_call(closure_value, 0) {
-            Ok(()) => {
+            Ok(_) => {
                 // Run the function
                 match self.run() {
-                    Ok(()) => TestOutcome::Passed,
+                    Ok(_) => TestOutcome::Passed,
                     Err(_) => TestOutcome::Failed("Runtime error occurred".to_string()),
                 }
             }
