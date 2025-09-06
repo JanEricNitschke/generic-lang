@@ -1,0 +1,109 @@
+# Test identity comparison with "is" operator
+
+# Test immediate values (stack values)
+print(nil is nil); # expect: true
+print(true is true); # expect: true
+print(false is false); # expect: true
+print(true is false); # expect: false
+
+# Test numbers - immediate values so identity equals value equality
+print(1 is 1); # expect: true
+print(1 is 2); # expect: false
+print(1.0 is 1.0); # expect: true
+print(1.0 is 2.0); # expect: false
+# Big ints are heap values, so identity compares object IDs
+print(99999999999999999999999999999999 == 99999999999999999999999999999999); # expect: true
+print(99999999999999999999999999999999 is 99999999999999999999999999999999); # expect: false
+
+# Test cross-type identity - should be false
+print(nil is false); # expect: false
+print(false is 0); # expect: false
+print(0 is "0"); # expect: false
+print(1 is 1.0); # expect: false
+
+# Test strings - for heap values, identity compares object IDs
+# Strings are cached, so identical literals may have same ID
+var str1 = "hello";
+var str2 = "hello";
+var str3 = str1;
+print(str1 is str1); # expect: true
+print(str1 is str3); # expect: true
+print(str1 is str2); # expect: true
+# Contrast with equality
+print(str1 == str2); # expect: true
+print(str1 is str2); # expect: true
+# However (currently) canonicalization only happens at equality check time (or for other relevant ops)
+# Precomposed Å (single code point)
+var s1 = "ÅBC";
+# Decomposed Å (A + combining ring above)
+var s2 = "ÅBC";
+print(s1 == s2);  # expect: true
+print(s1 is s2);  # expect: false
+
+# Test identity vs equality for classes and instances
+
+# Test class identity  
+class Point {
+    __init__(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+}
+
+class Point2 {
+    __init__(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+}
+
+# Class identity
+print(Point is Point); # expect: true
+print(Point is Point2); # expect: false
+
+# Instance identity
+var p1 = Point(1, 2);
+var p2 = Point(1, 2);
+var p3 = p1;
+
+print(p1 is p1); # expect: true
+print(p1 is p3); # expect: true
+print(p1 is p2); # expect: false
+
+# Identity vs equality for instances (no custom __eq__ here)
+print(p1 == p2); # expect: false
+
+# Custom equality
+class PointEq {
+    __init__(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    __eq__(other) {
+        return this.x == other.x and this.y == other.y;
+    }
+}
+
+var pe1 = PointEq(1, 2);
+var pe2 = PointEq(1, 2);
+var pe3 = pe1;
+print(pe1 == pe2); # expect: true
+print(pe1 is pe2); # expect: false
+print(pe1 == pe3); # expect: true
+print(pe1 is pe3); # expect: true
+
+# Custom equality again nil/true/false
+class CustomEq {
+    __eq__(other) {
+        return true;
+    }
+}
+
+var ce1 = CustomEq();
+print(ce1 == nil); # expect: true
+print(ce1 is nil); # expect: false
+print(ce1 == true); # expect: true
+print(ce1 is true); # expect: false
+print(ce1 == false); # expect: true
+print(ce1 is false); # expect: false

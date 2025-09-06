@@ -83,6 +83,7 @@ pub enum OpCode {
 
     Equal,
     NotEqual,
+    Is,
 
     Greater,
     GreaterEqual,
@@ -337,11 +338,12 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
         std::mem::size_of::<OpCode>()
             + match opcode {
                 Add | Subtract | Multiply | Divide | Mod | Exp | FloorDiv | BitAnd | BitOr
-                | BitXor | Equal | Greater | Less | LessEqual | GreaterEqual | NotEqual | Not
-                | Negate | BuildRational | BuildRangeExclusive | BuildRangeInclusive | Nil
-                | True | False | StopIteration | LoadOne | LoadTwo | LoadZero | LoadMinusOne
-                | LoadOnef | LoadZerof | CloseUpvalue | Inherit | Return | ReturnGenerator
-                | Yield | PopHandler | CompareException | Throw | Reraise | Pop | Dup | Swap => 0,
+                | BitXor | Equal | Greater | Less | LessEqual | GreaterEqual | NotEqual | Is
+                | Not | Negate | BuildRational | BuildRangeExclusive | BuildRangeInclusive
+                | Nil | True | False | StopIteration | LoadOne | LoadTwo | LoadZero
+                | LoadMinusOne | LoadOnef | LoadZerof | CloseUpvalue | Inherit | Return
+                | ReturnGenerator | Yield | PopHandler | CompareException | Throw | Reraise
+                | Pop | Dup | Swap => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | GetUpvalue | SetUpvalue | Class | GetProperty
                 | SetProperty | Method | GetSuper | BuildList | BuildTuple | BuildSet
@@ -781,6 +783,7 @@ impl Debug for InstructionDisassembler<'_, '_> {
                 GreaterEqual,
                 LessEqual,
                 NotEqual,
+                Is,
                 False,
                 Greater,
                 Inherit,

@@ -140,6 +140,10 @@ macro_rules! run_instruction {
             }
             OpCode::Equal => $self.equal(EqualityMode::Equal),
             OpCode::NotEqual => $self.equal(EqualityMode::NotEqual),
+            OpCode::Is => {
+                $self.identical();
+                Ok(None)
+            }
             // All of these work on the top two stack values.
             // Top most is right operand, second is left.
             OpCode::Add => $self.add(),

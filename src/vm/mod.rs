@@ -524,4 +524,11 @@ impl VM {
         self.stack_push(result.into());
         Ok(None)
     }
+
+    fn identical(&mut self) {
+        let right_id = self.stack.pop().expect("stack underflow in OP_IS (right)");
+        let left_id = self.stack.pop().expect("stack underflow in OP_IS (left)");
+
+        self.stack_push(left_id.is(&right_id).into());
+    }
 }

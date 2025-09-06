@@ -105,6 +105,30 @@ impl Value {
         }
     }
 
+    pub(crate) fn is(&self, other: &Self) -> bool {
+        match (self, other) {
+            // For immediate/stack values, identity is the same as equality
+            (Self::Bool(a), Self::Bool(b)) => a == b,
+            (Self::Nil, Self::Nil) | (Self::StopIteration, Self::StopIteration) => true,
+            (Self::Number(a), Self::Number(b)) => a == b, // Numbers are immediate values
+
+            // For heap-allocated values, compare the IDs (object identity)
+            (Self::String(a), Self::String(b)) => a == b,
+            (Self::Function(a), Self::Function(b)) => a == b,
+            (Self::Module(a), Self::Module(b)) => a == b,
+            (Self::Closure(a), Self::Closure(b)) => a == b,
+            (Self::NativeFunction(a), Self::NativeFunction(b)) => a == b,
+            (Self::NativeMethod(a), Self::NativeMethod(b)) => a == b,
+            (Self::Upvalue(a), Self::Upvalue(b)) => a == b,
+            (Self::Class(a), Self::Class(b)) => a == b,
+            (Self::Instance(a), Self::Instance(b)) => a == b,
+            (Self::BoundMethod(a), Self::BoundMethod(b)) => a == b,
+
+            // Different types are never identical
+            _ => false,
+        }
+    }
+
     pub fn to_string(&self, heap: &Heap) -> String {
         match self {
             Self::Bool(bool) => format!("{bool}"),
