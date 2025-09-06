@@ -844,7 +844,7 @@ impl Generator {
             self.stack.push(value);
         }
 
-        self.resume_with(vm, super::super::vm::VM::run_function)
+        self.resume_with(vm, VM::run_function)
     }
 
     pub(crate) fn raise(&mut self, exception_class: Value, vm: &mut VM) -> VmResult<Value> {

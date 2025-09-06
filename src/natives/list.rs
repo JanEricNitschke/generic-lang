@@ -311,7 +311,13 @@ pub(super) fn list_init_native(
     receiver: &mut Value,
     args: &mut [&mut Value],
 ) -> VmResult<Value> {
-    let items: Vec<Value> = args.iter().map(|arg| **arg).collect();
+    let items = if args.len() == 1
+        && let Some(iter_items) = vm.collect_items_from_iterable(*args[0])?
+    {
+        iter_items
+    } else {
+        args.iter().map(|arg| **arg).collect()
+    };
     let list = receiver.as_list_mut(&mut vm.heap);
     list.items = items;
     Ok(*receiver)

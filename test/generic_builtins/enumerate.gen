@@ -1,2 +1,14 @@
-print(enumerate(["a", "b", "c"])); # expect: [(0, a), (1, b), (2, c)]
-print(enumerate([])); # expect: []
+var iterator = enumerate(["a", "b", "c"]);
+print(iterator); # expect: <generator of enumerate>
+foreach (var item in iterator) {
+    print(item); # expect: (0, a)
+                 # expect: (1, b)
+                 # expect: (2, c)
+}
+iterator = enumerate([]);
+print(iterator); # expect: <generator of enumerate>
+foreach (var item in iterator) {
+    print(item);
+}
+
+print(List(enumerate(["x", "y", "z"]))); # expect: [(0, x), (1, y), (2, z)]

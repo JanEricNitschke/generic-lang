@@ -1,0 +1,30 @@
+class RaiseInIter {
+    __init__() {
+        this.count = 0;
+    }
+
+
+    __iter__(){
+        return this;
+    }
+
+    __next__() {
+        this.count += 1;
+        if (this.count > 3) {
+            throw Exception("Error in __next__");
+        }
+        return this.count;
+    }
+}
+
+
+
+var s1 = {1};
+try {
+    s1.__init__(RaiseInIter());
+} catch Exception as e {
+    print(s1); # expect: {}
+    print(e.message()); # expect: Error in __next__
+}
+
+var s2 = Set(RaiseInIter()); # expect runtime error: Exception: Error in __next__

@@ -396,71 +396,17 @@ pub(super) fn delattr_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<V
 /// Return the length of an instance.
 #[allow(clippy::cast_possible_wrap)]
 pub(super) fn len_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
-    let len_method_id = vm.heap.string_id(&"__len__");
-
-    if let Value::Instance(instance) = args[0]
-        && let Some(len_method) = instance
-            .to_value(&vm.heap)
-            .get_field_or_method(len_method_id, &vm.heap)
-    {
-        vm.invoke_and_run_function(
-            len_method_id,
-            0,
-            matches!(len_method, Value::NativeMethod(_)),
-        )?;
-        let result = vm.stack.pop().expect("Stack underflow in len_native");
-        return Ok(result);
-    }
-
-    Err(vm
-        .throw_attribute_error("Undefined property '__len__'.")
-        .unwrap_err())
+    vm.invoke_method_by_name_with_attribute_error(*args[0], "__len__")
 }
 
 /// Get the next item from an iterator.
 pub(super) fn next_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
-    let next_method_id = vm.heap.string_id(&"__next__");
-
-    if let Value::Instance(instance) = args[0]
-        && let Some(next_method) = instance
-            .to_value(&vm.heap)
-            .get_field_or_method(next_method_id, &vm.heap)
-    {
-        vm.invoke_and_run_function(
-            next_method_id,
-            0,
-            matches!(next_method, Value::NativeMethod(_)),
-        )?;
-        let result = vm.stack.pop().expect("Stack underflow in next_native");
-        return Ok(result);
-    }
-
-    Err(vm
-        .throw_attribute_error("Undefined property '__next__'.")
-        .unwrap_err())
+    vm.invoke_method_by_name_with_attribute_error(*args[0], "__next__")
 }
 
 /// Get the iterator from an iterable.
 pub(super) fn iter_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
-    let iter_method_id = vm.heap.string_id(&"__iter__");
-
-    if let Value::Instance(instance) = args[0]
-        && let Some(iter_method) = instance
-            .to_value(&vm.heap)
-            .get_field_or_method(iter_method_id, &vm.heap)
-    {
-        vm.invoke_and_run_function(
-            iter_method_id,
-            0,
-            matches!(iter_method, Value::NativeMethod(_)),
-        )?;
-        let result = vm.stack.pop().expect("Stack underflow in iter_native");
-        return Ok(result);
-    }
-
-    Err(vm
-        .throw_attribute_error("Undefined property '__iter__'.")
-        .unwrap_err())
+    vm.invoke_method_by_name_with_attribute_error(*args[0], "__iter__")
 }
 
 /// Check if value is an instance of the given class or any of its subclasses.

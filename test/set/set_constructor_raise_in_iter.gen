@@ -1,0 +1,14 @@
+class RaiseInIter {
+    __iter__() {
+        throw Exception("Error in __iter__");
+    }
+}
+
+
+try {
+    var s1 = Set(RaiseInIter());
+} catch Exception as e {
+    print(e.message()); # expect: Error in __iter__
+}
+
+var s2 = Set(RaiseInIter()); # expect runtime error: Exception: Error in __iter__

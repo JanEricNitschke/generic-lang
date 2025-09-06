@@ -86,8 +86,13 @@ pub(super) fn dict_init_native(
 
     for arg in args {
         if let Value::Instance(inst) = arg
-            && let Some(NativeClass::Tuple(tuple)) = &inst.to_value(&vm.heap).backing
-            && let [key, value] = tuple.items()
+            && let Some(backing) = &inst.to_value(&vm.heap).backing
+            && let Some(items) = match backing {
+                NativeClass::Tuple(tuple) => Some(tuple.items()),
+                NativeClass::List(list) => Some(list.items.as_ref()),
+                _ => None,
+            }
+            && let [key, value] = items
         {
             dict.add(*key, *value, vm)?;
         } else {

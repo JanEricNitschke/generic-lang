@@ -21,5 +21,5 @@ var obj2 = HashCollision(2);
 try {
     var s = {obj1, obj2};
 } catch TypeError as e {
-    print("Caught TypeError: " + e.message()); # expect: Caught TypeError: Return value of `__eq__` has to be bool, got 3
+    print("Caught TypeError: " + e.message()); # expect: Caught TypeError: `__eq__` must return a boolean, got: 3
 }

@@ -1,3 +1,2 @@
 # Test that generic builtins work with native builtins
-print(len(enumerate([1, 2, 3]))); # expect: 3
 print(all([len([1, 2]) == 2, any([false, true])])); # expect: true

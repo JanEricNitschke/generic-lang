@@ -11,3 +11,17 @@ print(set_with_duplicates); # expect: {2, 3, 1}
 var explicit_init = set_with_duplicates.__init__(1, 2);
 print(explicit_init); # expect: {2, 1}
 print(set_with_duplicates); # expect: {2, 1}
+
+# Set from iterable
+var list = List(1, 2, 3, 3);
+var set_from_list = Set(list);
+print(set_from_list); # expect: {3, 1, 2}
+
+# One item non-iterable
+var set_from_single = Set(42);
+print(set_from_single); # expect: {42}
+
+# One item non-iterable instance
+class A {}
+var set_from_single_instance = Set(A());
+print(set_from_single_instance); # expect: {<A instance>}

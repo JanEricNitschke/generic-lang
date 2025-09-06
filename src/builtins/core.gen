@@ -18,12 +18,10 @@ fun any(iterable) {
     return false;
 }
 
-fun enumerate(iterable) {
-    var result = [];
+gen enumerate(iterable) {
     var index = 0;
     foreach (var item in iterable) {
-        result.append((index, item));
+        yield (index, item);
         index = index + 1;
     }
-    return result;
 }
