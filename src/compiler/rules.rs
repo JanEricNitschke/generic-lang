@@ -95,7 +95,7 @@ macro_rules! make_rules {
     }};
 }
 
-pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 90];
+pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 91];
 
 // Can't be static because the associated function types include lifetimes
 #[rustfmt::skip]
@@ -138,6 +138,7 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
         GreaterEqual       = [None,            binary,    Comparison],
         Less               = [None,            binary,    Comparison],
         LessEqual          = [None,            binary,    Comparison],
+        Is                 = [None,            binary,    Equality  ],
         Identifier         = [variable,        None,      None      ],
         In                 = [None,            binary,    In        ],
         String             = [string,          None,      None      ],
@@ -338,6 +339,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             TK::StarStar => self.emit_byte(OpCode::Exp, location),
             TK::SlashSlash => self.emit_byte(OpCode::FloorDiv, location),
             TK::In => self.in_(location),
+            TK::Is => self.emit_byte(OpCode::Is, location),
             TK::Colon => self.emit_byte(OpCode::BuildRational, location),
             //  Could think about making these one opcode with a boolean operand
             TK::DotDotEqual => self.emit_byte(OpCode::BuildRangeInclusive, location),

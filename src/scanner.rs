@@ -49,6 +49,7 @@ pub enum TokenKind {
     GreaterEqual,
     Less,
     LessEqual,
+    Is,
 
     // Literals.
     Identifier,
@@ -618,6 +619,7 @@ impl<'a> Scanner<'a> {
             b'i' => match self.source.as_bytes().get(self.start + 1) {
                 Some(b'f') => self.check_keyword(2, "", TK::If),
                 Some(b'n') => self.check_keyword(2, "", TK::In),
+                Some(b's') => self.check_keyword(2, "", TK::Is),
                 Some(b'm') => self.check_keyword(2, "port", TK::Import),
                 _ => TK::Identifier,
             },
