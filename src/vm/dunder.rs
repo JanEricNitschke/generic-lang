@@ -10,32 +10,57 @@ use std::hash::{Hash, Hasher};
 use unicode_normalization::UnicodeNormalization;
 
 impl VM {
+    pub fn invoke_method_by_name(
+        &mut self,
+        values: &[Value],
+        method_name: &str,
+    ) -> VmResult<Option<Value>> {
+        let method_id = self.heap.string_id(&method_name);
+
+        if let Value::Instance(instance) = values[0]
+            && let Some(method) = instance
+                .to_value(&self.heap)
+                .get_field_or_method(method_id, &self.heap)
+        {
+            self.stack.extend_from_slice(values);
+            self.invoke_and_run_function(
+                method_id,
+                (values.len() - 1).try_into().unwrap(),
+                matches!(method, Value::NativeMethod(_)),
+            )?;
+            Ok(Some(
+                self.stack.pop().expect("Stack underflow in len_native"),
+            ))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn invoke_method_by_name_with_attribute_error(
+        &mut self,
+        value: Value,
+        method_name: &str,
+    ) -> VmResult<Value> {
+        if let Some(length) = self.invoke_method_by_name(&[value], method_name)? {
+            Ok(length)
+        } else {
+            Err(self
+                .throw_attribute_error(&format!("Undefined property '{method_name}'."))
+                .unwrap_err())
+        }
+    }
+
     /// Convert a value to string, handling instances with __str__ methods.
     /// This function is shared between value constructors, `to_string_native`, and `print_native`.
     pub fn value_to_string(&mut self, value: &Value) -> VmResult<StringId> {
-        let str_id = self.heap.string_id(&"__str__");
-
-        if let Value::Instance(instance) = value
-            && let Some(str_method) = instance
-                .to_value(&self.heap)
-                .get_field_or_method(str_id, &self.heap)
-        {
-            // Push the value onto the stack temporarily so invoke_and_run_function can access it
-            self.stack.push(*value);
-            self.invoke_and_run_function(str_id, 0, matches!(str_method, Value::NativeMethod(_)))?;
-
-            let result = self
-                .stack
-                .pop()
-                .expect("Stack underflow in value_to_string");
-
-            if let Value::String(string_id) = result {
+        if let Some(string_value) = self.invoke_method_by_name(&[*value], "__str__")? {
+            if let Value::String(string_id) = string_value {
                 Ok(string_id)
             } else {
                 Err(self
                     .throw_type_error(&format!(
                         "`__str__` must return a string, got {}",
-                        result.to_string(&self.heap)
+                        string_value.to_string(&self.heap)
                     ))
                     .unwrap_err())
             }
@@ -45,27 +70,14 @@ impl VM {
     }
 
     pub(crate) fn is_falsey(&mut self, value: Value) -> VmResult<bool> {
-        let bool_id = self.heap.string_id(&"__bool__");
-        if let Value::Instance(instance) = value
-            && let Some(bool_method) = instance
-                .to_value(&self.heap)
-                .get_field_or_method(bool_id, &self.heap)
-        {
-            // Value needs to be on top of the stack to invoke this check.
-            self.stack_push(value);
-            self.invoke_and_run_function(
-                bool_id,
-                0,
-                matches!(bool_method, Value::NativeMethod(_)),
-            )?;
-            let result = self.stack.pop().expect("Stack underflow in IS_FALSEY");
-            if let Value::Bool(result) = result {
+        if let Some(bool_result) = self.invoke_method_by_name(&[value], "__bool__")? {
+            if let Value::Bool(result) = bool_result {
                 Ok(!result)
             } else {
                 Err(self
                     .throw_type_error(&format!(
                         "`__bool__` must return a boolean, got: {}",
-                        result.to_string(&self.heap)
+                        bool_result.to_string(&self.heap)
                     ))
                     .unwrap_err())
             }
@@ -77,6 +89,66 @@ impl VM {
                 _ => false,
             })
         }
+    }
+
+    /// Collects all items from an object that implements the `__iter__` / `__next__` protocol.
+    ///
+    /// Returns:
+    /// - `Ok(Some(Vec<Value>))` if the object is iterable and yielded values.
+    /// - `Ok(None)` if the object does not implement `__iter__`.
+    /// - `Err(..)` if iteration raised an error inside the VM.
+    pub(crate) fn collect_items_from_iterable(
+        &mut self,
+        value: Value,
+    ) -> VmResult<Option<Vec<Value>>> {
+        let items_start = self.stack.len();
+        let Some(iter) = self.invoke_method_by_name(&[value], "__iter__")? else {
+            return Ok(None);
+        };
+
+        loop {
+            let next = self.invoke_method_by_name_with_attribute_error(iter, "__next__")?;
+            if next == Value::StopIteration {
+                break;
+            }
+            // We put them onto the stack so that the GC is aware of them for the next iteration
+            // This works because otherwise all used methods here are stack neutral
+            self.stack.push(next);
+        }
+
+        Ok(Some(self.stack.drain(items_start..).collect()))
+    }
+
+    /// Compare two values for equality, with support for custom __eq__ methods.
+    /// Optimized for use by hash collections - only pushes to stack when needed.
+    pub(crate) fn compare_values(&mut self, left: Value, right: Value) -> VmResult<bool> {
+        if let Some(equality_result) = self.invoke_method_by_name(&[left, right], "__eq__")? {
+            if let Value::Bool(result) = equality_result {
+                Ok(result)
+            } else {
+                Err(self
+                    .throw_type_error(&format!(
+                        "`__eq__` must return a boolean, got: {}",
+                        equality_result.to_string(&self.heap)
+                    ))
+                    .unwrap_err())
+            }
+        } else {
+            Ok(left.eq(&right, &self.heap))
+        }
+    }
+
+    /// Compare two values for equality, with support for custom __eq__ methods.
+    /// If an exception occurs in __eq__, the `handle_exception` and/or `encountered_hard_error`
+    /// flags will be set and should be checked by the caller of this..
+    /// Callers should check `handling_exception` after calling this method.
+    pub(crate) fn compare_values_for_collections(&mut self, left: Value, right: Value) -> bool {
+        // If we already have an active exception, don't run the comparison
+        if self.handling_exception || self.encountered_hard_exception {
+            return false;
+        }
+
+        self.compare_values(left, right).unwrap_or_default()
     }
 
     pub(crate) fn compute_hash(&mut self, value: Value) -> VmResult<u64> {
@@ -182,51 +254,5 @@ impl VM {
         }
 
         Ok(state.finish())
-    }
-
-    /// Compare two values for equality, with support for custom __eq__ methods.
-    /// If an exception occurs in __eq__, the `handle_exception` and/or `encountered_hard_error`
-    /// flags will be set and should be checked by the caller of this..
-    /// Callers should check `handling_exception` after calling this method.
-    pub(crate) fn compare_values_for_collections(&mut self, left: Value, right: Value) -> bool {
-        // If we already have an active exception, don't run the comparison
-        if self.handling_exception || self.encountered_hard_exception {
-            return false;
-        }
-
-        self.compare_values(left, right).unwrap_or_default()
-    }
-
-    /// Compare two values for equality, with support for custom __eq__ methods.
-    /// Optimized for use by hash collections - only pushes to stack when needed.
-    pub(crate) fn compare_values(&mut self, left: Value, right: Value) -> VmResult<bool> {
-        let eq_id = self.heap.string_id(&"__eq__");
-
-        // Check if left value is an instance with __eq__ method
-        if let Value::Instance(instance) = left
-            && let Some(eq_method) = instance
-                .to_value(&self.heap)
-                .get_field_or_method(eq_id, &self.heap)
-        {
-            // Only push to stack if we have an instance with __eq__ method
-            self.stack_push(left);
-            self.stack_push(right);
-
-            self.invoke_and_run_function(eq_id, 1, matches!(eq_method, Value::NativeMethod(_)))?;
-            let result = self.stack.pop().expect("Stack underflow in OP_EQUAL");
-            return if let Value::Bool(bool) = result {
-                Ok(bool)
-            } else {
-                Err(self
-                    .throw_type_error(&format!(
-                        "Return value of `__eq__` has to be bool, got {}",
-                        result.to_string(&self.heap)
-                    ))
-                    .unwrap_err())
-            };
-        }
-
-        // Fall back to heap-level equality
-        Ok(left.eq(&right, &self.heap))
     }
 }

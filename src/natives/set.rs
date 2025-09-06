@@ -76,8 +76,16 @@ pub(super) fn set_init_native(
 ) -> VmResult<Value> {
     let mut set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
     set.items.clear(); // Explicitly clear to ensure it's empty
-    for arg in args {
-        set.add(**arg, vm)?;
+    let items = if args.len() == 1
+        && let Some(iter_items) = vm.collect_items_from_iterable(*args[0])?
+    {
+        iter_items
+    } else {
+        args.iter().map(|arg| **arg).collect()
+    };
+
+    for item in items {
+        set.add(item, vm)?;
     }
     *receiver.as_set_mut(&mut vm.heap) = set;
     Ok(*receiver)
