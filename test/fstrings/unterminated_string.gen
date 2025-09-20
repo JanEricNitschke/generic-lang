@@ -1,3 +1,3 @@
-# [line 4] Error: Unterminated f-string.
+# [line 4] Error: Unterminated t- or f-string.
 var name = "Bob";
 print(f"Hi, my name is ${Bob});

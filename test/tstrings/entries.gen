@@ -1,0 +1,14 @@
+const name = "Bob";
+const stuff = t"Hi, ${name}!";
+const iterator = iter(stuff);
+var element = next(iterator);
+print(isinstance(element, String));  # expect: true
+element = next(iterator);
+print(isinstance(element, Interpolation));  # expect: true
+print(element.value());  # expect: Bob
+print(element.expression());  # expect: name
+element = next(iterator);
+print(isinstance(element, String));  # expect: true
+
+print(stuff.strings());  # expect: (Hi, , !)
+print(stuff.interpolations());  # expect: (Interpolation(value=Bob, expression=name),)
