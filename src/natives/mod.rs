@@ -10,6 +10,7 @@ mod native_functions;
 mod range;
 mod set;
 mod string;
+mod template;
 mod tuple;
 mod value_constructors;
 
@@ -55,6 +56,11 @@ use exception::{
 use generator::{
     generator_close_native, generator_iter_native, generator_next_native, generator_raise_native,
     generator_send_native,
+};
+
+use template::{
+    interpolation_expression_native, interpolation_value_native, template_interpolations_native,
+    template_iter_native, template_iter_next_native, template_strings_native,
 };
 
 use native_functions::{
@@ -184,6 +190,35 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"Generator", &"__next__", &[0], generator_next_native);
     vm.define_native_method(&"Generator", &"close", &[0], generator_close_native);
     vm.define_native_method(&"Generator", &"raise", &[1], generator_raise_native);
+
+    // Will possibly add inits later
+    // Might also take these out of builtins and add them to a stdlib module
+    vm.define_native_class(&"Template", true);
+    vm.define_native_method(&"Template", &"__iter__", &[0], template_iter_native);
+    vm.define_native_method(&"Template", &"strings", &[0], template_strings_native);
+    vm.define_native_method(
+        &"Template",
+        &"interpolations",
+        &[0],
+        template_interpolations_native,
+    );
+
+    vm.define_native_class(&"TemplateIterator", false);
+    vm.define_native_method(
+        &"TemplateIterator",
+        &"__next__",
+        &[0],
+        template_iter_next_native,
+    );
+
+    vm.define_native_class(&"Interpolation", true);
+    vm.define_native_method(&"Interpolation", &"value", &[0], interpolation_value_native);
+    vm.define_native_method(
+        &"Interpolation",
+        &"expression",
+        &[0],
+        interpolation_expression_native,
+    );
 
     // Value type proxy classes (native classes with special __init__ methods)
     vm.define_native_class(&"Bool", true);

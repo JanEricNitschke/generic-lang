@@ -15,9 +15,9 @@ pub use classes::{
 };
 pub use functions::{Closure, Function, Module, Upvalue};
 pub use natives::{
-    Dict, Exception, Generator, GeneratorState, List, ListIterator, ModuleContents, NativeClass,
-    NativeFunction, NativeFunctionImpl, NativeMethod, NativeMethodImpl, Range, RangeIterator, Set,
-    Tuple, TupleIterator,
+    Dict, Exception, Generator, GeneratorState, Interpolation, List, ListIterator, ModuleContents,
+    NativeClass, NativeFunction, NativeFunctionImpl, NativeMethod, NativeMethodImpl, Range,
+    RangeIterator, Set, Template, TemplateIterator, Tuple, TupleIterator,
 };
 pub use number::{GenericInt, GenericRational, Number};
 
@@ -135,7 +135,7 @@ impl Value {
             Self::Number(num) => num.to_string(heap),
             Self::Nil => "nil".to_string(),
             Self::StopIteration => "StopIteration".to_string(),
-            Self::String(s) => (*s.to_value(heap)).to_string(),
+            Self::String(s) => (*s.to_value(heap)).clone(),
             // Can i do all of these just like string?
             Self::Function(ref_id) => ref_id.to_value(heap).to_string(heap),
             Self::Closure(ref_id) => ref_id.to_value(heap).to_string(heap),
@@ -492,6 +492,39 @@ impl Value {
                 _ => unreachable!("Expected Generator, found `{:?}`", self),
             },
             _ => unreachable!("Expected Generator, found `{:?}`", self),
+        }
+    }
+
+    pub(super) fn as_template<'a>(&self, heap: &'a Heap) -> &'a Template {
+        match self {
+            Self::Instance(inst) => match &inst.to_value(heap).backing {
+                Some(NativeClass::Template(template)) => template,
+                _ => unreachable!("Expected Template, found `{:?}`", self),
+            },
+            _ => unreachable!("Expected Template, found `{:?}`", self),
+        }
+    }
+
+    pub(super) fn as_template_iter_mut<'a>(
+        &mut self,
+        heap: &'a mut Heap,
+    ) -> &'a mut TemplateIterator {
+        match self {
+            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
+                Some(NativeClass::TemplateIterator(template_iter)) => template_iter,
+                _ => unreachable!("Expected TemplateIterator, found something else."),
+            },
+            _ => unreachable!("Expected TemplateIterator, found `{:?}`", self),
+        }
+    }
+
+    pub(super) fn as_interpolation<'a>(&self, heap: &'a Heap) -> &'a Interpolation {
+        match self {
+            Self::Instance(inst) => match &inst.to_value(heap).backing {
+                Some(NativeClass::Interpolation(interp)) => interp,
+                _ => unreachable!("Expected Interpolation, found `{:?}`", self),
+            },
+            _ => unreachable!("Expected Interpolation, found `{:?}`", self),
         }
     }
 }

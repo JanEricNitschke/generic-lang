@@ -140,6 +140,8 @@ pub enum OpCode {
     BuildRangeExclusive,
     BuildRangeInclusive,
     BuildFstring,
+    BuildInterpolation,
+    BuildTemplate,
 
     Import,
     ImportFrom,
@@ -340,10 +342,10 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
                 Add | Subtract | Multiply | Divide | Mod | Exp | FloorDiv | BitAnd | BitOr
                 | BitXor | Equal | Greater | Less | LessEqual | GreaterEqual | NotEqual | Is
                 | Not | Negate | BuildRational | BuildRangeExclusive | BuildRangeInclusive
-                | Nil | True | False | StopIteration | LoadOne | LoadTwo | LoadZero
-                | LoadMinusOne | LoadOnef | LoadZerof | CloseUpvalue | Inherit | Return
-                | ReturnGenerator | Yield | PopHandler | CompareException | Throw | Reraise
-                | Pop | Dup | Swap => 0,
+                | BuildInterpolation | BuildTemplate | Nil | True | False | StopIteration
+                | LoadOne | LoadTwo | LoadZero | LoadMinusOne | LoadOnef | LoadZerof
+                | CloseUpvalue | Inherit | Return | ReturnGenerator | Yield | PopHandler
+                | CompareException | Throw | Reraise | Pop | Dup | Swap => 0,
                 Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | Call | GetUpvalue | SetUpvalue | Class | GetProperty
                 | SetProperty | Method | GetSuper | BuildList | BuildTuple | BuildSet
@@ -798,6 +800,8 @@ impl Debug for InstructionDisassembler<'_, '_> {
                 BuildRational,
                 BuildRangeExclusive,
                 BuildRangeInclusive,
+                BuildInterpolation,
+                BuildTemplate,
                 Negate,
                 Nil,
                 StopIteration,
