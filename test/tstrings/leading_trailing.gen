@@ -1,0 +1,6 @@
+const name = "Bob";
+const stuff = t"${name}";
+print(stuff);  # expect: Template(strings=("", ""), interpolations=(Interpolation(value=Bob, expression=name),))
+foreach (var element in stuff) {
+    print(element);  # expect: Interpolation(value=Bob, expression=name)
+}

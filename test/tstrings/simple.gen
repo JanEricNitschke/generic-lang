@@ -1,0 +1,12 @@
+const t = t"Hello World";
+print(t);  # expect: Template(strings=("Hello World",), interpolations=())
+
+const name = "Bob";
+const greeting = t"Hello, ${name}!";
+print(greeting);  # expect: Template(strings=("Hello, ", "!"), interpolations=(Interpolation(value=Bob, expression=name),))
+
+foreach (var element in greeting) {
+    print(element);  # expect: Hello, 
+                     # expect: Interpolation(value=Bob, expression=name)
+                     # expect: !
+}
