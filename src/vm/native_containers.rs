@@ -1,6 +1,9 @@
 use super::{VM, errors::VmResult};
 use crate::types::RangeType;
-use crate::value::{Dict, Generator, GenericInt, Instance, List, Number, Range, Set, Tuple, Value};
+use crate::value::{
+    Dict, Generator, GenericInt, Instance, Interpolation, List, Number, Range, Set, Template,
+    Tuple, Value,
+};
 impl VM {
     pub fn build_range(&mut self, range_type: RangeType) -> VmResult {
         let end = self.stack.pop().expect("Stack underflow in OP_BUILD_RANGE");
@@ -75,14 +78,14 @@ impl VM {
             .rev()
             .map(|index| *self.peek(usize::from(index)).unwrap())
             .collect();
-        let list = Tuple::new(items);
+        let tuple = Tuple::new(items);
 
         // Pop all items from stack at once
         self.stack
             .truncate(self.stack.len() - usize::from(arg_count));
         let instance = Instance::new(
             *self.heap.native_classes.get("Tuple").unwrap(),
-            Some(list.into()),
+            Some(tuple.into()),
         );
         let instance_value = self.heap.add_instance(instance);
         self.stack_push(instance_value);
@@ -165,6 +168,65 @@ impl VM {
         let value = self.heap.string_id(&string).into();
         self.stack_push(value);
         Ok(None)
+    }
+
+    /// Build a t-string interpolation.
+    ///
+    /// Items are on the stack in order from left to right
+    /// (... --- value --- expression)
+    pub(crate) fn build_interpolation(&mut self) {
+        let expression = *self
+            .stack
+            .pop()
+            .expect("Stack underflow in OP_BUILD_INTERPOLATION")
+            .as_string();
+        let value = self
+            .stack
+            .pop()
+            .expect("Stack underflow in OP_BUILD_INTERPOLATION");
+        let interpolation = Interpolation::new(value, expression);
+
+        let instance = Instance::new(
+            *self.heap.native_classes.get("Interpolation").unwrap(),
+            Some(interpolation.into()),
+        );
+        let instance_value = self.heap.add_instance(instance);
+        self.stack_push(instance_value);
+    }
+
+    /// Build a t-string template.
+    ///
+    /// Items are on the stack in order from left to right
+    /// (... --- tuple of interpolations --- tuple of strings)
+    /// So for f"Hi ${1+1}, i'm ${name}"
+    /// We would have (... --- (Interpolation(value=2, expression=1+1), `Interpolation(value=VALUE_OF_NAME)`, expression=name) --- ("Hi ", ", i'm ", ""))""
+    pub(crate) fn build_template(&mut self) {
+        let strings = self
+            .stack
+            .pop()
+            .expect("Stack underflow in OP_BUILD_TEMPLATE")
+            .as_tuple(&self.heap)
+            .items()
+            .iter()
+            .map(|value| *value.as_string())
+            .collect();
+        let interpolations = self
+            .stack
+            .pop()
+            .expect("Stack underflow in OP_BUILD_TEMPLATE")
+            .as_tuple(&self.heap)
+            .items()
+            .iter()
+            .map(|value| *value.as_instance())
+            .collect();
+
+        let template = Template::new(interpolations, strings);
+        let instance = Instance::new(
+            *self.heap.native_classes.get("Template").unwrap(),
+            Some(template.into()),
+        );
+        let instance_value = self.heap.add_instance(instance);
+        self.stack_push(instance_value);
     }
 
     /// Build a generator from the current call stack frame.

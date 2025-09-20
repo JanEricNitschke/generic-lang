@@ -18,6 +18,7 @@ pub struct Location {
     pub(super) start_column: Column,
     pub(super) end_line: Line,
     pub(super) end_column: Column,
+    pub(super) index: usize, // Starting byte index in source
 }
 
 impl Default for Location {
@@ -27,6 +28,7 @@ impl Default for Location {
             end_line: Line(1),
             start_column: Column(1),
             end_column: Column(1),
+            index: 0,
         }
     }
 }
@@ -49,6 +51,7 @@ impl Location {
             start_column: self.start_column,
             end_line: other.end_line,
             end_column: other.end_column,
+            index: self.index,
         }
     }
 }
@@ -76,6 +79,7 @@ impl OpcodeLocation {
             start_column: pre.start_column,
             end_line: self.source.start_line,
             end_column: self.source.start_column,
+            index: pre.index,
         });
 
         let following = self.following.as_ref().map(|fol| Location {
@@ -83,6 +87,7 @@ impl OpcodeLocation {
             start_column: self.source.end_column,
             end_line: fol.end_line,
             end_column: fol.end_column,
+            index: fol.index,
         });
 
         Self {

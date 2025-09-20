@@ -113,8 +113,9 @@ pub enum TokenKind {
     DotDotEqual,
 
     FstringStart,
-    FstringEnd,
-    FstringPart,
+    TstringStart,
+    InterpolationStringEnd,
+    InterpolationStringPart,
     InterpolationStart,
     InterpolationEnd,
 }
@@ -145,7 +146,7 @@ pub struct Token<'a> {
 #[cfg(test)]
 #[test]
 fn test_token_size() {
-    assert_eq!(std::mem::size_of::<Token<'_>>(), 56);
+    assert_eq!(std::mem::size_of::<Token<'_>>(), 64);
 }
 
 impl<'a> Token<'a> {
@@ -157,7 +158,7 @@ impl<'a> Token<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 enum ScannerMode {
     Normal,
-    Fstring,
+    InterpolationString,
     Interpolation(u8),
 }
 
@@ -186,6 +187,10 @@ impl<'a> Scanner<'a> {
             #[cfg(feature = "debug_scanner")]
             is_builtin,
         }
+    }
+
+    pub fn source_slice(&self, start: usize, end: usize) -> &'a str {
+        &self.source[start..end]
     }
 
     fn mode(&self) -> &ScannerMode {
@@ -227,19 +232,19 @@ impl<'a> Scanner<'a> {
         }
         match self.mode() {
             ScannerMode::Normal => self.scan_normal(),
-            ScannerMode::Fstring => self.scan_fstring(),
+            ScannerMode::InterpolationString => self.scan_interpolation_string(),
             ScannerMode::Interpolation(_) => self.scan_interpolation(),
         }
     }
 
     /// Scan function for the string bodies of fstrings.
     ///
-    /// Scans everything AFTER `f"` up to and including the closing `"` or
+    /// Scans everything AFTER `f"` or `t"` up to and including the closing `"` or
     /// the start of the interpolation `${`
     ///
     /// Switches to `Normal` mode on closing quotes and
     /// `Interpolation` mode after consuming `${`.
-    fn scan_fstring(&mut self) -> Token<'a> {
+    fn scan_interpolation_string(&mut self) -> Token<'a> {
         self.set_current();
 
         if self.peek() == Some(&b'$') {
@@ -250,20 +255,20 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        self.fstring_part()
+        self.interpolation_string_part()
     }
 
-    fn fstring_part(&mut self) -> Token<'a> {
+    fn interpolation_string_part(&mut self) -> Token<'a> {
         while let Some(&c) = self.peek() {
             if c == b'"' {
-                // End of f-string
+                // End of t- or f-string
                 self.advance(); // consume closing "
                 self.modes.pop(); // Transition back to normal mode
-                return self.make_token(TokenKind::FstringEnd);
+                return self.make_token(TokenKind::InterpolationStringEnd);
             }
             if c == b'$' && self.peek_next() == Some(&b'{') {
                 // Stop before interpolation
-                return self.make_token(TokenKind::FstringPart);
+                return self.make_token(TokenKind::InterpolationStringPart);
             }
             if c == b'\n' {
                 self.next_line();
@@ -275,7 +280,7 @@ impl<'a> Scanner<'a> {
         // This way we get the proper EOF afterwards from the main loop.
         self.modes.pop();
         // Fell out of loop => EOF
-        self.error_token("Unterminated f-string.")
+        self.error_token("Unterminated t- or f-string.")
     }
 
     /// Scans function for the interpolation part of fstrings.
@@ -456,8 +461,16 @@ impl<'a> Scanner<'a> {
             b'"' => return self.string(),
             b'f' => {
                 if self.match_(b'"') {
-                    self.modes.push(ScannerMode::Fstring);
+                    self.modes.push(ScannerMode::InterpolationString);
                     TK::FstringStart
+                } else {
+                    return self.identifier();
+                }
+            }
+            b't' => {
+                if self.match_(b'"') {
+                    self.modes.push(ScannerMode::InterpolationString);
+                    TK::TstringStart
                 } else {
                     return self.identifier();
                 }
@@ -706,6 +719,7 @@ impl<'a> Scanner<'a> {
         self.start = self.current;
         self.location.start_line = self.location.end_line;
         self.location.start_column = self.location.end_column;
+        self.location.index = self.current;
     }
 
     fn next_line(&mut self) {
@@ -786,18 +800,21 @@ mod tests {
     #[test]
     fn test_fstring_parsing() {
         // F-string without expressions
-        assert_token_kinds("f\"hello\"", &[TK::FstringStart, TK::FstringEnd]);
+        assert_token_kinds(
+            "f\"hello\"",
+            &[TK::FstringStart, TK::InterpolationStringEnd],
+        );
 
         // Test f-string content
         assert_token_kinds(
             "f\"hello world, my name is ${name}.\"",
             &[
                 TK::FstringStart,
-                TK::FstringPart,
+                TK::InterpolationStringPart,
                 TK::InterpolationStart,
                 TK::Identifier,
                 TK::InterpolationEnd,
-                TK::FstringEnd,
+                TK::InterpolationStringEnd,
             ],
         );
     }

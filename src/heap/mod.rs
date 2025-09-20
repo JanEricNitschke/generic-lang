@@ -519,7 +519,7 @@ impl Heap {
     ///
     /// If they represent an instance of a native class, then the data structure
     /// that handles the native functionality may itself reference more heap allocated data.
-    #[allow(clippy::cognitive_complexity)]
+    #[allow(clippy::cognitive_complexity, clippy::too_many_lines)]
     fn blacken_instance(&mut self, index: InstanceId) {
         let item = &mut self.instances.data[index];
         if item.marked == self.black_value {
@@ -598,6 +598,21 @@ impl Heap {
                     for item in &generator.stack {
                         gray_value!(self, item);
                     }
+                }
+                NativeClass::Template(template) => {
+                    for string_id in template.strings() {
+                        self.strings.gray.push(*string_id);
+                    }
+                    for interpolation in template.interpolations() {
+                        self.instances.gray.push(*interpolation);
+                    }
+                }
+                NativeClass::TemplateIterator(template_iter) => {
+                    self.instances.gray.push(template_iter.template);
+                }
+                NativeClass::Interpolation(interpolation) => {
+                    self.strings.gray.push(interpolation.expression());
+                    gray_value!(self, &interpolation.value());
                 }
                 // Proxy classes don't contain any references to gray
                 NativeClass::BoolProxy

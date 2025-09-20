@@ -9,7 +9,10 @@ use crate::chunk::OpCode;
 use crate::config::LAMBDA_NAME;
 use crate::scanner::TokenKind as TK;
 use crate::types::{CollectionType, Location, NumberEncoding, OpcodeLocation};
-use crate::value::utils::{ParsedInteger, parse_float_compiler, parse_integer_compiler};
+use crate::value::{
+    Instance, Tuple, Value,
+    utils::{ParsedInteger, parse_float_compiler, parse_integer_compiler},
+};
 
 // The precedence of the different operators in the language
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromPrimitive, IntoPrimitive)]
@@ -95,103 +98,104 @@ macro_rules! make_rules {
     }};
 }
 
-pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 91];
+pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 92];
 
 // Can't be static because the associated function types include lifetimes
 #[rustfmt::skip]
 pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
     make_rules!(
-        LeftParen          = [grouping,        call,      Call      ],
-        RightParen         = [None,            None,      None      ],
-        LeftBrace          = [hash_collection, None,      None      ],
-        RightBrace         = [None,            None,      None      ],
-        Colon              = [None,            binary,    Rational  ],
-        LeftBracket        = [list,            subscript, Call      ],
-        RightBracket       = [None,            None,      None      ],
-        Comma              = [None,            tuple,     Tuple    ],
-        Default            = [None,            None,      None      ],
-        Dot                = [None,            dot,       Call      ],
-        Minus              = [unary,           binary,    Term      ],
-        MinusEqual         = [None,            None,      None      ],
-        Plus               = [None,            binary,    Term      ],
-        PlusEqual          = [None,            None,      None      ],
-        Pipe               = [None,            binary,    BitOr     ],
-        PipeEqual          = [None,            None,      None      ],
-        Percent            = [None,            binary,    Factor    ],
-        PercentEqual       = [None,            None,      None      ],
-        Amper              = [None,            binary,    BitAnd    ],
-        AmperEqual         = [None,            None,      None      ],
-        Hat                = [None,            binary,    BitXor    ],
-        HatEqual           = [None,            None,      None      ],
-        Semicolon          = [None,            None,      None      ],
-        Slash              = [None,            binary,    Factor    ],
-        SlashEqual         = [None,            None,      None      ],
-        SlashSlash         = [None,            binary,    Factor    ],
-        Star               = [None,            binary,    Factor    ],
-        StarEqual          = [None,            None,      None      ],
-        StarStar           = [None,            binary,    Exponent  ],
-        Bang               = [unary,           None,      None      ],
-        BangEqual          = [None,            binary,    Equality  ],
-        Equal              = [None,            None,      None      ],
-        EqualEqual         = [None,            binary,    Equality  ],
-        Greater            = [None,            binary,    Comparison],
-        GreaterEqual       = [None,            binary,    Comparison],
-        Less               = [None,            binary,    Comparison],
-        LessEqual          = [None,            binary,    Comparison],
-        Is                 = [None,            binary,    Equality  ],
-        Identifier         = [variable,        None,      None      ],
-        In                 = [None,            binary,    In        ],
-        String             = [string,          None,      None      ],
-        Float              = [float,           None,      None      ],
-        Integer            = [integer,         None,      None      ],
-        And                = [None,            and,       And       ],
-        Case               = [None,            None,      None      ],
-        Class              = [None,            None,      None      ],
-        Const              = [None,            None,      None      ],
-        Continue           = [None,            None,      None      ],
-        Break              = [None,            None,      None      ],
-        Else               = [None,            None,      None      ],
-        False              = [literal,         None,      None      ],
-        For                = [None,            None,      None      ],
-        Apostrophe         = [None,            None,      None      ],
-        At                 = [None,            None,      None      ],
-        Fun                = [None,            None,      None      ],
-        Gen                = [None,            None,      None      ],
-        RightArrow         = [lambda,          None,      None      ],
-        QuestionMark       = [None,            ternary,   Ternary   ],
-        If                 = [None,            None,      None      ],
-        Unless             = [None,            None,      None      ],
-        Nil                = [literal,         None,      None      ],
-        Or                 = [None,            or,        Or        ],
-        Switch             = [None,            None,      None      ],
-        Super              = [super_,          None,      None      ],
-        This               = [this,            None,      None      ],
-        True               = [literal,         None,      None      ],
-        Var                = [None,            None,      None      ],
-        While              = [None,            None,      None      ],
-        Until              = [None,            None,      None      ],
-        From               = [None,            None,      None      ],
-        Import             = [None,            None,      None      ],
-        From               = [None,            None,      None      ],
-        As                 = [None,            None,      None      ],
-        Error              = [None,            None,      None      ],
-        Eof                = [None,            None,      None      ],
-        Return             = [None,            None,      None      ],
-        Yield              = [yield_,          None,      None      ],
-        Await              = [None,            None,      None      ],
-        Async              = [None,            None,      None      ],
-        StopIteration      = [literal,         None,      None      ],
-        Try                = [None,            None,      None      ],
-        Catch              = [None,            None,      None      ],
-        Finally            = [None,            None,      None      ],
-        Throw              = [None,            None,      None      ],
-        DotDotLess         = [None,            binary,    Range     ],
-        DotDotEqual        = [None,            binary,    Range     ],
-        FstringStart       = [fstring,         None,      None      ],
-        FstringEnd         = [None,            None,      None      ],
-        FstringPart        = [None,            None,      None      ],
-        InterpolationStart = [None,            None,      None      ],
-        InterpolationEnd   = [None,            None,      None      ],
+        LeftParen                = [grouping,        call,      Call      ],
+        RightParen               = [None,            None,      None      ],
+        LeftBrace                = [hash_collection, None,      None      ],
+        RightBrace               = [None,            None,      None      ],
+        Colon                    = [None,            binary,    Rational  ],
+        LeftBracket              = [list,            subscript, Call      ],
+        RightBracket             = [None,            None,      None      ],
+        Comma                    = [None,            tuple,     Tuple    ],
+        Default                  = [None,            None,      None      ],
+        Dot                      = [None,            dot,       Call      ],
+        Minus                    = [unary,           binary,    Term      ],
+        MinusEqual               = [None,            None,      None      ],
+        Plus                     = [None,            binary,    Term      ],
+        PlusEqual                = [None,            None,      None      ],
+        Pipe                     = [None,            binary,    BitOr     ],
+        PipeEqual                = [None,            None,      None      ],
+        Percent                  = [None,            binary,    Factor    ],
+        PercentEqual             = [None,            None,      None      ],
+        Amper                    = [None,            binary,    BitAnd    ],
+        AmperEqual               = [None,            None,      None      ],
+        Hat                      = [None,            binary,    BitXor    ],
+        HatEqual                 = [None,            None,      None      ],
+        Semicolon                = [None,            None,      None      ],
+        Slash                    = [None,            binary,    Factor    ],
+        SlashEqual               = [None,            None,      None      ],
+        SlashSlash               = [None,            binary,    Factor    ],
+        Star                     = [None,            binary,    Factor    ],
+        StarEqual                = [None,            None,      None      ],
+        StarStar                 = [None,            binary,    Exponent  ],
+        Bang                     = [unary,           None,      None      ],
+        BangEqual                = [None,            binary,    Equality  ],
+        Equal                    = [None,            None,      None      ],
+        EqualEqual               = [None,            binary,    Equality  ],
+        Greater                  = [None,            binary,    Comparison],
+        GreaterEqual             = [None,            binary,    Comparison],
+        Less                     = [None,            binary,    Comparison],
+        LessEqual                = [None,            binary,    Comparison],
+        Is                       = [None,            binary,    Equality  ],
+        Identifier               = [variable,        None,      None      ],
+        In                       = [None,            binary,    In        ],
+        String                   = [string,          None,      None      ],
+        Float                    = [float,           None,      None      ],
+        Integer                  = [integer,         None,      None      ],
+        And                      = [None,            and,       And       ],
+        Case                     = [None,            None,      None      ],
+        Class                    = [None,            None,      None      ],
+        Const                    = [None,            None,      None      ],
+        Continue                 = [None,            None,      None      ],
+        Break                    = [None,            None,      None      ],
+        Else                     = [None,            None,      None      ],
+        False                    = [literal,         None,      None      ],
+        For                      = [None,            None,      None      ],
+        Apostrophe               = [None,            None,      None      ],
+        At                       = [None,            None,      None      ],
+        Fun                      = [None,            None,      None      ],
+        Gen                      = [None,            None,      None      ],
+        RightArrow               = [lambda,          None,      None      ],
+        QuestionMark             = [None,            ternary,   Ternary   ],
+        If                       = [None,            None,      None      ],
+        Unless                   = [None,            None,      None      ],
+        Nil                      = [literal,         None,      None      ],
+        Or                       = [None,            or,        Or        ],
+        Switch                   = [None,            None,      None      ],
+        Super                    = [super_,          None,      None      ],
+        This                     = [this,            None,      None      ],
+        True                     = [literal,         None,      None      ],
+        Var                      = [None,            None,      None      ],
+        While                    = [None,            None,      None      ],
+        Until                    = [None,            None,      None      ],
+        From                     = [None,            None,      None      ],
+        Import                   = [None,            None,      None      ],
+        From                     = [None,            None,      None      ],
+        As                       = [None,            None,      None      ],
+        Error                    = [None,            None,      None      ],
+        Eof                      = [None,            None,      None      ],
+        Return                   = [None,            None,      None      ],
+        Yield                    = [yield_,          None,      None      ],
+        Await                    = [None,            None,      None      ],
+        Async                    = [None,            None,      None      ],
+        StopIteration            = [literal,         None,      None      ],
+        Try                      = [None,            None,      None      ],
+        Catch                    = [None,            None,      None      ],
+        Finally                  = [None,            None,      None      ],
+        Throw                    = [None,            None,      None      ],
+        DotDotLess               = [None,            binary,    Range     ],
+        DotDotEqual              = [None,            binary,    Range     ],
+        FstringStart             = [fstring,         None,      None      ],
+        TstringStart             = [tstring,         None,      None      ],
+        InterpolationStringEnd   = [None,            None,      None      ],
+        InterpolationStringPart  = [None,            None,      None      ],
+        InterpolationStart       = [None,            None,      None      ],
+        InterpolationEnd         = [None,            None,      None      ],
     )
 }
 
@@ -594,8 +598,8 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ///
     /// Fstrings consist of 5 types of tokens.
     /// - `FstringStart` `f"`: which is used to enter the fstring compilation
-    /// - `FstringPart`: The raw non-interpolation contents without any quotes
-    /// - `FstringEnd`: The final non-interpolation part WITH closing quotes
+    /// - `InterpolationStringPart`: The raw non-interpolation contents without any quotes
+    /// - `InterpolationStringEnd`: The final non-interpolation part WITH closing quotes
     /// - `InterpolationStart` `${`: Only indicate that an interpolation comes next
     /// - `InterpolationEnd` `}`: Indicates that the interpolation is over
     fn fstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
@@ -609,7 +613,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 break;
             }
             match token.kind {
-                TK::FstringPart => {
+                TK::InterpolationStringPart => {
                     // raw slice of string part, no quotes
                     let string_id = self.heap.string_id(&token.as_str().to_string());
                     self.emit_constant(string_id, self.op_location());
@@ -621,7 +625,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                     self.consume(TK::InterpolationEnd, "Expected '}' after interpolation.");
                 }
 
-                TK::FstringEnd => {
+                TK::InterpolationStringEnd => {
                     // remove the trailing quote from the slice
                     let lexeme = token.as_str();
                     let value = lexeme[..lexeme.len() - 1].to_string();
@@ -635,6 +639,95 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 _ => {
                     // In case the scanner yields something unexpected
                     self.error("Unexpected token in fstring.");
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Emit tstring parts.
+    ///
+    /// Tstrings consist of 5 types of tokens.
+    /// - `TstringStart` `t"`: which is used to enter the tstring compilation
+    /// - `InterpolationStringPart`: The raw non-interpolation contents without any quotes
+    /// - `InterpolationStringEnd`: The final non-interpolation part WITH closing quotes
+    /// - `InterpolationStart` `${`: Only indicate that an interpolation comes next
+    /// - `InterpolationEnd` `}`: Indicates that the interpolation is over
+    fn tstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
+        let mut interpolation_count = 0;
+
+        let mut string_parts: Vec<Value> = Vec::new();
+        let t_string_location = self.op_location();
+
+        if self.current.as_ref().unwrap().kind == TK::InterpolationStart {
+            // First part is empty
+            let string_id = self.heap.string_id(&String::new());
+            string_parts.push(string_id.into());
+        }
+
+        loop {
+            self.advance();
+            let token = self.previous.as_ref().unwrap();
+            match token.kind {
+                TK::InterpolationStringPart => {
+                    // raw slice of string part, no quotes
+                    let string_id = self.heap.string_id(&token.as_str().to_string());
+                    string_parts.push(string_id.into());
+                }
+
+                TK::InterpolationStart => {
+                    interpolation_count += 1;
+                    if interpolation_count == 255 {
+                        self.error("Can't have more than 255 interpolations in a t-string.");
+                        break;
+                    }
+                    // parse an expression until the matching `}`
+                    // Get the start position of the expression
+                    let expr_start = self.current_location();
+
+                    // parse an expression until the matching `}`
+                    self.expression();
+
+                    // Get the end position of the expression
+                    let expr_end = self.current_location();
+
+                    // Get the lexeme of the expression from the scanner's source
+                    let expr_lexeme = self.scanner.source_slice(expr_start.index, expr_end.index);
+                    let expr_string_id = self.heap.string_id(&expr_lexeme.to_string());
+                    self.emit_constant(expr_string_id, self.op_location());
+
+                    // Emit BuildInterpolation opcode
+                    self.emit_byte(OpCode::BuildInterpolation, self.op_location());
+
+                    self.consume(TK::InterpolationEnd, "Expected '}' after interpolation.");
+                }
+
+                TK::InterpolationStringEnd => {
+                    // remove the trailing quote from the slice
+                    let lexeme = token.as_str();
+                    let value = lexeme[..lexeme.len() - 1].to_string();
+                    let string_id = self.heap.string_id(&value);
+                    string_parts.push(string_id.into());
+
+                    // Build tuple of interpolations
+                    self.emit_bytes(OpCode::BuildTuple, interpolation_count, self.op_location());
+
+                    let tuple = Tuple::new(string_parts);
+
+                    let instance = Instance::new(
+                        *self.heap.native_classes.get("Tuple").unwrap(),
+                        Some(tuple.into()),
+                    );
+                    let instance_value = self.heap.add_instance(instance);
+                    self.emit_constant(instance_value, t_string_location);
+
+                    self.emit_byte(OpCode::BuildTemplate, self.op_location());
+                    break; // done with the tstring
+                }
+
+                _ => {
+                    // In case the scanner yields something unexpected
+                    self.error("Unexpected token in tstring.");
                     break;
                 }
             }

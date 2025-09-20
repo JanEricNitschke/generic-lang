@@ -96,6 +96,9 @@ pub enum NativeClass {
     TupleIterator(TupleIterator),
     Exception(Exception),
     Generator(Generator),
+    Template(Template),
+    TemplateIterator(TemplateIterator),
+    Interpolation(Interpolation),
     // Proxy classes for value type constructors
     BoolProxy,
     StringProxy,
@@ -135,6 +138,9 @@ impl NativeClass {
             Self::TupleIterator(tuple_iter) => tuple_iter.to_string(heap),
             Self::Exception(exception) => exception.to_string(heap),
             Self::Generator(generator) => generator.to_string(heap),
+            Self::Template(template) => template.to_string(heap),
+            Self::TemplateIterator(template_iter) => template_iter.to_string(heap),
+            Self::Interpolation(interpolation) => interpolation.to_string(heap),
             // Proxy classes should never be accessed for string conversion
             Self::BoolProxy => unreachable!("BoolProxy should never be converted to string"),
             Self::StringProxy => unreachable!("StringProxy should never be converted to string"),
@@ -207,7 +213,25 @@ impl From<Generator> for NativeClass {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl From<Template> for NativeClass {
+    fn from(template: Template) -> Self {
+        Self::Template(template)
+    }
+}
+
+impl From<TemplateIterator> for NativeClass {
+    fn from(template_iterator: TemplateIterator) -> Self {
+        Self::TemplateIterator(template_iterator)
+    }
+}
+
+impl From<Interpolation> for NativeClass {
+    fn from(interpolation: Interpolation) -> Self {
+        Self::Interpolation(interpolation)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct List {
     pub(crate) items: Vec<Value>,
 }
@@ -227,12 +251,6 @@ impl List {
                 .collect::<Vec<_>>()
                 .join(", ")
         )
-    }
-}
-
-impl Default for List {
-    fn default() -> Self {
-        Self::new(Vec::new())
     }
 }
 
@@ -275,17 +293,12 @@ impl std::fmt::Display for ListIterator {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Set {
     pub(crate) items: HashTable<(Value, u64)>,
 }
 
 impl Set {
-    #[must_use]
-    pub(crate) fn new(items: HashTable<(Value, u64)>) -> Self {
-        Self { items }
-    }
-
     fn to_string(&self, heap: &Heap) -> String {
         format!(
             "{{{}}}",
@@ -360,12 +373,6 @@ impl Set {
     }
 }
 
-impl Default for Set {
-    fn default() -> Self {
-        Self::new(HashTable::default())
-    }
-}
-
 impl std::fmt::Display for Set {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.pad("<Set Value>")
@@ -378,17 +385,12 @@ impl PartialEq for Set {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Dict {
     pub(crate) items: HashTable<(Value, Value, u64)>,
 }
 
 impl Dict {
-    #[must_use]
-    pub(crate) fn new(items: HashTable<(Value, Value, u64)>) -> Self {
-        Self { items }
-    }
-
     #[allow(clippy::literal_string_with_formatting_args)]
     fn to_string(&self, heap: &Heap) -> String {
         if self.items.is_empty() {
@@ -469,12 +471,6 @@ impl Dict {
             return Err(VmErrorKind::Exception(ExceptionRaisedKind));
         }
         Ok(result)
-    }
-}
-
-impl Default for Dict {
-    fn default() -> Self {
-        Self::new(HashTable::default())
     }
 }
 
@@ -606,7 +602,7 @@ impl PartialEq for RangeIterator {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Tuple {
     items: Vec<Value>,
 }
@@ -633,12 +629,6 @@ impl Tuple {
                 .collect::<Vec<_>>()
                 .join(", ")
         )
-    }
-}
-
-impl Default for Tuple {
-    fn default() -> Self {
-        Self::new(Vec::new())
     }
 }
 
@@ -903,5 +893,145 @@ impl Generator {
 impl std::fmt::Display for Generator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.pad("<Generator Value>")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Template {
+    interpolations: Vec<InstanceId>,
+    strings: Vec<StringId>,
+}
+
+impl Template {
+    #[must_use]
+    pub(crate) fn new(interpolations: Vec<InstanceId>, strings: Vec<StringId>) -> Self {
+        Self {
+            interpolations,
+            strings,
+        }
+    }
+
+    pub(crate) fn strings(&self) -> &Vec<StringId> {
+        &self.strings
+    }
+
+    pub(crate) fn interpolations(&self) -> &Vec<InstanceId> {
+        &self.interpolations
+    }
+
+    pub(crate) fn to_string(&self, heap: &Heap) -> String {
+        let strings_str = if self.strings.len() == 1 {
+            format!("(\"{}\",)", self.strings[0].to_value(heap))
+        } else {
+            format!(
+                "({})",
+                self.strings
+                    .iter()
+                    .map(|s| format!("\"{}\"", s.to_value(heap)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
+
+        let interpolations_str = if self.interpolations.len() == 1 {
+            format!(
+                "({},)",
+                self.interpolations[0].to_value(heap).to_string(heap)
+            )
+        } else {
+            format!(
+                "({})",
+                self.interpolations
+                    .iter()
+                    .map(|i| i.to_value(heap).to_string(heap))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
+
+        format!("Template(strings={strings_str}, interpolations={interpolations_str})")
+    }
+}
+
+impl std::fmt::Display for Template {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad("<Template Value>")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct TemplateIterator {
+    pub(crate) template: InstanceId,
+    pub(crate) index: usize,
+}
+
+impl TemplateIterator {
+    pub(crate) fn new(template: InstanceId) -> Self {
+        Self { template, index: 0 }
+    }
+
+    pub(crate) fn get_template<'a>(&self, heap: &'a Heap) -> &'a Template {
+        match &self.template.to_value(heap).backing {
+            Some(NativeClass::Template(template)) => template,
+            _ => unreachable!("Expected a Template instance, got {:?}", self.template),
+        }
+    }
+
+    #[allow(clippy::option_if_let_else)]
+    fn to_string(&self, heap: &Heap) -> String {
+        format!(
+            "<template iterator of {}>",
+            self.template.to_value(heap).to_string(heap)
+        )
+    }
+}
+
+impl std::fmt::Display for TemplateIterator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad("<template iterator of Value>")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Interpolation {
+    value: Value,
+    expression: StringId,
+}
+
+impl Interpolation {
+    #[must_use]
+    pub(crate) fn new(value: Value, expression: StringId) -> Self {
+        Self { value, expression }
+    }
+
+    pub(crate) fn value(&self) -> Value {
+        self.value
+    }
+
+    pub(crate) fn expression(&self) -> StringId {
+        self.expression
+    }
+
+    pub(crate) fn to_string(&self, heap: &Heap) -> String {
+        format!(
+            "Interpolation(value={}, expression={})",
+            self.value.to_string(heap),
+            self.expression.to_value(heap)
+        )
+    }
+}
+
+impl Default for Interpolation {
+    fn default() -> Self {
+        Self {
+            value: Value::Nil,
+            expression: StringId::default(),
+        }
+    }
+}
+
+impl std::fmt::Display for Interpolation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad("<Interpolation Value>")
     }
 }

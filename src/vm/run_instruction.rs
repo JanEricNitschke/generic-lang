@@ -429,6 +429,14 @@ macro_rules! run_instruction {
             OpCode::BuildRangeInclusive => $self.build_range(RangeType::Inclusive),
             OpCode::BuildRational => $self.build_rational(),
             OpCode::BuildFstring => $self.build_fstring(),
+            OpCode::BuildInterpolation => {
+                $self.build_interpolation();
+                Ok(None)
+            }
+            OpCode::BuildTemplate => {
+                $self.build_template();
+                Ok(None)
+            }
             // Import a module by filepath without qualifiers.
             // Expects either the path to the module or the name of
             // a stdlib module as a string as an operand.
