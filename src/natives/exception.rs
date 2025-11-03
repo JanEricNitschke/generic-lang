@@ -77,7 +77,7 @@ pub(super) fn exception_str_native(
         .to_value(&vm.heap);
     let mut result = match exception.message() {
         Some(message) => format!("{class_name}: {}", message.to_value(&vm.heap)),
-        None => class_name.to_string(),
+        None => class_name.clone(),
     };
     if let Some(stack_trace) = exception.stack_trace() {
         result.push('\n');

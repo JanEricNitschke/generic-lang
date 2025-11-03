@@ -10,7 +10,7 @@ use derivative::Derivative;
 use rustc_hash::FxHashMap as HashMap;
 use std::path::PathBuf;
 
-/// Closure are wrappers around runable code.
+/// Closure are wrappers around runnable code.
 ///
 /// They contain a reference to the actual function they wrap,
 /// the captured upvalues and their count.
