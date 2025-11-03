@@ -85,7 +85,7 @@ impl VM {
             Ok(match value {
                 Value::Nil | Value::Bool(false) => true,
                 Value::Number(n) => n == 0.into(),
-                Value::String(id) => (id.to_value(&self.heap)).to_string().is_empty(),
+                Value::String(id) => (id.to_value(&self.heap)).is_empty(),
                 _ => false,
             })
         }
