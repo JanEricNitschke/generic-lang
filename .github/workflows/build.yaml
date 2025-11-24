@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repo
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
     - name: Set up Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
     - name: Install cargo-hack
@@ -62,7 +62,7 @@ jobs:
       with:
         sdk: stable
     - name: Checkout book repo
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
       with:
         repository: munificent/craftinginterpreters
         path: reference/craftinginterpreters
