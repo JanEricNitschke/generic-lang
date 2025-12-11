@@ -1,6 +1,6 @@
 use num_bigint::BigInt;
 use paste::paste;
-use slotmap::{HopSlotMap as SlotMap, Key, new_key_type};
+use slotmap::{Key, SlotMap, new_key_type};
 use std::fmt::{Debug, Display};
 
 use super::Heap;
@@ -84,7 +84,7 @@ impl_to_value!(
 /// Arenas storing each `Value` variant.
 ///
 /// Each arena has a name when logging the garbage collector.
-/// The main core of the arenas is a `HopSlotMap` storing the actual values.
+/// The main core of the arenas is a `DenseSlotMap` storing the actual values.
 /// Additionally, they store their overall number of allocated bytes as well
 /// as a vector of items to process for `mark and sweep`.
 #[derive(Clone, Debug)]
