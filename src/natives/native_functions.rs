@@ -4,7 +4,7 @@ use crate::{
     value::{GenericInt, Number, Value, get_native_class_id, is_subclass_of},
     vm::{VM, errors::VmResult},
 };
-use rand::Rng;
+use rand::RngExt;
 use std::io;
 use std::thread;
 use std::time::Duration;
