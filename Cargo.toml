@@ -17,7 +17,7 @@ name = "generic"
 path = "src/main.rs"
 
 [dependencies]
-clap         = { version = "4.5.56", features = ["derive"] }
+clap         = { version = "4.5.57", features = ["derive"] }
 derivative   = "2.2.0"
 rustc-hash   = "2.1.1"
 humansize    = "2.1.3"
