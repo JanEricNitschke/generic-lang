@@ -11,7 +11,7 @@ repos:
       - id: check-xml
       - id: trailing-whitespace
   - repo: https://github.com/crate-ci/typos
-    rev: v1.39.0
+    rev: v1.44.0
     hooks:
       - id: typos
         args: []
