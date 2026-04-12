@@ -16,9 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repo
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
     - name: Set up Rust
-      uses: actions-rust-lang/setup-rust-toolchain@v1
+      uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606 # v1.15.4
     - name: Install cargo-hack
       run: cargo install cargo-hack --locked
     - name: Build
@@ -58,11 +58,11 @@ jobs:
       run: |
         cargo run --features "debug_scanner" test/fstrings/nested.gen
     - name: Setup dart
-      uses: dart-lang/setup-dart@v1
+      uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1.7.2
       with:
         sdk: stable
     - name: Checkout book repo
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         repository: munificent/craftinginterpreters
         path: reference/craftinginterpreters
@@ -79,11 +79,11 @@ jobs:
       run: |
         cargo install --locked hyperfine
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
         python-version: '3.13'
     - name: Set up Ruby
-      uses: ruby/setup-ruby@v1
+      uses: ruby/setup-ruby@e65c17d16e57e481586a6a5a0282698790062f92 # v1.300.0
       with:
         ruby-version: "3.4.2"
     - name: Run benchmarks
