@@ -83,7 +83,7 @@ impl VM {
             .unwrap_or(0);
         for (i, module) in self.modules.iter().enumerate() {
             let name = module.to_value(&self.heap).name.to_value(&self.heap);
-            println!("  [{i:3}] {name:max_name_width$}",);
+            println!("  [{i:3}] {name:max_name_width$}");
         }
     }
 
@@ -200,7 +200,7 @@ impl VM {
                 }
             };
 
-            println!("  [{i:3}] {detail:25}",);
+            println!("  [{i:3}] {detail:25}");
         }
     }
 
