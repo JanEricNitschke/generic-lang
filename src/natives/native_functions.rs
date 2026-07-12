@@ -70,7 +70,7 @@ pub(super) fn assert_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Va
 pub(super) fn input_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
     match &args[0] {
         Value::String(prompt) => {
-            println!("{}", &vm.heap.strings[*prompt]);
+            println!("{}", vm.heap.strings[*prompt]);
             let mut choice = String::new();
             match io::stdin().read_line(&mut choice) {
                 Ok(_) => {
