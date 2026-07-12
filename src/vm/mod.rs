@@ -306,7 +306,7 @@ impl VM {
                 .to_value(&self.heap);
             let source_text = std::fs::read_to_string(&module.path).unwrap_or_else(|_| {
                 GENERIC_STDLIB_DIR
-                    .get_file(format!("{}.gen", &module.name.to_value(&self.heap)))
+                    .get_file(format!("{}.gen", module.name.to_value(&self.heap)))
                     .unwrap()
                     .contents_utf8()
                     .unwrap()
