@@ -8,8 +8,8 @@ use crate::{
 /// Initialize an Exception with a message and current stack trace.
 pub(super) fn exception_init_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
+    receiver: &Value,
+    args: &[Value],
 ) -> VmResult<Value> {
     let message = if args.is_empty() {
         None
@@ -38,8 +38,8 @@ pub(super) fn exception_init_native(
 /// Get the message of the Exception.
 pub(super) fn exception_message_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
+    receiver: &Value,
+    _args: &[Value],
 ) -> VmResult<Value> {
     match receiver.as_exception(&vm.heap).message() {
         Some(message) => Ok(Value::String(message)),
@@ -50,8 +50,8 @@ pub(super) fn exception_message_native(
 /// Get the stack trace of the Exception.
 pub(super) fn exception_stack_trace_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
+    receiver: &Value,
+    _args: &[Value],
 ) -> VmResult<Value> {
     match receiver.as_exception(&vm.heap).stack_trace() {
         Some(stack_trace) => Ok(Value::String(stack_trace)),
@@ -64,8 +64,8 @@ pub(super) fn exception_stack_trace_native(
 /// This will be inherited by all exceptions and properly display their name.
 pub(super) fn exception_str_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
+    receiver: &Value,
+    _args: &[Value],
 ) -> VmResult<Value> {
     let exception = receiver.as_exception(&vm.heap);
     let class_name = receiver

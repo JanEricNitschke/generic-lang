@@ -8,8 +8,8 @@ use unicode_segmentation::UnicodeSegmentation;
 /// String.__init__(value) - Convert any value to string using `to_string_native` logic
 pub(super) fn string_init_native(
     vm: &mut VM,
-    _receiver: &mut Value,
-    args: &mut [&mut Value],
+    _receiver: &Value,
+    args: &[Value],
 ) -> VmResult<Value> {
     if let Value::Instance(instance) = &args[0]
         && let Some(NativeClass::List(list)) = &instance.to_value(&vm.heap).backing
@@ -29,15 +29,15 @@ pub(super) fn string_init_native(
     {
         Ok(Value::String(vm.heap.string_id(&string)))
     } else {
-        Ok(Value::String(vm.value_to_string(args[0])?))
+        Ok(Value::String(vm.value_to_string(&args[0])?))
     }
 }
 
 // String.replace(old, new) — normalized
 pub(super) fn string_replace_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
+    receiver: &Value,
+    args: &[Value],
 ) -> VmResult<Value> {
     let s = receiver
         .as_string()
@@ -64,8 +64,8 @@ pub(super) fn string_replace_native(
 /// String.contains(substring) — normalized
 pub(super) fn string_contains_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
+    receiver: &Value,
+    args: &[Value],
 ) -> VmResult<Value> {
     let s = receiver
         .as_string()
@@ -86,11 +86,7 @@ pub(super) fn string_contains_native(
 }
 
 /// String.find(substring) — normalized
-pub(super) fn string_find_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn string_find_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
     let s = receiver
         .as_string()
         .to_value(&vm.heap)
@@ -122,8 +118,8 @@ fn vec_to_list_instance(vm: &mut VM, items: Vec<Value>) -> Value {
 
 pub(super) fn string_bytes_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
+    receiver: &Value,
+    _args: &[Value],
 ) -> VmResult<Value> {
     let s = receiver.as_string().to_value(&vm.heap);
     let items = s
@@ -135,8 +131,8 @@ pub(super) fn string_bytes_native(
 
 pub(super) fn string_get_byte_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
+    receiver: &Value,
+    args: &[Value],
 ) -> VmResult<Value> {
     let index = match &args[0] {
         Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
@@ -172,8 +168,8 @@ pub(super) fn string_get_byte_native(
 
 pub(super) fn string_chars_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
+    receiver: &Value,
+    _args: &[Value],
 ) -> VmResult<Value> {
     let s = receiver.as_string().to_value(&vm.heap).clone();
     let items = s
@@ -185,8 +181,8 @@ pub(super) fn string_chars_native(
 
 pub(super) fn string_get_char_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
+    receiver: &Value,
+    args: &[Value],
 ) -> VmResult<Value> {
     let index = match &args[0] {
         Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
@@ -220,8 +216,8 @@ pub(super) fn string_get_char_native(
 
 pub(super) fn string_clusters_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
+    receiver: &Value,
+    _args: &[Value],
 ) -> VmResult<Value> {
     let s = receiver.as_string().to_value(&vm.heap).clone();
     let items = s
@@ -233,8 +229,8 @@ pub(super) fn string_clusters_native(
 
 pub(super) fn string_get_cluster_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
+    receiver: &Value,
+    args: &[Value],
 ) -> VmResult<Value> {
     let index = match &args[0] {
         Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {

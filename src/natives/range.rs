@@ -9,23 +9,19 @@ use crate::{
 /// This also powers `a in range`.
 pub(super) fn range_contains_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
+    receiver: &Value,
+    args: &[Value],
 ) -> VmResult<Value> {
     let my_range = receiver.as_range(&vm.heap);
     match args[0] {
-        Value::Number(Number::Integer(arg)) => Ok(Value::Bool(my_range.contains(arg, &vm.heap))),
+        Value::Number(Number::Integer(arg)) => Ok(Value::Bool(my_range.contains(&arg, &vm.heap))),
         _ => Ok(Value::Bool(false)),
     }
 }
 
 /// Produce an iterator over the range `var iter = range.__iter__()`.
 /// Used by `foreach (var a in range)`.
-pub(super) fn range_iter_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn range_iter_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
     let my_range = receiver.as_instance();
     let my_iterator = RangeIterator::new(*my_range);
     let target_class = vm.heap.native_classes.get("RangeIterator").unwrap();
@@ -38,10 +34,10 @@ pub(super) fn range_iter_native(
 #[allow(clippy::option_if_let_else)]
 pub(super) fn range_iter_next_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
+    receiver: &Value,
+    _args: &[Value],
 ) -> VmResult<Value> {
-    let mut my_iter = std::mem::take(receiver.as_range_iter_mut(&mut vm.heap));
+    let mut my_iter = std::mem::take(receiver.as_range_iterator_mut(&mut vm.heap));
     let my_range = my_iter.get_range(&vm.heap);
     let my_range_start = my_range.start();
     let my_range_end = my_range.end();
@@ -61,25 +57,17 @@ pub(super) fn range_iter_next_native(
         Ok(Value::Number(Number::Integer(current)))
     };
 
-    *receiver.as_range_iter_mut(&mut vm.heap) = my_iter;
+    *receiver.as_range_iterator_mut(&mut vm.heap) = my_iter;
     result
 }
 
-pub(super) fn range_len_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn range_len_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
     let my_range = *receiver.as_range(&vm.heap);
     let length = my_range.len(&mut vm.heap);
     Ok(Number::Integer(length).into())
 }
 
-pub(super) fn range_bool_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn range_bool_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
     let my_range = receiver.as_range(&vm.heap);
     let is_non_empty = !my_range.is_empty(&vm.heap);
     Ok(is_non_empty.into())
@@ -87,11 +75,7 @@ pub(super) fn range_bool_native(
 
 /// Constructor for Range that accepts exactly 2 arguments.
 /// `Range(start, end)` creates a range from start to end (exclusive).
-pub(super) fn range_init_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn range_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
     let (start, end) = match (&args[0], &args[1]) {
         (Value::Number(Number::Integer(s)), Value::Number(Number::Integer(e))) => (*s, *e),
         (s, e) => {

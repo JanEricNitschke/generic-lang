@@ -6,11 +6,7 @@ use crate::{
 };
 
 /// Get an item at a specified index `tuple[a]`.
-pub(super) fn tuple_get_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn tuple_get_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
     let index = match &args[0] {
         Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
             Ok(index) => index,
@@ -43,24 +39,20 @@ pub(super) fn tuple_get_native(
 /// This also powers `a in tuple`.
 pub(super) fn tuple_contains_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
+    receiver: &Value,
+    args: &[Value],
 ) -> VmResult<Value> {
     let my_tuple = receiver.as_tuple(&vm.heap);
     Ok(my_tuple
         .items()
         .iter()
-        .any(|el| el.eq(args[0], &vm.heap))
+        .any(|el| el.eq(&args[0], &vm.heap))
         .into())
 }
 
 /// Produce an iterator over the tuple `var iter = tuple.__iter__()`.
 /// Used by `foreach (var a in tuple)`.
-pub(super) fn tuple_iter_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn tuple_iter_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
     let my_tuple = receiver.as_instance();
     let my_iterator = TupleIterator::new(*my_tuple);
     let target_class = vm.heap.native_classes.get("TupleIterator").unwrap();
@@ -73,10 +65,10 @@ pub(super) fn tuple_iter_native(
 #[allow(clippy::option_if_let_else)]
 pub(super) fn tuple_iter_next_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
+    receiver: &Value,
+    _args: &[Value],
 ) -> VmResult<Value> {
-    let mut my_iter = std::mem::take(receiver.as_tuple_iter_mut(&mut vm.heap));
+    let mut my_iter = std::mem::take(receiver.as_tuple_iterator_mut(&mut vm.heap));
     let my_tuple = my_iter.get_tuple(&vm.heap);
     let result = if my_iter.index < my_tuple.items().len() {
         let value = my_tuple.items()[my_iter.index];
@@ -86,15 +78,11 @@ pub(super) fn tuple_iter_next_native(
         Ok(Value::StopIteration)
     };
 
-    *receiver.as_tuple_iter_mut(&mut vm.heap) = my_iter;
+    *receiver.as_tuple_iterator_mut(&mut vm.heap) = my_iter;
     result
 }
 
-pub(super) fn tuple_add_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn tuple_add_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
     let my_tuple = receiver.as_tuple(&vm.heap);
     if let Value::Instance(instance) = &args[0]
         && let Some(NativeClass::Tuple(other_tuple)) = &instance.to_value(&vm.heap).backing
@@ -122,32 +110,20 @@ pub(super) fn tuple_add_native(
     }
 }
 
-pub(super) fn tuple_len_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn tuple_len_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
     let my_tuple = receiver.as_tuple(&vm.heap);
     Ok(Number::from_usize(my_tuple.items().len(), &mut vm.heap).into())
 }
 
-pub(super) fn tuple_bool_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn tuple_bool_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
     let is_empty = receiver.as_tuple(&vm.heap).items().is_empty();
     Ok((!is_empty).into())
 }
 
 /// Constructor for Tuple that accepts variable number of arguments.
 /// `Tuple()` creates empty tuple, `Tuple(1, 2, 3)` creates (1, 2, 3).
-pub(super) fn tuple_init_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
-    let items: Vec<Value> = args.iter().map(|arg| **arg).collect();
+pub(super) fn tuple_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    let items: Vec<Value> = args.to_vec();
     let tuple = receiver.as_tuple_mut(&mut vm.heap);
     *tuple = Tuple::new(items);
     Ok(*receiver)

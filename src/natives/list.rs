@@ -7,24 +7,16 @@ use crate::{
 
 /// Append an item to the end of the list.
 /// `list.append(a)`.
-pub(super) fn list_append_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn list_append_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
     let list = receiver.as_list_mut(&mut vm.heap);
-    list.items.push(*args[0]);
+    list.items.push(args[0]);
     Ok(Value::Nil)
 }
 
 /// Pop an item off the end of the list via `list.pop()`
 /// or from a specified index `list.pop(index)`.
 /// Returns the removed element.
-pub(super) fn list_pop_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn list_pop_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
     let index = if args.is_empty() {
         None
     } else {
@@ -76,11 +68,7 @@ pub(super) fn list_pop_native(
 }
 
 /// Get an item at a specified index `list[a]`.
-pub(super) fn list_get_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn list_get_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
     let index = match &args[0] {
         Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
             Ok(index) => index,
@@ -117,11 +105,7 @@ pub(super) fn list_get_native(
 }
 
 /// Set the item at the specified index `list[a] = b`.
-pub(super) fn list_set_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn list_set_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
     let index = match &args[0] {
         Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
             Ok(index) => index,
@@ -148,7 +132,7 @@ pub(super) fn list_set_native(
     let list_length = my_list.items.len();
     match my_list.items.get_mut(index) {
         Some(value) => {
-            *value = *args[1];
+            *value = args[1];
             Ok(Value::Nil)
         }
         None => Err(vm
@@ -161,11 +145,7 @@ pub(super) fn list_set_native(
 
 /// Insert an item into the list at the specified index.
 /// `list.insert(index, value)`, such that afterwards `list[index] = value`.
-pub(super) fn list_insert_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn list_insert_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
     let index = match &args[0] {
         Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
             Ok(index) => index,
@@ -198,7 +178,7 @@ pub(super) fn list_insert_native(
             ))
             .unwrap_err())
     } else {
-        my_list.items.insert(index, *args[1]);
+        my_list.items.insert(index, args[1]);
         Ok(Value::Nil)
     }
 }
@@ -207,24 +187,20 @@ pub(super) fn list_insert_native(
 /// This also powers `a in list`.
 pub(super) fn list_contains_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
+    receiver: &Value,
+    args: &[Value],
 ) -> VmResult<Value> {
     let my_list = receiver.as_list(&vm.heap);
     Ok(my_list
         .items
         .iter()
-        .any(|el| el.eq(args[0], &vm.heap))
+        .any(|el| el.eq(&args[0], &vm.heap))
         .into())
 }
 
 /// Produce an iterator over the list `var iter = list.__iter__()`.
 /// Used by `foreach (var a in list)`.
-pub(super) fn list_iter_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn list_iter_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
     let my_list = receiver.as_instance();
     let my_iterator = ListIterator::new(*my_list);
     let target_class = vm.heap.native_classes.get("ListIterator").unwrap();
@@ -237,10 +213,10 @@ pub(super) fn list_iter_native(
 #[allow(clippy::option_if_let_else)]
 pub(super) fn list_iter_next_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
+    receiver: &Value,
+    _args: &[Value],
 ) -> VmResult<Value> {
-    let mut my_iter = std::mem::take(receiver.as_list_iter_mut(&mut vm.heap));
+    let mut my_iter = std::mem::take(receiver.as_list_iterator_mut(&mut vm.heap));
     let my_list = my_iter.get_list(&vm.heap);
     let result = if my_iter.index < my_list.items.len() {
         let value = my_list.items[my_iter.index];
@@ -250,15 +226,11 @@ pub(super) fn list_iter_next_native(
         Ok(Value::StopIteration)
     };
 
-    *receiver.as_list_iter_mut(&mut vm.heap) = my_iter;
+    *receiver.as_list_iterator_mut(&mut vm.heap) = my_iter;
     result
 }
 
-pub(super) fn list_add_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn list_add_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
     let my_list = receiver.as_list(&vm.heap);
     if let Value::Instance(instance) = &args[0]
         && let Some(NativeClass::List(other_list)) = &instance.to_value(&vm.heap).backing
@@ -286,37 +258,25 @@ pub(super) fn list_add_native(
     }
 }
 
-pub(super) fn list_len_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn list_len_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
     let my_list = receiver.as_list(&vm.heap);
     Ok(Number::from_usize(my_list.items.len(), &mut vm.heap).into())
 }
 
-pub(super) fn list_bool_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn list_bool_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
     let is_empty = receiver.as_list(&vm.heap).items.is_empty();
     Ok((!is_empty).into())
 }
 
 /// Constructor for List that accepts variable number of arguments.
 /// `List()` creates empty list, `List(1, 2, 3)` creates [1, 2, 3].
-pub(super) fn list_init_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn list_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
     let items = if args.len() == 1
-        && let Some(iter_items) = vm.collect_items_from_iterable(*args[0])?
+        && let Some(iter_items) = vm.collect_items_from_iterable(args[0])?
     {
         iter_items
     } else {
-        args.iter().map(|arg| **arg).collect()
+        args.to_vec()
     };
     let list = receiver.as_list_mut(&mut vm.heap);
     list.items = items;

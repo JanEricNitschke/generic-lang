@@ -9,7 +9,14 @@ use crate::{
     value::{Class, Closure, Instance, Number, Upvalue, Value, get_native_class_id},
 };
 
+use tinyvec::TinyVec;
+
 use super::{Global, VM};
+
+/// Native-call arguments are copied off the VM stack into an inline-capacity
+/// vector: stack storage for up to this many arguments, heap beyond (only
+/// reachable through the variadic constructors).
+const INLINE_NATIVE_ARGS: usize = 8;
 
 // Execute a function (rust side)
 impl VM {
@@ -132,8 +139,8 @@ impl VM {
         match method {
             Value::Closure(_) => self.execute_call(*method, arg_count),
             Value::NativeMethod(native) => {
-                let mut receiver = *self.peek(arg_count as usize).unwrap();
-                self.execute_native_method_call(*native, &mut receiver, arg_count)
+                let receiver = *self.peek(arg_count as usize).unwrap();
+                self.execute_native_method_call(*native, &receiver, arg_count)
             }
             x => unreachable!(
                 "Can only invoke closure or native methods. Got `{}` instead.",
@@ -183,14 +190,14 @@ impl VM {
                     },
                 );
 
-                let mut instance_id = self.heap.add_instance(Instance::new(class, backing));
+                let instance_id = self.heap.add_instance(Instance::new(class, backing));
                 let stack_index = self.stack.len() - usize::from(arg_count) - 1;
                 self.stack[stack_index] = instance_id;
                 if let Some(initializer) = maybe_initializer {
                     match initializer {
                         Value::NativeMethod(native_method_id) => self.execute_native_method_call(
                             native_method_id,
-                            &mut instance_id,
+                            &instance_id,
                             arg_count,
                         ),
                         _ => self.execute_call(initializer, arg_count),
@@ -209,11 +216,10 @@ impl VM {
                     self.stack[new_stack_base] = bound_method.receiver;
                     self.execute_call(bound_method.method, arg_count)
                 }
-                Value::NativeMethod(native_method) => self.execute_native_method_call(
-                    native_method,
-                    &mut bound_method.to_value(&self.heap).receiver.clone(),
-                    arg_count,
-                ),
+                Value::NativeMethod(native_method) => {
+                    let receiver = bound_method.to_value(&self.heap).receiver;
+                    self.execute_native_method_call(native_method, &receiver, arg_count)
+                }
                 _ => self
                     .throw_type_error("Native methods only bind over closures or native methods."),
             },
@@ -287,9 +293,8 @@ impl VM {
         }
         let fun = f.fun;
         let start_index = self.stack.len() - usize::from(arg_count);
-        let mut args: Vec<Value> = self.stack[start_index..].to_vec();
-        let mut ref_args: Vec<&mut Value> = args.iter_mut().collect();
-        let value = fun(self, ref_args.as_mut_slice())?;
+        let args: TinyVec<[Value; INLINE_NATIVE_ARGS]> = self.stack[start_index..].into();
+        let value = fun(self, &args)?;
         self.stack.truncate(start_index - 1);
         self.stack_push(value);
         Ok(None)
@@ -304,7 +309,7 @@ impl VM {
     fn execute_native_method_call(
         &mut self,
         f: NativeMethodId,
-        receiver: &mut Value,
+        receiver: &Value,
         arg_count: u8,
     ) -> VmResult {
         let f = f.to_value(&self.heap);
@@ -332,9 +337,8 @@ impl VM {
         }
         let fun = f.fun;
         let start_index = self.stack.len() - usize::from(arg_count);
-        let mut args: Vec<Value> = self.stack[start_index..].to_vec();
-        let mut ref_args: Vec<&mut Value> = args.iter_mut().collect();
-        let value = fun(self, receiver, ref_args.as_mut_slice())?;
+        let args: TinyVec<[Value; INLINE_NATIVE_ARGS]> = self.stack[start_index..].into();
+        let value = fun(self, receiver, &args)?;
         self.stack
             .truncate(self.stack.len() - usize::from(arg_count) - 1);
         self.stack_push(value);
