@@ -9,8 +9,8 @@ use crate::{
 /// Used by `foreach (var a in template)`.
 pub(super) fn template_iter_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
+    receiver: &Value,
+    _args: &[Value],
 ) -> VmResult<Value> {
     let my_template = receiver.as_instance();
     let my_iterator = TemplateIterator::new(*my_template);
@@ -21,8 +21,8 @@ pub(super) fn template_iter_native(
 
 pub(super) fn template_strings_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
+    receiver: &Value,
+    _args: &[Value],
 ) -> VmResult<Value> {
     let my_template = receiver.as_template(&vm.heap);
     let string_values: Vec<Value> = my_template
@@ -43,8 +43,8 @@ pub(super) fn template_strings_native(
 
 pub(super) fn template_interpolations_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
+    receiver: &Value,
+    _args: &[Value],
 ) -> VmResult<Value> {
     let my_template = receiver.as_template(&vm.heap);
     let interpolation_values: Vec<Value> = my_template
@@ -68,10 +68,10 @@ pub(super) fn template_interpolations_native(
 #[allow(clippy::option_if_let_else)]
 pub(super) fn template_iter_next_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
+    receiver: &Value,
+    _args: &[Value],
 ) -> VmResult<Value> {
-    let mut my_iter = std::mem::take(receiver.as_template_iter_mut(&mut vm.heap));
+    let mut my_iter = std::mem::take(receiver.as_template_iterator_mut(&mut vm.heap));
     let my_template = my_iter.get_template(&vm.heap);
 
     let max_index = my_template.strings().len() + my_template.interpolations().len();
@@ -95,14 +95,14 @@ pub(super) fn template_iter_next_native(
         }
     };
 
-    *receiver.as_template_iter_mut(&mut vm.heap) = my_iter;
+    *receiver.as_template_iterator_mut(&mut vm.heap) = my_iter;
     Ok(result)
 }
 
 pub(super) fn interpolation_value_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
+    receiver: &Value,
+    _args: &[Value],
 ) -> VmResult<Value> {
     let my_interpolation = receiver.as_interpolation(&vm.heap);
     let value = my_interpolation.value();
@@ -112,8 +112,8 @@ pub(super) fn interpolation_value_native(
 
 pub(super) fn interpolation_expression_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
+    receiver: &Value,
+    _args: &[Value],
 ) -> VmResult<Value> {
     let my_interpolation = receiver.as_interpolation(&vm.heap);
     let expression = my_interpolation.expression().into();

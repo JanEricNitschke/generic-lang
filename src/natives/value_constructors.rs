@@ -6,12 +6,8 @@ use crate::vm::VM;
 use crate::vm::errors::VmResult;
 
 /// Bool.__init__(value) - Convert any value to boolean using `is_falsey` logic
-pub(super) fn bool_init_native(
-    vm: &mut VM,
-    _receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
-    let value = *args[0];
+pub(super) fn bool_init_native(vm: &mut VM, _receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    let value = args[0];
     let is_falsey = vm.is_falsey(value)?;
     Ok(Value::Bool(!is_falsey))
 }
@@ -19,8 +15,8 @@ pub(super) fn bool_init_native(
 /// Integer.__init__(value) - Convert string or number to integer
 pub(super) fn integer_init_native(
     vm: &mut VM,
-    _receiver: &mut Value,
-    args: &mut [&mut Value],
+    _receiver: &Value,
+    args: &[Value],
 ) -> VmResult<Value> {
     match &args[0] {
         Value::String(string_id) => {
@@ -52,11 +48,7 @@ pub(super) fn integer_init_native(
 }
 
 /// Float.__init__(value) - Convert string or number to float
-pub(super) fn float_init_native(
-    vm: &mut VM,
-    _receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn float_init_native(vm: &mut VM, _receiver: &Value, args: &[Value]) -> VmResult<Value> {
     match &args[0] {
         Value::String(string_id) => {
             let string = string_id.to_value(&vm.heap).clone();
@@ -79,8 +71,8 @@ pub(super) fn float_init_native(
 /// Rational.__init__(numerator, denominator) - Create rational from two integers
 pub(super) fn rational_init_native(
     vm: &mut VM,
-    _receiver: &mut Value,
-    args: &mut [&mut Value],
+    _receiver: &Value,
+    args: &[Value],
 ) -> VmResult<Value> {
     match (&args[0], &args[1]) {
         (

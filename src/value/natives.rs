@@ -79,8 +79,8 @@ impl std::fmt::Display for NativeMethod {
     }
 }
 
-pub type NativeFunctionImpl = fn(&mut VM, &mut [&mut Value]) -> VmResult<Value>;
-pub type NativeMethodImpl = fn(&mut VM, &mut Value, &mut [&mut Value]) -> VmResult<Value>;
+pub type NativeFunctionImpl = fn(&mut VM, &[Value]) -> VmResult<Value>;
+pub type NativeMethodImpl = fn(&mut VM, &Value, &[Value]) -> VmResult<Value>;
 pub type ModuleContents = Vec<(&'static str, &'static [u8], NativeFunctionImpl)>;
 
 // Actual Natives
@@ -153,83 +153,35 @@ impl NativeClass {
     }
 }
 
-impl From<List> for NativeClass {
-    fn from(list: List) -> Self {
-        Self::List(list)
-    }
+/// Implement `From<T> for NativeClass` for every backing type
+/// (the variant carries the type of the same name).
+macro_rules! impl_from_for_native_class {
+    ($($ty:ident),* $(,)?) => {
+        $(
+            impl From<$ty> for NativeClass {
+                fn from(value: $ty) -> Self {
+                    Self::$ty(value)
+                }
+            }
+        )*
+    };
 }
 
-impl From<ListIterator> for NativeClass {
-    fn from(list_iterator: ListIterator) -> Self {
-        Self::ListIterator(list_iterator)
-    }
-}
-
-impl From<Tuple> for NativeClass {
-    fn from(tuple: Tuple) -> Self {
-        Self::Tuple(tuple)
-    }
-}
-
-impl From<TupleIterator> for NativeClass {
-    fn from(tuple_iterator: TupleIterator) -> Self {
-        Self::TupleIterator(tuple_iterator)
-    }
-}
-
-impl From<Set> for NativeClass {
-    fn from(set: Set) -> Self {
-        Self::Set(set)
-    }
-}
-
-impl From<Dict> for NativeClass {
-    fn from(dict: Dict) -> Self {
-        Self::Dict(dict)
-    }
-}
-
-impl From<Range> for NativeClass {
-    fn from(range: Range) -> Self {
-        Self::Range(range)
-    }
-}
-
-impl From<RangeIterator> for NativeClass {
-    fn from(range_iterator: RangeIterator) -> Self {
-        Self::RangeIterator(range_iterator)
-    }
-}
-
-impl From<Exception> for NativeClass {
-    fn from(exception: Exception) -> Self {
-        Self::Exception(exception)
-    }
-}
-
-impl From<Generator> for NativeClass {
-    fn from(generator: Generator) -> Self {
-        Self::Generator(generator)
-    }
-}
-
-impl From<Template> for NativeClass {
-    fn from(template: Template) -> Self {
-        Self::Template(template)
-    }
-}
-
-impl From<TemplateIterator> for NativeClass {
-    fn from(template_iterator: TemplateIterator) -> Self {
-        Self::TemplateIterator(template_iterator)
-    }
-}
-
-impl From<Interpolation> for NativeClass {
-    fn from(interpolation: Interpolation) -> Self {
-        Self::Interpolation(interpolation)
-    }
-}
+impl_from_for_native_class!(
+    List,
+    ListIterator,
+    Tuple,
+    TupleIterator,
+    Set,
+    Dict,
+    Range,
+    RangeIterator,
+    Exception,
+    Generator,
+    Template,
+    TemplateIterator,
+    Interpolation,
+);
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct List {

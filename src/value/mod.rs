@@ -21,12 +21,14 @@ pub use natives::{
 };
 pub use number::{GenericInt, GenericRational, Number};
 
+use paste::paste;
 use unicode_normalization::UnicodeNormalization;
 
 /// Central enum for the types of runtime values that exist in generic.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Value {
     Bool(bool),
+    #[default]
     Nil,
     StopIteration,
 
@@ -157,9 +159,44 @@ impl Value {
 }
 
 // Conversions
+
+/// Implement `From<XId> for Value` for variants that hold the ID of the same name.
+macro_rules! impl_from_for_value {
+    ($($variant:ident),* $(,)?) => {
+        paste! {
+            $(
+                impl From<[<$variant Id>]> for Value {
+                    fn from(value: [<$variant Id>]) -> Self {
+                        Self::$variant(value)
+                    }
+                }
+            )*
+        }
+    };
+}
+
+impl_from_for_value!(
+    String,
+    Function,
+    Closure,
+    NativeFunction,
+    NativeMethod,
+    Upvalue,
+    Class,
+    Instance,
+    BoundMethod,
+    Module,
+);
+
 impl From<bool> for Value {
     fn from(b: bool) -> Self {
         Self::Bool(b)
+    }
+}
+
+impl From<Number> for Value {
+    fn from(n: Number) -> Self {
+        Self::Number(n)
     }
 }
 
@@ -181,119 +218,40 @@ impl From<GenericInt> for Value {
     }
 }
 
-impl From<Number> for Value {
-    fn from(n: Number) -> Self {
-        Self::Number(n)
-    }
-}
-
-impl From<StringId> for Value {
-    fn from(s: StringId) -> Self {
-        Self::String(s)
-    }
-}
-
 impl From<BigIntId> for Value {
     fn from(b: BigIntId) -> Self {
         Self::Number(Number::Integer(GenericInt::Big(b)))
     }
 }
 
-impl From<FunctionId> for Value {
-    fn from(f: FunctionId) -> Self {
-        Self::Function(f)
-    }
-}
-
-impl From<ClosureId> for Value {
-    fn from(c: ClosureId) -> Self {
-        Self::Closure(c)
-    }
-}
-
-impl From<NativeFunctionId> for Value {
-    fn from(n: NativeFunctionId) -> Self {
-        Self::NativeFunction(n)
-    }
-}
-
-impl From<NativeMethodId> for Value {
-    fn from(n: NativeMethodId) -> Self {
-        Self::NativeMethod(n)
-    }
-}
-
-impl From<UpvalueId> for Value {
-    fn from(u: UpvalueId) -> Self {
-        Self::Upvalue(u)
-    }
-}
-
-impl From<ClassId> for Value {
-    fn from(c: ClassId) -> Self {
-        Self::Class(c)
-    }
-}
-
-impl From<InstanceId> for Value {
-    fn from(i: InstanceId) -> Self {
-        Self::Instance(i)
-    }
-}
-
-impl From<BoundMethodId> for Value {
-    fn from(b: BoundMethodId) -> Self {
-        Self::BoundMethod(b)
-    }
-}
-
-impl From<ModuleId> for Value {
-    fn from(m: ModuleId) -> Self {
-        Self::Module(m)
-    }
+/// Implement `as_x` accessors for variants that directly hold an ID.
+macro_rules! impl_as_variant {
+    ($($variant:ident),* $(,)?) => {
+        paste! {
+            $(
+                pub(super) fn [<as_ $variant:snake>](&self) -> &[<$variant Id>] {
+                    match self {
+                        Self::$variant(value) => value,
+                        _ => unreachable!(
+                            "Expected {}, found `{:?}`",
+                            stringify!($variant),
+                            self
+                        ),
+                    }
+                }
+            )*
+        }
+    };
 }
 
 // Retrieve the inner value
 impl Value {
+    impl_as_variant!(Closure, String, Function, Class, Instance, Module);
+
     pub(super) fn as_generic_int(&self) -> &GenericInt {
         match self {
             Self::Number(Number::Integer(n)) => n,
             _ => unreachable!("Expected Number, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_closure(&self) -> &ClosureId {
-        match self {
-            Self::Closure(c) => c,
-            _ => unreachable!("Expected Closure, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_string(&self) -> &StringId {
-        match self {
-            Self::String(s) => s,
-            _ => unreachable!("Expected String, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_function(&self) -> &FunctionId {
-        match self {
-            Self::Function(f) => f,
-            _ => unreachable!("Expected Function, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_class(&self) -> &ClassId {
-        match self {
-            Self::Class(c) => c,
-            _ => unreachable!("Expected Class, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_instance(&self) -> &InstanceId {
-        match self {
-            Self::Instance(i) => i,
-            _ => unreachable!("Expected Instance, found `{:?}`", self),
         }
     }
 
@@ -317,216 +275,81 @@ impl Value {
             x => unreachable!("Only instances have classes. Got `{:?}`", x),
         }
     }
+}
 
-    pub(super) fn as_module(&self) -> &ModuleId {
-        match self {
-            Self::Module(m) => m,
-            _ => unreachable!("Expected Module, found `{:?}`", self),
+/// Implement `as_x` accessors for instances backed by a native class.
+macro_rules! impl_as_native_class {
+    ($($ty:ident),* $(,)?) => {
+        paste! {
+            $(
+                pub(super) fn [<as_ $ty:snake>]<'a>(&self, heap: &'a Heap) -> &'a $ty {
+                    match self {
+                        Self::Instance(inst) => match &inst.to_value(heap).backing {
+                            Some(NativeClass::$ty(value)) => value,
+                            _ => unreachable!(
+                                "Expected {}, found `{:?}`",
+                                stringify!($ty),
+                                self
+                            ),
+                        },
+                        _ => unreachable!("Expected {}, found `{:?}`", stringify!($ty), self),
+                    }
+                }
+            )*
         }
-    }
+    };
+}
 
-    pub(super) fn as_list<'a>(&self, heap: &'a Heap) -> &'a List {
-        match self {
-            Self::Instance(inst) => match &inst.to_value(heap).backing {
-                Some(NativeClass::List(list)) => list,
-                _ => unreachable!("Expected List, found `{:?}`", self),
-            },
-            _ => unreachable!("Expected List, found `{:?}`", self),
+/// Implement `as_x_mut` accessors for instances backed by a native class.
+/// The mutable borrow is on the heap data; the `Value` itself is only read.
+macro_rules! impl_as_native_class_mut {
+    ($($ty:ident),* $(,)?) => {
+        paste! {
+            $(
+                pub(super) fn [<as_ $ty:snake _mut>]<'a>(&self, heap: &'a mut Heap) -> &'a mut $ty {
+                    match self {
+                        Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
+                            Some(NativeClass::$ty(value)) => value,
+                            _ => unreachable!(
+                                "Expected {}, found `{:?}`",
+                                stringify!($ty),
+                                self
+                            ),
+                        },
+                        _ => unreachable!("Expected {}, found `{:?}`", stringify!($ty), self),
+                    }
+                }
+            )*
         }
-    }
+    };
+}
 
-    pub(super) fn as_list_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut List {
-        match self {
-            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
-                Some(NativeClass::List(list)) => list,
-                _ => unreachable!("Expected List, found something else."),
-            },
-            _ => unreachable!("Expected List, found `{:?}`", self),
-        }
-    }
+impl Value {
+    impl_as_native_class!(
+        List,
+        Tuple,
+        Range,
+        Set,
+        Dict,
+        Exception,
+        Generator,
+        Template,
+        Interpolation,
+    );
 
-    pub(super) fn as_list_iter_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut ListIterator {
-        match self {
-            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
-                Some(NativeClass::ListIterator(list_iter)) => list_iter,
-                _ => unreachable!("Expected ListIterator, found something else."),
-            },
-            _ => unreachable!("Expected ListIterator, found `{:?}`", self),
-        }
-    }
-
-    pub fn as_tuple<'a>(&self, heap: &'a Heap) -> &'a Tuple {
-        match self {
-            Self::Instance(inst) => match &inst.to_value(heap).backing {
-                Some(NativeClass::Tuple(tuple)) => tuple,
-                _ => unreachable!("Expected Tuple, found `{:?}`", self),
-            },
-            _ => unreachable!("Expected Tuple, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_tuple_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Tuple {
-        match self {
-            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
-                Some(NativeClass::Tuple(tuple)) => tuple,
-                _ => unreachable!("Expected Tuple, found something else."),
-            },
-            _ => unreachable!("Expected Tuple, found `{:?}`", self),
-        }
-    }
-
-    pub fn as_tuple_iter_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut TupleIterator {
-        match self {
-            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
-                Some(NativeClass::TupleIterator(tuple_iter)) => tuple_iter,
-                _ => unreachable!("Expected TupleIterator, found something else."),
-            },
-            _ => unreachable!("Expected TupleIterator, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_range<'a>(&self, heap: &'a Heap) -> &'a Range {
-        match self {
-            Self::Instance(inst) => match &inst.to_value(heap).backing {
-                Some(NativeClass::Range(range)) => range,
-                _ => unreachable!("Expected Range, found `{:?}`", self),
-            },
-            _ => unreachable!("Expected Range, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_range_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Range {
-        match self {
-            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
-                Some(NativeClass::Range(range)) => range,
-                _ => unreachable!("Expected Range, found something else."),
-            },
-            _ => unreachable!("Expected Range, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_range_iter_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut RangeIterator {
-        match self {
-            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
-                Some(NativeClass::RangeIterator(range_iter)) => range_iter,
-                _ => unreachable!("Expected RangeIterator, found something else."),
-            },
-            _ => unreachable!("Expected RangeIterator, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_set<'a>(&self, heap: &'a Heap) -> &'a Set {
-        match self {
-            Self::Instance(inst) => match &inst.to_value(heap).backing {
-                Some(NativeClass::Set(set)) => set,
-                _ => unreachable!("Expected Set, found `{:?}`", self),
-            },
-            _ => unreachable!("Expected Set, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_set_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Set {
-        match self {
-            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
-                Some(NativeClass::Set(set)) => set,
-                _ => unreachable!("Expected Set, found something else."),
-            },
-            _ => unreachable!("Expected Set, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_dict<'a>(&self, heap: &'a Heap) -> &'a Dict {
-        match self {
-            Self::Instance(inst) => match &inst.to_value(heap).backing {
-                Some(NativeClass::Dict(dict)) => dict,
-                _ => unreachable!("Expected Dict, found `{:?}`", self),
-            },
-            _ => unreachable!("Expected Dict, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_dict_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Dict {
-        match self {
-            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
-                Some(NativeClass::Dict(dict)) => dict,
-                _ => unreachable!("Expected Dict, found something else."),
-            },
-            _ => unreachable!("Expected Dict, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_exception<'a>(&self, heap: &'a Heap) -> &'a Exception {
-        match self {
-            Self::Instance(inst) => match &inst.to_value(heap).backing {
-                Some(NativeClass::Exception(exception)) => exception,
-                _ => unreachable!("Expected Exception, found `{:?}`", self),
-            },
-            _ => unreachable!("Expected Exception, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_exception_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Exception {
-        match self {
-            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
-                Some(NativeClass::Exception(exception)) => exception,
-                _ => unreachable!("Expected Exception, found `{:?}`", self),
-            },
-            _ => unreachable!("Expected Exception, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_generator<'a>(&self, heap: &'a Heap) -> &'a Generator {
-        match self {
-            Self::Instance(inst) => match &inst.to_value(heap).backing {
-                Some(NativeClass::Generator(generator)) => generator,
-                _ => unreachable!("Expected Generator, found `{:?}`", self),
-            },
-            _ => unreachable!("Expected Generator, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_generator_mut<'a>(&mut self, heap: &'a mut Heap) -> &'a mut Generator {
-        match self {
-            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
-                Some(NativeClass::Generator(generator)) => generator,
-                _ => unreachable!("Expected Generator, found `{:?}`", self),
-            },
-            _ => unreachable!("Expected Generator, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_template<'a>(&self, heap: &'a Heap) -> &'a Template {
-        match self {
-            Self::Instance(inst) => match &inst.to_value(heap).backing {
-                Some(NativeClass::Template(template)) => template,
-                _ => unreachable!("Expected Template, found `{:?}`", self),
-            },
-            _ => unreachable!("Expected Template, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_template_iter_mut<'a>(
-        &mut self,
-        heap: &'a mut Heap,
-    ) -> &'a mut TemplateIterator {
-        match self {
-            Self::Instance(inst) => match &mut inst.to_value_mut(heap).backing {
-                Some(NativeClass::TemplateIterator(template_iter)) => template_iter,
-                _ => unreachable!("Expected TemplateIterator, found something else."),
-            },
-            _ => unreachable!("Expected TemplateIterator, found `{:?}`", self),
-        }
-    }
-
-    pub(super) fn as_interpolation<'a>(&self, heap: &'a Heap) -> &'a Interpolation {
-        match self {
-            Self::Instance(inst) => match &inst.to_value(heap).backing {
-                Some(NativeClass::Interpolation(interp)) => interp,
-                _ => unreachable!("Expected Interpolation, found `{:?}`", self),
-            },
-            _ => unreachable!("Expected Interpolation, found `{:?}`", self),
-        }
-    }
+    impl_as_native_class_mut!(
+        List,
+        ListIterator,
+        Tuple,
+        TupleIterator,
+        Range,
+        RangeIterator,
+        Set,
+        Dict,
+        Exception,
+        Generator,
+        TemplateIterator,
+    );
 }
 
 #[cfg(test)]

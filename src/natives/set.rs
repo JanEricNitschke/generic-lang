@@ -7,13 +7,9 @@ use crate::{
 
 /// Insert an item into the set `set.insert(item)`.
 /// Supports all value types that implement hashable functionality.
-pub(super) fn set_insert_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn set_insert_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
     let mut set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
-    let result = set.add(*args[0], vm);
+    let result = set.add(args[0], vm);
     *receiver.as_set_mut(&mut vm.heap) = set;
     result?;
     Ok(Value::Nil)
@@ -21,13 +17,9 @@ pub(super) fn set_insert_native(
 
 /// Remove a value from the set `set.remove(val)`.
 /// Returns whether the value was originally in the set.
-pub(super) fn set_remove_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn set_remove_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
     let mut my_set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
-    let result = my_set.remove(*args[0], vm);
+    let result = my_set.remove(args[0], vm);
     *receiver.as_set_mut(&mut vm.heap) = my_set;
     Ok(result?.into())
 }
@@ -36,31 +28,23 @@ pub(super) fn set_remove_native(
 /// Also powers `val in set`.
 pub(super) fn set_contains_native(
     vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
+    receiver: &Value,
+    args: &[Value],
 ) -> VmResult<Value> {
     // Create a temporary set to avoid borrowing conflicts
     let set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
-    let result = set.contains(*args[0], vm);
+    let result = set.contains(args[0], vm);
     // Restore the set
     *receiver.as_set_mut(&mut vm.heap) = set;
     Ok(result?.into())
 }
 
-pub(super) fn set_len_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn set_len_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
     let my_set = receiver.as_set(&vm.heap);
     Ok(Number::from_usize(my_set.items.len(), &mut vm.heap).into())
 }
 
-pub(super) fn set_bool_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    _args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn set_bool_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
     let is_empty = receiver.as_set(&vm.heap).items.is_empty();
     Ok((!is_empty).into())
 }
@@ -69,19 +53,15 @@ pub(super) fn set_bool_native(
 ///
 /// `Set()` creates empty set, `Set(1, 2, 3)` creates {1, 2, 3}.
 /// Only hashable values are allowed.
-pub(super) fn set_init_native(
-    vm: &mut VM,
-    receiver: &mut Value,
-    args: &mut [&mut Value],
-) -> VmResult<Value> {
+pub(super) fn set_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
     let mut set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
     set.items.clear(); // Explicitly clear to ensure it's empty
     let items = if args.len() == 1
-        && let Some(iter_items) = vm.collect_items_from_iterable(*args[0])?
+        && let Some(iter_items) = vm.collect_items_from_iterable(args[0])?
     {
         iter_items
     } else {
-        args.iter().map(|arg| **arg).collect()
+        args.to_vec()
     };
 
     for item in items {

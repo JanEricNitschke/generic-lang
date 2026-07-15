@@ -242,6 +242,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "thiserror",
+ "tinyvec",
  "unicode-normalization",
  "unicode-segmentation",
  "walkdir",

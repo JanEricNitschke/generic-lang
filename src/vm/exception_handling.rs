@@ -36,7 +36,7 @@ impl VM {
         self.exception_handlers.pop()
     }
 
-    pub(crate) fn unwind(&mut self, mut exception: Value) -> VmResult {
+    pub(crate) fn unwind(&mut self, exception: Value) -> VmResult {
         if !matches!(exception, Value::Instance(_)) {
             return self.throw_type_error(&format!(
                 "Can only throw instances, got: {}",

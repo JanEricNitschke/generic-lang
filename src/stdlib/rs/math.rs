@@ -5,7 +5,7 @@ use crate::vm::VM;
 use crate::vm::errors::VmResult;
 
 /// Calculate the square root of the number. Always return a float.
-fn sqrt_native(vm: &mut VM, args: &mut [&mut Value]) -> VmResult<Value> {
+fn sqrt_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     match &args[0] {
         Value::Number(Number::Float(n)) => Ok(n.sqrt().into()),
         Value::Number(Number::Integer(n)) => Ok((n.to_f64(&vm.heap)).sqrt().into()),
