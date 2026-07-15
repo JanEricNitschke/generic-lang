@@ -7,17 +7,29 @@ use crate::vm::{InterpretResult, TestResult, VM};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+/// Outcome of a test run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TestRunResult {
+    /// All discovered tests passed (or none were found).
+    AllPassed,
+    /// At least one test failed or errored, or a file could not be processed.
+    HadFailures,
+    /// The given path is neither a file nor a directory.
+    InvalidPath,
+}
+
 /// Run tests from a file or directory.
 ///
 /// If a file is provided, compiles and executes it, then discovers and runs all test functions.
 /// If a directory is provided, finds all .gen files whose names contain "test" and runs tests on each.
 /// Test functions are those whose names start with "test_".
 /// Provides a summary report of test results.
-pub fn run_tests(path: &PathBuf) {
+#[must_use]
+pub fn run_tests(path: &PathBuf) -> TestRunResult {
     if path.is_file() {
-        run_tests_for_file(path);
+        run_tests_for_file(path)
     } else if path.is_dir() {
-        run_tests_for_directory(path);
+        run_tests_for_directory(path)
     } else {
         eprintln!(
             "Error: {} is not a valid file or directory",
@@ -25,7 +37,7 @@ pub fn run_tests(path: &PathBuf) {
                 .replace('\\', "/")
                 .trim_start_matches("./")
         );
-        std::process::exit(74);
+        TestRunResult::InvalidPath
     }
 }
 
@@ -36,7 +48,7 @@ pub struct FileTestResult {
 }
 
 /// Run tests for a single file
-fn run_tests_for_file(file: &PathBuf) {
+fn run_tests_for_file(file: &PathBuf) -> TestRunResult {
     println!(
         "Running tests in {}...\n",
         file.to_string_lossy()
@@ -48,14 +60,15 @@ fn run_tests_for_file(file: &PathBuf) {
     // Print test summary
     print_test_summary(&result.test_results);
 
-    // Exit with error code if any tests failed
     if result.had_error {
-        std::process::exit(1);
+        TestRunResult::HadFailures
+    } else {
+        TestRunResult::AllPassed
     }
 }
 
 /// Run tests for all test files in a directory
-fn run_tests_for_directory(dir: &PathBuf) {
+fn run_tests_for_directory(dir: &PathBuf) -> TestRunResult {
     let test_files = find_test_files(dir);
 
     if test_files.is_empty() {
@@ -66,7 +79,7 @@ fn run_tests_for_directory(dir: &PathBuf) {
                 .trim_start_matches("./")
         );
         println!("Looking for .gen files that contain 'test' in the name");
-        return;
+        return TestRunResult::AllPassed;
     }
 
     println!(
@@ -112,7 +125,9 @@ fn run_tests_for_directory(dir: &PathBuf) {
     print_test_summary(&overall_results);
 
     if any_failures {
-        std::process::exit(1);
+        TestRunResult::HadFailures
+    } else {
+        TestRunResult::AllPassed
     }
 }
 

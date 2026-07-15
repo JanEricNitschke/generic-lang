@@ -670,18 +670,22 @@ impl Compiler<'_, '_> {
     }
 
     /// Loop:
-    /// foreach (var val in `my_list`) {
+    /// ```generic
+    /// foreach (var val in my_list) {
     ///     print(val);
     /// }
+    /// ```
     /// Should be identical to:
+    /// ```generic
     /// {
-    ///     var iter = `my_list`.__iter__();
+    ///     var iter = my_list.__iter__();
     ///     var val = 0;
     ///
     ///     while ((val = iter.__next__()) != StopIteration) {
     ///         print(val);
     ///     }
     /// }
+    /// ```
     fn foreach_statement(&mut self) {
         self.begin_scope();
         let label = self.loop_label();
