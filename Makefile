@@ -3,13 +3,13 @@ STRESS_GC_BIN := ./target/stress_gc/generic
 REL_BIN := ./target/release/generic
 
 test_level := chap30_optimization
-sources := src/*.rs src/compiler/*.rs Cargo.toml
+sources := crates/*/src/*.rs crates/*/src/*/*.rs Cargo.toml crates/*/Cargo.toml
 
 $(DEBUG_BIN): $(sources)
 	cargo build
 
 $(STRESS_GC_BIN): $(sources)
-	cargo build --profile stress_gc --features stress_gc
+	cargo build --profile stress_gc -p generic-lang --features stress_gc
 
 $(REL_BIN): $(sources)
 	cargo build --release

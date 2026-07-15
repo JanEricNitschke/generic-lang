@@ -23,16 +23,21 @@ jobs:
       run: cargo install cargo-hack --locked
     - name: Build
       run: |
-        cargo hack build --feature-powerset --skip print_code_builtin,trace_execution_builtin,debug_parser_builtin,debug_scanner_builtin --no-dev-deps
+        # Feature powerset on the lib crate, where the features are defined
+        # (the bin crate's features are pure forwards).
+        cargo hack build --feature-powerset --skip print_code_builtin,trace_execution_builtin,debug_parser_builtin,debug_scanner_builtin --no-dev-deps -p generic-lang-lib
         cargo build --verbose
     - name: Lint
       run: |
-        rustup component add clippy
+        rustup component add clippy rustfmt
+        # Formatting check across all workspace crates
+        cargo fmt --all --check
         # Run normal configuration and fail on default warnings
+        # (unscoped invocations lint every workspace member, including the bin crate)
         cargo clippy -- -D warnings
         # Run pedantic
         cargo clippy --all-targets -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
-        cargo hack clippy --each-feature --no-dev-deps -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
+        cargo hack clippy --each-feature --no-dev-deps -p generic-lang-lib -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
     - name: Test
       run: cargo test --verbose
     - name: Install Miri

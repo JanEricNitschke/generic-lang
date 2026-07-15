@@ -224,6 +224,13 @@ name = "generic-lang"
 version = "2.1.0"
 dependencies = [
  "clap",
+ "generic-lang-lib",
+]
+
+[[package]]
+name = "generic-lang-lib"
+version = "2.1.0"
+dependencies = [
  "convert_case",
  "derivative",
  "derive_more",

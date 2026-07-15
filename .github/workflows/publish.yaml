@@ -24,8 +24,12 @@ jobs:
       - name: Login to crates.io
         run: cargo login ${{ secrets.CRATES_IO_API_TOKEN }}
 
-      - name: Publish package
-        run: cargo publish --allow-dirty
+      - name: Publish packages
+        run: |
+          # Dependency order: the lib must be on the registry before the bin
+          # that depends on it (cargo waits for index propagation in between).
+          cargo publish -p generic-lang-lib --allow-dirty
+          cargo publish -p generic-lang --allow-dirty
 
   build-binaries:
     name: Build Binaries
@@ -110,12 +114,12 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Package crate
-        run: cargo package
+      - name: Package crates
+        run: cargo package --workspace
 
       - name: Extract version from Cargo.toml
         id: version
-        run: echo "VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[0].version')" >> "$GITHUB_ENV"
+        run: echo "VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "generic-lang") | .version')" >> "$GITHUB_ENV"
 
       - name: Upload crate package as artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

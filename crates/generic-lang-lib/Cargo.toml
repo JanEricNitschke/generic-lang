@@ -1,0 +1,50 @@
+[package]
+name        = "generic-lang-lib"
+description = "Core library of the generic programming language"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+readme.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+convert_case = { workspace = true }
+derivative   = { workspace = true }
+derive_more  = { workspace = true }
+hashbrown    = { workspace = true }
+humansize    = { workspace = true }
+include_dir  = { workspace = true }
+num-bigint   = { workspace = true }
+num-traits   = { workspace = true }
+num_enum     = { workspace = true }
+paste        = { workspace = true }
+path-slash   = { workspace = true }
+rand         = { workspace = true }
+rustc-hash   = { workspace = true }
+shrinkwraprs = { workspace = true }
+slotmap      = { workspace = true }
+strum        = { workspace = true }
+strum_macros = { workspace = true }
+thiserror    = { workspace = true }
+tinyvec      = { workspace = true }
+unicode-normalization = { workspace = true }
+unicode-segmentation  = { workspace = true }
+walkdir      = { workspace = true }
+
+[features]
+print_code              = []
+print_code_verbose      = ["print_code"]
+print_code_builtin      = ["print_code_verbose"]
+trace_execution         = []
+trace_execution_verbose = ["trace_execution"]
+trace_execution_builtin = ["trace_execution_verbose"]
+log_gc                  = []
+stress_gc               = []
+debug_parser            = []
+debug_parser_builtin    = ["debug_parser"]
+debug_scanner           = []
+debug_scanner_builtin   = ["debug_scanner"]

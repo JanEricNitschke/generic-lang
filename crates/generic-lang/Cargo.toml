@@ -1,0 +1,34 @@
+[package]
+name        = "generic-lang"
+description = "A Lox based programming language"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+readme.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "generic"
+path = "src/main.rs"
+
+[dependencies]
+clap             = { workspace = true }
+generic-lang-lib = { workspace = true }
+
+[features]
+print_code              = ["generic-lang-lib/print_code"]
+print_code_verbose      = ["generic-lang-lib/print_code_verbose"]
+print_code_builtin      = ["generic-lang-lib/print_code_builtin"]
+trace_execution         = ["generic-lang-lib/trace_execution"]
+trace_execution_verbose = ["generic-lang-lib/trace_execution_verbose"]
+trace_execution_builtin = ["generic-lang-lib/trace_execution_builtin"]
+log_gc                  = ["generic-lang-lib/log_gc"]
+stress_gc               = ["generic-lang-lib/stress_gc"]
+debug_parser            = ["generic-lang-lib/debug_parser"]
+debug_parser_builtin    = ["generic-lang-lib/debug_parser_builtin"]
+debug_scanner           = ["generic-lang-lib/debug_scanner"]
+debug_scanner_builtin   = ["generic-lang-lib/debug_scanner_builtin"]
