@@ -1,5 +1,6 @@
 //! Methods of the native `Range` class.
 
+use crate::vm::ExceptionKind::TypeError;
 use crate::{
     value::{GenericInt, Instance, Number, Range, RangeIterator, Value},
     vm::{VM, errors::VmResult},
@@ -80,11 +81,14 @@ pub(super) fn range_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) -
         (Value::Number(Number::Integer(s)), Value::Number(Number::Integer(e))) => (*s, *e),
         (s, e) => {
             return Err(vm
-                .throw_type_error(&format!(
-                    "Range arguments must be integers, got `{}, {}`.",
-                    s.to_string(&vm.heap),
-                    e.to_string(&vm.heap),
-                ))
+                .throw(
+                    TypeError,
+                    &format!(
+                        "Range arguments must be integers, got `{}, {}`.",
+                        s.to_string(&vm.heap),
+                        e.to_string(&vm.heap),
+                    ),
+                )
                 .unwrap_err());
         }
     };

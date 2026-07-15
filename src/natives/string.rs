@@ -1,4 +1,5 @@
 use crate::value::{GenericInt, Instance, List, NativeClass, Number, Value};
+use crate::vm::ExceptionKind::{IndexError, TypeError, ValueError};
 use crate::vm::VM;
 use crate::vm::errors::VmResult;
 
@@ -52,11 +53,14 @@ pub(super) fn string_replace_native(
             Ok(Value::String(vm.heap.string_id(&s.replace(&old, &new))))
         }
         _ => Err(vm
-            .throw_type_error(&format!(
-                "Expected two strings, got {} and {}",
-                args[0].to_string(&vm.heap),
-                args[1].to_string(&vm.heap),
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "Expected two strings, got {} and {}",
+                    args[0].to_string(&vm.heap),
+                    args[1].to_string(&vm.heap),
+                ),
+            )
             .unwrap_err()),
     }
 }
@@ -77,10 +81,13 @@ pub(super) fn string_contains_native(
         Ok(Value::Bool(s.contains(&sub)))
     } else {
         Err(vm
-            .throw_type_error(&format!(
-                "Expected string argument, got {}",
-                args[0].to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "Expected string argument, got {}",
+                    args[0].to_string(&vm.heap)
+                ),
+            )
             .unwrap_err())
     }
 }
@@ -101,10 +108,13 @@ pub(super) fn string_find_native(vm: &mut VM, receiver: &Value, args: &[Value]) 
         )))
     } else {
         Err(vm
-            .throw_type_error(&format!(
-                "Expected string argument, got {}",
-                args[0].to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "Expected string argument, got {}",
+                    args[0].to_string(&vm.heap)
+                ),
+            )
             .unwrap_err())
     }
 }
@@ -139,7 +149,7 @@ pub(super) fn string_get_byte_native(
             Ok(index) => index,
             Err(_) => {
                 return Err(vm
-                    .throw_value_error(&format!(
+                    .throw(ValueError, &format!(
                         "Can not index into bytes with negative or too large numbers, got `{}`.",
                         n.to_string(&vm.heap)
                     ))
@@ -148,10 +158,13 @@ pub(super) fn string_get_byte_native(
         },
         x => {
             return Err(vm
-                .throw_type_error(&format!(
-                    "Can only index into bytes with integer, got `{}`.",
-                    x.to_string(&vm.heap)
-                ))
+                .throw(
+                    TypeError,
+                    &format!(
+                        "Can only index into bytes with integer, got `{}`.",
+                        x.to_string(&vm.heap)
+                    ),
+                )
                 .unwrap_err());
         }
     };
@@ -161,7 +174,7 @@ pub(super) fn string_get_byte_native(
             (*b).into(),
         )))),
         None => Err(vm
-            .throw_index_error("byte index out of bounds")
+            .throw(IndexError, "byte index out of bounds")
             .unwrap_err()),
     }
 }
@@ -189,7 +202,7 @@ pub(super) fn string_get_char_native(
             Ok(index) => index,
             Err(_) => {
                 return Err(vm
-                    .throw_value_error(&format!(
+                    .throw(ValueError, &format!(
                         "Can not index into chars with negative or too large numbers, got `{}`.",
                         n.to_string(&vm.heap)
                     ))
@@ -198,10 +211,13 @@ pub(super) fn string_get_char_native(
         },
         x => {
             return Err(vm
-                .throw_type_error(&format!(
-                    "Can only index into chars with integer, got `{}`.",
-                    x.to_string(&vm.heap)
-                ))
+                .throw(
+                    TypeError,
+                    &format!(
+                        "Can only index into chars with integer, got `{}`.",
+                        x.to_string(&vm.heap)
+                    ),
+                )
                 .unwrap_err());
         }
     };
@@ -209,7 +225,7 @@ pub(super) fn string_get_char_native(
     match s.chars().nth(index) {
         Some(c) => Ok(Value::String(vm.heap.string_id(&c.to_string()))),
         None => Err(vm
-            .throw_index_error("char index out of bounds")
+            .throw(IndexError, "char index out of bounds")
             .unwrap_err()),
     }
 }
@@ -237,7 +253,7 @@ pub(super) fn string_get_cluster_native(
             Ok(index) => index,
             Err(_) => {
                 return Err(vm
-                    .throw_value_error(&format!(
+                    .throw(ValueError, &format!(
                         "Can not index into clusters with negative or too large numbers, got `{}`.",
                         n.to_string(&vm.heap)
                     ))
@@ -246,10 +262,13 @@ pub(super) fn string_get_cluster_native(
         },
         x => {
             return Err(vm
-                .throw_type_error(&format!(
-                    "Can only index into clusters with integer, got `{}`.",
-                    x.to_string(&vm.heap)
-                ))
+                .throw(
+                    TypeError,
+                    &format!(
+                        "Can only index into clusters with integer, got `{}`.",
+                        x.to_string(&vm.heap)
+                    ),
+                )
                 .unwrap_err());
         }
     };
@@ -257,7 +276,7 @@ pub(super) fn string_get_cluster_native(
     match s.graphemes(true).nth(index) {
         Some(cluster) => Ok(Value::String(vm.heap.string_id(&cluster))),
         None => Err(vm
-            .throw_index_error("cluster index out of bounds")
+            .throw(IndexError, "cluster index out of bounds")
             .unwrap_err()),
     }
 }

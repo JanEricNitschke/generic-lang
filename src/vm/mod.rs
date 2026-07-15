@@ -30,7 +30,10 @@ use arithmetics::IntoResultValue;
 use callstack::CallStack;
 use errors::RuntimeResult;
 use errors::{Return, RuntimeErrorKind, VmErrorKind};
-pub use exception_handling::ExceptionHandler;
+use exception_handling::ExceptionKind::{
+    AttributeError, ConstReassignmentError, TypeError, ValueError,
+};
+pub use exception_handling::{ExceptionHandler, ExceptionKind};
 
 use rustc_hash::FxHashMap as HashMap;
 use std::collections::VecDeque;
@@ -500,10 +503,13 @@ impl VM {
                 }
                 Ok(None)
             } else {
-                self.throw_type_error(&format!(
-                    "Return value of `__eq__` has to be bool, got {}",
-                    result.to_string(&self.heap)
-                ))
+                self.throw(
+                    TypeError,
+                    &format!(
+                        "Return value of `__eq__` has to be bool, got {}",
+                        result.to_string(&self.heap)
+                    ),
+                )
             };
         }
 

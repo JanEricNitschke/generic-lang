@@ -1,4 +1,5 @@
 use super::{Global, VM, errors::VmResult};
+use crate::vm::ExceptionKind::{ConstReassignmentError, NameError};
 use crate::{chunk::OpCode, types::NumberEncoding, value::Value};
 
 impl VM {
@@ -43,7 +44,7 @@ impl VM {
                         self.stack_push(value);
                     } else {
                         let message = format!("Undefined variable '{}'.", self.heap.strings[*name]);
-                        return Err(self.throw_name_error(&message).unwrap_err());
+                        return Err(self.throw(NameError, &message).unwrap_err());
                     }
                 }
             }
@@ -76,7 +77,7 @@ impl VM {
         {
             if !global.mutable {
                 return Err(self
-                    .throw_const_reassignment_error("Cannot reassign const variable.")
+                    .throw(ConstReassignmentError, "Cannot reassign const variable.")
                     .unwrap_err());
             }
             global.value = stack_top_value;
@@ -85,13 +86,13 @@ impl VM {
             if let Some(global) = maybe_builtin {
                 if !global.mutable {
                     return Err(self
-                        .throw_const_reassignment_error("Cannot reassign const variable.")
+                        .throw(ConstReassignmentError, "Cannot reassign const variable.")
                         .unwrap_err());
                 }
                 global.value = stack_top_value;
             } else {
                 let message = format!("Undefined variable '{}'.", name.to_value(&self.heap));
-                return Err(self.throw_name_error(&message).unwrap_err());
+                return Err(self.throw(NameError, &message).unwrap_err());
             }
         }
 

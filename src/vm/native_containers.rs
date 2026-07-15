@@ -4,6 +4,7 @@ use crate::value::{
     Dict, Generator, GenericInt, Instance, Interpolation, List, Number, Range, Set, Template,
     Tuple, Value,
 };
+use crate::vm::ExceptionKind::TypeError;
 impl VM {
     pub fn build_range(&mut self, range_type: RangeType) -> VmResult {
         let end = self.stack.pop().expect("Stack underflow in OP_BUILD_RANGE");
@@ -33,7 +34,7 @@ impl VM {
                     start.to_string(&self.heap),
                     end.to_string(&self.heap)
                 );
-                return self.throw_type_error(&message);
+                return self.throw(TypeError, &message);
             };
 
         let instance = Instance::new(

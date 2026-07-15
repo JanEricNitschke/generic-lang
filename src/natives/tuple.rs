@@ -1,5 +1,6 @@
 //! Methods of the native `Tuple` class.
 
+use crate::vm::ExceptionKind::{IndexError, TypeError, ValueError};
 use crate::{
     value::{Instance, NativeClass, Number, Tuple, TupleIterator, Value},
     vm::{VM, errors::VmResult},
@@ -10,14 +11,17 @@ pub(super) fn tuple_get_native(vm: &mut VM, receiver: &Value, args: &[Value]) ->
     let index = match &args[0] {
         Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
             Ok(index) => index,
-            Err(err) => return Err(vm.throw_value_error(&err).unwrap_err()),
+            Err(err) => return Err(vm.throw(ValueError, &err).unwrap_err()),
         },
         x => {
             return Err(vm
-                .throw_type_error(&format!(
-                    "Can only index into tuple with integer, got `{}`.",
-                    x.to_string(&vm.heap)
-                ))
+                .throw(
+                    TypeError,
+                    &format!(
+                        "Can only index into tuple with integer, got `{}`.",
+                        x.to_string(&vm.heap)
+                    ),
+                )
                 .unwrap_err());
         }
     };
@@ -27,10 +31,13 @@ pub(super) fn tuple_get_native(vm: &mut VM, receiver: &Value, args: &[Value]) ->
     match my_tuple.items().get(index) {
         Some(value) => Ok(*value),
         None => Err(vm
-            .throw_index_error(&format!(
-                "Index `{index}` is out of bounds of tuple with len `{}`.",
-                my_tuple.items().len()
-            ))
+            .throw(
+                IndexError,
+                &format!(
+                    "Index `{index}` is out of bounds of tuple with len `{}`.",
+                    my_tuple.items().len()
+                ),
+            )
             .unwrap_err()),
     }
 }
@@ -102,10 +109,13 @@ pub(super) fn tuple_add_native(vm: &mut VM, receiver: &Value, args: &[Value]) ->
         Ok(vm.heap.add_instance(instance))
     } else {
         Err(vm
-            .throw_type_error(&format!(
-                "Can only add a tuple to another tuple, got `{}`.",
-                args[0].to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "Can only add a tuple to another tuple, got `{}`.",
+                    args[0].to_string(&vm.heap)
+                ),
+            )
             .unwrap_err())
     }
 }

@@ -1,4 +1,5 @@
 use super::{Global, VM};
+use crate::vm::ExceptionKind::ImportError;
 
 use path_slash::PathBufExt;
 use std::path::PathBuf;
@@ -30,7 +31,7 @@ impl VM {
         let name = if let Some(stem) = file_path.file_stem() {
             stem.to_str().unwrap().to_string()
         } else {
-            return self.throw_import_error("Import path should have a filestem.");
+            return self.throw(ImportError, "Import path should have a filestem.");
         };
         let name_id = self.heap.string_id(&name);
 
@@ -53,7 +54,7 @@ impl VM {
                     "Circular import of module `{}` detected.",
                     name_id.to_value(&self.heap)
                 );
-                return self.throw_import_error(&message);
+                return self.throw(ImportError, &message);
             }
 
             self.import_generic_module(
@@ -92,7 +93,7 @@ impl VM {
                 "Could not find the file to be imported. Attempted path `{:?}` and stdlib.",
                 file_path.to_slash_lossy()
             );
-            return self.throw_import_error(&message);
+            return self.throw(ImportError, &message);
         }
         Ok(None)
     }
@@ -146,7 +147,7 @@ impl VM {
                         "Could not find name to import `{}`.",
                         name.to_value(&self.heap)
                     );
-                    return self.throw_import_error(&message);
+                    return self.throw(ImportError, &message);
                 }
             }
         } else {
@@ -201,7 +202,10 @@ impl VM {
             self.stack_push(value_id);
             self.execute_call(value_id, 0)
         } else {
-            self.throw_import_error(&format!("Could not compile module to import `{name}`."))
+            self.throw(
+                ImportError,
+                &format!("Could not compile module to import `{name}`."),
+            )
         }
     }
 

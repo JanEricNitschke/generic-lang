@@ -276,7 +276,7 @@ macro_rules! run_instruction {
                         } else {
                             let message =
                                 format!("Undefined property '{}'.", field.to_value(&$self.heap));
-                            $self.throw_attribute_error(&message)
+                            $self.throw(AttributeError, &message)
                         }
                     }
                     Value::Module(module) => {
@@ -290,7 +290,7 @@ macro_rules! run_instruction {
                                 field.to_value(&$self.heap),
                                 module.to_value(&$self.heap).name.to_value(&$self.heap)
                             );
-                            $self.throw_attribute_error(&message)
+                            $self.throw(AttributeError, &message)
                         }
                     }
                     x => {
@@ -299,7 +299,7 @@ macro_rules! run_instruction {
                             field.to_value(&$self.heap),
                             x.to_string(&$self.heap)
                         );
-                        $self.throw_type_error(&message)
+                        $self.throw(TypeError, &message)
                     }
                 }
             }
@@ -326,7 +326,8 @@ macro_rules! run_instruction {
                         {
                             if !global.mutable {
                                 Err($self
-                                    .throw_const_reassignment_error(
+                                    .throw(
+                                        ConstReassignmentError,
                                         "Cannot reassign const variable.",
                                     )
                                     .unwrap_err())
@@ -351,7 +352,7 @@ macro_rules! run_instruction {
                             field,
                             x.to_string(&$self.heap)
                         );
-                        Err($self.throw_type_error(&message).unwrap_err())
+                        Err($self.throw(TypeError, &message).unwrap_err())
                     }
                 };
                 $self.stack_push(value);
@@ -387,7 +388,7 @@ macro_rules! run_instruction {
                     subclass.superclass = Some(*superclass);
                     Ok(None)
                 } else {
-                    $self.throw_type_error("Superclass must be a class.")
+                    $self.throw(TypeError, "Superclass must be a class.")
                 }
             }
             // Grab and bind a method from the superclass
@@ -400,7 +401,7 @@ macro_rules! run_instruction {
                 } else {
                     let message =
                         format!("Undefined property '{}'.", $self.heap.strings[method_name]);
-                    $self.throw_attribute_error(&message)
+                    $self.throw(AttributeError, &message)
                 }
             }
             // Invoke a method from the superclass

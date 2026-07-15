@@ -1,5 +1,6 @@
 //! Methods of the native `Dict` class.
 
+use crate::vm::ExceptionKind::{KeyError, TypeError};
 use crate::{
     value::{NativeClass, Number, Value},
     vm::{VM, errors::VmResult},
@@ -17,7 +18,10 @@ pub(super) fn dict_get_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> 
     match result? {
         Some(value) => Ok(value),
         None => Err(vm
-            .throw_key_error(&format!("Key `{}` not found.", args[0].to_string(&vm.heap)))
+            .throw(
+                KeyError,
+                &format!("Key `{}` not found.", args[0].to_string(&vm.heap)),
+            )
             .unwrap_err()),
     }
 }
@@ -77,10 +81,13 @@ pub(super) fn dict_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) ->
             dict.add(*key, *value, vm)?;
         } else {
             return Err(vm
-                .throw_type_error(&format!(
-                    "Dict initializer expects 2-element tuples, got `{}`.",
-                    arg.to_string(&vm.heap)
-                ))
+                .throw(
+                    TypeError,
+                    &format!(
+                        "Dict initializer expects 2-element tuples, got `{}`.",
+                        arg.to_string(&vm.heap)
+                    ),
+                )
                 .unwrap_err());
         }
     }

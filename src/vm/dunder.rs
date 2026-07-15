@@ -1,4 +1,5 @@
 use super::VM;
+use crate::vm::ExceptionKind::{AttributeError, TypeError};
 use crate::{
     heap::StringId,
     value::{GenericInt, Number, Value},
@@ -45,7 +46,10 @@ impl VM {
             Ok(length)
         } else {
             Err(self
-                .throw_attribute_error(&format!("Undefined property '{method_name}'."))
+                .throw(
+                    AttributeError,
+                    &format!("Undefined property '{method_name}'."),
+                )
                 .unwrap_err())
         }
     }
@@ -58,10 +62,13 @@ impl VM {
                 Ok(string_id)
             } else {
                 Err(self
-                    .throw_type_error(&format!(
-                        "`__str__` must return a string, got {}",
-                        string_value.to_string(&self.heap)
-                    ))
+                    .throw(
+                        TypeError,
+                        &format!(
+                            "`__str__` must return a string, got {}",
+                            string_value.to_string(&self.heap)
+                        ),
+                    )
                     .unwrap_err())
             }
         } else {
@@ -75,10 +82,13 @@ impl VM {
                 Ok(!result)
             } else {
                 Err(self
-                    .throw_type_error(&format!(
-                        "`__bool__` must return a boolean, got: {}",
-                        bool_result.to_string(&self.heap)
-                    ))
+                    .throw(
+                        TypeError,
+                        &format!(
+                            "`__bool__` must return a boolean, got: {}",
+                            bool_result.to_string(&self.heap)
+                        ),
+                    )
                     .unwrap_err())
             }
         } else {
@@ -127,10 +137,13 @@ impl VM {
                 Ok(result)
             } else {
                 Err(self
-                    .throw_type_error(&format!(
-                        "`__eq__` must return a boolean, got: {}",
-                        equality_result.to_string(&self.heap)
-                    ))
+                    .throw(
+                        TypeError,
+                        &format!(
+                            "`__eq__` must return a boolean, got: {}",
+                            equality_result.to_string(&self.heap)
+                        ),
+                    )
                     .unwrap_err())
             }
         } else {
@@ -178,10 +191,13 @@ impl VM {
                             Ok(n.unsigned_abs())
                         }
                         _ => Err(self
-                            .throw_type_error(&format!(
-                                "__hash__ method must return an integer, got: {}",
-                                result.to_string(&self.heap)
-                            ))
+                            .throw(
+                                TypeError,
+                                &format!(
+                                    "__hash__ method must return an integer, got: {}",
+                                    result.to_string(&self.heap)
+                                ),
+                            )
                             .unwrap_err()),
                     };
                 }

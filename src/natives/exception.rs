@@ -1,5 +1,6 @@
 //! Native methods for Exception class.
 
+use crate::vm::ExceptionKind::TypeError;
 use crate::{
     value::{Exception, NativeClass, Value},
     vm::{VM, errors::VmResult},
@@ -18,7 +19,7 @@ pub(super) fn exception_init_native(
             Value::String(string_id) => Some(*string_id),
             _ => {
                 return Err(vm
-                    .throw_type_error("Exception message must be a string")
+                    .throw(TypeError, "Exception message must be a string")
                     .unwrap_err());
             }
         }
