@@ -1,4 +1,5 @@
 use super::VM;
+use crate::vm::ExceptionKind::TypeError;
 use crate::{
     value::{GenericRational, Number, Value},
     vm::errors::VmResult,
@@ -56,7 +57,7 @@ macro_rules! binary_op {
             [Value::Number(a), Value::Number(b)] => {
                 if $int_only & (!matches!(a, Number::Integer(_)) | !matches!(b, Number::Integer(_)))
                 {
-                    $self.throw_type_error(&message)
+                    $self.throw(TypeError, &message)
                 } else {
                     match binary_op_invoke!($self, a, b, $method, $heap_toggle).into_result_value()
                     {
@@ -66,7 +67,7 @@ macro_rules! binary_op {
                             $self.stack_push(value);
                             Ok(None)
                         }
-                        Err(error) => $self.throw_value_error(&error),
+                        Err(error) => $self.throw(ValueError, &error),
                     }
                 }
             }
@@ -77,7 +78,7 @@ macro_rules! binary_op {
             {
                 $self.invoke(gen_method_id, 1)
             }
-            _ => $self.throw_type_error(&message),
+            _ => $self.throw(TypeError, &message),
         }
     }};
 }
@@ -119,7 +120,7 @@ impl VM {
                         .collect::<Vec<_>>()
                         .join(", ")
                 );
-                self.throw_type_error(&message)
+                self.throw(TypeError, &message)
             }
         }
     }
@@ -137,7 +138,7 @@ impl VM {
             let negated = n.neg(&mut self.heap);
             self.stack_push(negated.into());
         } else {
-            return self.throw_type_error("Operand must be a number.");
+            return self.throw(TypeError, "Operand must be a number.");
         }
         Ok(None)
     }
@@ -166,7 +167,7 @@ impl VM {
                     numerator.to_string(&self.heap),
                     denominator.to_string(&self.heap)
                 );
-                return self.throw_type_error(&message);
+                return self.throw(TypeError, &message);
             }
         }
         Ok(None)

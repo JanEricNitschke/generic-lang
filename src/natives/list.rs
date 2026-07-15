@@ -1,5 +1,6 @@
 //! Methods of the native `List` class.
 
+use crate::vm::ExceptionKind::{IndexError, TypeError, ValueError};
 use crate::{
     value::{Instance, List, ListIterator, NativeClass, Number, Value},
     vm::{VM, errors::VmResult},
@@ -20,26 +21,28 @@ pub(super) fn list_pop_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> 
     let index = if args.is_empty() {
         None
     } else {
-        let index =
-            match &args[0] {
-                Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
-                    Ok(index) => index,
-                    Err(_) => {
-                        return Err(vm.throw_value_error(&format!(
+        let index = match &args[0] {
+            Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
+                Ok(index) => index,
+                Err(_) => {
+                    return Err(vm.throw(ValueError, &format!(
                         "Can not index into list with negative or too large numbers, got `{}`.",
                         n.to_string(&vm.heap)
                     )).unwrap_err());
-                    }
-                },
-                x => {
-                    return Err(vm
-                        .throw_type_error(&format!(
+                }
+            },
+            x => {
+                return Err(vm
+                    .throw(
+                        TypeError,
+                        &format!(
                             "Can only index into list with integer, got `{}`.",
                             x.to_string(&vm.heap)
-                        ))
-                        .unwrap_err());
-                }
-            };
+                        ),
+                    )
+                    .unwrap_err());
+            }
+        };
         Some(index)
     };
 
@@ -50,9 +53,10 @@ pub(super) fn list_pop_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> 
             let length = my_list.items.len();
             if index >= length {
                 Err(vm
-                    .throw_index_error(&format!(
-                        "Index `{index}` is out of bounds of list with len `{length}`."
-                    ))
+                    .throw(
+                        IndexError,
+                        &format!("Index `{index}` is out of bounds of list with len `{length}`."),
+                    )
                     .unwrap_err())
             } else {
                 Ok(my_list.items.remove(index))
@@ -61,7 +65,7 @@ pub(super) fn list_pop_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> 
         None => match my_list.items.pop() {
             Some(value) => Ok(value),
             None => Err(vm
-                .throw_index_error("Can't 'pop' from an empty list.")
+                .throw(IndexError, "Can't 'pop' from an empty list.")
                 .unwrap_err()),
         },
     }
@@ -69,64 +73,75 @@ pub(super) fn list_pop_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> 
 
 /// Get an item at a specified index `list[a]`.
 pub(super) fn list_get_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
-    let index = match &args[0] {
-        Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
-            Ok(index) => index,
-            Err(_) => {
-                return Err(vm
-                    .throw_value_error(&format!(
+    let index =
+        match &args[0] {
+            Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
+                Ok(index) => index,
+                Err(_) => {
+                    return Err(vm
+                    .throw(ValueError, &format!(
                         "Can not index into list with negative or too large numbers, got `{}`.",
                         n.to_string(&vm.heap)
                     ))
                     .unwrap_err());
+                }
+            },
+            x => {
+                return Err(vm
+                    .throw(
+                        TypeError,
+                        &format!(
+                            "Can only index into list with integer, got `{}`.",
+                            x.to_string(&vm.heap)
+                        ),
+                    )
+                    .unwrap_err());
             }
-        },
-        x => {
-            return Err(vm
-                .throw_type_error(&format!(
-                    "Can only index into list with integer, got `{}`.",
-                    x.to_string(&vm.heap)
-                ))
-                .unwrap_err());
-        }
-    };
+        };
 
     let my_list = receiver.as_list(&vm.heap);
 
     match my_list.items.get(index) {
         Some(value) => Ok(*value),
         None => Err(vm
-            .throw_index_error(&format!(
-                "Index `{index}` is out of bounds of list with len `{}`.",
-                my_list.items.len()
-            ))
+            .throw(
+                IndexError,
+                &format!(
+                    "Index `{index}` is out of bounds of list with len `{}`.",
+                    my_list.items.len()
+                ),
+            )
             .unwrap_err()),
     }
 }
 
 /// Set the item at the specified index `list[a] = b`.
 pub(super) fn list_set_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
-    let index = match &args[0] {
-        Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
-            Ok(index) => index,
-            Err(_) => {
-                return Err(vm
-                    .throw_value_error(&format!(
+    let index =
+        match &args[0] {
+            Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
+                Ok(index) => index,
+                Err(_) => {
+                    return Err(vm
+                    .throw(ValueError, &format!(
                         "Can not index into list with negative or too large numbers, got `{}`.",
                         n.to_string(&vm.heap)
                     ))
                     .unwrap_err());
+                }
+            },
+            x => {
+                return Err(vm
+                    .throw(
+                        TypeError,
+                        &format!(
+                            "Can only index into list with integer, got `{}`.",
+                            x.to_string(&vm.heap)
+                        ),
+                    )
+                    .unwrap_err());
             }
-        },
-        x => {
-            return Err(vm
-                .throw_type_error(&format!(
-                    "Can only index into list with integer, got `{}`.",
-                    x.to_string(&vm.heap)
-                ))
-                .unwrap_err());
-        }
-    };
+        };
 
     let my_list = receiver.as_list_mut(&mut vm.heap);
     let list_length = my_list.items.len();
@@ -136,9 +151,10 @@ pub(super) fn list_set_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> 
             Ok(Value::Nil)
         }
         None => Err(vm
-            .throw_index_error(&format!(
-                "Index `{index}` is out of bounds of list with len `{list_length}`."
-            ))
+            .throw(
+                IndexError,
+                &format!("Index `{index}` is out of bounds of list with len `{list_length}`."),
+            )
             .unwrap_err()),
     }
 }
@@ -146,36 +162,41 @@ pub(super) fn list_set_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> 
 /// Insert an item into the list at the specified index.
 /// `list.insert(index, value)`, such that afterwards `list[index] = value`.
 pub(super) fn list_insert_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
-    let index = match &args[0] {
-        Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
-            Ok(index) => index,
-            Err(_) => {
-                return Err(vm
-                    .throw_value_error(&format!(
+    let index =
+        match &args[0] {
+            Value::Number(Number::Integer(n)) => match n.try_to_usize(&vm.heap) {
+                Ok(index) => index,
+                Err(_) => {
+                    return Err(vm
+                    .throw(ValueError, &format!(
                         "Can not index into list with negative or too large numbers, got `{}`.",
                         n.to_string(&vm.heap)
                     ))
                     .unwrap_err());
+                }
+            },
+            x => {
+                return Err(vm
+                    .throw(
+                        TypeError,
+                        &format!(
+                            "Can only index into list with integer, got `{}`.",
+                            x.to_string(&vm.heap)
+                        ),
+                    )
+                    .unwrap_err());
             }
-        },
-        x => {
-            return Err(vm
-                .throw_type_error(&format!(
-                    "Can only index into list with integer, got `{}`.",
-                    x.to_string(&vm.heap)
-                ))
-                .unwrap_err());
-        }
-    };
+        };
 
     let my_list = receiver.as_list_mut(&mut vm.heap);
 
     let length = my_list.items.len();
     if index > length {
         Err(vm
-            .throw_index_error(&format!(
-                "Index `{index}` is out of bounds of list with len `{length}`."
-            ))
+            .throw(
+                IndexError,
+                &format!("Index `{index}` is out of bounds of list with len `{length}`."),
+            )
             .unwrap_err())
     } else {
         my_list.items.insert(index, args[1]);
@@ -250,10 +271,13 @@ pub(super) fn list_add_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> 
         Ok(vm.heap.add_instance(instance))
     } else {
         Err(vm
-            .throw_type_error(&format!(
-                "Can only add a list to another list, got `{}`.",
-                args[0].to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "Can only add a list to another list, got `{}`.",
+                    args[0].to_string(&vm.heap)
+                ),
+            )
             .unwrap_err())
     }
 }

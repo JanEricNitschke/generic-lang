@@ -1,3 +1,4 @@
+use crate::vm::ExceptionKind::TypeError;
 use crate::{
     heap::{Heap, StringId},
     value::{ClosureId, GenericInt, Instance, InstanceId, is_exception_subclass},
@@ -779,7 +780,10 @@ impl Generator {
 
     pub(crate) fn send(&mut self, value: Value, vm: &mut VM) -> VmResult<Value> {
         if self.state == GeneratorState::Suspended && value != Value::Nil {
-            vm.throw_type_error("Can't send non-nil value to a just-started generator")?;
+            vm.throw(
+                TypeError,
+                "Can't send non-nil value to a just-started generator",
+            )?;
         }
 
         if self.state == GeneratorState::Running {
@@ -794,22 +798,28 @@ impl Generator {
             // Check that the class to catch is a subclass of Exception
             if !is_exception_subclass(&vm.heap, exception_class_id) {
                 return Err(vm
-                    .throw_type_error(&format!(
-                        "Can only throw Exception or its subclasses, got: {}",
-                        exception_class_id
-                            .to_value(&vm.heap)
-                            .name
-                            .to_value(&vm.heap)
-                    ))
+                    .throw(
+                        TypeError,
+                        &format!(
+                            "Can only throw Exception or its subclasses, got: {}",
+                            exception_class_id
+                                .to_value(&vm.heap)
+                                .name
+                                .to_value(&vm.heap)
+                        ),
+                    )
                     .unwrap_err());
             }
             exception_class_id
         } else {
             return Err(vm
-                .throw_type_error(&format!(
-                    "Exception to throw must be a class, got: {}",
-                    exception_class.to_string(&vm.heap)
-                ))
+                .throw(
+                    TypeError,
+                    &format!(
+                        "Exception to throw must be a class, got: {}",
+                        exception_class.to_string(&vm.heap)
+                    ),
+                )
                 .unwrap_err());
         };
 

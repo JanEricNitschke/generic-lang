@@ -1,5 +1,8 @@
 use crate::heap::ClassId;
 use crate::value::NativeClass;
+use crate::vm::ExceptionKind::{
+    AttributeError, ConstReassignmentError, Exception, NameError, TypeError, ValueError,
+};
 use crate::vm::arithmetics::IntoResultValue;
 use crate::vm::errors::{ExceptionRaisedKind, Return, RuntimeErrorKind, VmErrorKind, VmResult};
 use crate::{
@@ -112,14 +115,14 @@ impl VM {
                         method_name.to_value(&self.heap),
                         module.to_value(&self.heap).name.to_value(&self.heap)
                     );
-                    self.throw_value_error(&message)
+                    self.throw(ValueError, &message)
                 }
             }
             _ => {
                 if let Some(proxy_class) = self.get_proxy_class(receiver) {
                     self.invoke_from_class(proxy_class, method_name, arg_count)
                 } else {
-                    self.throw_type_error("Only instances have methods.")
+                    self.throw(TypeError, "Only instances have methods.")
                 }
             }
         }
@@ -134,7 +137,7 @@ impl VM {
     ) -> VmResult {
         let Some(method) = class.to_value(&self.heap).methods.get(&method_name) else {
             let message = format!("Undefined property '{}'.", self.heap.strings[method_name]);
-            return self.throw_attribute_error(&message);
+            return self.throw(AttributeError, &message);
         };
         match method {
             Value::Closure(_) => self.execute_call(*method, arg_count),
@@ -204,7 +207,7 @@ impl VM {
                     }
                 } else if arg_count != 0 {
                     let message = format!("Expected 0 arguments but got {arg_count}.");
-                    self.throw_type_error(&message)
+                    self.throw(TypeError, &message)
                 } else {
                     Ok(None)
                 }
@@ -220,10 +223,13 @@ impl VM {
                     let receiver = bound_method.to_value(&self.heap).receiver;
                     self.execute_native_method_call(native_method, &receiver, arg_count)
                 }
-                _ => self
-                    .throw_type_error("Native methods only bind over closures or native methods."),
+                _ => self.throw(
+                    TypeError,
+                    "Native methods only bind over closures or native methods.",
+                ),
             },
-            _ => self.throw_type_error(
+            _ => self.throw(
+                TypeError,
                 "Can only call functions, classes and instances with a `__call__` method.",
             ),
         }
@@ -248,11 +254,11 @@ impl VM {
                 { if arity == 1 { "" } else { "s" } },
                 arg_count
             );
-            return self.throw_type_error(&message);
+            return self.throw(TypeError, &message);
         }
 
         if self.callstack.len() == crate::config::FRAMES_MAX {
-            return self.throw_runtime_error("Stack overflow.");
+            return self.throw(Exception, "Stack overflow.");
         }
 
         self.callstack.push(
@@ -289,7 +295,7 @@ impl VM {
                     arg_count
                 )
             };
-            return self.throw_type_error(&message);
+            return self.throw(TypeError, &message);
         }
         let fun = f.fun;
         let start_index = self.stack.len() - usize::from(arg_count);
@@ -333,7 +339,7 @@ impl VM {
                     arg_count
                 )
             };
-            return self.throw_type_error(&message);
+            return self.throw(TypeError, &message);
         }
         let fun = f.fun;
         let start_index = self.stack.len() - usize::from(arg_count);
@@ -492,7 +498,7 @@ impl VM {
                         "Could not find name to import `{}`.",
                         name.to_value(&self.heap)
                     );
-                    return Err(self.throw_name_error(&message).unwrap_err());
+                    return Err(self.throw(NameError, &message).unwrap_err());
                 };
                 if was_local_import {
                     self.stack_push(value.value);

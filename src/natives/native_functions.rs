@@ -1,5 +1,6 @@
 //! Module containing free standing rust native functions.
 
+use crate::vm::ExceptionKind::{AssertionError, AttributeError, IoError, TypeError, ValueError};
 use crate::{
     value::{GenericInt, Number, Value, get_native_class_id, is_subclass_of},
     vm::{VM, errors::VmResult},
@@ -30,20 +31,26 @@ pub(super) fn sleep_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
                 Ok(u) => thread::sleep(Duration::from_secs(u)),
                 Err(_) => {
                     return Err(vm
-                        .throw_value_error(&format!(
-                            "'sleep' argument too large: `{}`",
-                            Value::from(*i).to_string(&vm.heap)
-                        ))
+                        .throw(
+                            ValueError,
+                            &format!(
+                                "'sleep' argument too large: `{}`",
+                                Value::from(*i).to_string(&vm.heap)
+                            ),
+                        )
                         .unwrap_err());
                 }
             }
         }
         x => {
             return Err(vm
-                .throw_type_error(&format!(
-                    "'sleep' expected positive integer argument, got: `{}`",
-                    x.to_string(&vm.heap)
-                ))
+                .throw(
+                    TypeError,
+                    &format!(
+                        "'sleep' expected positive integer argument, got: `{}`",
+                        x.to_string(&vm.heap)
+                    ),
+                )
                 .unwrap_err());
         }
     }
@@ -55,10 +62,10 @@ pub(super) fn assert_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     let value = &args[0];
     if vm.is_falsey(*value)? {
         Err(vm
-            .throw_assertion_error(&format!(
-                "Assertion on `{}` failed!",
-                value.to_string(&vm.heap)
-            ))
+            .throw(
+                AssertionError,
+                &format!("Assertion on `{}` failed!", value.to_string(&vm.heap)),
+            )
             .unwrap_err())
     } else {
         Ok(Value::Nil)
@@ -78,15 +85,18 @@ pub(super) fn input_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
                     Ok(string)
                 }
                 Err(e) => Err(vm
-                    .throw_io_error(&format!("'input' could not read line: {e}"))
+                    .throw(IoError, &format!("'input' could not read line: {e}"))
                     .unwrap_err()),
             }
         }
         x => Err(vm
-            .throw_value_error(&format!(
-                "'input' expected string argument, got: {}",
-                x.to_string(&vm.heap)
-            ))
+            .throw(
+                ValueError,
+                &format!(
+                    "'input' expected string argument, got: {}",
+                    x.to_string(&vm.heap)
+                ),
+            )
             .unwrap_err()),
     }
 }
@@ -102,19 +112,23 @@ pub(super) fn to_float_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             match converted {
                 Ok(result) => Ok(Value::Number(result.into())),
                 Err(_) => Err(vm
-                    .throw_value_error(&format!(
-                        "'float' could not convert string '{string}' to a float."
-                    ))
+                    .throw(
+                        ValueError,
+                        &format!("'float' could not convert string '{string}' to a float."),
+                    )
                     .unwrap_err()),
             }
         }
         Value::Number(n) => Ok(Value::Number(n.to_f64(&vm.heap).into())),
         Value::Bool(value) => Ok(Value::Number(f64::from(*value).into())),
         x => Err(vm
-            .throw_type_error(&format!(
-                "'float' expected string, number or bool argument, got: {}",
-                x.to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "'float' expected string, number or bool argument, got: {}",
+                    x.to_string(&vm.heap)
+                ),
+            )
             .unwrap_err()),
     }
 }
@@ -130,9 +144,10 @@ pub(super) fn to_int_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             match converted {
                 Ok(result) => Ok(Value::Number(result.into())),
                 Err(_) => Err(vm
-                    .throw_value_error(&format!(
-                        "'int' could not convert string '{string}' to an integer."
-                    ))
+                    .throw(
+                        ValueError,
+                        &format!("'int' could not convert string '{string}' to an integer."),
+                    )
                     .unwrap_err()),
             }
         }
@@ -140,27 +155,32 @@ pub(super) fn to_int_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             Number::Float(f) => match GenericInt::try_from_f64(*f, &mut vm.heap) {
                 Ok(i) => Ok(Value::Number(i.into())),
                 Err(_) => Err(vm
-                    .throw_value_error(&format!(
-                        "'int' could not convert float '{f}' to an integer."
-                    ))
+                    .throw(
+                        ValueError,
+                        &format!("'int' could not convert float '{f}' to an integer."),
+                    )
                     .unwrap_err()),
             },
             Number::Integer(_) => Ok(Value::Number(*n)),
             Number::Rational(rational) => match rational.to_int(&vm.heap) {
                 Ok(i) => Ok(Value::Number(i.into())),
                 Err(_) => Err(vm
-                    .throw_value_error(&format!(
-                        "'int' could not convert rational '{rational:?}' to an integer."
-                    ))
+                    .throw(
+                        ValueError,
+                        &format!("'int' could not convert rational '{rational:?}' to an integer."),
+                    )
                     .unwrap_err()),
             },
         },
         Value::Bool(value) => Ok(Value::Number(i64::from(*value).into())),
         x => Err(vm
-            .throw_type_error(&format!(
-                "'int' expected string, number or bool argument, got: {}",
-                x.to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "'int' expected string, number or bool argument, got: {}",
+                    x.to_string(&vm.heap)
+                ),
+            )
             .unwrap_err()),
     }
 }
@@ -234,10 +254,13 @@ pub(super) fn print_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             Value::String(string_id) => &string_id.to_value(&vm.heap).clone(),
             x => {
                 return Err(vm
-                    .throw_type_error(&format!(
-                        "Optional second argument to 'print' has to be a string, got: {}",
-                        x.to_string(&vm.heap)
-                    ))
+                    .throw(
+                        TypeError,
+                        &format!(
+                            "Optional second argument to 'print' has to be a string, got: {}",
+                            x.to_string(&vm.heap)
+                        ),
+                    )
                     .unwrap_err());
             }
         }
@@ -261,7 +284,7 @@ pub(super) fn rng_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
                 (GenericInt::Small(min), GenericInt::Small(max)) => {
                     Ok(Value::Number(rand::rng().random_range(*min..*max).into()))
                 }
-                _ => Err(vm.throw_value_error(&format!(
+                _ => Err(vm.throw(ValueError, &format!(
                     "'rng' expected small integers (i64) as arguments, got: `{}` and `{}` instead.",
                     min.to_string(&vm.heap),
                     max.to_string(&vm.heap)
@@ -269,11 +292,14 @@ pub(super) fn rng_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             }
         }
         (other_1, other_2) => Err(vm
-            .throw_type_error(&format!(
-                "'rng' expected two integers as arguments, got: `{}` and `{}` instead.",
-                other_1.to_string(&vm.heap),
-                other_2.to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "'rng' expected two integers as arguments, got: `{}` and `{}` instead.",
+                    other_1.to_string(&vm.heap),
+                    other_2.to_string(&vm.heap)
+                ),
+            )
             .unwrap_err()),
     }
 }
@@ -286,22 +312,28 @@ pub(super) fn getattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             match instance.to_value(&vm.heap).fields.get(field) {
                 Some(value_id) => Ok(*value_id),
                 None => Err(vm
-                    .throw_attribute_error(&format!("Undefined property '{}'.", *field))
+                    .throw(AttributeError, &format!("Undefined property '{}'.", *field))
                     .unwrap_err()),
             }
         }
         (instance @ Value::Instance(_), x) => Err(vm
-            .throw_type_error(&format!(
-                "`getattr` can only index with string indexes, got: `{}` (instance: `{}`)",
-                x.to_string(&vm.heap),
-                instance.to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "`getattr` can only index with string indexes, got: `{}` (instance: `{}`)",
+                    x.to_string(&vm.heap),
+                    instance.to_string(&vm.heap)
+                ),
+            )
             .unwrap_err()),
         (not_instance, _) => Err(vm
-            .throw_type_error(&format!(
-                "`getattr` only works on instances, got `{}`",
-                not_instance.to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "`getattr` only works on instances, got `{}`",
+                    not_instance.to_string(&vm.heap)
+                ),
+            )
             .unwrap_err()),
     }
 }
@@ -312,11 +344,14 @@ pub(super) fn setattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
         vm.heap.strings[string_id].clone()
     } else {
         return Err(vm
-            .throw_type_error(&format!(
-                "`setattr` can only index with string indexes, got: `{}` (instance: `{}`)",
-                args[1].to_string(&vm.heap),
-                args[0].to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "`setattr` can only index with string indexes, got: `{}` (instance: `{}`)",
+                    args[1].to_string(&vm.heap),
+                    args[0].to_string(&vm.heap)
+                ),
+            )
             .unwrap_err());
     };
     let value = args[2];
@@ -328,10 +363,13 @@ pub(super) fn setattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
         Ok(Value::Nil)
     } else {
         Err(vm
-            .throw_type_error(&format!(
-                "`setattr` only works on instances, got `{}`",
-                args[0].to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "`setattr` only works on instances, got `{}`",
+                    args[0].to_string(&vm.heap)
+                ),
+            )
             .unwrap_err())
     }
 }
@@ -347,17 +385,23 @@ pub(super) fn hasattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
                 .contains_key(&vm.heap.strings[*string_id]),
         )),
         (instance @ Value::Instance(_), x) => Err(vm
-            .throw_type_error(&format!(
-                "`hasattr` can only index with string indexes, got: `{}` (instance: `{}`)",
-                x.to_string(&vm.heap),
-                instance.to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "`hasattr` can only index with string indexes, got: `{}` (instance: `{}`)",
+                    x.to_string(&vm.heap),
+                    instance.to_string(&vm.heap)
+                ),
+            )
             .unwrap_err()),
         (not_instance, _) => Err(vm
-            .throw_type_error(&format!(
-                "`hasattr` only works on instances, got `{}`",
-                not_instance.to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "`hasattr` only works on instances, got `{}`",
+                    not_instance.to_string(&vm.heap)
+                ),
+            )
             .unwrap_err()),
     }
 }
@@ -371,24 +415,30 @@ pub(super) fn delattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             match instance.to_value_mut(&mut vm.heap).fields.remove(field) {
                 Some(_) => Ok(Value::Nil),
                 None => Err(vm
-                    .throw_attribute_error(&format!("Undefined property '{field}'."))
+                    .throw(AttributeError, &format!("Undefined property '{field}'."))
                     .unwrap_err()),
             }
         } else {
             Err(vm
-                .throw_type_error(&format!(
-                    "`delattr` only works on instances, got `{}`",
-                    args[0].to_string(&vm.heap)
-                ))
+                .throw(
+                    TypeError,
+                    &format!(
+                        "`delattr` only works on instances, got `{}`",
+                        args[0].to_string(&vm.heap)
+                    ),
+                )
                 .unwrap_err())
         }
     } else {
         Err(vm
-            .throw_type_error(&format!(
-                "`delattr` can only index with string indexes, got: `{}` (instance: `{}`)",
-                args[1].to_string(&vm.heap),
-                args[0].to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "`delattr` can only index with string indexes, got: `{}` (instance: `{}`)",
+                    args[1].to_string(&vm.heap),
+                    args[0].to_string(&vm.heap)
+                ),
+            )
             .unwrap_err())
     }
 }
@@ -417,10 +467,13 @@ pub(super) fn isinstance_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> 
 
     let Value::Class(class_id) = class_value else {
         return Err(vm
-            .throw_type_error(&format!(
-                "'isinstance' expected class as second argument, got: {}",
-                class_value.to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "'isinstance' expected class as second argument, got: {}",
+                    class_value.to_string(&vm.heap)
+                ),
+            )
             .unwrap_err());
     };
 
@@ -475,23 +528,32 @@ pub(super) fn issubclass_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> 
             is_subclass_of(&vm.heap, sub_class_id, super_class_id),
         )),
         (not_class, Value::Class(_)) => Err(vm
-            .throw_type_error(&format!(
-                "'issubclass' expected class as first argument, got: {}",
-                not_class.to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "'issubclass' expected class as first argument, got: {}",
+                    not_class.to_string(&vm.heap)
+                ),
+            )
             .unwrap_err()),
         (Value::Class(_), not_class) => Err(vm
-            .throw_type_error(&format!(
-                "'issubclass' expected class as second argument, got: {}",
-                not_class.to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "'issubclass' expected class as second argument, got: {}",
+                    not_class.to_string(&vm.heap)
+                ),
+            )
             .unwrap_err()),
         (not_class1, not_class2) => Err(vm
-            .throw_type_error(&format!(
-                "'issubclass' expected two classes as arguments, got: {} and {}",
-                not_class1.to_string(&vm.heap),
-                not_class2.to_string(&vm.heap)
-            ))
+            .throw(
+                TypeError,
+                &format!(
+                    "'issubclass' expected two classes as arguments, got: {} and {}",
+                    not_class1.to_string(&vm.heap),
+                    not_class2.to_string(&vm.heap)
+                ),
+            )
             .unwrap_err()),
     }
 }
