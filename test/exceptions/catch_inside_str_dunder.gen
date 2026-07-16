@@ -1,0 +1,16 @@
+# Exceptions caught entirely inside a __str__ invoked by a native (print/str)
+# must not disturb the native: the catch resolves within __str__ and the
+# native completes normally.
+class Sneaky {
+    __str__() {
+        try {
+            throw ValueError("inner");
+        } catch ValueError as e {
+            return "caught-inside";
+        }
+    }
+}
+
+print(Sneaky()); # expect: caught-inside
+print(str(Sneaky())); # expect: caught-inside
+print("after"); # expect: after
