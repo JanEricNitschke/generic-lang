@@ -727,6 +727,12 @@ impl Generator {
         self.callframe.closure
     }
 
+    // GC-safety: while a generator runs, the native methods have taken it out
+    // of the heap, so the GC cannot see it. Moving the saved value stack and
+    // callframe onto `vm.stack`/`vm.callstack` (GC roots) below BEFORE `f`
+    // executes any bytecode is what keeps its contents alive. Any new state
+    // added to `Generator` that holds heap values must likewise be re-rooted
+    // here before `f` runs.
     fn resume_with<F>(&mut self, vm: &mut VM, f: F) -> VmResult<Value>
     where
         F: FnOnce(&mut VM) -> VmResult<Option<CallFrame>>,

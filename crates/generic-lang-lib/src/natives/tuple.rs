@@ -75,6 +75,10 @@ pub(super) fn tuple_iter_next_native(
     receiver: &Value,
     _args: &[Value],
 ) -> VmResult<Value> {
+    // GC-safety: taking the iterator out of the heap hides it from the GC.
+    // This is only sound because nothing below re-enters the interpreter
+    // (GC runs exclusively from the instruction dispatch loop) before the
+    // iterator is restored. Do not add calls that execute bytecode here.
     let mut my_iter = std::mem::take(receiver.as_tuple_iterator_mut(&mut vm.heap));
     let my_tuple = my_iter.get_tuple(&vm.heap);
     let result = if my_iter.index < my_tuple.items().len() {
