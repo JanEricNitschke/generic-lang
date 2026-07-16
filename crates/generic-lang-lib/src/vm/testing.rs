@@ -103,10 +103,6 @@ impl VM {
         let callstack_len = self.callstack.len();
         let module_len = self.modules.len();
 
-        // Reset exception state
-        self.handling_exception = false;
-        self.encountered_hard_exception = false;
-
         // Push the closure onto the stack and call it
         let closure_value = Value::Closure(closure_id);
         self.stack_push(closure_value);
@@ -126,8 +122,6 @@ impl VM {
         self.stack.truncate(stack_len);
         self.callstack.truncate(callstack_len, &self.heap);
         self.modules.truncate(module_len);
-        self.handling_exception = false;
-        self.encountered_hard_exception = false;
 
         result
     }

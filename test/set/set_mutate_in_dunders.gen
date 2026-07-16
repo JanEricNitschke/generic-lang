@@ -1,0 +1,29 @@
+# Reentrant mutation of a set from inside `__hash__`/`__eq__`, for every
+# set operation that runs them: no mutation may be lost.
+class Elem {
+    __init__(id) {
+        this.id = id;
+    }
+
+    __hash__() {
+        s.insert(marker + "_hash");
+        return 7; # deliberate collision so __eq__ runs too
+    }
+
+    __eq__(other) {
+        s.insert(marker + "_eq");
+        return this.id == other.id;
+    }
+}
+
+var s = Set();
+var stored = Elem(1);
+var marker = "insert";
+s.insert(stored); # mutates in __hash__
+marker = "insert_collide";
+s.insert(Elem(2)); # also mutates in __eq__ of the colliding stored element
+marker = "contains";
+print(Elem(3) in s); # expect: false
+marker = "remove";
+print(s.remove(Elem(2))); # expect: true
+print(len(s)); # 1 element + 7 markers # expect: 8

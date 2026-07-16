@@ -27,27 +27,13 @@ fun inner_2() {
 try {
     inner_1();
 } catch Error2 as e {
-    print(e); # expect: Error2: error message
-              # expect: Traceback (most recent call last):
-              # expect:   File "test/exceptions/catch_nested.gen", line 28, in <script>
-              # expect:         inner_1();
-              # expect:         ~~~~~~~^^ 
-              # expect:   File "test/exceptions/catch_nested.gen", line 6, in inner_1
-              # expect:             throw Error2("error message");
-              # expect:             ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
+    print(e); # expect: error message
 } else {
     print("Else Outer");
 }
 
 try {
-    inner_2(); # expect: Error1: error message
-               # expect: Traceback (most recent call last):
-               # expect:   File "test/exceptions/catch_nested.gen", line 43, in <script>
-               # expect:         inner_2(); # expect: Error1: error message
-               # expect:         ~~~~~~~^^                                 
-               # expect:   File "test/exceptions/catch_nested.gen", line 17, in inner_2
-               # expect:             throw Error1("error message");
-               # expect:             ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
+    inner_2(); # expect: error message
 } catch Error2 as e {
     print(e);
 } else {

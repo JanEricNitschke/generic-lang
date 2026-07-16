@@ -11,7 +11,6 @@ macro_rules! run_instruction {
         #[cfg(feature = "trace_execution")]
         $self.trace_execution();
 
-        $self.handling_exception = false;
         $self.collect_garbage();
         match OpCode::try_from($self.read_byte()).expect("Internal error: unrecognized opcode") {
             OpCode::Pop => {

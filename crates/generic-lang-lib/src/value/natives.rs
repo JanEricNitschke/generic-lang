@@ -5,7 +5,7 @@ use crate::{
     vm::{
         ExceptionHandler, VM,
         callstack::CallFrame,
-        errors::{ExceptionRaisedKind, RuntimeErrorKind, VmErrorKind, VmResult},
+        errors::{ExceptionRaisedKind, VmErrorKind, VmResult},
     },
 };
 
@@ -137,7 +137,8 @@ impl NativeClass {
             Self::RangeIterator(range_iter) => range_iter.to_string(heap),
             Self::Tuple(tuple) => tuple.to_string(heap),
             Self::TupleIterator(tuple_iter) => tuple_iter.to_string(heap),
-            Self::Exception(exception) => exception.to_string(heap),
+            // Needs the instance's class name; handled in `Instance::to_string`.
+            Self::Exception(_) => unreachable!("Exceptions are stringified via their instance"),
             Self::Generator(generator) => generator.to_string(heap),
             Self::Template(template) => template.to_string(heap),
             Self::TemplateIterator(template_iter) => template_iter.to_string(heap),
@@ -263,66 +264,58 @@ impl Set {
         )
     }
 
-    pub(crate) fn add(&mut self, item: Value, vm: &mut VM) -> VmResult {
+    /// Add an item to a set (`receiver` must back a `Set` and be rooted).
+    ///
+    /// GC-safety: see [`Dict::add`] — the set is never taken out of the
+    /// heap, and the table is never borrowed while the interpreter runs.
+    pub(crate) fn add(vm: &mut VM, receiver: &Value, item: Value) -> VmResult {
         let hash = vm.compute_hash(item)?;
-        let entry = self.items.entry(
-            hash,
-            |(val, _stored_hash)| vm.compare_values_for_collections(*val, item),
-            |(_val, stored_hash)| *stored_hash,
-        );
-
-        if vm.encountered_hard_exception {
-            return Err(VmErrorKind::Runtime(RuntimeErrorKind));
-        }
-        if vm.handling_exception {
-            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
-        }
-
-        if let Entry::Vacant(entry) = entry {
+        let matched = Self::probe(vm, receiver, item, hash)?;
+        let items = &mut receiver.as_set_mut(&mut vm.heap).items;
+        if let Entry::Vacant(entry) = items.entry(hash, |(v, _h)| Some(*v) == matched, |(_v, h)| *h)
+        {
             entry.insert((item, hash));
         }
         Ok(None)
     }
 
-    pub(crate) fn remove(&mut self, item: Value, vm: &mut VM) -> VmResult<bool> {
+    /// Remove an item from a set. Returns whether it was found.
+    pub(crate) fn remove(vm: &mut VM, receiver: &Value, item: Value) -> VmResult<bool> {
         let hash = vm.compute_hash(item)?;
-        let found = self
-            .items
-            .find_entry(hash, |(val, _stored_hash)| {
-                vm.compare_values_for_collections(*val, item)
-            })
+        let Some(matched) = Self::probe(vm, receiver, item, hash)? else {
+            return Ok(false);
+        };
+        let items = &mut receiver.as_set_mut(&mut vm.heap).items;
+        Ok(items
+            .find_entry(hash, |(v, _h)| *v == matched)
             .is_ok_and(|entry| {
                 entry.remove();
                 true
-            });
-
-        if vm.encountered_hard_exception {
-            return Err(VmErrorKind::Runtime(RuntimeErrorKind));
-        }
-        if vm.handling_exception {
-            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
-        }
-
-        Ok(found)
+            }))
     }
 
-    pub(crate) fn contains(&self, item: Value, vm: &mut VM) -> VmResult<bool> {
+    /// Check whether a set contains an item.
+    pub(crate) fn contains(vm: &mut VM, receiver: &Value, item: Value) -> VmResult<bool> {
         let hash = vm.compute_hash(item)?;
-        let found = self
+        Ok(Self::probe(vm, receiver, item, hash)?.is_some())
+    }
+
+    /// Find the stored item equal to `item` among the same-hash entries.
+    /// May run `__eq__`; the table is only borrowed for the pure candidate
+    /// snapshot.
+    fn probe(vm: &mut VM, receiver: &Value, item: Value, hash: u64) -> VmResult<Option<Value>> {
+        let candidates: Vec<Value> = receiver
+            .as_set(&vm.heap)
             .items
-            .find(hash, |(val, _stored_hash)| {
-                vm.compare_values_for_collections(*val, item)
-            })
-            .is_some();
-
-        if vm.encountered_hard_exception {
-            return Err(VmErrorKind::Runtime(RuntimeErrorKind));
+            .iter_hash(hash)
+            .map(|(v, _h)| *v)
+            .collect();
+        for candidate in candidates {
+            if vm.compare_values(candidate, item)? {
+                return Ok(Some(candidate));
+            }
         }
-        if vm.handling_exception {
-            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
-        }
-
-        Ok(found)
+        Ok(None)
     }
 }
 
@@ -363,67 +356,82 @@ impl Dict {
         )
     }
 
-    pub(crate) fn add(&mut self, key: Value, value: Value, vm: &mut VM) -> VmResult {
+    /// Add an entry to a dict (`receiver` must back a `Dict` and be rooted).
+    ///
+    /// GC-safety: the dict is never taken out of the heap. `__hash__`/`__eq__`
+    /// re-enter the interpreter, which can trigger a GC (which must be able
+    /// to see the dict's contents — they may not be rooted anywhere else) and
+    /// can even mutate this very dict. So all interpreter re-entry happens
+    /// while the dict rests in the heap, and the table is only borrowed in
+    /// between for phases that cannot re-enter: hash the key, snapshot the
+    /// same-hash candidates, probe them with `__eq__`, then mutate with pure
+    /// closures only. The matched entry is re-located by identity (`Value`
+    /// equality on the exact stored key, not `__eq__` — a reentrant dunder
+    /// may have mutated the dict in the meantime), and rebucketing re-derives
+    /// hashes from the hash stored in each entry — `__hash__`/`__eq__` never
+    /// run while the table is borrowed.
+    pub(crate) fn add(vm: &mut VM, receiver: &Value, key: Value, value: Value) -> VmResult {
         let hash = vm.compute_hash(key)?;
-        let entry = self.items.entry(
-            hash,
-            |(k, _v, _stored_hash)| vm.compare_values_for_collections(*k, key),
-            |(_k, _v, stored_hash)| *stored_hash,
-        );
-
-        if vm.encountered_hard_exception {
-            return Err(VmErrorKind::Runtime(RuntimeErrorKind));
-        }
-        if vm.handling_exception {
-            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
-        }
-
-        match entry {
+        let matched = Self::probe(vm, receiver, key, hash)?;
+        let items = &mut receiver.as_dict_mut(&mut vm.heap).items;
+        match items.entry(hash, |(k, _v, _h)| Some(*k) == matched, |(_k, _v, h)| *h) {
+            Entry::Occupied(mut entry) => entry.get_mut().1 = value,
             Entry::Vacant(entry) => {
                 entry.insert((key, value, hash));
-            }
-            Entry::Occupied(mut entry) => {
-                entry.get_mut().1 = value;
             }
         }
         Ok(None)
     }
 
-    pub(crate) fn get(&self, key: Value, vm: &mut VM) -> VmResult<Option<&Value>> {
+    /// Look up the value for a key in a dict.
+    pub(crate) fn get(vm: &mut VM, receiver: &Value, key: Value) -> VmResult<Option<Value>> {
         let hash = vm.compute_hash(key)?;
-
-        let result = self
+        let Some(matched) = Self::probe(vm, receiver, key, hash)? else {
+            return Ok(None);
+        };
+        Ok(receiver
+            .as_dict(&vm.heap)
             .items
-            .find(hash, |(k, _v, _stored_hash)| {
-                vm.compare_values_for_collections(*k, key)
-            })
-            .map(|(_k, v, _stored_hash)| v);
-
-        if vm.encountered_hard_exception {
-            return Err(VmErrorKind::Runtime(RuntimeErrorKind));
-        }
-        if vm.handling_exception {
-            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
-        }
-
-        Ok(result)
+            .find(hash, |(k, _v, _h)| *k == matched)
+            .map(|(_k, v, _h)| *v))
     }
 
-    pub(crate) fn contains(&self, key: Value, vm: &mut VM) -> VmResult<bool> {
+    /// Check whether a dict contains a key.
+    pub(crate) fn contains(vm: &mut VM, receiver: &Value, key: Value) -> VmResult<bool> {
         let hash = vm.compute_hash(key)?;
-        let result = self
+        Ok(Self::probe(vm, receiver, key, hash)?.is_some())
+    }
+
+    /// Remove an entry from a dict. Returns the removed value, if any.
+    pub(crate) fn remove(vm: &mut VM, receiver: &Value, key: Value) -> VmResult<Option<Value>> {
+        let hash = vm.compute_hash(key)?;
+        let Some(matched) = Self::probe(vm, receiver, key, hash)? else {
+            return Ok(None);
+        };
+        let items = &mut receiver.as_dict_mut(&mut vm.heap).items;
+        Ok(items
+            .find_entry(hash, |(k, _v, _h)| *k == matched)
+            .ok()
+            .map(|entry| entry.remove().0.1))
+    }
+
+    /// Find the stored key equal to `key` among the same-hash entries.
+    /// May run `__eq__`; the table is only borrowed for the pure candidate
+    /// snapshot. The `?` bails on the first exception, so no further
+    /// candidate is compared while an exception is in flight.
+    fn probe(vm: &mut VM, receiver: &Value, key: Value, hash: u64) -> VmResult<Option<Value>> {
+        let candidates: Vec<Value> = receiver
+            .as_dict(&vm.heap)
             .items
-            .find(hash, |(k, _v, _stored_hash)| {
-                vm.compare_values_for_collections(*k, key)
-            })
-            .is_some();
-        if vm.encountered_hard_exception {
-            return Err(VmErrorKind::Runtime(RuntimeErrorKind));
+            .iter_hash(hash)
+            .map(|(k, _v, _h)| *k)
+            .collect();
+        for candidate in candidates {
+            if vm.compare_values(candidate, key)? {
+                return Ok(Some(candidate));
+            }
         }
-        if vm.handling_exception {
-            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
-        }
-        Ok(result)
+        Ok(None)
     }
 }
 
@@ -649,18 +657,6 @@ impl Exception {
 
     pub(crate) fn stack_trace(&self) -> Option<StringId> {
         self.stack_trace
-    }
-
-    pub(crate) fn to_string(&self, heap: &Heap) -> String {
-        let mut result = match self.message {
-            Some(message) => format!("Exception: {}\n", message.to_value(heap)),
-            None => "Exception\n".to_string(),
-        };
-        if let Some(stack_trace) = self.stack_trace {
-            result.push_str(stack_trace.to_value(heap));
-        }
-
-        result
     }
 }
 

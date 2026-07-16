@@ -60,29 +60,18 @@ pub(super) fn exception_stack_trace_native(
     }
 }
 
-/// Get the the full string representation of the Exception.
-///
-/// This will be inherited by all exceptions and properly display their name.
+/// Get the string representation of the Exception: its message, or an empty
+/// string if it has none — like Python's `BaseException.__str__`. The class
+/// name and stack trace are added by the fatal-error display in `unwind`,
+/// not by `__str__`.
 pub(super) fn exception_str_native(
     vm: &mut VM,
     receiver: &Value,
     _args: &[Value],
 ) -> VmResult<Value> {
-    let exception = receiver.as_exception(&vm.heap);
-    let class_name = receiver
-        .as_instance()
-        .to_value(&vm.heap)
-        .class
-        .to_value(&vm.heap)
-        .name
-        .to_value(&vm.heap);
-    let mut result = match exception.message() {
-        Some(message) => format!("{class_name}: {}", message.to_value(&vm.heap)),
-        None => class_name.clone(),
+    let result = match receiver.as_exception(&vm.heap).message() {
+        Some(message) => message,
+        None => vm.heap.string_id(&""),
     };
-    if let Some(stack_trace) = exception.stack_trace() {
-        result.push('\n');
-        result.push_str(stack_trace.to_value(&vm.heap));
-    }
-    Ok(vm.heap.string_id(&result).into())
+    Ok(result.into())
 }

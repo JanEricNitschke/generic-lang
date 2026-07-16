@@ -1,0 +1,28 @@
+# Regression test: dict natives take the backing store out of the heap while
+# `__hash__`/`__eq__` re-enter the interpreter. A GC during those calls must
+# still see the dict's keys and values, even when the dict is the only thing
+# referencing them (keys and values here are never bound to variables).
+# Relies on stress_gc to collect while the contents are hidden.
+class Key {
+    __init__(id) {
+        this.id = id;
+    }
+
+    __hash__() {
+        return this.id;
+    }
+
+    __eq__(other) {
+        return this.id == other.id;
+    }
+}
+
+var d = {:};
+d[Key(1)] = "value_" + str(1);
+d[Key(2)] = "value_" + str(2);
+d[Key(3)] = "value_" + str(3);
+
+print(d[Key(2)]); # expect: value_2
+print(d[Key(1)]); # expect: value_1
+print(d[Key(3)]); # expect: value_3
+print(len(d)); # expect: 3

@@ -1,27 +1,21 @@
 //! Methods of the native `Set` class.
 
 use crate::{
-    value::{Number, Value},
+    value::{Number, Set, Value},
     vm::{VM, errors::VmResult},
 };
 
 /// Insert an item into the set `set.insert(item)`.
 /// Supports all value types that implement hashable functionality.
 pub(super) fn set_insert_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
-    let mut set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
-    let result = set.add(args[0], vm);
-    *receiver.as_set_mut(&mut vm.heap) = set;
-    result?;
+    Set::add(vm, receiver, args[0])?;
     Ok(Value::Nil)
 }
 
 /// Remove a value from the set `set.remove(val)`.
 /// Returns whether the value was originally in the set.
 pub(super) fn set_remove_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
-    let mut my_set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
-    let result = my_set.remove(args[0], vm);
-    *receiver.as_set_mut(&mut vm.heap) = my_set;
-    Ok(result?.into())
+    Ok(Set::remove(vm, receiver, args[0])?.into())
 }
 
 /// Check if a hasheable value is in the set `set.contains(val)`.
@@ -31,12 +25,7 @@ pub(super) fn set_contains_native(
     receiver: &Value,
     args: &[Value],
 ) -> VmResult<Value> {
-    // Create a temporary set to avoid borrowing conflicts
-    let set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
-    let result = set.contains(args[0], vm);
-    // Restore the set
-    *receiver.as_set_mut(&mut vm.heap) = set;
-    Ok(result?.into())
+    Ok(Set::contains(vm, receiver, args[0])?.into())
 }
 
 pub(super) fn set_len_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
@@ -54,8 +43,7 @@ pub(super) fn set_bool_native(vm: &mut VM, receiver: &Value, _args: &[Value]) ->
 /// `Set()` creates empty set, `Set(1, 2, 3)` creates {1, 2, 3}.
 /// Only hashable values are allowed.
 pub(super) fn set_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
-    let mut set = std::mem::take(receiver.as_set_mut(&mut vm.heap));
-    set.items.clear(); // Explicitly clear to ensure it's empty
+    receiver.as_set_mut(&mut vm.heap).items.clear(); // reset
     let items = if args.len() == 1
         && let Some(iter_items) = vm.collect_items_from_iterable(args[0])?
     {
@@ -64,9 +52,8 @@ pub(super) fn set_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> 
         args.to_vec()
     };
 
-    for item in items {
-        set.add(item, vm)?;
-    }
-    *receiver.as_set_mut(&mut vm.heap) = set;
+    // Items collected from an iterable may not be referenced anywhere else,
+    // so keep them rooted while the adds run `__hash__`/`__eq__`.
+    vm.for_each_rooted(items, |vm, item| Set::add(vm, receiver, item))?;
     Ok(*receiver)
 }

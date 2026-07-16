@@ -115,8 +115,9 @@ pub struct VM {
     modules: Vec<ModuleId>,
     builtins: HashMap<StringId, Global>,
     stdlib: HashMap<StringId, ModuleContents>,
-    pub(crate) handling_exception: bool,
-    pub(crate) encountered_hard_exception: bool,
+    /// Guards the fatal-error display in `unwind` against a user `__str__`
+    /// that throws while the uncaught exception is being stringified.
+    pub(super) printing_fatal_exception: bool,
 }
 
 // Core functionality for running a script.
@@ -132,8 +133,7 @@ impl VM {
             modules: Vec::new(),
             builtins: HashMap::default(),
             stdlib: HashMap::default(),
-            handling_exception: false,
-            encountered_hard_exception: false,
+            printing_fatal_exception: false,
         }
     }
 

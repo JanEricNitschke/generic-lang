@@ -1,0 +1,28 @@
+# Regression test: set natives take the backing store out of the heap while
+# `__hash__`/`__eq__` re-enter the interpreter. A GC during those calls must
+# still see the set's elements, even when the set is the only thing
+# referencing them (elements here are never bound to variables).
+# Relies on stress_gc to collect while the contents are hidden.
+class Key {
+    __init__(id) {
+        this.id = id;
+    }
+
+    __hash__() {
+        return this.id;
+    }
+
+    __eq__(other) {
+        return this.id == other.id;
+    }
+}
+
+var s = Set();
+s.insert(Key(1));
+s.insert(Key(2));
+s.insert(Key(3));
+
+print(Key(2) in s); # expect: true
+print(Key(1) in s); # expect: true
+print(Key(3) in s); # expect: true
+print(len(s)); # expect: 3

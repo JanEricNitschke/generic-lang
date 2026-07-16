@@ -45,7 +45,7 @@ use tuple::{
 
 use dict::{
     dict_bool_native, dict_contains_native, dict_get_native, dict_init_native, dict_len_native,
-    dict_set_native,
+    dict_pop_native, dict_set_native,
 };
 
 use exception::{
@@ -160,6 +160,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"Dict", &"contains", &[1], dict_contains_native);
     vm.define_native_method(&"Dict", &"__getitem__", &[1], dict_get_native);
     vm.define_native_method(&"Dict", &"__setitem__", &[2], dict_set_native);
+    vm.define_native_method(&"Dict", &"pop", &[1], dict_pop_native);
     vm.define_native_method(&"Dict", &"__len__", &[0], dict_len_native);
     vm.define_native_method(&"Dict", &"__bool__", &[0], dict_bool_native);
 

@@ -97,23 +97,26 @@ impl VM {
     ///  Items are on the stack in order from left to right
     /// (... --- item1 --- item2 --- ... --- itemN)
     pub(crate) fn build_set(&mut self) -> VmResult {
-        let mut set = Set::default();
-
         let arg_count = self.read_byte();
-        for index in (0..arg_count).rev() {
-            let value = *self.peek(usize::from(index)).unwrap();
 
-            set.add(value, self)?;
-        }
-        // Pop all items from stack at once
-        self.stack
-            .truncate(self.stack.len() - usize::from(arg_count));
-
+        // Allocate the empty set first and root it on the stack (above the
+        // items) so it and its contents stay visible to the GC while the
+        // adds run `__hash__`/`__eq__`.
         let instance = Instance::new(
             *self.heap.native_classes.get("Set").unwrap(),
-            Some(set.into()),
+            Some(Set::default().into()),
         );
         let instance_value = self.heap.add_instance(instance);
+        self.stack_push(instance_value);
+
+        for index in (0..arg_count).rev() {
+            // +1: the set itself sits on top of the items.
+            let value = *self.peek(usize::from(index) + 1).unwrap();
+            Set::add(self, &instance_value, value)?;
+        }
+        // Pop the set and all items at once, then push the set back
+        self.stack
+            .truncate(self.stack.len() - usize::from(arg_count) - 1);
         self.stack_push(instance_value);
         Ok(None)
     }
@@ -123,23 +126,28 @@ impl VM {
     ///  Items are on the stack in order from left to right
     /// (... --- key1 --- value1 --- key2 --- value2 --- ... --- keyN --- valueN)
     pub(crate) fn build_dict(&mut self) -> VmResult {
-        let mut dict = Dict::default();
         // Number of key, value pairs.
         let arg_count = self.read_byte();
-        for index in (0..arg_count).rev() {
-            let key = *self.peek(usize::from(2 * index + 1)).unwrap();
-            let value = *self.peek(usize::from(2 * index)).unwrap();
 
-            dict.add(key, value, self)?;
-        }
-        // Pop all key-value pairs from stack at once
-        self.stack
-            .truncate(self.stack.len() - usize::from(arg_count) * 2);
+        // Allocate the empty dict first and root it on the stack (above the
+        // items) so it and its contents stay visible to the GC while the
+        // adds run `__hash__`/`__eq__`.
         let instance = Instance::new(
             *self.heap.native_classes.get("Dict").unwrap(),
-            Some(dict.into()),
+            Some(Dict::default().into()),
         );
         let instance_value = self.heap.add_instance(instance);
+        self.stack_push(instance_value);
+
+        for index in (0..arg_count).rev() {
+            // +1: the dict itself sits on top of the key-value pairs.
+            let key = *self.peek(usize::from(2 * index + 1) + 1).unwrap();
+            let value = *self.peek(usize::from(2 * index) + 1).unwrap();
+            Dict::add(self, &instance_value, key, value)?;
+        }
+        // Pop the dict and all key-value pairs at once, then push the dict back
+        self.stack
+            .truncate(self.stack.len() - usize::from(arg_count) * 2 - 1);
         self.stack_push(instance_value);
         Ok(None)
     }

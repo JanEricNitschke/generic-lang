@@ -116,6 +116,16 @@ impl Instance {
     #[allow(clippy::option_if_let_else)]
     pub(crate) fn to_string(&self, heap: &Heap) -> String {
         match &self.backing {
+            // Exceptions render repr-style like Python: `ClassName('message')`.
+            // The class name lives on the instance, not the backing, so this
+            // is handled here rather than in `NativeClass::to_string`.
+            Some(NativeClass::Exception(exception)) => {
+                let class_name = self.class.to_value(heap).name.to_value(heap);
+                match exception.message() {
+                    Some(message) => format!("{class_name}('{}')", message.to_value(heap)),
+                    None => format!("{class_name}()"),
+                }
+            }
             Some(native_class) => native_class.to_string(heap),
             None => format!(
                 "<{} instance>",

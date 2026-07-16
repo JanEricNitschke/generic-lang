@@ -4,11 +4,7 @@ try {
     throw Error("error message");
     print("Try");
 } catch Error as e {
-    print(e); # expect: Error: error message
-              # expect: Traceback (most recent call last):
-              # expect:   File "test/exceptions/catch_single_named.gen", line 4, in <script>
-              # expect:         throw Error("error message");
-              # expect:         ~~~~~~^^^^^^^^^^^^^^^^^^^^^^ 
+    print(e); # expect: error message
 } else {
     print("Else");
 }
