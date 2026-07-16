@@ -13,6 +13,13 @@ pub(super) fn generator_iter_native(
     Ok(*receiver)
 }
 
+// GC-safety of the `mem::replace` pattern in send/next/raise below: the
+// generator is taken out of the heap and thus hidden from the GC while it
+// runs. This is sound because `Generator::resume_with` moves everything
+// GC-relevant it holds (saved value stack, callframe) onto the VM stack and
+// callstack — which are GC roots — before any bytecode executes, and no
+// other code between take and restore re-enters the interpreter (GC runs
+// exclusively from the instruction dispatch loop).
 pub(super) fn generator_send_native(
     vm: &mut VM,
     receiver: &Value,

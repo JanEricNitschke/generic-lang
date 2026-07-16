@@ -38,6 +38,12 @@ pub(super) fn range_iter_next_native(
     receiver: &Value,
     _args: &[Value],
 ) -> VmResult<Value> {
+    // GC-safety: taking the iterator out of the heap hides it (including its
+    // `offset`, which may be a heap-allocated big integer) from the GC. This
+    // is only sound because nothing below re-enters the interpreter (GC runs
+    // exclusively from the instruction dispatch loop; plain heap allocation
+    // does not trigger it) before the iterator is restored. Do not add calls
+    // that execute bytecode here.
     let mut my_iter = std::mem::take(receiver.as_range_iterator_mut(&mut vm.heap));
     let my_range = my_iter.get_range(&vm.heap);
     let my_range_start = my_range.start();
