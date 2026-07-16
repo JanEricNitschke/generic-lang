@@ -58,10 +58,15 @@ impl VM {
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     pub(crate) fn run_function_from_depth(&mut self, call_depth: usize) -> VmResult {
         loop {
-            let val = run_instruction!(self)?;
-
-            if self.callstack.len() < call_depth {
-                return Ok(val);
+            let result = run_instruction!(self);
+            // Hard runtime errors are fatal and always propagate. Everything
+            // else resolves positionally: once the callstack drops below this
+            // region, hand the result (or the escaping exception) to whoever
+            // re-entered here; otherwise keep executing — an exception routed
+            // to a handler within this region has already repositioned the VM
+            // and needs no further action.
+            if matches!(result, Err(VmErrorKind::Runtime(_))) || self.callstack.len() < call_depth {
+                return result;
             }
         }
     }

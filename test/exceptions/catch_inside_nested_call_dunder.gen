@@ -1,0 +1,38 @@
+# A catch inside a dunder may span further calls: the throw happens several
+# frames deep but is handled within the re-entered region.
+fun boom() {
+    throw ValueError("deep");
+}
+
+class Deep {
+    __str__() {
+        try {
+            boom();
+        } catch ValueError as e {
+            return "caught-deep";
+        }
+    }
+}
+
+print(Deep()); # expect: caught-deep
+
+# An exception that is caught and rethrown as a different type must still
+# escape to the caller of the native.
+class Rethrower {
+    __str__() {
+        try {
+            throw ValueError("original");
+        } catch ValueError as e {
+            throw TypeError("transformed");
+        }
+    }
+}
+
+try {
+    print(Rethrower());
+    print("not printed");
+} catch TypeError as e {
+    print("escaped as TypeError"); # expect: escaped as TypeError
+    print(e.message()); # expect: transformed
+}
+print("after"); # expect: after
