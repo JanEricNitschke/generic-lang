@@ -49,8 +49,25 @@ impl VM {
         self.run_function_from_depth(self.callstack.len())
     }
 
+    /// Run the bytecode of the callstack region `callstack[call_depth-1..]`
+    /// until it exits: a return/yield past the region base, or an escaping
+    /// error.
+    ///
+    /// # Precondition
+    ///
+    /// The callstack must hold at least `call_depth` frames. In particular,
+    /// a caller that unwinds before entering (see [`Generator::raise`]) must
+    /// first check where the unwind landed — entering with the region
+    /// already exited would execute one instruction of the outer frame
+    /// before the positional check below fires.
+    ///
+    /// [`Generator::raise`]: crate::value::Generator::raise
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     pub(crate) fn run_function_from_depth(&mut self, call_depth: usize) -> VmResult {
+        debug_assert!(
+            self.callstack.len() >= call_depth,
+            "run_function_from_depth entered with its region already exited"
+        );
         loop {
             let result = run_instruction!(self);
             // Hard runtime errors are fatal and always propagate. Everything

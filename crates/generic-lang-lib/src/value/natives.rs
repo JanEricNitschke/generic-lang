@@ -3,9 +3,9 @@ use crate::{
     heap::{Heap, StringId},
     value::{ClosureId, GenericInt, Instance, InstanceId, is_exception_subclass},
     vm::{
-        ExceptionHandler, VM,
+        SuspendedExceptionHandler, VM,
         callstack::CallFrame,
-        errors::{ExceptionRaisedKind, VmErrorKind, VmResult},
+        errors::{VmErrorKind, VmResult},
     },
 };
 
@@ -668,16 +668,25 @@ impl std::fmt::Display for Exception {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum GeneratorState {
+    /// Created but never resumed. The saved stack holds the closure and its
+    /// arguments; the callframe points at the first instruction.
     #[default]
     Suspended,
+    /// Started: currently executing, or parked at a `yield` between resumes.
+    /// Note that a generator waiting at a `yield` is `Running`, not
+    /// `Suspended` — `Suspended` strictly means "never started".
     Running,
+    /// Finished: returned, threw out, or was closed. Resuming a completed
+    /// generator returns `StopIteration` without running any bytecode.
     Completed,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Generator {
     pub(crate) callframe: CallFrame,
-    pub(crate) exception_handlers: Vec<ExceptionHandler>,
+    /// Handlers registered inside the generator, in suspended
+    /// (generator-relative) form; rebased on every resume/suspension.
+    pub(crate) exception_handlers: Vec<SuspendedExceptionHandler>,
     pub(crate) stack: Vec<Value>,
     pub(crate) state: GeneratorState,
 }
@@ -686,7 +695,7 @@ impl Generator {
     #[must_use]
     pub(crate) fn new(
         callframe: CallFrame,
-        exception_handlers: Vec<ExceptionHandler>,
+        exception_handlers: Vec<SuspendedExceptionHandler>,
         stack: Vec<Value>,
     ) -> Self {
         Self {
@@ -723,12 +732,42 @@ impl Generator {
         self.callframe.closure
     }
 
-    // GC-safety: while a generator runs, the native methods have taken it out
-    // of the heap, so the GC cannot see it. Moving the saved value stack and
-    // callframe onto `vm.stack`/`vm.callstack` (GC roots) below BEFORE `f`
-    // executes any bytecode is what keeps its contents alive. Any new state
-    // added to `Generator` that holds heap values must likewise be re-rooted
-    // here before `f` runs.
+    /// Re-plant this suspended generator into the live VM and drive it with `f`.
+    ///
+    /// Restoring works by moving the generator's saved state onto the VM's
+    /// own structures: the saved callframe is rebased to the current stack
+    /// top and pushed onto the callstack, the saved value slice is appended
+    /// to the VM stack, and the saved exception handlers are spliced onto
+    /// the VM handler stack. `f` then executes bytecode — `VM::run_function`
+    /// for `send`/`next`, or a closure that first throws for [`Self::raise`].
+    ///
+    /// `f`'s result is interpreted as:
+    /// - `Ok(Some(frame))`: the generator suspended at a `yield`, or returned
+    ///   (a generator `return` pushes `StopIteration` as its value). `frame`
+    ///   is the generator's own popped frame and the yielded value is on the
+    ///   stack top; `StopIteration` marks the generator `Completed`.
+    /// - `Err(..)`: a runtime error, or an exception escaping the generator
+    ///   (including one raised into it and caught outside — see
+    ///   [`Self::raise`]). The generator is marked `Completed` and the error
+    ///   propagates.
+    /// - `Ok(None)` is impossible: the run loops only exit a region through
+    ///   a yield/return frame or an error (see the precondition on
+    ///   `VM::run_function_from_depth`).
+    ///
+    /// On suspension the inverse move runs: the returned frame, the stack
+    /// slice above its base, and all handlers registered above the remaining
+    /// callstack are drained back into the generator for the next resume —
+    /// the handlers rebased to their suspended (generator-relative) form so
+    /// they survive being resumed at a different depth.
+    ///
+    /// # GC safety
+    ///
+    /// While a generator runs, the native methods have taken it out of the
+    /// heap, so the GC cannot see it. Moving the saved value stack and
+    /// callframe onto `vm.stack`/`vm.callstack` (GC roots) below BEFORE `f`
+    /// executes any bytecode is what keeps its contents alive. Any new state
+    /// added to `Generator` that holds heap values must likewise be re-rooted
+    /// here before `f` runs.
     fn resume_with<F>(&mut self, vm: &mut VM, f: F) -> VmResult<Value>
     where
         F: FnOnce(&mut VM) -> VmResult<Option<CallFrame>>,
@@ -740,17 +779,21 @@ impl Generator {
         let mut callframe =
             std::mem::replace(&mut self.callframe, CallFrame::from_closure_id(closure_id));
         callframe.stack_base = vm.stack.len();
+        let frame_base = vm.callstack.len();
+        let stack_base = callframe.stack_base;
         vm.callstack.push_callframe(callframe, &vm.heap);
-        vm.exception_handlers
-            .extend(std::mem::take(&mut self.exception_handlers));
+        vm.resume_suspended_handlers(
+            std::mem::take(&mut self.exception_handlers),
+            frame_base,
+            stack_base,
+        );
         vm.stack.extend(std::mem::take(&mut self.stack));
 
         self.state = GeneratorState::Running;
         let callframe = match f(vm) {
             Ok(Some(callframe)) => callframe,
             Ok(None) => {
-                self.state = GeneratorState::Completed;
-                return Err(VmErrorKind::Exception(ExceptionRaisedKind));
+                unreachable!("generator resume must end in a yield/return frame or an error")
             }
             Err(err) => {
                 self.state = GeneratorState::Completed;
@@ -765,21 +808,18 @@ impl Generator {
 
         self.callframe = callframe;
         self.stack = vm.stack.drain(self.callframe.stack_base..).collect();
-
-        let callstack_len = vm.callstack.len();
-        self.exception_handlers = vm
-            .exception_handlers
-            .drain(
-                vm.exception_handlers
-                    .iter()
-                    .position(|h| h.frames_to_keep > callstack_len)
-                    .unwrap_or(vm.exception_handlers.len())..,
-            )
-            .collect();
+        self.exception_handlers = vm.suspend_handlers_above(self.callframe.stack_base);
 
         Ok(yielded_value)
     }
 
+    /// Resume the generator, delivering `value` as the result of the `yield`
+    /// expression it is parked on.
+    ///
+    /// A never-started generator (`Suspended`) has no pending `yield` to
+    /// receive the value, so sending anything but nil throws a `TypeError`.
+    /// For a started generator the value is pushed onto its saved stack,
+    /// which is exactly where the resumed frame expects the yield result.
     pub(crate) fn send(&mut self, value: Value, vm: &mut VM) -> VmResult<Value> {
         if self.state == GeneratorState::Suspended && value != Value::Nil {
             vm.throw(
@@ -795,6 +835,21 @@ impl Generator {
         self.resume_with(vm, VM::run_function)
     }
 
+    /// Throw an exception of class `exception_class` into the generator at
+    /// its suspension point (like Python's `generator.throw`).
+    ///
+    /// After validating that `exception_class` is a class deriving from
+    /// `Exception`, the generator is resumed with a closure that — inside the
+    /// restored generator context — instantiates the class (running its
+    /// `__init__`), unwinds from the suspended position, and then continues
+    /// execution wherever the unwind landed:
+    /// - Caught by a `try` inside the generator: the generator keeps running
+    ///   to its next `yield`/`return`, indistinguishable from a normal resume.
+    /// - Caught outside: the generator is marked `Completed` and the
+    ///   already-positioned unwind propagates through the `Err` branch of
+    ///   [`Self::resume_with`].
+    /// - Caught nowhere: the fatal runtime error propagates; the generator is
+    ///   not resumed.
     pub(crate) fn raise(&mut self, exception_class: Value, vm: &mut VM) -> VmResult<Value> {
         let exception_class_id = if let Value::Class(exception_class_id) = exception_class {
             // Check that the class to catch is a subclass of Exception
@@ -844,11 +899,29 @@ impl Generator {
             let exception = vm.stack.pop().expect("Stack underflow in next_native");
 
             let call_depth = vm.callstack.len();
-            let _ = vm.unwind(exception);
-            vm.run_function_from_depth(call_depth)
+            match vm.unwind(exception) {
+                // No handler anywhere: the fatal traceback is already
+                // printed. Abort instead of resuming the generator.
+                err @ Err(VmErrorKind::Runtime(_)) => err,
+                Err(err @ VmErrorKind::Exception(_)) => {
+                    if vm.callstack.len() < call_depth {
+                        // Caught outside the generator: the unwind already
+                        // popped the generator frame and positioned the VM at
+                        // the outer handler. Propagate the marker untouched;
+                        // `resume_with` marks the generator `Completed`.
+                        Err(err)
+                    } else {
+                        // Caught inside the generator: continue running it
+                        // from the catch block like a normal resume.
+                        vm.run_function_from_depth(call_depth)
+                    }
+                }
+                Ok(_) => unreachable!("unwind never returns Ok"),
+            }
         })
     }
 
+    /// Resume the generator without delivering a value: `send(nil)`.
     pub(crate) fn next(&mut self, vm: &mut VM) -> VmResult<Value> {
         self.send(Value::Nil, vm)
     }

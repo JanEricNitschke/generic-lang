@@ -250,17 +250,9 @@ impl VM {
         // grab stack slice belonging to this frame
         let generator_stack: Vec<Value> = self.stack.drain(generator_frame.stack_base..).collect();
 
-        // grab exception handlers belonging to this frame
-        let callstack_len = self.callstack.len();
-        let generator_handlers = self
-            .exception_handlers
-            .drain(
-                self.exception_handlers
-                    .iter()
-                    .position(|h| h.frames_to_keep > callstack_len)
-                    .unwrap_or(self.exception_handlers.len())..,
-            )
-            .collect::<Vec<_>>();
+        // grab exception handlers belonging to this frame, rebased to their
+        // suspended (generator-relative) form
+        let generator_handlers = self.suspend_handlers_above(generator_frame.stack_base);
 
         let generator = Generator::new(generator_frame, generator_handlers, generator_stack);
 

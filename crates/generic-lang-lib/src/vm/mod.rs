@@ -33,7 +33,7 @@ use errors::{Return, RuntimeErrorKind, VmErrorKind};
 use exception_handling::ExceptionKind::{
     AttributeError, ConstReassignmentError, TypeError, ValueError,
 };
-pub use exception_handling::{ExceptionHandler, ExceptionKind};
+pub use exception_handling::{ExceptionHandler, ExceptionKind, SuspendedExceptionHandler};
 
 use rustc_hash::FxHashMap as HashMap;
 use std::collections::VecDeque;
