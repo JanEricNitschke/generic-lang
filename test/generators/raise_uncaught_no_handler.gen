@@ -1,0 +1,9 @@
+gen my_gen() {
+    yield 1;
+    yield 2;
+}
+
+var generator = my_gen();
+print(next(generator));  # expect: 1
+generator.raise(ValueError);  # expect runtime error: ValueError
+print("unreachable");

@@ -1,0 +1,18 @@
+gen my_gen() {
+    try {
+        yield 1;
+        throw ValueError("boom");
+    } catch ValueError {
+        yield 2;
+    }
+    yield 3;
+}
+
+fun resume(g) {
+    return next(g);
+}
+
+var generator = my_gen();
+print(next(generator));    # expect: 1
+print(resume(generator));  # expect: 2
+print(next(generator));    # expect: 3

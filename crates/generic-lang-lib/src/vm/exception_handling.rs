@@ -33,12 +33,93 @@ pub enum ExceptionKind {
 ///
 /// Holds the index of the frame where the exception handler is located
 /// and the instruction pointer (ip) where the exception handler starts.
+///
+/// All indices are absolute positions in the live VM: `frames_to_keep` is a
+/// callstack depth, `stack_length` a value-stack length, and
+/// `modules_to_keep` a module-stack length. Only `ip` is chunk-relative.
+/// For the generator-relative form saved across suspensions see
+/// [`SuspendedExceptionHandler`].
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ExceptionHandler {
     pub frames_to_keep: usize,
     pub ip: usize,
     pub stack_length: usize,
     pub modules_to_keep: usize,
+}
+
+/// An exception handler saved inside a suspended generator.
+///
+/// A generator can be resumed at a different callstack depth, value-stack
+/// height, and module count than the ones it was suspended at, so the
+/// absolute indices of an [`ExceptionHandler`] would go stale across a
+/// suspension. This form anchors them to the generator frame instead:
+///
+/// - `frames_above_base`: frames relative to the callstack *below* the
+///   generator frame (always 1 today — the generator frame itself).
+/// - `stack_length`: relative to the generator frame's `stack_base`.
+/// - `modules_above_base`: relative to the module count at suspension
+///   (normally 0 — imports cannot yield, so a resume is module-balanced).
+/// - `ip`: chunk-relative, identical in both forms.
+///
+/// The fields are private on purpose: the only way in or out is
+/// [`ExceptionHandler::suspend`] / [`Self::resume`], so a suspended handler
+/// can never be used as an absolute one by accident.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SuspendedExceptionHandler {
+    frames_above_base: usize,
+    ip: usize,
+    stack_length: usize,
+    modules_above_base: usize,
+}
+
+impl ExceptionHandler {
+    /// Rebase from VM-absolute to generator-relative form on suspension.
+    ///
+    /// The bases describe the VM at the moment the generator frame was
+    /// popped: `frame_base`/`module_base` are the remaining callstack and
+    /// module counts, `stack_base` is the generator frame's `stack_base`.
+    pub(crate) fn suspend(
+        self,
+        frame_base: usize,
+        stack_base: usize,
+        module_base: usize,
+    ) -> SuspendedExceptionHandler {
+        debug_assert!(
+            self.frames_to_keep > frame_base,
+            "suspending a handler that does not belong to the generator frame"
+        );
+        debug_assert!(
+            self.stack_length >= stack_base && self.modules_to_keep >= module_base,
+            "suspending a handler registered below the generator frame"
+        );
+        SuspendedExceptionHandler {
+            frames_above_base: self.frames_to_keep - frame_base,
+            ip: self.ip,
+            stack_length: self.stack_length - stack_base,
+            modules_above_base: self.modules_to_keep - module_base,
+        }
+    }
+}
+
+impl SuspendedExceptionHandler {
+    /// Rebase back to VM-absolute form while the generator is re-planted.
+    ///
+    /// The bases describe the VM of the new resume: `frame_base`/
+    /// `module_base` are the callstack and module counts *below* the
+    /// generator frame, `stack_base` is the frame's rebased `stack_base`.
+    pub(crate) fn resume(
+        self,
+        frame_base: usize,
+        stack_base: usize,
+        module_base: usize,
+    ) -> ExceptionHandler {
+        ExceptionHandler {
+            frames_to_keep: self.frames_above_base + frame_base,
+            ip: self.ip,
+            stack_length: self.stack_length + stack_base,
+            modules_to_keep: self.modules_above_base + module_base,
+        }
+    }
 }
 
 impl VM {
@@ -59,6 +140,50 @@ impl VM {
 
     pub(super) fn pop_exception_handler(&mut self) -> Option<ExceptionHandler> {
         self.exception_handlers.pop()
+    }
+
+    /// Drain the handlers belonging to a just-popped generator frame and
+    /// rebase them to their suspended (generator-relative) form.
+    ///
+    /// Must be called right after the generator frame was popped from the
+    /// callstack; `stack_base` is that frame's `stack_base`. All handlers
+    /// above the remaining callstack belong to the generator frame: any
+    /// deeper frame must have returned before the `yield`, and the compiler
+    /// pops handlers before returns.
+    pub(crate) fn suspend_handlers_above(
+        &mut self,
+        stack_base: usize,
+    ) -> Vec<SuspendedExceptionHandler> {
+        let frame_base = self.callstack.len();
+        let module_base = self.modules.len();
+        let split = self
+            .exception_handlers
+            .iter()
+            .position(|handler| handler.frames_to_keep > frame_base)
+            .unwrap_or(self.exception_handlers.len());
+        self.exception_handlers
+            .drain(split..)
+            .map(|handler| handler.suspend(frame_base, stack_base, module_base))
+            .collect()
+    }
+
+    /// Splice a suspended generator's handlers back onto the live handler
+    /// stack, rebased to the current VM.
+    ///
+    /// `frame_base` is the callstack depth *below* the generator frame and
+    /// `stack_base` the frame's rebased `stack_base` for this resume.
+    pub(crate) fn resume_suspended_handlers(
+        &mut self,
+        handlers: Vec<SuspendedExceptionHandler>,
+        frame_base: usize,
+        stack_base: usize,
+    ) {
+        let module_base = self.modules.len();
+        self.exception_handlers.extend(
+            handlers
+                .into_iter()
+                .map(|handler| handler.resume(frame_base, stack_base, module_base)),
+        );
     }
 
     pub(crate) fn unwind(&mut self, exception: Value) -> VmResult {
