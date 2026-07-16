@@ -1,0 +1,51 @@
+# Configuration for generating include/generic_plugin.h from the ABI types.
+# Regenerate with `make generate-plugin-header`; CI fails if the checked-in
+# header is out of date. Never edit the header by hand.
+language = "C"
+include_guard = "GENERIC_PLUGIN_H"
+cpp_compat = true
+documentation = true
+usize_is_size_t = true
+header = "/* Plugin ABI of the generic programming language. GENERATED — do not edit. */"
+trailer = """
+/**
+ * The one symbol every plugin must export.
+ */
+const ModuleDesc *generic_plugin_init(void);
+"""
+
+[export]
+# The crate exports no extern functions itself, so the ABI types must be
+# listed explicitly (they pull in everything they reference).
+include = ["HostApi", "ModuleDesc", "FunctionDesc", "PluginFn", "GenericValue", "FfiStr", "FfiReturn"]
+exclude = ["RustPluginFn"]
+
+[export.rename]
+"EXCEPTION" = "GENERIC_EXCEPTION_CODE_EXCEPTION"
+"TYPE_ERROR" = "GENERIC_EXCEPTION_CODE_TYPE_ERROR"
+"VALUE_ERROR" = "GENERIC_EXCEPTION_CODE_VALUE_ERROR"
+"NAME_ERROR" = "GENERIC_EXCEPTION_CODE_NAME_ERROR"
+"CONST_REASSIGNMENT_ERROR" = "GENERIC_EXCEPTION_CODE_CONST_REASSIGNMENT_ERROR"
+"ATTRIBUTE_ERROR" = "GENERIC_EXCEPTION_CODE_ATTRIBUTE_ERROR"
+"IMPORT_ERROR" = "GENERIC_EXCEPTION_CODE_IMPORT_ERROR"
+"ASSERTION_ERROR" = "GENERIC_EXCEPTION_CODE_ASSERTION_ERROR"
+"IO_ERROR" = "GENERIC_EXCEPTION_CODE_IO_ERROR"
+"KEY_ERROR" = "GENERIC_EXCEPTION_CODE_KEY_ERROR"
+"INDEX_ERROR" = "GENERIC_EXCEPTION_CODE_INDEX_ERROR"
+"NIL" = "GENERIC_VALUE_KIND_NIL"
+"BOOL" = "GENERIC_VALUE_KIND_BOOL"
+"INT" = "GENERIC_VALUE_KIND_INT"
+"BIG_INT" = "GENERIC_VALUE_KIND_BIG_INT"
+"FLOAT" = "GENERIC_VALUE_KIND_FLOAT"
+"RATIONAL" = "GENERIC_VALUE_KIND_RATIONAL"
+"STRING" = "GENERIC_VALUE_KIND_STRING"
+"LIST" = "GENERIC_VALUE_KIND_LIST"
+"TUPLE" = "GENERIC_VALUE_KIND_TUPLE"
+"DICT" = "GENERIC_VALUE_KIND_DICT"
+"SET" = "GENERIC_VALUE_KIND_SET"
+"RANGE" = "GENERIC_VALUE_KIND_RANGE"
+"STOP_ITERATION" = "GENERIC_VALUE_KIND_STOP_ITERATION"
+"OTHER" = "GENERIC_VALUE_KIND_OTHER"
+
+[parse]
+parse_deps = false

@@ -18,6 +18,15 @@ $(REL_BIN): $(sources)
 cargo-test:
 	cargo test
 
+# Regenerate the C header from the plugin ABI types. The header is checked
+# in; CI fails if it is out of date. Requires `cargo install cbindgen`.
+.PHONY: generate-plugin-header
+generate-plugin-header:
+	cbindgen --config crates/generic-lang-api/cbindgen.toml \
+		--crate generic-lang-api \
+		--output crates/generic-lang-api/include/generic_plugin.h \
+		crates/generic-lang-api
+
 setup-dart:
 	dart pub get --directory=tool
 
