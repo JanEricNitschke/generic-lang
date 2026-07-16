@@ -1,0 +1,31 @@
+# Reentrant mutation of a dict from inside `__hash__`/`__eq__`, for every
+# dict operation that runs them: no mutation may be lost.
+class Key {
+    __init__(id) {
+        this.id = id;
+    }
+
+    __hash__() {
+        d[marker + "_hash"] = true;
+        return 7; # deliberate collision so __eq__ runs too
+    }
+
+    __eq__(other) {
+        d[marker + "_eq"] = true;
+        return this.id == other.id;
+    }
+}
+
+var d = {:};
+var stored = Key(1);
+var marker = "set";
+d[stored] = "v"; # mutates in __hash__
+marker = "set_collide";
+d[Key(2)] = "w"; # also mutates in __eq__ of the colliding stored key
+marker = "get";
+print(d[stored]); # expect: v
+marker = "contains";
+print(Key(3) in d); # expect: false
+marker = "pop";
+print(d.pop(stored)); # expect: v
+print(len(d)); # 1 key + 9 markers # expect: 10

@@ -89,18 +89,12 @@ impl VM {
             );
         }
 
-        assert!(
-            !self.handling_exception && !self.encountered_hard_exception,
-            "Shouldnt happen i think"
-        );
-
         let stack_trace = self.capture_stack_trace();
         let stack_trace_id = self.heap.string_id(&stack_trace);
         let exception_data = exception.as_exception_mut(&mut self.heap);
         exception_data.stack_trace.get_or_insert(stack_trace_id);
 
         if let Some(handler) = self.pop_exception_handler() {
-            self.handling_exception = true;
             self.modules.truncate(handler.modules_to_keep);
             self.callstack.truncate(handler.frames_to_keep, &self.heap);
             self.callstack.current_mut().ip = handler.ip;
@@ -108,12 +102,42 @@ impl VM {
             self.stack.push(exception);
             Err(VmErrorKind::Exception(ExceptionRaisedKind))
         } else {
-            self.encountered_hard_exception = true;
-            let exception_str = Value::String(
-                self.value_to_string(&exception)
-                    .unwrap_or_else(|_| self.heap.string_id(&exception.to_string(&self.heap))),
-            );
-            runtime_error!("{}", exception_str.to_string(&self.heap));
+            // A `__str__` throwing while we stringify the uncaught exception
+            // below lands here again — don't print or recurse, just abort;
+            // the outer call substitutes the placeholder.
+            if self.printing_fatal_exception {
+                return Err(VmErrorKind::Runtime(RuntimeErrorKind));
+            }
+
+            // Compose the display like Python: `ClassName: {str(e)}` (bare
+            // class name for an empty str) plus the stored stack trace.
+            // `__str__` returns only the message, and user overrides run
+            // here too — CPython prints `<exception str() failed>` if
+            // str(e) raises, and so do we.
+            self.printing_fatal_exception = true;
+            let message = self
+                .value_to_string(&exception)
+                .map(|id| id.to_value(&self.heap).clone())
+                .unwrap_or_else(|_| "<exception str() failed>".to_string());
+            self.printing_fatal_exception = false;
+
+            let class_name = exception
+                .as_instance()
+                .to_value(&self.heap)
+                .class
+                .to_value(&self.heap)
+                .name
+                .to_value(&self.heap);
+            let mut display = if message.is_empty() {
+                class_name.clone()
+            } else {
+                format!("{class_name}: {message}")
+            };
+            if let Some(stack_trace) = exception.as_exception(&self.heap).stack_trace() {
+                display.push('\n');
+                display.push_str(stack_trace.to_value(&self.heap));
+            }
+            runtime_error!("{}", display);
             Err(VmErrorKind::Runtime(RuntimeErrorKind))
         }
     }

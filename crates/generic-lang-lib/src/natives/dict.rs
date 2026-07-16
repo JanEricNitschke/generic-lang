@@ -2,20 +2,14 @@
 
 use crate::vm::ExceptionKind::{KeyError, TypeError};
 use crate::{
-    value::{NativeClass, Number, Value},
+    value::{Dict, NativeClass, Number, Value},
     vm::{VM, errors::VmResult},
 };
 
 /// Get an item via `dict[a]`, where `a` is a hashable value type.
 /// Supports all value types that implement hashable functionality.
-#[allow(clippy::redundant_closure_for_method_calls)]
 pub(super) fn dict_get_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
-    // Create a temporary dict to avoid borrowing conflicts
-    let dict = std::mem::take(receiver.as_dict_mut(&mut vm.heap));
-    let result = dict.get(args[0], vm).map(|opt| opt.copied());
-    // Restore the dict
-    *receiver.as_dict_mut(&mut vm.heap) = dict;
-    match result? {
+    match Dict::get(vm, receiver, args[0])? {
         Some(value) => Ok(value),
         None => Err(vm
             .throw(
@@ -29,11 +23,22 @@ pub(super) fn dict_get_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> 
 /// Set an item via `dict[a] = b`, where `a` is a hashable value type.
 /// Supports all value types that implement hashable functionality.
 pub(super) fn dict_set_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
-    let mut dict = std::mem::take(receiver.as_dict_mut(&mut vm.heap));
-    let result = dict.add(args[0], args[1], vm);
-    *receiver.as_dict_mut(&mut vm.heap) = dict;
-    result?;
+    Dict::add(vm, receiver, args[0], args[1])?;
     Ok(Value::Nil)
+}
+
+/// Remove a key via `dict.pop(a)` and return its value, like Python's
+/// `dict.pop`. Throws `KeyError` if the key is not present.
+pub(super) fn dict_pop_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    match Dict::remove(vm, receiver, args[0])? {
+        Some(value) => Ok(value),
+        None => Err(vm
+            .throw(
+                KeyError,
+                &format!("Key `{}` not found.", args[0].to_string(&vm.heap)),
+            )
+            .unwrap_err()),
+    }
 }
 
 pub(super) fn dict_contains_native(
@@ -41,12 +46,7 @@ pub(super) fn dict_contains_native(
     receiver: &Value,
     args: &[Value],
 ) -> VmResult<Value> {
-    // Create a temporary set to avoid borrowing conflicts
-    let dict = std::mem::take(receiver.as_dict_mut(&mut vm.heap));
-    let result = dict.contains(args[0], vm);
-    // Restore the set
-    *receiver.as_dict_mut(&mut vm.heap) = dict;
-    Ok(result?.into())
+    Ok(Dict::contains(vm, receiver, args[0])?.into())
 }
 
 pub(super) fn dict_len_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
@@ -65,11 +65,12 @@ pub(super) fn dict_bool_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -
 /// `Dict((1, "a"), (2, "b"), (3, "c"))` creates {1: "a", 2: "b", 3: "c"}.
 /// Only hashable values are allowed as keys.
 pub(super) fn dict_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
-    let mut dict = std::mem::take(receiver.as_dict_mut(&mut vm.heap));
-    dict.items.clear(); // reset
+    receiver.as_dict_mut(&mut vm.heap).items.clear(); // reset
 
     for arg in args {
-        if let Value::Instance(inst) = arg
+        // Copy the pair out before re-entering the interpreter; the values
+        // stay rooted through `args` on the VM stack.
+        let pair = if let Value::Instance(inst) = arg
             && let Some(backing) = &inst.to_value(&vm.heap).backing
             && let Some(items) = match backing {
                 NativeClass::Tuple(tuple) => Some(tuple.items()),
@@ -78,7 +79,12 @@ pub(super) fn dict_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) ->
             }
             && let [key, value] = items
         {
-            dict.add(*key, *value, vm)?;
+            Some((*key, *value))
+        } else {
+            None
+        };
+        if let Some((key, value)) = pair {
+            Dict::add(vm, receiver, key, value)?;
         } else {
             return Err(vm
                 .throw(
@@ -91,6 +97,5 @@ pub(super) fn dict_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) ->
                 .unwrap_err());
         }
     }
-    *receiver.as_dict_mut(&mut vm.heap) = dict;
     Ok(*receiver)
 }

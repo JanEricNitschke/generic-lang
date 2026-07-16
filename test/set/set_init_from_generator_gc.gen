@@ -1,0 +1,27 @@
+# Items collected from a generator are referenced nowhere else while
+# Set.__init__ adds them one by one; a GC triggered by a later item's
+# __hash__ must still see the collected and already-added ones.
+# Relies on stress_gc to collect during __hash__.
+class Key {
+    __init__(id) {
+        this.id = id;
+    }
+
+    __hash__() {
+        return this.id;
+    }
+
+    __eq__(other) {
+        return this.id == other.id;
+    }
+}
+
+gen keys() {
+    yield Key(1);
+    yield Key(2);
+    yield Key(3);
+}
+
+var s = Set(keys());
+print(len(s)); # expect: 3
+print(Key(2) in s); # expect: true

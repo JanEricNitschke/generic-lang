@@ -1,0 +1,21 @@
+# Dict operations where `__hash__` and `__eq__` throw and catch exceptions
+# internally must be unaffected.
+class Key {
+    __hash__() {
+        try {
+            throw ValueError("hash");
+        } catch ValueError as e {
+            return 7;
+        }
+    }
+
+    __eq__(other) {
+        try {
+            throw ValueError("eq");
+        } catch ValueError as e {
+            return false;
+        }
+    }
+}
+
+print(len({Key(): "one", Key(): "two"})); # expect: 2

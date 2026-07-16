@@ -1,0 +1,8 @@
+var d = {"a": 1, "b": 2};
+print(d.pop("a")); # expect: 1
+print(len(d)); # expect: 1
+try {
+    d.pop("a");
+} catch KeyError as e {
+    print(e.message()); # expect: Key `a` not found.
+}

@@ -5,11 +5,7 @@ try {
     throw Error1("error message");
     print("Try");
 } catch (Error1, Error2) as e {
-    print(e); # expect: Error1: error message
-              # expect: Traceback (most recent call last):
-              # expect:   File "test/exceptions/catch_multiple_named.gen", line 5, in <script>
-              # expect:         throw Error1("error message");
-              # expect:         ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
+    print(e); # expect: error message
 } else {
     print("Else");
 }

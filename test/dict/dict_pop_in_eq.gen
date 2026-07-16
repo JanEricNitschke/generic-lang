@@ -1,0 +1,27 @@
+# `__eq__` popping the very entry it just matched, while `dict[key] = value`
+# probes it: the add must fall back to inserting fresh.
+var armed = true;
+class Key {
+    __init__(id) {
+        this.id = id;
+    }
+
+    __hash__() {
+        return 7;
+    }
+
+    __eq__(other) {
+        if armed {
+            armed = false;
+            d.pop(this);
+        }
+        return this.id == other.id;
+    }
+}
+
+var d = {:};
+var stored = Key(1);
+d[stored] = "old";
+d[stored] = "new"; # probe pops the matched entry, add re-inserts
+print(len(d)); # expect: 1
+print(d[stored]); # expect: new

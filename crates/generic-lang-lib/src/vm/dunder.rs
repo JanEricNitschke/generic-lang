@@ -129,8 +129,34 @@ impl VM {
         Ok(Some(self.stack.drain(items_start..).collect()))
     }
 
+    /// Root `values` on the VM stack, call `f` for each in order, then unroot
+    /// them. Keeps the values reachable for the GC while `f` re-enters the
+    /// interpreter (e.g. through `__hash__`/`__eq__`).
+    ///
+    /// `f` must be stack-neutral: it may push and pop while it runs (any
+    /// interpreter re-entry does), but must return with the stack at the
+    /// depth it was called with — the rooted values are addressed by index.
+    ///
+    /// On error the values are left for the already-run unwind to clean up.
+    pub(crate) fn for_each_rooted<F>(&mut self, values: Vec<Value>, mut f: F) -> VmResult
+    where
+        F: FnMut(&mut Self, Value) -> VmResult,
+    {
+        let start = self.stack.len();
+        self.stack.extend(values);
+        let end = self.stack.len();
+        for index in start..end {
+            f(self, self.stack[index])?;
+            debug_assert!(
+                self.stack.len() == end,
+                "for_each_rooted callback must be stack-neutral"
+            );
+        }
+        self.stack.truncate(start);
+        Ok(None)
+    }
+
     /// Compare two values for equality, with support for custom __eq__ methods.
-    /// Optimized for use by hash collections - only pushes to stack when needed.
     pub(crate) fn compare_values(&mut self, left: Value, right: Value) -> VmResult<bool> {
         if let Some(equality_result) = self.invoke_method_by_name(&[left, right], "__eq__")? {
             if let Value::Bool(result) = equality_result {
@@ -149,19 +175,6 @@ impl VM {
         } else {
             Ok(left.eq(&right, &self.heap))
         }
-    }
-
-    /// Compare two values for equality, with support for custom __eq__ methods.
-    /// If an exception occurs in __eq__, the `handle_exception` and/or `encountered_hard_error`
-    /// flags will be set and should be checked by the caller of this..
-    /// Callers should check `handling_exception` after calling this method.
-    pub(crate) fn compare_values_for_collections(&mut self, left: Value, right: Value) -> bool {
-        // If we already have an active exception, don't run the comparison
-        if self.handling_exception || self.encountered_hard_exception {
-            return false;
-        }
-
-        self.compare_values(left, right).unwrap_or_default()
     }
 
     pub(crate) fn compute_hash(&mut self, value: Value) -> VmResult<u64> {

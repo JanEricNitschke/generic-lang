@@ -6,21 +6,13 @@ try {
     try {
         throw Error1("error message");
     } catch Error1 as e1 {
-        print(e1);  # expect: Error1: error message
-                    # expect: Traceback (most recent call last):
-                    # expect:   File "test/exceptions/catch_only_try_not_other_catch.gen", line 7, in <script>
-                    # expect:             throw Error1("error message");
-                    # expect:             ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
+        print(e1);  # expect: error message
         throw Error2("error message");
     } catch Error2 as e2 {
-        print(e2); 
+        print(e2);
     }
 } catch Error2 as e {
-    print(e);   # expect: Error2: error message
-                # expect: Traceback (most recent call last):
-                # expect:   File "test/exceptions/catch_only_try_not_other_catch.gen", line 14, in <script>
-                # expect:             throw Error2("error message");
-                # expect:             ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
+    print(e);   # expect: error message
 }
 
 
@@ -30,17 +22,9 @@ try {
     } catch Error1 as e1 {
         print(e1);
     } catch Error2 as e2 {
-        print(e2);  # expect: Error2: error message
-                    # expect: Traceback (most recent call last):
-                    # expect:   File "test/exceptions/catch_only_try_not_other_catch.gen", line 29, in <script>
-                    # expect:             throw Error2("error message");
-                    # expect:             ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
+        print(e2);  # expect: error message
         throw Error1("error message");
     }
 } catch Error1 as e {
-    print(e);   # expect: Error1: error message
-                # expect: Traceback (most recent call last):
-                # expect:   File "test/exceptions/catch_only_try_not_other_catch.gen", line 38, in <script>
-                # expect:             throw Error1("error message");
-                # expect:             ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
+    print(e);   # expect: error message
 }

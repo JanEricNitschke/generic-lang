@@ -4,7 +4,7 @@ use crate::vm::ExceptionKind::{
     AttributeError, ConstReassignmentError, Exception, NameError, TypeError, ValueError,
 };
 use crate::vm::arithmetics::IntoResultValue;
-use crate::vm::errors::{ExceptionRaisedKind, Return, RuntimeErrorKind, VmErrorKind, VmResult};
+use crate::vm::errors::{Return, VmErrorKind, VmResult};
 use crate::{
     chunk::OpCode,
     heap::{NativeFunctionId, NativeMethodId, StringId, UpvalueId},
@@ -40,12 +40,6 @@ impl VM {
 
         if method_is_native {
             return Ok(None);
-        }
-        if self.handling_exception {
-            return Err(VmErrorKind::Exception(ExceptionRaisedKind));
-        }
-        if self.encountered_hard_exception {
-            return Err(VmErrorKind::Runtime(RuntimeErrorKind));
         }
         self.run_function()
     }

@@ -203,12 +203,4 @@ impl VM {
             println!("  [{i:3}] {detail:25}");
         }
     }
-
-    #[cfg(feature = "trace_execution_verbose")]
-    fn print_exception_state(&self) {
-        println!(
-            "Handling exception: {}, encountered hard exception: {}",
-            self.handling_exception, self.encountered_hard_exception
-        );
-    }
 }

@@ -16,17 +16,4 @@ try {
 } catch Exception as e {
     print(e);
 }
-# expect: Exception: Deep error
-# expect: Traceback (most recent call last):
-# expect:   File "test/native/exception_nested.gen", line 15, in <script>
-# expect:         level1();
-# expect:         ~~~~~~^^ 
-# expect:   File "test/native/exception_nested.gen", line 11, in level1
-# expect:         return level2();
-# expect:                ~~~~~~^^ 
-# expect:   File "test/native/exception_nested.gen", line 7, in level2
-# expect:         return level3();
-# expect:                ~~~~~~^^ 
-# expect:   File "test/native/exception_nested.gen", line 3, in level3
-# expect:         throw Exception("Deep error");
-# expect:         ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^ 
+# expect: Deep error
