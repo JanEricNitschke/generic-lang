@@ -1,0 +1,16 @@
+[package]
+name        = "generic-lang-api"
+description = "Plugin ABI and authoring API for the generic programming language"
+# Versioned independently from the workspace: this crate tracks ABI
+# stability for plugin authors, not interpreter releases.
+version     = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+readme.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]

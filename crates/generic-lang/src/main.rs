@@ -4,6 +4,7 @@
 //! Not specifying a file will run the REPL, otherwise it will run the file.
 //! There are currently no other command line options.
 
+#![forbid(unsafe_code)]
 // Pre-existing duplicate transitive dependencies; nothing actionable per crate.
 #![allow(clippy::multiple_crate_versions)]
 

@@ -228,12 +228,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "generic-lang-api"
+version = "0.1.0"
+
+[[package]]
 name = "generic-lang-lib"
 version = "2.1.0"
 dependencies = [
  "convert_case",
  "derivative",
  "derive_more",
+ "generic-lang-api",
  "hashbrown 0.17.1",
  "humansize",
  "include_dir",

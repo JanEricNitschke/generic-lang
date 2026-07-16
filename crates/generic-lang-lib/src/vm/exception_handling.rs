@@ -4,7 +4,7 @@ use crate::value::{
 };
 use crate::vm::VM;
 use crate::vm::errors::{ExceptionRaisedKind, RuntimeErrorKind, VmErrorKind, VmResult};
-use strum_macros::IntoStaticStr;
+use strum_macros::{EnumIter, IntoStaticStr};
 
 use self::ExceptionKind::TypeError;
 /// The kinds of exceptions the VM can throw. Each variant is named exactly
@@ -13,7 +13,7 @@ use self::ExceptionKind::TypeError;
 /// The discriminants are stable: `0` is reserved for "no exception" so the
 /// values can double as status codes.
 #[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, IntoStaticStr)]
 pub enum ExceptionKind {
     /// The base exception class; also what runtime errors throw.
     Exception = 1,
@@ -217,5 +217,38 @@ impl VM {
     pub(crate) fn throw(&mut self, kind: ExceptionKind, message: &str) -> VmResult {
         let exception = self.create_exception(kind.into(), message);
         self.unwind(exception)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ExceptionKind;
+    use generic_lang_api::exception_code;
+    use strum::IntoEnumIterator;
+
+    /// `generic-lang-api` duplicates the `ExceptionKind` discriminants as
+    /// FFI status codes; this crate is the source of truth.
+    ///
+    /// Covers ALL variants: `iter()` visits each one at runtime, and the
+    /// exhaustive `match` makes adding a variant without an FFI code a
+    /// compile error right here.
+    #[test]
+    fn exception_codes_match_api_crate() {
+        for kind in ExceptionKind::iter() {
+            let code = match kind {
+                ExceptionKind::Exception => exception_code::EXCEPTION,
+                ExceptionKind::TypeError => exception_code::TYPE_ERROR,
+                ExceptionKind::ValueError => exception_code::VALUE_ERROR,
+                ExceptionKind::NameError => exception_code::NAME_ERROR,
+                ExceptionKind::ConstReassignmentError => exception_code::CONST_REASSIGNMENT_ERROR,
+                ExceptionKind::AttributeError => exception_code::ATTRIBUTE_ERROR,
+                ExceptionKind::ImportError => exception_code::IMPORT_ERROR,
+                ExceptionKind::AssertionError => exception_code::ASSERTION_ERROR,
+                ExceptionKind::IoError => exception_code::IO_ERROR,
+                ExceptionKind::KeyError => exception_code::KEY_ERROR,
+                ExceptionKind::IndexError => exception_code::INDEX_ERROR,
+            };
+            assert_eq!(kind as u32, code, "mismatch for {kind:?}");
+        }
     }
 }
