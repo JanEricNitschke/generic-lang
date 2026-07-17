@@ -29,7 +29,7 @@ mod variables;
 use arithmetics::IntoResultValue;
 use callstack::CallStack;
 use errors::RuntimeResult;
-use errors::{Return, RuntimeErrorKind, VmErrorKind};
+use errors::{Return, VmErrorKind};
 use exception_handling::ExceptionKind::{
     AttributeError, ConstReassignmentError, TypeError, ValueError,
 };
@@ -115,9 +115,6 @@ pub struct VM {
     modules: Vec<ModuleId>,
     builtins: HashMap<StringId, Global>,
     stdlib: HashMap<StringId, ModuleContents>,
-    /// Guards the fatal-error display in `unwind` against a user `__str__`
-    /// that throws while the uncaught exception is being stringified.
-    pub(super) printing_fatal_exception: bool,
 }
 
 // Core functionality for running a script.
@@ -133,7 +130,6 @@ impl VM {
             modules: Vec::new(),
             builtins: HashMap::default(),
             stdlib: HashMap::default(),
-            printing_fatal_exception: false,
         }
     }
 
@@ -280,14 +276,21 @@ impl VM {
     /// Infinite loop over the bytecode.
     ///
     /// Returns when a return instruction is hit at the top level.
+    ///
+    /// A pending exception (see `raise_pending_from_stack`) is resolved
+    /// against the innermost handler; with no handler anywhere it is
+    /// reported and converted into a fatal runtime error.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn run(&mut self) -> RuntimeResult {
         loop {
-            if matches!(
-                run_instruction!(self),
-                Err(VmErrorKind::Runtime(RuntimeErrorKind))
-            ) {
-                return Err(RuntimeErrorKind);
+            match run_instruction!(self) {
+                Err(VmErrorKind::Exception(_)) => {
+                    if !self.resolve_pending_exception(0) {
+                        return Err(self.report_uncaught_exception());
+                    }
+                }
+                Err(VmErrorKind::Runtime(e)) => return Err(e),
+                Ok(_) => {}
             }
         }
     }
