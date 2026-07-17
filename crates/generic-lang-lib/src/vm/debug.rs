@@ -51,7 +51,6 @@ impl VM {
         self.print_globals();
         self.print_exception_handlers();
         self.print_open_upvalues();
-        self.print_exception_state();
     }
 
     #[cfg(feature = "trace_execution_verbose")]
