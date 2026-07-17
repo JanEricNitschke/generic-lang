@@ -9,8 +9,8 @@ use core::ffi::c_void;
 use std::cell::RefCell;
 
 use generic_lang_api::{
-    FfiReturn, FfiStr, GENERIC_PLUGIN_ABI_VERSION, GenericValue, Host, HostApi, PluginError,
-    exception_code,
+    ExceptionCode, FfiReturn, FfiStr, GENERIC_PLUGIN_ABI_VERSION, GenericValue, Host, HostApi,
+    PluginError, ValueKind,
 };
 
 fn add(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
@@ -42,7 +42,7 @@ thread_local! {
 }
 
 extern "C" fn mock_value_kind(_ctx: *mut c_void, _value: GenericValue) -> u32 {
-    generic_lang_api::value_kind::INT
+    ValueKind::Int as u32
 }
 extern "C" fn mock_bool_get(_ctx: *mut c_void, _value: GenericValue, _out: *mut bool) -> bool {
     false
@@ -328,7 +328,7 @@ fn ok_path() {
 #[test]
 fn typed_error_path() {
     let ret = call_exported(1, &[]);
-    assert_eq!(ret.status, exception_code::INDEX_ERROR);
+    assert_eq!(ret.status, ExceptionCode::IndexError as u32);
     assert_eq!(last_interned(), "out of bounds");
 }
 
@@ -340,6 +340,6 @@ fn panic_becomes_exception() {
     let ret = call_exported(2, &[]);
     std::panic::set_hook(previous);
 
-    assert_eq!(ret.status, exception_code::EXCEPTION);
+    assert_eq!(ret.status, ExceptionCode::Exception as u32);
     assert_eq!(last_interned(), "panic: kaboom");
 }

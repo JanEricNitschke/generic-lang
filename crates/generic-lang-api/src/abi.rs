@@ -63,7 +63,7 @@ impl FfiStr {
 /// Result of a plugin function or a re-entering host callback.
 ///
 /// `status == 0` means success and `value` is the result. Any other status
-/// is an exception-kind code from [`exception_code`](crate::exception_code)
+/// is an exception-kind code from [`ExceptionCode`](crate::ExceptionCode)
 /// and `value` is the message (a string value); unknown codes are treated as
 /// the base `Exception`.
 #[repr(C)]
@@ -134,7 +134,7 @@ pub struct HostApi {
     pub ctx: *mut c_void,
 
     // --- inspect (never re-enter) ---
-    /// Kind of the value, as a [`value_kind`](crate::value_kind) code.
+    /// Kind of the value, as a [`ValueKind`](crate::ValueKind) code.
     pub value_kind: extern "C" fn(ctx: *mut c_void, value: GenericValue) -> u32,
     /// `false` if the value is not a bool.
     pub bool_get: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut bool) -> bool,
