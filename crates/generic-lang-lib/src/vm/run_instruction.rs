@@ -354,7 +354,11 @@ macro_rules! run_instruction {
                         Err($self.throw(TypeError, &message).unwrap_err())
                     }
                 };
-                $self.stack_push(value);
+                // The setter expression evaluates to the assigned value; on
+                // error the pending exception occupies the stack top instead.
+                if result.is_ok() {
+                    $self.stack_push(value);
+                }
                 result
             }
             // Name of the method is the operand, actual method to is on the stack
@@ -501,12 +505,9 @@ macro_rules! run_instruction {
                     .expect("Exception handler unflow in OP_POP_HANDLER");
                 Ok(None)
             }
-            // Throw the exception on the top of the stack.
-            // We pop the exception, unwind to the handler and push the exception again.
-            OpCode::Throw => {
-                let exception = $self.stack.pop().expect("Stack underflow in OP_THROW.");
-                $self.unwind(exception)
-            }
+            // Throw the exception on the top of the stack: mark it pending
+            // (it stays on the stack) and let the dispatch loop resolve it.
+            OpCode::Throw => $self.raise_pending_from_stack(),
             // Layout is Stack Top: [exception_class_to_catch, exception_value_raised]
             OpCode::CompareException => $self.compare_exception(),
             //  We expect either the exception at the stop of the stack that should be reraised

@@ -1,0 +1,25 @@
+class NotException < Exception {
+    __init__() {
+        throw TypeError("Error in constructor");
+    }
+}
+
+gen my_gen() {
+    while true {
+        try {
+            yield 1;
+        } catch TypeError {
+            print("Caught inside generator");
+            yield 2;
+        }
+    }
+}
+
+# The exception is instantiated inside the resumed generator, so a throwing
+# __init__ is delivered at the suspension point and an internal try catches
+# it - the generator stays alive.
+var generator = my_gen();
+print(next(generator));  # expect: 1
+print(generator.raise(NotException));  # expect: Caught inside generator
+                                       # expect: 2
+print(next(generator));  # expect: 1

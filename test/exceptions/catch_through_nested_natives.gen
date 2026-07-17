@@ -1,0 +1,23 @@
+class Error < Exception {}
+
+class ThrowOnHash {
+    __hash__() {
+        throw Error("deep");
+    }
+}
+
+class Wrapper {
+    __str__() {
+        var d = {:};
+        d[ThrowOnHash()] = 1;
+        return "unreachable";
+    }
+}
+
+# The exception crosses several native boundaries on its way out:
+# __hash__ bytecode -> dict setter native -> __str__ bytecode -> print native.
+try {
+    print(Wrapper());
+} catch Error {
+    print("Caught deep exception");  # expect: Caught deep exception
+}

@@ -1,7 +1,7 @@
 use crate::vm::ExceptionKind::TypeError;
 use crate::{
     heap::{Heap, StringId},
-    value::{ClosureId, GenericInt, Instance, InstanceId, is_exception_subclass},
+    value::{ClosureId, GenericInt, InstanceId},
     vm::{
         SuspendedExceptionHandler, VM,
         callstack::CallFrame,
@@ -796,6 +796,15 @@ impl Generator {
                 unreachable!("generator resume must end in a yield/return frame or an error")
             }
             Err(err) => {
+                // A pending exception escaped the generator (or a fatal
+                // error occurred). No cleanup happens here: the re-planted
+                // generator frame and the spliced stack values stay on the
+                // VM — still GC-rooted — until the caller's dispatch loop
+                // resolves the pending exception and its handler truncation
+                // removes them (or the program aborts). That is sound
+                // because the generator is `Completed` (its saved state is
+                // discarded) and the native wrappers return immediately, so
+                // nobody executes on the dirty state in between.
                 self.state = GeneratorState::Completed;
                 return Err(err);
             }
@@ -836,87 +845,51 @@ impl Generator {
     }
 
     /// Throw an exception of class `exception_class` into the generator at
-    /// its suspension point (like Python's `generator.throw`).
+    /// its suspension point.
     ///
-    /// After validating that `exception_class` is a class deriving from
-    /// `Exception`, the generator is resumed with a closure that — inside the
-    /// restored generator context — instantiates the class (running its
-    /// `__init__`), unwinds from the suspended position, and then continues
-    /// execution wherever the unwind landed:
+    /// The argument is validated in the caller's frame: a value that is not
+    /// an exception class throws a `TypeError` to the caller and never
+    /// touches the generator.
+    ///
+    /// The instance is built INSIDE the resumed generator context, so both
+    /// the exception itself and any error thrown by its `__init__` are
+    /// delivered at the suspension point — the stack trace shows the
+    /// generator frame — and then:
     /// - Caught by a `try` inside the generator: the generator keeps running
     ///   to its next `yield`/`return`, indistinguishable from a normal resume.
-    /// - Caught outside: the generator is marked `Completed` and the
-    ///   already-positioned unwind propagates through the `Err` branch of
-    ///   [`Self::resume_with`].
-    /// - Caught nowhere: the fatal runtime error propagates; the generator is
-    ///   not resumed.
+    /// - Caught outside (or nowhere): the pending exception escapes; the
+    ///   `Err` branch of [`Self::resume_with`] marks the generator
+    ///   `Completed` and the caller's dispatch loop resolves or reports it.
     pub(crate) fn raise(&mut self, exception_class: Value, vm: &mut VM) -> VmResult<Value> {
-        let exception_class_id = if let Value::Class(exception_class_id) = exception_class {
-            // Check that the class to catch is a subclass of Exception
-            if !is_exception_subclass(&vm.heap, exception_class_id) {
-                return Err(vm
-                    .throw(
-                        TypeError,
-                        &format!(
-                            "Can only throw Exception or its subclasses, got: {}",
-                            exception_class_id
-                                .to_value(&vm.heap)
-                                .name
-                                .to_value(&vm.heap)
-                        ),
-                    )
-                    .unwrap_err());
-            }
-            exception_class_id
-        } else {
-            return Err(vm
-                .throw(
-                    TypeError,
-                    &format!(
-                        "Exception to throw must be a class, got: {}",
-                        exception_class.to_string(&vm.heap)
-                    ),
-                )
-                .unwrap_err());
-        };
+        // Runs in the caller's frame (everything up to `resume_with` does),
+        // but with the generator already taken out of the heap by the native
+        // wrapper: this validation must not execute bytecode (it only
+        // formats and allocates), or the GC could run while the generator's
+        // saved state is hidden from it.
+        let exception_class_id = vm.validate_exception_class(exception_class)?;
 
         self.resume_with(vm, |vm| {
-            let class_data = exception_class_id.to_value(&vm.heap);
-            let init_method_id = vm.heap.builtin_constants().init_string;
-            let init_method = *class_data.methods.get(&init_method_id).unwrap();
-
-            let backing = NativeClass::new("Exception");
-
-            let instance = vm
-                .heap
-                .add_instance(Instance::new(exception_class_id, Some(backing)));
-            vm.stack.push(instance);
-            vm.invoke_and_run_function(
-                init_method_id,
-                0,
-                matches!(init_method, Value::NativeMethod(_)),
-            )?;
-            let exception = vm.stack.pop().expect("Stack underflow in next_native");
-
             let call_depth = vm.callstack.len();
-            match vm.unwind(exception) {
-                // No handler anywhere: the fatal traceback is already
-                // printed. Abort instead of resuming the generator.
-                err @ Err(VmErrorKind::Runtime(_)) => err,
-                Err(err @ VmErrorKind::Exception(_)) => {
-                    if vm.callstack.len() < call_depth {
-                        // Caught outside the generator: the unwind already
-                        // popped the generator frame and positioned the VM at
-                        // the outer handler. Propagate the marker untouched;
-                        // `resume_with` marks the generator `Completed`.
-                        Err(err)
-                    } else {
-                        // Caught inside the generator: continue running it
-                        // from the catch block like a normal resume.
-                        vm.run_function_from_depth(call_depth)
-                    }
+            let pending = match vm.instantiate_exception(exception_class_id) {
+                Ok(exception) => {
+                    vm.stack.push(exception);
+                    vm.raise_pending_from_stack()
                 }
-                Ok(_) => unreachable!("unwind never returns Ok"),
+                // A throwing `__init__`: the constructor's exception is
+                // already pending on the stack — deliver it at the
+                // suspension point in place of the intended one.
+                err @ Err(VmErrorKind::Exception(_)) => err.map(|_| None),
+                // Fatal.
+                err @ Err(VmErrorKind::Runtime(_)) => return err.map(|_| None),
+            };
+            if vm.resolve_pending_exception(call_depth) {
+                // Caught inside the generator: continue running it from the
+                // catch block like a normal resume.
+                vm.run_function_from_depth(call_depth)
+            } else {
+                // Caught outside the generator (or nowhere): escape as
+                // pending; `resume_with` marks the generator `Completed`.
+                pending
             }
         })
     }

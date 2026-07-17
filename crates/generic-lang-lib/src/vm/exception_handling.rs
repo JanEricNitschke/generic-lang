@@ -186,8 +186,17 @@ impl VM {
         );
     }
 
-    pub(crate) fn unwind(&mut self, exception: Value) -> VmResult {
+    /// Mark the value on the stack top as a thrown, in-flight exception.
+    ///
+    /// Validates it and attaches the stack trace — captured HERE, at the
+    /// throw site, while the throwing frames are still intact. No unwinding
+    /// happens: the exception stays on the stack (rooted for the GC) until a
+    /// dispatch loop resolves it against a handler, or a native along the
+    /// propagation path pops it and handles it.
+    pub(crate) fn raise_pending_from_stack(&mut self) -> VmResult {
+        let exception = *self.stack.last().expect("Raise with empty stack");
         if !matches!(exception, Value::Instance(_)) {
+            self.stack.pop();
             return self.throw(
                 TypeError,
                 &format!(
@@ -197,11 +206,10 @@ impl VM {
             );
         }
 
-        // Check that the exception is an instance of Exception or its subclasses
-        let exception_class_id = exception.as_instance().to_value(&self.heap).class;
-
         // Only allow throwing instances of Exception or its subclasses
+        let exception_class_id = exception.as_instance().to_value(&self.heap).class;
         if !is_exception_subclass(&self.heap, exception_class_id) {
+            self.stack.pop();
             return self.throw(
                 TypeError,
                 &format!(
@@ -219,58 +227,90 @@ impl VM {
         let exception_data = exception.as_exception_mut(&mut self.heap);
         exception_data.stack_trace.get_or_insert(stack_trace_id);
 
-        if let Some(handler) = self.pop_exception_handler() {
-            self.modules.truncate(handler.modules_to_keep);
-            self.callstack.truncate(handler.frames_to_keep, &self.heap);
-            self.callstack.current_mut().ip = handler.ip;
-            self.stack.truncate(handler.stack_length);
-            self.stack.push(exception);
-            Err(VmErrorKind::Exception(ExceptionRaisedKind))
-        } else {
-            // A `__str__` throwing while we stringify the uncaught exception
-            // below lands here again — don't print or recurse, just abort;
-            // the outer call substitutes the placeholder.
-            if self.printing_fatal_exception {
-                return Err(VmErrorKind::Runtime(RuntimeErrorKind));
-            }
+        Err(VmErrorKind::Exception(ExceptionRaisedKind))
+    }
 
-            // Compose the display like Python: `ClassName: {str(e)}` (bare
-            // class name for an empty str) plus the stored stack trace.
-            // `__str__` returns only the message, and user overrides run
-            // here too — CPython prints `<exception str() failed>` if
-            // str(e) raises, and so do we.
-            self.printing_fatal_exception = true;
-            let message = self
-                .value_to_string(&exception)
-                .map(|id| id.to_value(&self.heap).clone())
-                .unwrap_or_else(|_| "<exception str() failed>".to_string());
-            self.printing_fatal_exception = false;
-
-            let class_name = exception
-                .as_instance()
-                .to_value(&self.heap)
-                .class
-                .to_value(&self.heap)
-                .name
-                .to_value(&self.heap);
-            let mut display = if message.is_empty() {
-                class_name.clone()
-            } else {
-                format!("{class_name}: {message}")
-            };
-            if let Some(stack_trace) = exception.as_exception(&self.heap).stack_trace() {
-                display.push('\n');
-                display.push_str(stack_trace.to_value(&self.heap));
+    /// Route the pending exception (on the stack top) to the innermost
+    /// handler, IF that handler lies within the callstack region rooted at
+    /// `call_depth`. This is the only place control ever transfers: the
+    /// handler is popped, modules/callstack/stack are truncated to its
+    /// snapshot, the ip is set to the catch block, and the exception is
+    /// re-delivered on the stack for `OP_COMPARE_EXCEPTION`.
+    ///
+    /// Returns `false` if the innermost handler (if any) belongs to an outer
+    /// region: the pending exception then escapes to whoever entered the
+    /// region — a native caller, which may pop and handle it or propagate.
+    /// Pass `0` for `call_depth` to accept any handler (the top-level loop).
+    pub(crate) fn resolve_pending_exception(&mut self, call_depth: usize) -> bool {
+        match self.exception_handlers.last() {
+            Some(handler) if handler.frames_to_keep >= call_depth => {
+                let handler = self
+                    .pop_exception_handler()
+                    .expect("Handler vanished during resolution");
+                let exception = self.stack.pop().expect("Pending exception missing");
+                self.modules.truncate(handler.modules_to_keep);
+                self.callstack.truncate(handler.frames_to_keep, &self.heap);
+                self.callstack.current_mut().ip = handler.ip;
+                self.stack.truncate(handler.stack_length);
+                self.stack.push(exception);
+                true
             }
-            runtime_error!("{}", display);
-            Err(VmErrorKind::Runtime(RuntimeErrorKind))
+            _ => false,
         }
     }
 
+    /// Report a pending exception that no handler anywhere catches, and
+    /// convert it into a fatal runtime error.
+    ///
+    /// Composes the display as `ClassName: {str(e)}` (bare class name for
+    /// an empty str) plus the stored stack trace. `__str__` returns only the
+    /// message, and user overrides run here too — if str(e) raises, its
+    /// pending exception is discarded and `<exception str() failed>` is
+    /// printed instead.
+    pub(super) fn report_uncaught_exception(&mut self) -> RuntimeErrorKind {
+        let exception = *self
+            .stack
+            .last()
+            .expect("Uncaught exception missing from the stack");
+
+        let message = match self.value_to_string(&exception) {
+            Ok(id) => id.to_value(&self.heap).clone(),
+            Err(VmErrorKind::Exception(_)) => {
+                // Discard the pending exception the failing `__str__` left.
+                self.stack.pop();
+                "<exception str() failed>".to_string()
+            }
+            Err(VmErrorKind::Runtime(_)) => "<exception str() failed>".to_string(),
+        };
+
+        let class_name = exception
+            .as_instance()
+            .to_value(&self.heap)
+            .class
+            .to_value(&self.heap)
+            .name
+            .to_value(&self.heap);
+        let mut display = if message.is_empty() {
+            class_name.clone()
+        } else {
+            format!("{class_name}: {message}")
+        };
+        if let Some(stack_trace) = exception.as_exception(&self.heap).stack_trace() {
+            display.push('\n');
+            display.push_str(stack_trace.to_value(&self.heap));
+        }
+        runtime_error!("{}", display);
+        self.stack.pop();
+        RuntimeErrorKind
+    }
+
     pub(super) fn reraise_exception(&mut self) -> VmResult {
-        match self.stack.pop().expect("Stack underflow in OP_RERAISE") {
-            Value::Nil => Ok(None),
-            exception => self.unwind(exception),
+        match self.stack.last().expect("Stack underflow in OP_RERAISE") {
+            Value::Nil => {
+                self.stack.pop();
+                Ok(None)
+            }
+            _ => self.raise_pending_from_stack(),
         }
     }
 
@@ -363,9 +403,74 @@ impl VM {
     }
 
     /// Create and throw an exception of the given kind with the given message.
+    ///
+    /// The exception is left pending on the stack top (see
+    /// [`Self::raise_pending_from_stack`]); no unwinding happens here.
+    /// Callers propagate the returned error with `?`, or pop the exception
+    /// to handle it.
     pub(crate) fn throw(&mut self, kind: ExceptionKind, message: &str) -> VmResult {
         let exception = self.create_exception(kind.into(), message);
-        self.unwind(exception)
+        self.stack.push(exception);
+        self.raise_pending_from_stack()
+    }
+
+    /// Validate that `class` is a class deriving from `Exception`, throwing
+    /// a `TypeError` otherwise.
+    ///
+    /// Used by `generator.raise(...)`: validation runs in the caller's
+    /// context, so an unusable argument never touches the generator.
+    pub(crate) fn validate_exception_class(&mut self, class: Value) -> VmResult<ClassId> {
+        let Value::Class(class_id) = class else {
+            return Err(self
+                .throw(
+                    TypeError,
+                    &format!(
+                        "Exception to throw must be a class, got: {}",
+                        class.to_string(&self.heap)
+                    ),
+                )
+                .unwrap_err());
+        };
+        if !is_exception_subclass(&self.heap, class_id) {
+            return Err(self
+                .throw(
+                    TypeError,
+                    &format!(
+                        "Can only throw Exception or its subclasses, got: {}",
+                        class_id.to_value(&self.heap).name.to_value(&self.heap)
+                    ),
+                )
+                .unwrap_err());
+        }
+        Ok(class_id)
+    }
+
+    /// Build a new instance of the (already validated) exception class,
+    /// running its `__init__` (with no arguments) to completion.
+    ///
+    /// A throwing `__init__` escapes as a pending exception with its trace
+    /// anchored at the current position — `generator.raise(...)` relies on
+    /// this to deliver constructor errors at the suspension point.
+    pub(crate) fn instantiate_exception(&mut self, class_id: ClassId) -> VmResult<Value> {
+        let init_method_id = self.heap.builtin_constants().init_string;
+        let init_method = *class_id
+            .to_value(&self.heap)
+            .methods
+            .get(&init_method_id)
+            .unwrap();
+        let instance = self
+            .heap
+            .add_instance(Instance::new(class_id, Some(NativeClass::new("Exception"))));
+        self.stack.push(instance);
+        self.invoke_and_run_function(
+            init_method_id,
+            0,
+            matches!(init_method, Value::NativeMethod(_)),
+        )?;
+        Ok(self
+            .stack
+            .pop()
+            .expect("Stack underflow building a raised exception"))
     }
 }
 

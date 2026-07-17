@@ -13,9 +13,15 @@ pub struct ExceptionRaisedKind;
 
 #[derive(Debug, Error, Clone, Copy)]
 pub enum VmErrorKind {
+    /// A hard runtime error: fatal, always propagates.
     #[error(transparent)]
     Runtime(#[from] RuntimeErrorKind),
 
+    /// A pending exception: the exception instance sits on the stack top
+    /// (rooted) and no unwinding has happened yet. The dispatch loops
+    /// resolve it against the surrounding handlers; a native receiving this
+    /// from a VM re-entry may pop the exception and handle it, or propagate
+    /// with `?`.
     #[error(transparent)]
     Exception(#[from] ExceptionRaisedKind),
 }

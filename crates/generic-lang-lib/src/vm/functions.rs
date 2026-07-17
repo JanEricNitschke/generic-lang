@@ -30,18 +30,49 @@ impl VM {
     ///
     /// Pushes the closure onto the stack and callstack. Then directly
     /// executes all of the bytecode for it before returning to the main loop.
+    ///
+    /// # Exception contract
+    ///
+    /// The receiver and arguments are consumed either way, and exactly one
+    /// value is left on the stack top:
+    /// - `Ok(..)`: the callee's result.
+    /// - `Err(Exception)`: the pending exception that escaped the callee
+    ///   (its leftover frames and stack are cleaned up here). The caller may
+    ///   pop the exception and handle it, or propagate with `?` — the
+    ///   dispatch loops resolve an escaping pending exception against the
+    ///   surrounding handlers.
     pub(crate) fn invoke_and_run_function(
         &mut self,
         method_name: StringId,
         arg_count: u8,
         method_is_native: bool,
     ) -> VmResult {
-        self.invoke(method_name, arg_count)?;
+        let entry_frames = self.callstack.len();
+        let entry_modules = self.modules.len();
+        let entry_stack = self.stack.len() - usize::from(arg_count) - 1;
 
-        if method_is_native {
-            return Ok(None);
+        let result = match self.invoke(method_name, arg_count) {
+            Ok(_) if method_is_native => Ok(None),
+            Ok(_) => self.run_function(),
+            err => err,
+        };
+
+        match result {
+            Err(VmErrorKind::Exception(kind)) => {
+                // A pending exception escaped the callee. The run loop hands
+                // escapes over untruncated (see `run_function_from_depth`),
+                // so this is where the region is cleaned: drop the callee's
+                // leftover frames and stack, keep the exception on top in
+                // place of the result.
+                let exception = self.stack.pop().expect("Pending exception missing");
+                self.stack.truncate(entry_stack);
+                self.callstack.truncate(entry_frames, &self.heap);
+                self.modules.truncate(entry_modules);
+                self.stack.push(exception);
+                Err(VmErrorKind::Exception(kind))
+            }
+            other => other,
         }
-        self.run_function()
     }
 
     /// Run the closure currently on top of the callstack.
@@ -53,15 +84,34 @@ impl VM {
     /// until it exits: a return/yield past the region base, or an escaping
     /// error.
     ///
+    /// A pending exception is resolved against the innermost handler if that
+    /// handler lies within this region — execution then continues at the
+    /// catch block. Otherwise the pending exception escapes to whoever
+    /// entered the region, which may handle or propagate it. Hard runtime
+    /// errors are fatal and always propagate.
+    ///
+    /// # Escapes leave the region dirty — every caller cleans up itself
+    ///
+    /// On an escape NOTHING is truncated here: the region's frames stay on
+    /// the callstack and its values on the stack (below the pending
+    /// exception), so everything remains GC-rooted until the caller decides.
+    /// The callers and their cleanup:
+    /// - [`Self::invoke_and_run_function`] (every dunder/native re-entry):
+    ///   restores its pre-call snapshot in its `Err` arm, so natives always
+    ///   see "state exactly as before the call, exception on top".
+    /// - `Generator::resume_with` (send/next/raise): performs no cleanup.
+    ///   The dead generator frame and its spliced values stay on the VM;
+    ///   that is sound because the generator is marked `Completed` (and
+    ///   thrown away) and the generator natives return immediately, so the
+    ///   dirty state is only ever truncated by the caller's dispatch loop
+    ///   when it resolves the pending exception against an outer handler —
+    ///   or the program aborts via the uncaught report.
+    ///
     /// # Precondition
     ///
-    /// The callstack must hold at least `call_depth` frames. In particular,
-    /// a caller that unwinds before entering (see [`Generator::raise`]) must
-    /// first check where the unwind landed — entering with the region
-    /// already exited would execute one instruction of the outer frame
-    /// before the positional check below fires.
-    ///
-    /// [`Generator::raise`]: crate::value::Generator::raise
+    /// The callstack must hold at least `call_depth` frames — entering with
+    /// the region already exited would execute one instruction of the outer
+    /// frame before the positional check below fires.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     pub(crate) fn run_function_from_depth(&mut self, call_depth: usize) -> VmResult {
         debug_assert!(
@@ -70,14 +120,15 @@ impl VM {
         );
         loop {
             let result = run_instruction!(self);
-            // Hard runtime errors are fatal and always propagate. Everything
-            // else resolves positionally: once the callstack drops below this
-            // region, hand the result (or the escaping exception) to whoever
-            // re-entered here; otherwise keep executing — an exception routed
-            // to a handler within this region has already repositioned the VM
-            // and needs no further action.
-            if matches!(result, Err(VmErrorKind::Runtime(_))) || self.callstack.len() < call_depth {
-                return result;
+            match result {
+                Err(VmErrorKind::Exception(_)) => {
+                    if !self.resolve_pending_exception(call_depth) {
+                        return result;
+                    }
+                }
+                Err(VmErrorKind::Runtime(_)) => return result,
+                Ok(_) if self.callstack.len() < call_depth => return result,
+                Ok(_) => {}
             }
         }
     }

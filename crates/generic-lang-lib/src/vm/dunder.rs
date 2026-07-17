@@ -11,6 +11,13 @@ use std::hash::{Hash, Hasher};
 use unicode_normalization::UnicodeNormalization;
 
 impl VM {
+    /// Invoke `method_name` on `values[0]` with the remaining values as
+    /// arguments, if the receiver is an instance that has such a field or
+    /// method; returns `Ok(None)` otherwise (so callers can fall back).
+    ///
+    /// On `Err(Exception)` the thrown exception is pending on the stack top
+    /// with the VM otherwise restored to the pre-call state: pop it to
+    /// handle, or propagate with `?`.
     pub fn invoke_method_by_name(
         &mut self,
         values: &[Value],
@@ -137,7 +144,8 @@ impl VM {
     /// interpreter re-entry does), but must return with the stack at the
     /// depth it was called with — the rooted values are addressed by index.
     ///
-    /// On error the values are left for the already-run unwind to clean up.
+    /// On error the values are left on the stack below the pending
+    /// exception; the eventual handler resolution truncates them.
     pub(crate) fn for_each_rooted<F>(&mut self, values: Vec<Value>, mut f: F) -> VmResult
     where
         F: FnMut(&mut Self, Value) -> VmResult,

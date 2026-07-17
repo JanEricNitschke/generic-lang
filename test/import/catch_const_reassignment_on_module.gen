@@ -1,0 +1,12 @@
+import "nested/fib.gen";
+
+# Reassigning a module const through the property syntax must deliver the
+# ConstReassignmentError to the catch block (the assigned value must NOT be
+# pushed over the in-flight exception).
+try {
+    fib.Z = 3;
+} catch ConstReassignmentError {
+    print("Caught ConstReassignmentError");  # expect: Caught ConstReassignmentError
+}
+
+print(fib.Z);  # expect: 1
