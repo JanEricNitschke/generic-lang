@@ -16,78 +16,140 @@ pub use host::{__invoke_plugin_fn, ArgValue, Host, Rooted, RustPluginFn};
 
 /// Exception-kind codes carried in [`FfiReturn::status`].
 ///
-/// `0` is reserved for "no exception". The nonzero codes duplicate the
-/// discriminants of the interpreter's `ExceptionKind` enum
+/// `0` is reserved for "no exception" and is deliberately not a variant.
+/// The discriminants duplicate the interpreter's `ExceptionKind` enum
 /// (`crates/generic-lang-lib/src/vm/exception_handling.rs`), which is the
 /// source of truth; a sync test in the interpreter crate guards the
 /// duplication. Unknown codes are treated as the base `Exception`.
-pub mod exception_code {
+///
+/// Over the FFI these travel as plain `u32` — convert with `as u32` /
+/// [`ExceptionCode::from_u32`].
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExceptionCode {
     /// The base exception class; also what runtime errors throw.
-    pub const EXCEPTION: u32 = 1;
-    pub const TYPE_ERROR: u32 = 2;
-    pub const VALUE_ERROR: u32 = 3;
-    pub const NAME_ERROR: u32 = 4;
-    pub const CONST_REASSIGNMENT_ERROR: u32 = 5;
-    pub const ATTRIBUTE_ERROR: u32 = 6;
-    pub const IMPORT_ERROR: u32 = 7;
-    pub const ASSERTION_ERROR: u32 = 8;
-    pub const IO_ERROR: u32 = 9;
-    pub const KEY_ERROR: u32 = 10;
-    pub const INDEX_ERROR: u32 = 11;
+    Exception = 1,
+    TypeError = 2,
+    ValueError = 3,
+    NameError = 4,
+    ConstReassignmentError = 5,
+    AttributeError = 6,
+    ImportError = 7,
+    AssertionError = 8,
+    IoError = 9,
+    KeyError = 10,
+    IndexError = 11,
 }
 
-/// Value-kind codes returned by [`HostApi::value_kind`].
+impl ExceptionCode {
+    /// Decode a nonzero [`FfiReturn::status`]. Unknown codes (including a
+    /// stray `0`, which callers should have handled as "no exception") map
+    /// to the base [`ExceptionCode::Exception`].
+    #[must_use]
+    pub const fn from_u32(code: u32) -> Self {
+        match code {
+            2 => Self::TypeError,
+            3 => Self::ValueError,
+            4 => Self::NameError,
+            5 => Self::ConstReassignmentError,
+            6 => Self::AttributeError,
+            7 => Self::ImportError,
+            8 => Self::AssertionError,
+            9 => Self::IoError,
+            10 => Self::KeyError,
+            11 => Self::IndexError,
+            _ => Self::Exception,
+        }
+    }
+}
+
+/// Value kinds returned by [`HostApi::value_kind`].
 ///
-/// A coverage test in the interpreter crate guards that every host `Value`
-/// maps to one of these.
-pub mod value_kind {
+/// Over the FFI these travel as plain `u32` — convert with `as u32` /
+/// [`ValueKind::from_u32`]. The host-side mapping (and the coverage test
+/// guarding that every interpreter value maps to one of these) lands with
+/// the feature-gated plugin module in the interpreter crate.
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueKind {
     /// The `nil` value.
-    pub const NIL: u32 = 0;
+    Nil = 0,
     /// A boolean.
-    pub const BOOL: u32 = 1;
+    Bool = 1,
     /// An integer that fits in an `i64` (`int_get` succeeds).
-    pub const INT: u32 = 2;
+    Int = 2,
     /// An integer that does not fit in an `i64` (`int_get` fails; use
     /// `value_display`/`value_str`).
-    pub const BIG_INT: u32 = 3;
+    BigInt = 3,
     /// A float.
-    pub const FLOAT: u32 = 4;
+    Float = 4,
     /// A rational number.
-    pub const RATIONAL: u32 = 5;
+    Rational = 5,
     /// A string (`string_get` succeeds).
-    pub const STRING: u32 = 6;
+    String = 6,
     /// A list (`list_len`/`list_get` succeed).
-    pub const LIST: u32 = 7;
+    List = 7,
     /// A tuple.
-    pub const TUPLE: u32 = 8;
+    Tuple = 8,
     /// A dict.
-    pub const DICT: u32 = 9;
+    Dict = 9,
     /// A set.
-    pub const SET: u32 = 10;
+    Set = 10,
     /// A range.
-    pub const RANGE: u32 = 11;
+    Range = 11,
     /// The `StopIteration` sentinel — what `__next__` returns when an
     /// iterator is exhausted.
-    pub const STOP_ITERATION: u32 = 12;
+    StopIteration = 12,
     /// A plain class instance (fields via `attr_get`/`attr_set`, methods
     /// via `invoke_method`).
-    pub const INSTANCE: u32 = 13;
+    Instance = 13,
     /// A class (instantiate via `call_value`).
-    pub const CLASS: u32 = 14;
+    Class = 14,
     /// A callable function value (closure, native function, or bound
     /// method) — use `call_value`.
-    pub const FUNCTION: u32 = 15;
+    Function = 15,
     /// A module.
-    pub const MODULE: u32 = 16;
+    Module = 16,
     /// An exception instance.
-    pub const EXCEPTION: u32 = 17;
+    Exception = 17,
     /// A generator.
-    pub const GENERATOR: u32 = 18;
+    Generator = 18,
     /// A list/tuple/range/template iterator (drive via `invoke_method`
     /// with `__next__`).
-    pub const ITERATOR: u32 = 19;
+    Iterator = 19,
     /// VM-internal values a plugin should never meaningfully receive.
-    pub const OTHER: u32 = 20;
+    Other = 20,
+}
+
+impl ValueKind {
+    /// Decode a raw kind code from [`HostApi::value_kind`]; unknown codes
+    /// map to [`ValueKind::Other`].
+    #[must_use]
+    pub const fn from_u32(code: u32) -> Self {
+        match code {
+            0 => Self::Nil,
+            1 => Self::Bool,
+            2 => Self::Int,
+            3 => Self::BigInt,
+            4 => Self::Float,
+            5 => Self::Rational,
+            6 => Self::String,
+            7 => Self::List,
+            8 => Self::Tuple,
+            9 => Self::Dict,
+            10 => Self::Set,
+            11 => Self::Range,
+            12 => Self::StopIteration,
+            13 => Self::Instance,
+            14 => Self::Class,
+            15 => Self::Function,
+            16 => Self::Module,
+            17 => Self::Exception,
+            18 => Self::Generator,
+            19 => Self::Iterator,
+            _ => Self::Other,
+        }
+    }
 }
 
 /// An error to be thrown into the generic VM as an exception.
@@ -100,11 +162,12 @@ pub mod value_kind {
 ///
 /// let type_error = PluginError::type_error("expected a number");
 /// let base: PluginError = "something went wrong".into();
-/// assert_eq!(base.kind, generic_lang_api::exception_code::EXCEPTION);
+/// assert_eq!(base.kind, generic_lang_api::ExceptionCode::Exception as u32);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PluginError {
-    /// An [`exception_code`] value.
+    /// An [`ExceptionCode`] discriminant, kept as raw `u32` so reserved
+    /// non-exception statuses can travel through unchanged.
     pub kind: u32,
     pub message: String,
 }
@@ -116,7 +179,7 @@ macro_rules! plugin_error_constructors {
             #[must_use]
             pub fn $name(message: impl Into<String>) -> Self {
                 Self {
-                    kind: exception_code::$code,
+                    kind: ExceptionCode::$code as u32,
                     message: message.into(),
                 }
             }
@@ -127,17 +190,17 @@ macro_rules! plugin_error_constructors {
 impl PluginError {
     plugin_error_constructors!(
         /// The base `Exception` class.
-        exception => EXCEPTION,
-        type_error => TYPE_ERROR,
-        value_error => VALUE_ERROR,
-        name_error => NAME_ERROR,
-        const_reassignment_error => CONST_REASSIGNMENT_ERROR,
-        attribute_error => ATTRIBUTE_ERROR,
-        import_error => IMPORT_ERROR,
-        assertion_error => ASSERTION_ERROR,
-        io_error => IO_ERROR,
-        key_error => KEY_ERROR,
-        index_error => INDEX_ERROR,
+        exception => Exception,
+        type_error => TypeError,
+        value_error => ValueError,
+        name_error => NameError,
+        const_reassignment_error => ConstReassignmentError,
+        attribute_error => AttributeError,
+        import_error => ImportError,
+        assertion_error => AssertionError,
+        io_error => IoError,
+        key_error => KeyError,
+        index_error => IndexError,
     );
 }
 
@@ -168,10 +231,57 @@ mod tests {
     #[test]
     fn string_error_defaults_to_base_exception() {
         let err: PluginError = String::from("boom").into();
-        assert_eq!(err.kind, exception_code::EXCEPTION);
+        assert_eq!(err.kind, ExceptionCode::Exception as u32);
         assert_eq!(
             PluginError::index_error("i").kind,
-            exception_code::INDEX_ERROR
+            ExceptionCode::IndexError as u32
         );
+    }
+
+    #[test]
+    fn code_round_trips() {
+        for code in [
+            ExceptionCode::Exception,
+            ExceptionCode::TypeError,
+            ExceptionCode::ValueError,
+            ExceptionCode::NameError,
+            ExceptionCode::ConstReassignmentError,
+            ExceptionCode::AttributeError,
+            ExceptionCode::ImportError,
+            ExceptionCode::AssertionError,
+            ExceptionCode::IoError,
+            ExceptionCode::KeyError,
+            ExceptionCode::IndexError,
+        ] {
+            assert_eq!(ExceptionCode::from_u32(code as u32), code);
+        }
+        assert_eq!(ExceptionCode::from_u32(999), ExceptionCode::Exception);
+
+        for kind in [
+            ValueKind::Nil,
+            ValueKind::Bool,
+            ValueKind::Int,
+            ValueKind::BigInt,
+            ValueKind::Float,
+            ValueKind::Rational,
+            ValueKind::String,
+            ValueKind::List,
+            ValueKind::Tuple,
+            ValueKind::Dict,
+            ValueKind::Set,
+            ValueKind::Range,
+            ValueKind::StopIteration,
+            ValueKind::Instance,
+            ValueKind::Class,
+            ValueKind::Function,
+            ValueKind::Module,
+            ValueKind::Exception,
+            ValueKind::Generator,
+            ValueKind::Iterator,
+            ValueKind::Other,
+        ] {
+            assert_eq!(ValueKind::from_u32(kind as u32), kind);
+        }
+        assert_eq!(ValueKind::from_u32(999), ValueKind::Other);
     }
 }

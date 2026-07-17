@@ -477,7 +477,7 @@ impl VM {
 #[cfg(test)]
 mod tests {
     use super::ExceptionKind;
-    use generic_lang_api::exception_code;
+    use generic_lang_api::ExceptionCode;
     use strum::IntoEnumIterator;
 
     /// `generic-lang-api` duplicates the `ExceptionKind` discriminants as
@@ -490,19 +490,19 @@ mod tests {
     fn exception_codes_match_api_crate() {
         for kind in ExceptionKind::iter() {
             let code = match kind {
-                ExceptionKind::Exception => exception_code::EXCEPTION,
-                ExceptionKind::TypeError => exception_code::TYPE_ERROR,
-                ExceptionKind::ValueError => exception_code::VALUE_ERROR,
-                ExceptionKind::NameError => exception_code::NAME_ERROR,
-                ExceptionKind::ConstReassignmentError => exception_code::CONST_REASSIGNMENT_ERROR,
-                ExceptionKind::AttributeError => exception_code::ATTRIBUTE_ERROR,
-                ExceptionKind::ImportError => exception_code::IMPORT_ERROR,
-                ExceptionKind::AssertionError => exception_code::ASSERTION_ERROR,
-                ExceptionKind::IoError => exception_code::IO_ERROR,
-                ExceptionKind::KeyError => exception_code::KEY_ERROR,
-                ExceptionKind::IndexError => exception_code::INDEX_ERROR,
+                ExceptionKind::Exception => ExceptionCode::Exception,
+                ExceptionKind::TypeError => ExceptionCode::TypeError,
+                ExceptionKind::ValueError => ExceptionCode::ValueError,
+                ExceptionKind::NameError => ExceptionCode::NameError,
+                ExceptionKind::ConstReassignmentError => ExceptionCode::ConstReassignmentError,
+                ExceptionKind::AttributeError => ExceptionCode::AttributeError,
+                ExceptionKind::ImportError => ExceptionCode::ImportError,
+                ExceptionKind::AssertionError => ExceptionCode::AssertionError,
+                ExceptionKind::IoError => ExceptionCode::IoError,
+                ExceptionKind::KeyError => ExceptionCode::KeyError,
+                ExceptionKind::IndexError => ExceptionCode::IndexError,
             };
-            assert_eq!(kind as u32, code, "mismatch for {kind:?}");
+            assert_eq!(kind as u32, code as u32, "mismatch for {kind:?}");
         }
     }
 }

@@ -15,37 +15,23 @@ const ModuleDesc *generic_plugin_init(void);
 """
 
 [export]
-# The crate exports no extern functions itself, so the ABI types must be
-# listed explicitly (they pull in everything they reference).
-include = ["HostApi", "ModuleDesc", "FunctionDesc", "PluginFn", "GenericValue", "FfiStr", "FfiReturn"]
+# The crate exports no extern functions itself, so the ABI types (and the
+# two code enums) must be listed explicitly (they pull in everything they
+# reference).
+include = ["HostApi", "ModuleDesc", "FunctionDesc", "PluginFn", "GenericValue", "FfiStr", "FfiReturn", "ExceptionCode", "ValueKind"]
 exclude = ["RustPluginFn"]
 
+# The code enums cross the FFI as plain u32 (see FfiReturn.status and
+# HostApi.value_kind); the C enum types below exist only to name the codes.
+# Constant names are derived per-variant from the renamed enum type, so new
+# variants get correct prefixed C names automatically.
 [export.rename]
-"EXCEPTION" = "GENERIC_EXCEPTION_CODE_EXCEPTION"
-"TYPE_ERROR" = "GENERIC_EXCEPTION_CODE_TYPE_ERROR"
-"VALUE_ERROR" = "GENERIC_EXCEPTION_CODE_VALUE_ERROR"
-"NAME_ERROR" = "GENERIC_EXCEPTION_CODE_NAME_ERROR"
-"CONST_REASSIGNMENT_ERROR" = "GENERIC_EXCEPTION_CODE_CONST_REASSIGNMENT_ERROR"
-"ATTRIBUTE_ERROR" = "GENERIC_EXCEPTION_CODE_ATTRIBUTE_ERROR"
-"IMPORT_ERROR" = "GENERIC_EXCEPTION_CODE_IMPORT_ERROR"
-"ASSERTION_ERROR" = "GENERIC_EXCEPTION_CODE_ASSERTION_ERROR"
-"IO_ERROR" = "GENERIC_EXCEPTION_CODE_IO_ERROR"
-"KEY_ERROR" = "GENERIC_EXCEPTION_CODE_KEY_ERROR"
-"INDEX_ERROR" = "GENERIC_EXCEPTION_CODE_INDEX_ERROR"
-"NIL" = "GENERIC_VALUE_KIND_NIL"
-"BOOL" = "GENERIC_VALUE_KIND_BOOL"
-"INT" = "GENERIC_VALUE_KIND_INT"
-"BIG_INT" = "GENERIC_VALUE_KIND_BIG_INT"
-"FLOAT" = "GENERIC_VALUE_KIND_FLOAT"
-"RATIONAL" = "GENERIC_VALUE_KIND_RATIONAL"
-"STRING" = "GENERIC_VALUE_KIND_STRING"
-"LIST" = "GENERIC_VALUE_KIND_LIST"
-"TUPLE" = "GENERIC_VALUE_KIND_TUPLE"
-"DICT" = "GENERIC_VALUE_KIND_DICT"
-"SET" = "GENERIC_VALUE_KIND_SET"
-"RANGE" = "GENERIC_VALUE_KIND_RANGE"
-"STOP_ITERATION" = "GENERIC_VALUE_KIND_STOP_ITERATION"
-"OTHER" = "GENERIC_VALUE_KIND_OTHER"
+"ExceptionCode" = "GenericExceptionCode"
+"ValueKind" = "GenericValueKind"
+
+[enum]
+prefix_with_name = true
+rename_variants = "ScreamingSnakeCase"
 
 [parse]
 parse_deps = false

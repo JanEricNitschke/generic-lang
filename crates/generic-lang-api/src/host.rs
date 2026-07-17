@@ -1,7 +1,7 @@
 //! Safe wrapper around the host vtable for Rust plugin authors.
 
 use crate::abi::{FfiReturn, FfiStr, GenericValue, HostApi};
-use crate::{PluginError, exception_code, value_kind};
+use crate::{ExceptionCode, PluginError, ValueKind};
 
 /// Safe access to the host VM for the duration of one plugin call.
 ///
@@ -60,37 +60,37 @@ impl<'a> Host<'a> {
 
     // --- inspect ---
 
-    /// The [`value_kind`] code of a value.
+    /// The [`ValueKind`] of a value.
     #[must_use]
-    pub fn kind(&self, value: GenericValue) -> u32 {
-        (self.api.value_kind)(self.api.ctx, value)
+    pub fn kind(&self, value: GenericValue) -> ValueKind {
+        ValueKind::from_u32((self.api.value_kind)(self.api.ctx, value))
     }
 
     /// Decode a value into a borrowed view.
     #[must_use]
     pub fn decode(&self, value: GenericValue) -> ArgValue<'_> {
         match self.kind(value) {
-            value_kind::NIL => ArgValue::Nil,
-            value_kind::BOOL => ArgValue::Bool(self.as_bool(value).unwrap_or_default()),
-            value_kind::INT => ArgValue::Int(self.as_int(value).unwrap_or_default()),
-            value_kind::BIG_INT => ArgValue::BigInt(value),
-            value_kind::FLOAT => ArgValue::Float(self.as_float(value).unwrap_or_default()),
-            value_kind::RATIONAL => ArgValue::Rational(value),
-            value_kind::STRING => ArgValue::Str(self.as_str(value).unwrap_or_default()),
-            value_kind::LIST => ArgValue::List(value),
-            value_kind::TUPLE => ArgValue::Tuple(value),
-            value_kind::DICT => ArgValue::Dict(value),
-            value_kind::SET => ArgValue::Set(value),
-            value_kind::RANGE => ArgValue::Range(value),
-            value_kind::STOP_ITERATION => ArgValue::StopIteration,
-            value_kind::INSTANCE => ArgValue::Instance(value),
-            value_kind::CLASS => ArgValue::Class(value),
-            value_kind::FUNCTION => ArgValue::Function(value),
-            value_kind::MODULE => ArgValue::Module(value),
-            value_kind::EXCEPTION => ArgValue::Exception(value),
-            value_kind::GENERATOR => ArgValue::Generator(value),
-            value_kind::ITERATOR => ArgValue::Iterator(value),
-            _ => ArgValue::Other(value),
+            ValueKind::Nil => ArgValue::Nil,
+            ValueKind::Bool => ArgValue::Bool(self.as_bool(value).unwrap_or_default()),
+            ValueKind::Int => ArgValue::Int(self.as_int(value).unwrap_or_default()),
+            ValueKind::BigInt => ArgValue::BigInt(value),
+            ValueKind::Float => ArgValue::Float(self.as_float(value).unwrap_or_default()),
+            ValueKind::Rational => ArgValue::Rational(value),
+            ValueKind::String => ArgValue::Str(self.as_str(value).unwrap_or_default()),
+            ValueKind::List => ArgValue::List(value),
+            ValueKind::Tuple => ArgValue::Tuple(value),
+            ValueKind::Dict => ArgValue::Dict(value),
+            ValueKind::Set => ArgValue::Set(value),
+            ValueKind::Range => ArgValue::Range(value),
+            ValueKind::StopIteration => ArgValue::StopIteration,
+            ValueKind::Instance => ArgValue::Instance(value),
+            ValueKind::Class => ArgValue::Class(value),
+            ValueKind::Function => ArgValue::Function(value),
+            ValueKind::Module => ArgValue::Module(value),
+            ValueKind::Exception => ArgValue::Exception(value),
+            ValueKind::Generator => ArgValue::Generator(value),
+            ValueKind::Iterator => ArgValue::Iterator(value),
+            ValueKind::Other => ArgValue::Other(value),
         }
     }
 
@@ -588,7 +588,7 @@ pub unsafe fn __invoke_plugin_fn(
 
 fn error_return(host: &Host, error: &PluginError) -> FfiReturn {
     let status = if error.kind == 0 {
-        exception_code::EXCEPTION
+        ExceptionCode::Exception as u32
     } else {
         error.kind
     };

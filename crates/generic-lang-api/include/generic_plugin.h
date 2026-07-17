@@ -18,134 +18,155 @@
 #define GENERIC_PLUGIN_ABI_VERSION 1
 
 /**
- * The base exception class; also what runtime errors throw.
+ * Exception-kind codes carried in [`FfiReturn::status`].
+ *
+ * `0` is reserved for "no exception" and is deliberately not a variant.
+ * The discriminants duplicate the interpreter's `ExceptionKind` enum
+ * (`crates/generic-lang-lib/src/vm/exception_handling.rs`), which is the
+ * source of truth; a sync test in the interpreter crate guards the
+ * duplication. Unknown codes are treated as the base `Exception`.
+ *
+ * Over the FFI these travel as plain `u32` — convert with `as u32` /
+ * [`ExceptionCode::from_u32`].
  */
-#define GENERIC_EXCEPTION_CODE_EXCEPTION 1
-
-#define GENERIC_EXCEPTION_CODE_TYPE_ERROR 2
-
-#define GENERIC_EXCEPTION_CODE_VALUE_ERROR 3
-
-#define GENERIC_EXCEPTION_CODE_NAME_ERROR 4
-
-#define GENERIC_EXCEPTION_CODE_CONST_REASSIGNMENT_ERROR 5
-
-#define GENERIC_EXCEPTION_CODE_ATTRIBUTE_ERROR 6
-
-#define GENERIC_EXCEPTION_CODE_IMPORT_ERROR 7
-
-#define GENERIC_EXCEPTION_CODE_ASSERTION_ERROR 8
-
-#define GENERIC_EXCEPTION_CODE_IO_ERROR 9
-
-#define GENERIC_EXCEPTION_CODE_KEY_ERROR 10
-
-#define GENERIC_EXCEPTION_CODE_INDEX_ERROR 11
+enum GenericExceptionCode
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The base exception class; also what runtime errors throw.
+   */
+  GENERIC_EXCEPTION_CODE_EXCEPTION = 1,
+  GENERIC_EXCEPTION_CODE_TYPE_ERROR = 2,
+  GENERIC_EXCEPTION_CODE_VALUE_ERROR = 3,
+  GENERIC_EXCEPTION_CODE_NAME_ERROR = 4,
+  GENERIC_EXCEPTION_CODE_CONST_REASSIGNMENT_ERROR = 5,
+  GENERIC_EXCEPTION_CODE_ATTRIBUTE_ERROR = 6,
+  GENERIC_EXCEPTION_CODE_IMPORT_ERROR = 7,
+  GENERIC_EXCEPTION_CODE_ASSERTION_ERROR = 8,
+  GENERIC_EXCEPTION_CODE_IO_ERROR = 9,
+  GENERIC_EXCEPTION_CODE_KEY_ERROR = 10,
+  GENERIC_EXCEPTION_CODE_INDEX_ERROR = 11,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum GenericExceptionCode GenericExceptionCode;
+#else
+typedef uint32_t GenericExceptionCode;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
 
 /**
- * The `nil` value.
+ * Value kinds returned by [`HostApi::value_kind`].
+ *
+ * Over the FFI these travel as plain `u32` — convert with `as u32` /
+ * [`ValueKind::from_u32`]. The host-side mapping (and the coverage test
+ * guarding that every interpreter value maps to one of these) lands with
+ * the feature-gated plugin module in the interpreter crate.
  */
-#define GENERIC_VALUE_KIND_NIL 0
-
-/**
- * A boolean.
- */
-#define GENERIC_VALUE_KIND_BOOL 1
-
-/**
- * An integer that fits in an `i64` (`int_get` succeeds).
- */
-#define GENERIC_VALUE_KIND_INT 2
-
-/**
- * An integer that does not fit in an `i64` (`int_get` fails; use
- * `value_display`/`value_str`).
- */
-#define GENERIC_VALUE_KIND_BIG_INT 3
-
-/**
- * A float.
- */
-#define GENERIC_VALUE_KIND_FLOAT 4
-
-/**
- * A rational number.
- */
-#define GENERIC_VALUE_KIND_RATIONAL 5
-
-/**
- * A string (`string_get` succeeds).
- */
-#define GENERIC_VALUE_KIND_STRING 6
-
-/**
- * A list (`list_len`/`list_get` succeed).
- */
-#define GENERIC_VALUE_KIND_LIST 7
-
-/**
- * A tuple.
- */
-#define GENERIC_VALUE_KIND_TUPLE 8
-
-/**
- * A dict.
- */
-#define GENERIC_VALUE_KIND_DICT 9
-
-/**
- * A set.
- */
-#define GENERIC_VALUE_KIND_SET 10
-
-/**
- * A range.
- */
-#define GENERIC_VALUE_KIND_RANGE 11
-
-/**
- * The `StopIteration` sentinel — what `__next__` returns when an
- * iterator is exhausted.
- */
-#define GENERIC_VALUE_KIND_STOP_ITERATION 12
-
-/**
- * A plain class instance (fields via `attr_get`/`attr_set`, methods
- * via `invoke_method`).
- */
-#define INSTANCE 13
-
-/**
- * A class (instantiate via `call_value`).
- */
-#define CLASS 14
-
-/**
- * A callable function value (closure, native function, or bound
- * method) — use `call_value`.
- */
-#define FUNCTION 15
-
-/**
- * A module.
- */
-#define MODULE 16
-
-/**
- * A generator.
- */
-#define GENERATOR 18
-
-/**
- * A list/tuple/range/template iterator (drive via `invoke_method`
- * with `__next__`).
- */
-#define ITERATOR 19
-
-/**
- * VM-internal values a plugin should never meaningfully receive.
- */
-#define GENERIC_VALUE_KIND_OTHER 20
+enum GenericValueKind
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The `nil` value.
+   */
+  GENERIC_VALUE_KIND_NIL = 0,
+  /**
+   * A boolean.
+   */
+  GENERIC_VALUE_KIND_BOOL = 1,
+  /**
+   * An integer that fits in an `i64` (`int_get` succeeds).
+   */
+  GENERIC_VALUE_KIND_INT = 2,
+  /**
+   * An integer that does not fit in an `i64` (`int_get` fails; use
+   * `value_display`/`value_str`).
+   */
+  GENERIC_VALUE_KIND_BIG_INT = 3,
+  /**
+   * A float.
+   */
+  GENERIC_VALUE_KIND_FLOAT = 4,
+  /**
+   * A rational number.
+   */
+  GENERIC_VALUE_KIND_RATIONAL = 5,
+  /**
+   * A string (`string_get` succeeds).
+   */
+  GENERIC_VALUE_KIND_STRING = 6,
+  /**
+   * A list (`list_len`/`list_get` succeed).
+   */
+  GENERIC_VALUE_KIND_LIST = 7,
+  /**
+   * A tuple.
+   */
+  GENERIC_VALUE_KIND_TUPLE = 8,
+  /**
+   * A dict.
+   */
+  GENERIC_VALUE_KIND_DICT = 9,
+  /**
+   * A set.
+   */
+  GENERIC_VALUE_KIND_SET = 10,
+  /**
+   * A range.
+   */
+  GENERIC_VALUE_KIND_RANGE = 11,
+  /**
+   * The `StopIteration` sentinel — what `__next__` returns when an
+   * iterator is exhausted.
+   */
+  GENERIC_VALUE_KIND_STOP_ITERATION = 12,
+  /**
+   * A plain class instance (fields via `attr_get`/`attr_set`, methods
+   * via `invoke_method`).
+   */
+  GENERIC_VALUE_KIND_INSTANCE = 13,
+  /**
+   * A class (instantiate via `call_value`).
+   */
+  GENERIC_VALUE_KIND_CLASS = 14,
+  /**
+   * A callable function value (closure, native function, or bound
+   * method) — use `call_value`.
+   */
+  GENERIC_VALUE_KIND_FUNCTION = 15,
+  /**
+   * A module.
+   */
+  GENERIC_VALUE_KIND_MODULE = 16,
+  /**
+   * An exception instance.
+   */
+  GENERIC_VALUE_KIND_EXCEPTION = 17,
+  /**
+   * A generator.
+   */
+  GENERIC_VALUE_KIND_GENERATOR = 18,
+  /**
+   * A list/tuple/range/template iterator (drive via `invoke_method`
+   * with `__next__`).
+   */
+  GENERIC_VALUE_KIND_ITERATOR = 19,
+  /**
+   * VM-internal values a plugin should never meaningfully receive.
+   */
+  GENERIC_VALUE_KIND_OTHER = 20,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum GenericValueKind GenericValueKind;
+#else
+typedef uint32_t GenericValueKind;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
 
 /**
  * An opaque generic runtime value.
@@ -179,7 +200,7 @@ typedef struct FfiStr {
  * Result of a plugin function or a re-entering host callback.
  *
  * `status == 0` means success and `value` is the result. Any other status
- * is an exception-kind code from [`exception_code`](crate::exception_code)
+ * is an exception-kind code from [`ExceptionCode`](crate::ExceptionCode)
  * and `value` is the message (a string value); unknown codes are treated as
  * the base `Exception`.
  */
@@ -202,7 +223,7 @@ typedef struct HostApi {
   uint32_t abi_version;
   void *ctx;
   /**
-   * Kind of the value, as a [`value_kind`](crate::value_kind) code.
+   * Kind of the value, as a [`ValueKind`](crate::ValueKind) code.
    */
   uint32_t (*value_kind)(void *ctx, struct GenericValue value);
   /**
