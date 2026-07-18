@@ -234,7 +234,7 @@ impl VM {
     /// - Bound methods:
     ///    - If the bound method is a standard one, it is scheduled for execution.
     ///    - If the bound method is a native one, it is executed directly.
-    fn call_value(&mut self, callee: Value, arg_count: u8) -> VmResult {
+    pub(super) fn call_value(&mut self, callee: Value, arg_count: u8) -> VmResult {
         let call_id = self.heap.string_id(&"__call__");
         match callee {
             Value::Instance(instance)

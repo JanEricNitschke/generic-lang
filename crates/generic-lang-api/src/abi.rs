@@ -5,6 +5,7 @@
 //! use the safe wrapper in the crate root instead of these types directly.
 
 use core::ffi::c_void;
+use core::mem::MaybeUninit;
 
 /// Version of the plugin ABI described by this crate.
 ///
@@ -16,23 +17,24 @@ pub const GENERIC_PLUGIN_ABI_VERSION: u32 = 1;
 ///
 /// This is the host's 32-byte `Value` bit-copied — discriminant and payload
 /// included. Plugins must never inspect or fabricate its bytes; values are
-/// handles to be passed back to host callbacks (the `PyObject*` / Lua-handle
-/// pattern). Use [`HostApi::value_kind`] to ask what a value holds.
+/// opaque handles to be passed back to host callbacks. Use
+/// [`HostApi::value_kind`] to ask what a value holds.
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct GenericValue {
-    /// Opaque storage — represented as `u64`s purely so the type has the
-    /// host `Value`'s 8-byte alignment in every language. Never inspect.
-    pub opaque: [u64; 4],
+    /// Opaque storage. The limbs are [`MaybeUninit`] because a host `Value`
+    /// does not initialize all 32 bytes — small enum variants leave the
+    /// rest unwritten — and bit-copying it in must not assert those bytes
+    /// are initialized (that would be undefined behavior). `u64` limbs give
+    /// the type the host `Value`'s 8-byte alignment; it renders as
+    /// `uint64_t opaque[4]` in C. Never inspect.
+    pub opaque: [MaybeUninit<u64>; 4],
 }
 
-impl GenericValue {
-    /// A zeroed value, used as a placeholder where a `GenericValue` slot is
-    /// required but its content is irrelevant (e.g. the `value` of an
-    /// [`FfiReturn`] that carries no result). Not a valid runtime value.
-    #[must_use]
-    pub const fn zeroed() -> Self {
-        Self { opaque: [0; 4] }
+impl core::fmt::Debug for GenericValue {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // The bytes are opaque — nothing meaningful to print.
+        f.debug_struct("GenericValue").finish_non_exhaustive()
     }
 }
 
@@ -60,12 +62,57 @@ impl FfiStr {
     }
 }
 
+/// Discriminator for [`FfiReturn::status`].
+///
+/// On the wire the status is a plain `u32` (an arbitrary integer from a
+/// plugin must not become a Rust enum); decode with
+/// [`FfiStatus::from_u32`], encode with `as u32`.
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FfiStatus {
+    /// Success — `value` is the call's result.
+    Ok = 0,
+    /// `value` is the exception *instance*.
+    ///
+    /// From a host callback this is the exception generic code raised,
+    /// handed over with full identity: returning the same value (the safe
+    /// wrapper's `?` does) re-raises exactly that exception — class,
+    /// fields, and original stack trace intact. To throw a fresh
+    /// exception, create the instance with [`HostApi::exception_new`] and
+    /// return it under this status; a caught one can be examined with
+    /// [`HostApi::is_instance`] against a class from
+    /// [`HostApi::builtin_get`].
+    Exception = 1,
+    /// A fatal host runtime error passing through the plugin.
+    ///
+    /// Not an exception — it is uncatchable by design. A re-entering host
+    /// callback returns it when the interpreter hit a fatal error; the
+    /// plugin must forward it unchanged (the safe wrapper's `?` does), and
+    /// the host re-raises it as a fatal error when the plugin call
+    /// returns. `value` carries no meaning for this status.
+    Fatal = u32::MAX,
+}
+
+impl FfiStatus {
+    /// Decode a raw status. `None` means the value is not a valid status —
+    /// a protocol violation the host surfaces as a plugin bug (there is no
+    /// safe fallback: `value` must not be interpreted at all).
+    #[must_use]
+    pub const fn from_u32(status: u32) -> Option<Self> {
+        match status {
+            0 => Some(Self::Ok),
+            1 => Some(Self::Exception),
+            u32::MAX => Some(Self::Fatal),
+            _ => None,
+        }
+    }
+}
+
 /// Result of a plugin function or a re-entering host callback.
 ///
-/// `status == 0` means success and `value` is the result. Any other status
-/// is an exception-kind code from [`ExceptionCode`](crate::ExceptionCode)
-/// and `value` is the message (a string value); unknown codes are treated as
-/// the base `Exception`.
+/// `value` is always present; `status` (a [`FfiStatus`] as `u32`) says
+/// what it is: the call's result, an exception instance to (re-)raise, or
+/// a meaningless placeholder accompanying a fatal pass-through error.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct FfiReturn {
@@ -128,6 +175,21 @@ unsafe impl Sync for ModuleDesc {}
 /// contract: across a re-entering callback, `root` every value you still
 /// hold and re-fetch any [`FfiStr`] afterward. All other callbacks never
 /// trigger collection.
+///
+/// Return conventions, decided solely by whether the payload forces an
+/// out-parameter:
+/// - A payload the caller must receive as something other than a
+///   [`GenericValue`] — a raw machine scalar (`bool`, `i64`, `f64`,
+///   `usize`) or a borrowed [`FfiStr`] — cannot ride in an [`FfiReturn`]
+///   (whose payload is a [`GenericValue`]), so it travels through an
+///   out-parameter and the callback returns a plain `bool` — `true` on
+///   success, `false` on the sole "wrong kind" failure. These carry no
+///   exception.
+/// - Everything else — payload is a [`GenericValue`], or there is no
+///   payload — returns [`FfiReturn`], carrying a real exception instance on
+///   failure whose class and message mirror what the equivalent generic
+///   operation would throw.
+/// - Infallible callbacks return their value directly.
 #[repr(C)]
 pub struct HostApi {
     pub abi_version: u32,
@@ -138,36 +200,40 @@ pub struct HostApi {
     pub value_kind: extern "C" fn(ctx: *mut c_void, value: GenericValue) -> u32,
     /// `false` if the value is not a bool.
     pub bool_get: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut bool) -> bool,
-    /// `false` if the value is not an integer or does not fit in an `i64`
-    /// (big integers; fall back to `value_display`).
+    /// Read an integer into `out`; `false` if the value is not an integer
+    /// or does not fit in an `i64` (big integers — fall back to
+    /// `value_display`).
     pub int_get: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut i64) -> bool,
     /// `false` if the value is not a float.
     pub float_get: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut f64) -> bool,
-    /// The interned bytes of a string value; [`FfiStr::null`] if the value
-    /// is not a string. Valid until the next re-entering callback.
-    pub string_get: extern "C" fn(ctx: *mut c_void, value: GenericValue) -> FfiStr,
+    /// Read the interned bytes of a string value into `out` (valid until
+    /// the next re-entering callback); `false` if the value is not a
+    /// string.
+    pub string_get: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut FfiStr) -> bool,
     /// `false` if the value is not a list.
     pub list_len: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool,
-    /// `false` if the value is not a list or the index is out of bounds.
-    pub list_get: extern "C" fn(
-        ctx: *mut c_void,
-        value: GenericValue,
-        index: usize,
-        out: *mut GenericValue,
-    ) -> bool,
+    /// The element at `index`. `TypeError` if the value is not a list;
+    /// `IndexError` if the index is out of bounds.
+    pub list_get: extern "C" fn(ctx: *mut c_void, value: GenericValue, index: usize) -> FfiReturn,
     /// `false` if the value is not a tuple.
     pub tuple_len: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool,
-    /// `false` if the value is not a tuple or the index is out of bounds.
-    pub tuple_get: extern "C" fn(
-        ctx: *mut c_void,
-        value: GenericValue,
-        index: usize,
-        out: *mut GenericValue,
-    ) -> bool,
+    /// The element at `index`. `TypeError` if the value is not a tuple;
+    /// `IndexError` if the index is out of bounds.
+    pub tuple_get: extern "C" fn(ctx: *mut c_void, value: GenericValue, index: usize) -> FfiReturn,
     /// `false` if the value is not a dict.
     pub dict_len: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool,
     /// `false` if the value is not a set.
     pub set_len: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool,
+    /// Look up a builtin global by name (exception classes like
+    /// `"TypeError"`, native classes, builtin functions). `NameError` if
+    /// absent; `TypeError` if the name is invalid UTF-8.
+    pub builtin_get: extern "C" fn(ctx: *mut c_void, name: FfiStr) -> FfiReturn,
+    /// Whether `value` is an instance of `of_class` or of a subclass of it
+    /// (a bool value on success) — the exact semantics of the `isinstance`
+    /// builtin, value-type proxy classes included. `TypeError` if
+    /// `of_class` is not a class.
+    pub is_instance:
+        extern "C" fn(ctx: *mut c_void, value: GenericValue, of_class: GenericValue) -> FfiReturn,
 
     // --- attributes (never re-enter; generic fields are plain map entries) ---
     /// A field of an instance; `AttributeError` if absent, `TypeError` if
@@ -182,34 +248,43 @@ pub struct HostApi {
         name: FfiStr,
         value: GenericValue,
     ) -> FfiReturn,
-    /// Whether an instance has a field; `false` (the return, not `out`) if
-    /// the receiver is not an instance.
-    pub attr_has: extern "C" fn(
-        ctx: *mut c_void,
-        receiver: GenericValue,
-        name: FfiStr,
-        out: *mut bool,
-    ) -> bool,
+    /// Whether an instance has a field (a bool value on success).
+    /// `TypeError` if the receiver is not an instance or the name is
+    /// invalid UTF-8.
+    pub attr_has:
+        extern "C" fn(ctx: *mut c_void, receiver: GenericValue, name: FfiStr) -> FfiReturn,
 
     // --- construct (never re-enter) ---
     pub nil_new: extern "C" fn(ctx: *mut c_void) -> GenericValue,
     pub bool_new: extern "C" fn(ctx: *mut c_void, value: bool) -> GenericValue,
     pub int_new: extern "C" fn(ctx: *mut c_void, value: i64) -> GenericValue,
     pub float_new: extern "C" fn(ctx: *mut c_void, value: f64) -> GenericValue,
-    /// Interns the given UTF-8 bytes; `false` on invalid UTF-8.
-    pub string_new: extern "C" fn(ctx: *mut c_void, value: FfiStr, out: *mut GenericValue) -> bool,
+    /// Interns the given UTF-8 bytes into a string value; `ValueError` on
+    /// invalid UTF-8.
+    pub string_new: extern "C" fn(ctx: *mut c_void, value: FfiStr) -> FfiReturn,
     /// A new, empty list.
     pub list_new: extern "C" fn(ctx: *mut c_void) -> GenericValue,
-    /// `false` if the target is not a list.
-    pub list_push: extern "C" fn(ctx: *mut c_void, list: GenericValue, item: GenericValue) -> bool,
-    /// Replace the element at an index; `false` if the target is not a list
-    /// or the index is out of bounds.
+    /// Append to a list (the ok value is nil); `TypeError` if the target is
+    /// not a list.
+    pub list_push:
+        extern "C" fn(ctx: *mut c_void, list: GenericValue, item: GenericValue) -> FfiReturn,
+    /// Replace the element at an index (the ok value is nil). `TypeError`
+    /// if the target is not a list; `IndexError` if the index is out of
+    /// bounds.
     pub list_set: extern "C" fn(
         ctx: *mut c_void,
         list: GenericValue,
         index: usize,
         value: GenericValue,
-    ) -> bool,
+    ) -> FfiReturn,
+    /// A new exception instance of `of_class` carrying `message`.
+    /// `TypeError` if `of_class` is not a class deriving from `Exception`
+    /// or the message is invalid UTF-8. Sets the message directly,
+    /// bypassing the class's `__init__` — exactly like the VM's own throw;
+    /// use `call_value` on the class for full construction semantics.
+    /// Return the instance under [`FfiStatus::Exception`] to throw it.
+    pub exception_new:
+        extern "C" fn(ctx: *mut c_void, of_class: GenericValue, message: FfiStr) -> FfiReturn,
 
     // --- display (never re-enters) ---
     /// The raw string representation of any value, as a new string value.

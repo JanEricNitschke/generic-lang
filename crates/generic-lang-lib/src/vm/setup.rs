@@ -56,6 +56,8 @@ impl VM {
             name: name_id,
             arity,
             fun,
+            #[cfg(feature = "plugins")]
+            plugin_fn: None,
         });
         self.builtins.insert(
             name_id,

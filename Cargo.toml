@@ -14,7 +14,11 @@ keywords   = ["programming-language", "generic"]
 categories = ["parser-implementations", "compilers"]
 
 [workspace.dependencies]
-generic-lang-lib = { version = "2.1.0", path = "crates/generic-lang-lib" }
+# default-features off so dependents (the bin) control the lib's features
+# explicitly — that is what makes `--no-default-features` builds of the
+# binary actually disable plugins.
+generic-lang-lib = { version = "2.1.0", path = "crates/generic-lang-lib", default-features = false }
+generic-lang-api = { version = "0.1.0", path = "crates/generic-lang-api" }
 
 clap         = { version = "4.6.1", features = ["derive"] }
 convert_case = "0.11.0"
@@ -23,6 +27,7 @@ derive_more  = { version = "2.1.1", features = ["from", "not"] }
 hashbrown    = "0.17.1"
 humansize    = "2.1.3"
 include_dir  = "0.7.4"
+libloading   = "0.9.0"
 num-bigint   = { version = "0.4.6", features = ["rand"] }
 num-traits   = "0.2.19"
 num_enum     = "0.7.6"

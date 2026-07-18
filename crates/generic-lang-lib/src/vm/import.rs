@@ -2,12 +2,14 @@ use super::{Global, VM};
 use crate::vm::ExceptionKind::ImportError;
 
 use path_slash::PathBufExt;
+#[cfg(not(feature = "plugins"))]
+use std::path::Path;
 use std::path::PathBuf;
 
 use crate::{
     config::GENERIC_STDLIB_DIR,
     heap::StringId,
-    value::{Closure, Module, ModuleContents, NativeFunction},
+    value::{Closure, Module, ModuleContents, NativeFunction, Value},
     vm::errors::VmResult,
 };
 
@@ -65,6 +67,20 @@ impl VM {
                 alias,
                 local_import,
             )?;
+        } else if let Some(plugin_result) = self.try_import_plugin(
+            &file_path,
+            name_id,
+            names_to_import.as_deref(),
+            alias,
+            local_import,
+        ) {
+            // Native plugin next to the resolved import path — deliberately
+            // shadows stdlib modules. The feature gate lives on
+            // `try_import_plugin` itself (a `#[cfg]` cannot sit on an
+            // `else if` arm): with the `plugins` feature off this calls the
+            // inlined always-`None` stub at the bottom of this file, so the
+            // arm folds away entirely.
+            plugin_result?;
         } else if let Some(stdlib_file) = GENERIC_STDLIB_DIR.get_file(format!("{name}.gen")) {
             // stdlib generic module from embedded directory - no circular import check needed
             // since we have full control of stdlib modules
@@ -85,7 +101,7 @@ impl VM {
                 file_path,
                 alias,
                 &stdlib_functions,
-                names_to_import,
+                names_to_import.as_deref(),
                 local_import,
             )?;
         } else {
@@ -98,49 +114,38 @@ impl VM {
         Ok(None)
     }
 
-    /// Import a rust native stdlib module.
-    fn import_rust_stdlib(
+    /// Build a native module from its `(name, value)` exports and install
+    /// it into the current scope: honor a `from`-import (move the named
+    /// globals in and drop the module), an alias, and local imports. Shared
+    /// by the rust-stdlib and plugin importers, which differ only in how
+    /// each export's `NativeFunction` is constructed.
+    pub(super) fn install_native_module(
         &mut self,
-        string_id: StringId,
+        name_id: StringId,
         file_path: PathBuf,
         alias: Option<StringId>,
-        stdlib_functions: &ModuleContents,
-        names_to_import: Option<Vec<StringId>>,
+        exports: Vec<(StringId, Value)>,
+        names_to_import: Option<&[StringId]>,
         local_import: bool,
     ) -> VmResult {
-        let mut module = Module::new(
-            string_id,
-            file_path,
-            None,
-            alias.map_or(string_id, |alias| alias),
-            local_import,
-        );
-        for (name, arity, fun) in stdlib_functions {
-            let name_id = self.heap.string_id(name);
-            let value = self.heap.add_native_function(NativeFunction {
-                name: name_id,
-                arity,
-                fun: *fun,
-            });
+        let alias = alias.unwrap_or(name_id);
+        let mut module = Module::new(name_id, file_path, None, alias, local_import);
+        for (name, value) in exports {
             module.globals.insert(
-                name_id,
+                name,
                 Global {
                     value,
                     mutable: false,
                 },
             );
         }
-        // Stdlib rust module
-        // Add all the functions to the modules globals
-        // If we only want to import some functions then we just move them
-        // from the new module to the current globals, the module then gets dropped.
         if let Some(names_to_import) = names_to_import {
             for name in names_to_import {
-                if let Some(global) = module.globals.remove(&name) {
+                if let Some(global) = module.globals.remove(name) {
                     if local_import {
                         self.stack_push(global.value);
                     } else {
-                        self.globals_mut().insert(name, global);
+                        self.globals_mut().insert(*name, global);
                     }
                 } else {
                     let message = format!(
@@ -151,13 +156,12 @@ impl VM {
                 }
             }
         } else {
-            // Otherwise we add the whole module to the current globals.
             let module_id = self.heap.add_module(module);
             if local_import {
                 self.stack_push(module_id);
             } else {
                 self.globals_mut().insert(
-                    string_id,
+                    alias,
                     Global {
                         value: module_id,
                         mutable: true,
@@ -166,6 +170,40 @@ impl VM {
             }
         }
         Ok(None)
+    }
+
+    /// Import a rust native stdlib module.
+    fn import_rust_stdlib(
+        &mut self,
+        string_id: StringId,
+        file_path: PathBuf,
+        alias: Option<StringId>,
+        stdlib_functions: &ModuleContents,
+        names_to_import: Option<&[StringId]>,
+        local_import: bool,
+    ) -> VmResult {
+        let exports = stdlib_functions
+            .iter()
+            .map(|(name, arity, fun)| {
+                let name_id = self.heap.string_id(name);
+                let value = self.heap.add_native_function(NativeFunction {
+                    name: name_id,
+                    arity,
+                    fun: *fun,
+                    #[cfg(feature = "plugins")]
+                    plugin_fn: None,
+                });
+                (name_id, value)
+            })
+            .collect();
+        self.install_native_module(
+            string_id,
+            file_path,
+            alias,
+            exports,
+            names_to_import,
+            local_import,
+        )
     }
 
     /// Import a generic module.
@@ -229,5 +267,29 @@ impl VM {
             Ok(file_path) => file_path,
             Err(_) => file_path,
         }
+    }
+
+    /// Import fallback arm 2 when plugins are disabled: never matches, so
+    /// the chain in `import_file` falls through to the stdlib arms
+    /// untouched. The real implementation lives in `vm/plugins/` (whose
+    /// `mod` declaration carries the feature gate).
+    #[cfg(not(feature = "plugins"))]
+    #[inline]
+    #[allow(
+        clippy::unnecessary_wraps,
+        clippy::unused_self,
+        // The signature must match the feature-gated implementation, which
+        // needs `&mut self`.
+        clippy::needless_pass_by_ref_mut
+    )]
+    pub(crate) fn try_import_plugin(
+        &mut self,
+        _file_path: &Path,
+        _name_id: StringId,
+        _names_to_import: Option<&[StringId]>,
+        _alias: Option<StringId>,
+        _local_import: bool,
+    ) -> Option<VmResult> {
+        None
     }
 }

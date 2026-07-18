@@ -5,9 +5,11 @@
 //! this library into the `generic` binary.
 
 // The core interpreter contains no unsafe code; all FFI unsafety lives in
-// the plugin machinery. (The feature-gated plugin module will relax this to
-// a scoped allow when it lands.)
-#![forbid(unsafe_code)]
+// the plugin machinery (`vm::plugins`, which scopes its own allow). With
+// the feature off the crate forbids unsafe outright; with it on, the lint
+// is deny so the plugin module can opt out locally.
+#![cfg_attr(not(feature = "plugins"), forbid(unsafe_code))]
+#![cfg_attr(feature = "plugins", deny(unsafe_code))]
 #![allow(clippy::wrong_self_convention)]
 #![allow(clippy::missing_const_for_fn)]
 #![allow(clippy::option_if_let_else)]

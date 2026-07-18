@@ -9,59 +9,10 @@ mod export;
 mod host;
 
 pub use abi::{
-    FfiReturn, FfiStr, FunctionDesc, GENERIC_PLUGIN_ABI_VERSION, GenericValue, HostApi, ModuleDesc,
-    PluginFn,
+    FfiReturn, FfiStatus, FfiStr, FunctionDesc, GENERIC_PLUGIN_ABI_VERSION, GenericValue, HostApi,
+    ModuleDesc, PluginFn,
 };
 pub use host::{__invoke_plugin_fn, ArgValue, Host, Rooted, RustPluginFn};
-
-/// Exception-kind codes carried in [`FfiReturn::status`].
-///
-/// `0` is reserved for "no exception" and is deliberately not a variant.
-/// The discriminants duplicate the interpreter's `ExceptionKind` enum
-/// (`crates/generic-lang-lib/src/vm/exception_handling.rs`), which is the
-/// source of truth; a sync test in the interpreter crate guards the
-/// duplication. Unknown codes are treated as the base `Exception`.
-///
-/// Over the FFI these travel as plain `u32` — convert with `as u32` /
-/// [`ExceptionCode::from_u32`].
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExceptionCode {
-    /// The base exception class; also what runtime errors throw.
-    Exception = 1,
-    TypeError = 2,
-    ValueError = 3,
-    NameError = 4,
-    ConstReassignmentError = 5,
-    AttributeError = 6,
-    ImportError = 7,
-    AssertionError = 8,
-    IoError = 9,
-    KeyError = 10,
-    IndexError = 11,
-}
-
-impl ExceptionCode {
-    /// Decode a nonzero [`FfiReturn::status`]. Unknown codes (including a
-    /// stray `0`, which callers should have handled as "no exception") map
-    /// to the base [`ExceptionCode::Exception`].
-    #[must_use]
-    pub const fn from_u32(code: u32) -> Self {
-        match code {
-            2 => Self::TypeError,
-            3 => Self::ValueError,
-            4 => Self::NameError,
-            5 => Self::ConstReassignmentError,
-            6 => Self::AttributeError,
-            7 => Self::ImportError,
-            8 => Self::AssertionError,
-            9 => Self::IoError,
-            10 => Self::KeyError,
-            11 => Self::IndexError,
-            _ => Self::Exception,
-        }
-    }
-}
 
 /// Value kinds returned by [`HostApi::value_kind`].
 ///
@@ -152,68 +103,38 @@ impl ValueKind {
     }
 }
 
-/// An error to be thrown into the generic VM as an exception.
+/// The error side of a plugin function: what should reach the generic VM
+/// when the function does not return normally.
 ///
-/// Construct one with the typed constructors, or convert from a plain
-/// string/`String` (which throws the base `Exception`):
+/// An exact mirror of the two non-ok wire statuses
+/// ([`FfiStatus::Exception`] / [`FfiStatus::Fatal`]).
 ///
+/// Failed re-entering host calls hand back
+/// [`PluginError::Exception`] (the raised exception *instance*) or
+/// [`PluginError::Fatal`]; propagating them with `?` re-raises the
+/// exception with full identity — class, fields, and original stack trace
+/// — or forwards the fatal error, respectively. To throw a fresh
+/// exception, use the typed constructors on [`Host`]
+/// (`host.type_error("…")`, …), which create the instance eagerly; for
+/// non-builtin classes, build the instance with
+/// [`Host::make_exception`] (or by calling the class) and wrap it:
+///
+/// ```ignore
+/// fn half(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
+///     let Some(n) = host.as_int(args[0]) else {
+///         return Err(host.type_error("half expects an int"));
+///     };
+///     Ok(host.make_int(n / 2))
+/// }
 /// ```
-/// use generic_lang_api::PluginError;
-///
-/// let type_error = PluginError::type_error("expected a number");
-/// let base: PluginError = "something went wrong".into();
-/// assert_eq!(base.kind, generic_lang_api::ExceptionCode::Exception as u32);
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PluginError {
-    /// An [`ExceptionCode`] discriminant, kept as raw `u32` so reserved
-    /// non-exception statuses can travel through unchanged.
-    pub kind: u32,
-    pub message: String,
-}
-
-macro_rules! plugin_error_constructors {
-    ($($(#[$doc:meta])* $name:ident => $code:ident),* $(,)?) => {
-        $(
-            $(#[$doc])*
-            #[must_use]
-            pub fn $name(message: impl Into<String>) -> Self {
-                Self {
-                    kind: ExceptionCode::$code as u32,
-                    message: message.into(),
-                }
-            }
-        )*
-    };
-}
-
-impl PluginError {
-    plugin_error_constructors!(
-        /// The base `Exception` class.
-        exception => Exception,
-        type_error => TypeError,
-        value_error => ValueError,
-        name_error => NameError,
-        const_reassignment_error => ConstReassignmentError,
-        attribute_error => AttributeError,
-        import_error => ImportError,
-        assertion_error => AssertionError,
-        io_error => IoError,
-        key_error => KeyError,
-        index_error => IndexError,
-    );
-}
-
-impl From<String> for PluginError {
-    fn from(message: String) -> Self {
-        Self::exception(message)
-    }
-}
-
-impl From<&str> for PluginError {
-    fn from(message: &str) -> Self {
-        Self::exception(message)
-    }
+#[derive(Debug, Clone, Copy)]
+pub enum PluginError {
+    /// An exception instance — freshly created, or caught from a
+    /// re-entering host call — to be (re-)raised.
+    Exception(GenericValue),
+    /// A fatal host error passing through. Only ever forwarded; plugins
+    /// must not fabricate it.
+    Fatal,
 }
 
 #[cfg(test)]
@@ -229,34 +150,7 @@ mod tests {
     }
 
     #[test]
-    fn string_error_defaults_to_base_exception() {
-        let err: PluginError = String::from("boom").into();
-        assert_eq!(err.kind, ExceptionCode::Exception as u32);
-        assert_eq!(
-            PluginError::index_error("i").kind,
-            ExceptionCode::IndexError as u32
-        );
-    }
-
-    #[test]
-    fn code_round_trips() {
-        for code in [
-            ExceptionCode::Exception,
-            ExceptionCode::TypeError,
-            ExceptionCode::ValueError,
-            ExceptionCode::NameError,
-            ExceptionCode::ConstReassignmentError,
-            ExceptionCode::AttributeError,
-            ExceptionCode::ImportError,
-            ExceptionCode::AssertionError,
-            ExceptionCode::IoError,
-            ExceptionCode::KeyError,
-            ExceptionCode::IndexError,
-        ] {
-            assert_eq!(ExceptionCode::from_u32(code as u32), code);
-        }
-        assert_eq!(ExceptionCode::from_u32(999), ExceptionCode::Exception);
-
+    fn kind_round_trips() {
         for kind in [
             ValueKind::Nil,
             ValueKind::Bool,

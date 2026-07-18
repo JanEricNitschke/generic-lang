@@ -18,42 +18,50 @@
 #define GENERIC_PLUGIN_ABI_VERSION 1
 
 /**
- * Exception-kind codes carried in [`FfiReturn::status`].
+ * Discriminator for [`FfiReturn::status`].
  *
- * `0` is reserved for "no exception" and is deliberately not a variant.
- * The discriminants duplicate the interpreter's `ExceptionKind` enum
- * (`crates/generic-lang-lib/src/vm/exception_handling.rs`), which is the
- * source of truth; a sync test in the interpreter crate guards the
- * duplication. Unknown codes are treated as the base `Exception`.
- *
- * Over the FFI these travel as plain `u32` — convert with `as u32` /
- * [`ExceptionCode::from_u32`].
+ * On the wire the status is a plain `u32` (an arbitrary integer from a
+ * plugin must not become a Rust enum); decode with
+ * [`FfiStatus::from_u32`], encode with `as u32`.
  */
-enum GenericExceptionCode
+enum GenericFfiStatus
 #if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
   : uint32_t
 #endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
   /**
-   * The base exception class; also what runtime errors throw.
+   * Success — `value` is the call's result.
    */
-  GENERIC_EXCEPTION_CODE_EXCEPTION = 1,
-  GENERIC_EXCEPTION_CODE_TYPE_ERROR = 2,
-  GENERIC_EXCEPTION_CODE_VALUE_ERROR = 3,
-  GENERIC_EXCEPTION_CODE_NAME_ERROR = 4,
-  GENERIC_EXCEPTION_CODE_CONST_REASSIGNMENT_ERROR = 5,
-  GENERIC_EXCEPTION_CODE_ATTRIBUTE_ERROR = 6,
-  GENERIC_EXCEPTION_CODE_IMPORT_ERROR = 7,
-  GENERIC_EXCEPTION_CODE_ASSERTION_ERROR = 8,
-  GENERIC_EXCEPTION_CODE_IO_ERROR = 9,
-  GENERIC_EXCEPTION_CODE_KEY_ERROR = 10,
-  GENERIC_EXCEPTION_CODE_INDEX_ERROR = 11,
+  GENERIC_FFI_STATUS_OK = 0,
+  /**
+   * `value` is the exception *instance*.
+   *
+   * From a host callback this is the exception generic code raised,
+   * handed over with full identity: returning the same value (the safe
+   * wrapper's `?` does) re-raises exactly that exception — class,
+   * fields, and original stack trace intact. To throw a fresh
+   * exception, create the instance with [`HostApi::exception_new`] and
+   * return it under this status; a caught one can be examined with
+   * [`HostApi::is_instance`] against a class from
+   * [`HostApi::builtin_get`].
+   */
+  GENERIC_FFI_STATUS_EXCEPTION = 1,
+  /**
+   * A fatal host runtime error passing through the plugin.
+   *
+   * Not an exception — it is uncatchable by design. A re-entering host
+   * callback returns it when the interpreter hit a fatal error; the
+   * plugin must forward it unchanged (the safe wrapper's `?` does), and
+   * the host re-raises it as a fatal error when the plugin call
+   * returns. `value` carries no meaning for this status.
+   */
+  GENERIC_FFI_STATUS_FATAL = UINT32_MAX,
 };
 #ifndef __cplusplus
 #if __STDC_VERSION__ >= 202311L
-typedef enum GenericExceptionCode GenericExceptionCode;
+typedef enum GenericFfiStatus GenericFfiStatus;
 #else
-typedef uint32_t GenericExceptionCode;
+typedef uint32_t GenericFfiStatus;
 #endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
@@ -173,13 +181,17 @@ typedef uint32_t GenericValueKind;
  *
  * This is the host's 32-byte `Value` bit-copied — discriminant and payload
  * included. Plugins must never inspect or fabricate its bytes; values are
- * handles to be passed back to host callbacks (the `PyObject*` / Lua-handle
- * pattern). Use [`HostApi::value_kind`] to ask what a value holds.
+ * opaque handles to be passed back to host callbacks. Use
+ * [`HostApi::value_kind`] to ask what a value holds.
  */
 typedef struct GenericValue {
   /**
-   * Opaque storage — represented as `u64`s purely so the type has the
-   * host `Value`'s 8-byte alignment in every language. Never inspect.
+   * Opaque storage. The limbs are [`MaybeUninit`] because a host `Value`
+   * does not initialize all 32 bytes — small enum variants leave the
+   * rest unwritten — and bit-copying it in must not assert those bytes
+   * are initialized (that would be undefined behavior). `u64` limbs give
+   * the type the host `Value`'s 8-byte alignment; it renders as
+   * `uint64_t opaque[4]` in C. Never inspect.
    */
   uint64_t opaque[4];
 } GenericValue;
@@ -199,10 +211,9 @@ typedef struct FfiStr {
 /**
  * Result of a plugin function or a re-entering host callback.
  *
- * `status == 0` means success and `value` is the result. Any other status
- * is an exception-kind code from [`ExceptionCode`](crate::ExceptionCode)
- * and `value` is the message (a string value); unknown codes are treated as
- * the base `Exception`.
+ * `value` is always present; `status` (a [`FfiStatus`] as `u32`) says
+ * what it is: the call's result, an exception instance to (re-)raise, or
+ * a meaningless placeholder accompanying a fatal pass-through error.
  */
 typedef struct FfiReturn {
   uint32_t status;
@@ -218,6 +229,21 @@ typedef struct FfiReturn {
  * contract: across a re-entering callback, `root` every value you still
  * hold and re-fetch any [`FfiStr`] afterward. All other callbacks never
  * trigger collection.
+ *
+ * Return conventions, decided solely by whether the payload forces an
+ * out-parameter:
+ * - A payload the caller must receive as something other than a
+ *   [`GenericValue`] — a raw machine scalar (`bool`, `i64`, `f64`,
+ *   `usize`) or a borrowed [`FfiStr`] — cannot ride in an [`FfiReturn`]
+ *   (whose payload is a [`GenericValue`]), so it travels through an
+ *   out-parameter and the callback returns a plain `bool` — `true` on
+ *   success, `false` on the sole "wrong kind" failure. These carry no
+ *   exception.
+ * - Everything else — payload is a [`GenericValue`], or there is no
+ *   payload — returns [`FfiReturn`], carrying a real exception instance on
+ *   failure whose class and message mirror what the equivalent generic
+ *   operation would throw.
+ * - Infallible callbacks return their value directly.
  */
 typedef struct HostApi {
   uint32_t abi_version;
@@ -231,8 +257,9 @@ typedef struct HostApi {
    */
   bool (*bool_get)(void *ctx, struct GenericValue value, bool *out);
   /**
-   * `false` if the value is not an integer or does not fit in an `i64`
-   * (big integers; fall back to `value_display`).
+   * Read an integer into `out`; `false` if the value is not an integer
+   * or does not fit in an `i64` (big integers — fall back to
+   * `value_display`).
    */
   bool (*int_get)(void *ctx, struct GenericValue value, int64_t *out);
   /**
@@ -240,26 +267,29 @@ typedef struct HostApi {
    */
   bool (*float_get)(void *ctx, struct GenericValue value, double *out);
   /**
-   * The interned bytes of a string value; [`FfiStr::null`] if the value
-   * is not a string. Valid until the next re-entering callback.
+   * Read the interned bytes of a string value into `out` (valid until
+   * the next re-entering callback); `false` if the value is not a
+   * string.
    */
-  struct FfiStr (*string_get)(void *ctx, struct GenericValue value);
+  bool (*string_get)(void *ctx, struct GenericValue value, struct FfiStr *out);
   /**
    * `false` if the value is not a list.
    */
   bool (*list_len)(void *ctx, struct GenericValue value, size_t *out);
   /**
-   * `false` if the value is not a list or the index is out of bounds.
+   * The element at `index`. `TypeError` if the value is not a list;
+   * `IndexError` if the index is out of bounds.
    */
-  bool (*list_get)(void *ctx, struct GenericValue value, size_t index, struct GenericValue *out);
+  struct FfiReturn (*list_get)(void *ctx, struct GenericValue value, size_t index);
   /**
    * `false` if the value is not a tuple.
    */
   bool (*tuple_len)(void *ctx, struct GenericValue value, size_t *out);
   /**
-   * `false` if the value is not a tuple or the index is out of bounds.
+   * The element at `index`. `TypeError` if the value is not a tuple;
+   * `IndexError` if the index is out of bounds.
    */
-  bool (*tuple_get)(void *ctx, struct GenericValue value, size_t index, struct GenericValue *out);
+  struct FfiReturn (*tuple_get)(void *ctx, struct GenericValue value, size_t index);
   /**
    * `false` if the value is not a dict.
    */
@@ -268,6 +298,19 @@ typedef struct HostApi {
    * `false` if the value is not a set.
    */
   bool (*set_len)(void *ctx, struct GenericValue value, size_t *out);
+  /**
+   * Look up a builtin global by name (exception classes like
+   * `"TypeError"`, native classes, builtin functions). `NameError` if
+   * absent; `TypeError` if the name is invalid UTF-8.
+   */
+  struct FfiReturn (*builtin_get)(void *ctx, struct FfiStr name);
+  /**
+   * Whether `value` is an instance of `of_class` or of a subclass of it
+   * (a bool value on success) — the exact semantics of the `isinstance`
+   * builtin, value-type proxy classes included. `TypeError` if
+   * `of_class` is not a class.
+   */
+  struct FfiReturn (*is_instance)(void *ctx, struct GenericValue value, struct GenericValue of_class);
   /**
    * A field of an instance; `AttributeError` if absent, `TypeError` if
    * the receiver is not an instance.
@@ -282,31 +325,47 @@ typedef struct HostApi {
                                struct FfiStr name,
                                struct GenericValue value);
   /**
-   * Whether an instance has a field; `false` (the return, not `out`) if
-   * the receiver is not an instance.
+   * Whether an instance has a field (a bool value on success).
+   * `TypeError` if the receiver is not an instance or the name is
+   * invalid UTF-8.
    */
-  bool (*attr_has)(void *ctx, struct GenericValue receiver, struct FfiStr name, bool *out);
+  struct FfiReturn (*attr_has)(void *ctx, struct GenericValue receiver, struct FfiStr name);
   struct GenericValue (*nil_new)(void *ctx);
   struct GenericValue (*bool_new)(void *ctx, bool value);
   struct GenericValue (*int_new)(void *ctx, int64_t value);
   struct GenericValue (*float_new)(void *ctx, double value);
   /**
-   * Interns the given UTF-8 bytes; `false` on invalid UTF-8.
+   * Interns the given UTF-8 bytes into a string value; `ValueError` on
+   * invalid UTF-8.
    */
-  bool (*string_new)(void *ctx, struct FfiStr value, struct GenericValue *out);
+  struct FfiReturn (*string_new)(void *ctx, struct FfiStr value);
   /**
    * A new, empty list.
    */
   struct GenericValue (*list_new)(void *ctx);
   /**
-   * `false` if the target is not a list.
+   * Append to a list (the ok value is nil); `TypeError` if the target is
+   * not a list.
    */
-  bool (*list_push)(void *ctx, struct GenericValue list, struct GenericValue item);
+  struct FfiReturn (*list_push)(void *ctx, struct GenericValue list, struct GenericValue item);
   /**
-   * Replace the element at an index; `false` if the target is not a list
-   * or the index is out of bounds.
+   * Replace the element at an index (the ok value is nil). `TypeError`
+   * if the target is not a list; `IndexError` if the index is out of
+   * bounds.
    */
-  bool (*list_set)(void *ctx, struct GenericValue list, size_t index, struct GenericValue value);
+  struct FfiReturn (*list_set)(void *ctx,
+                               struct GenericValue list,
+                               size_t index,
+                               struct GenericValue value);
+  /**
+   * A new exception instance of `of_class` carrying `message`.
+   * `TypeError` if `of_class` is not a class deriving from `Exception`
+   * or the message is invalid UTF-8. Sets the message directly,
+   * bypassing the class's `__init__` — exactly like the VM's own throw;
+   * use `call_value` on the class for full construction semantics.
+   * Return the instance under [`FfiStatus::Exception`] to throw it.
+   */
+  struct FfiReturn (*exception_new)(void *ctx, struct GenericValue of_class, struct FfiStr message);
   /**
    * The raw string representation of any value, as a new string value.
    * Does NOT honor a user class's `__str__` (use `value_str` for that),
@@ -419,7 +478,15 @@ typedef struct ModuleDesc {
 
 #endif  /* GENERIC_PLUGIN_H */
 
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+
 /**
  * The one symbol every plugin must export.
  */
 const ModuleDesc *generic_plugin_init(void);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
