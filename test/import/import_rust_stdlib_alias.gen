@@ -1,0 +1,4 @@
+import "math" as m;
+
+print(m); # expect: <module math>
+print(m.sqrt(16.0)); # expect: 4.0

@@ -22,6 +22,8 @@ pub mod callstack;
 mod exception_handling;
 mod functions;
 mod native_containers;
+#[cfg(feature = "plugins")]
+mod plugins;
 mod state;
 mod testing;
 mod variables;
@@ -34,6 +36,8 @@ use exception_handling::ExceptionKind::{
     AttributeError, ConstReassignmentError, TypeError, ValueError,
 };
 pub use exception_handling::{ExceptionHandler, ExceptionKind, SuspendedExceptionHandler};
+#[cfg(feature = "plugins")]
+use plugins::PluginState;
 
 use rustc_hash::FxHashMap as HashMap;
 use std::collections::VecDeque;
@@ -115,13 +119,19 @@ pub struct VM {
     modules: Vec<ModuleId>,
     builtins: HashMap<StringId, Global>,
     stdlib: HashMap<StringId, ModuleContents>,
+    #[cfg(feature = "plugins")]
+    plugins: PluginState,
 }
 
 // Core functionality for running a script.
 impl VM {
+    /// A ready-to-run VM: the prelude (native functions and classes, the
+    /// generic builtins, and the rust stdlib modules) is installed here so
+    /// every construction path — `interpret`, the REPL, tests — starts from
+    /// the same fully-initialized state.
     #[must_use]
     pub(super) fn new() -> Self {
-        Self {
+        let mut vm = Self {
             heap: Heap::new(),
             stack: Vec::with_capacity(crate::config::STACK_MAX),
             callstack: CallStack::new(),
@@ -130,7 +140,15 @@ impl VM {
             modules: Vec::new(),
             builtins: HashMap::default(),
             stdlib: HashMap::default(),
-        }
+            #[cfg(feature = "plugins")]
+            plugins: PluginState::default(),
+        };
+        // Native functions and classes first, then the generic builtins
+        // (which build on them), then the rust stdlib modules.
+        natives::define(&mut vm);
+        vm.load_generic_builtins();
+        stdlib::register(&mut vm);
+        vm
     }
 
     /// Main interpret step for an input of bytes.
@@ -138,15 +156,6 @@ impl VM {
     /// Works by compiling the source to bytecode and then running it.
     /// Even the main script is compiled as a function.
     pub(super) fn interpret(&mut self, source: &str, path: PathBuf) -> InterpretResult {
-        // Load native functions and classes first
-        natives::define(self);
-
-        // Load generic builtins from .gen files after natives but before main script setup
-        self.load_generic_builtins();
-
-        // Register stdlib modules
-        stdlib::register(self);
-
         let result = if let Some(function) = self.compile(
             source,
             "<script>",

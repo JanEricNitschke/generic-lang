@@ -476,33 +476,28 @@ impl VM {
 
 #[cfg(test)]
 mod tests {
-    use super::ExceptionKind;
-    use generic_lang_api::ExceptionCode;
+    use super::{ExceptionKind, VM};
+    use crate::value::is_exception_subclass;
     use strum::IntoEnumIterator;
 
-    /// `generic-lang-api` duplicates the `ExceptionKind` discriminants as
-    /// FFI status codes; this crate is the source of truth.
-    ///
-    /// Covers ALL variants: `iter()` visits each one at runtime, and the
-    /// exhaustive `match` makes adding a variant without an FFI code a
-    /// compile error right here.
+    /// Every variant resolves to a builtin exception class: `throw` looks
+    /// the class up by the variant's name, and `create_exception` panics
+    /// when it is missing (e.g. after a rename in `exceptions.gen` or in
+    /// the enum). Pin that for every kind instead of relying on whichever
+    /// `.gen` tests happen to throw it — and check the resolved class
+    /// actually derives from `Exception`, which the lookup alone does not
+    /// guarantee.
     #[test]
-    fn exception_codes_match_api_crate() {
+    fn every_exception_kind_has_a_builtin_class() {
+        let mut vm = VM::new();
+
         for kind in ExceptionKind::iter() {
-            let code = match kind {
-                ExceptionKind::Exception => ExceptionCode::Exception,
-                ExceptionKind::TypeError => ExceptionCode::TypeError,
-                ExceptionKind::ValueError => ExceptionCode::ValueError,
-                ExceptionKind::NameError => ExceptionCode::NameError,
-                ExceptionKind::ConstReassignmentError => ExceptionCode::ConstReassignmentError,
-                ExceptionKind::AttributeError => ExceptionCode::AttributeError,
-                ExceptionKind::ImportError => ExceptionCode::ImportError,
-                ExceptionKind::AssertionError => ExceptionCode::AssertionError,
-                ExceptionKind::IoError => ExceptionCode::IoError,
-                ExceptionKind::KeyError => ExceptionCode::KeyError,
-                ExceptionKind::IndexError => ExceptionCode::IndexError,
-            };
-            assert_eq!(kind as u32, code as u32, "mismatch for {kind:?}");
+            let exception = vm.create_exception(kind.into(), "sync");
+            let class_id = exception.as_instance().to_value(&vm.heap).class;
+            assert!(
+                is_exception_subclass(&vm.heap, class_id),
+                "{kind:?} must derive from Exception"
+            );
         }
     }
 }

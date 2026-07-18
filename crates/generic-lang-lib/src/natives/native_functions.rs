@@ -2,7 +2,7 @@
 
 use crate::vm::ExceptionKind::{AssertionError, AttributeError, IoError, TypeError, ValueError};
 use crate::{
-    value::{GenericInt, Number, Value, get_native_class_id, is_subclass_of},
+    value::{GenericInt, Number, Value, is_subclass_of, value_isinstance},
     vm::{VM, errors::VmResult},
 };
 use rand::RngExt;
@@ -477,44 +477,7 @@ pub(super) fn isinstance_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> 
             .unwrap_err());
     };
 
-    match value {
-        Value::Instance(instance) => {
-            let instance_class_id = instance.to_value(&vm.heap).class;
-            Ok(Value::Bool(is_subclass_of(
-                &vm.heap,
-                instance_class_id,
-                class_id,
-            )))
-        }
-        Value::Bool(_) => {
-            // Check if class is Bool proxy class
-            Ok(Value::Bool(
-                class_id == get_native_class_id(&vm.heap, "Bool"),
-            ))
-        }
-        Value::String(_) => {
-            // Check if class is String proxy class
-            Ok(Value::Bool(
-                class_id == get_native_class_id(&vm.heap, "String"),
-            ))
-        }
-        Value::Number(number) => {
-            // Check if class matches the specific number type proxy class
-            match number {
-                Number::Integer(_) => Ok(Value::Bool(
-                    class_id == get_native_class_id(&vm.heap, "Integer"),
-                )),
-                Number::Float(_) => Ok(Value::Bool(
-                    class_id == get_native_class_id(&vm.heap, "Float"),
-                )),
-                Number::Rational(_) => Ok(Value::Bool(
-                    class_id == get_native_class_id(&vm.heap, "Rational"),
-                )),
-            }
-        }
-        // For other types (nil, etc.), isinstance should return False
-        _ => Ok(Value::Bool(false)),
-    }
+    Ok(Value::Bool(value_isinstance(&vm.heap, value, class_id)))
 }
 
 /// Check if sub is the same class as super or is a subclass of it.

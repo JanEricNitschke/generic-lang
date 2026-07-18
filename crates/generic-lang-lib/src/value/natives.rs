@@ -30,6 +30,17 @@ pub struct NativeFunction {
             PartialOrd = "ignore"
         )]
     pub(crate) fun: NativeFunctionImpl,
+
+    /// The external function this native wraps, if it is a plugin export —
+    /// `fun` is then the plugin trampoline, which reads this field back off
+    /// the callee (see `src/vm/plugins/trampolines.rs`).
+    #[cfg(feature = "plugins")]
+    #[derivative(
+        Debug = "ignore",
+        PartialEq(compare_with = "always_equals"),
+        PartialOrd = "ignore"
+    )]
+    pub(crate) plugin_fn: Option<generic_lang_api::PluginFn>,
 }
 
 impl NativeFunction {

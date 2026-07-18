@@ -15,9 +15,11 @@ categories.workspace = true
 convert_case = { workspace = true }
 derivative   = { workspace = true }
 derive_more  = { workspace = true }
+generic-lang-api = { workspace = true, optional = true }
 hashbrown    = { workspace = true }
 humansize    = { workspace = true }
 include_dir  = { workspace = true }
+libloading   = { workspace = true, optional = true }
 num-bigint   = { workspace = true }
 num-traits   = { workspace = true }
 num_enum     = { workspace = true }
@@ -36,6 +38,10 @@ unicode-segmentation  = { workspace = true }
 walkdir      = { workspace = true }
 
 [features]
+default                 = ["plugins"]
+# C-ABI native module loading (`import` of shared libraries). Off: none of
+# the plugin machinery exists and the crate has zero plugin dependencies.
+plugins                 = ["dep:generic-lang-api", "dep:libloading"]
 print_code              = []
 print_code_verbose      = ["print_code"]
 print_code_builtin      = ["print_code_verbose"]
@@ -48,6 +54,3 @@ debug_parser            = []
 debug_parser_builtin    = ["debug_parser"]
 debug_scanner           = []
 debug_scanner_builtin   = ["debug_scanner"]
-
-[dev-dependencies]
-generic-lang-api = { version = "0.1.0", path = "../generic-lang-api" }

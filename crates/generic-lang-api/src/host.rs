@@ -1,7 +1,22 @@
 //! Safe wrapper around the host vtable for Rust plugin authors.
 
-use crate::abi::{FfiReturn, FfiStr, GenericValue, HostApi};
-use crate::{ExceptionCode, PluginError, ValueKind};
+use crate::abi::{FfiReturn, FfiStatus, FfiStr, GenericValue, HostApi};
+use crate::{PluginError, ValueKind};
+
+/// Generates the typed error constructors on [`Host`]: one per builtin
+/// exception class, with the class name spelled exactly once — a plugin
+/// author cannot typo a builtin class name by going through these.
+macro_rules! host_error_constructors {
+    ($($(#[$doc:meta])* $name:ident => $class_name:literal),* $(,)?) => {
+        $(
+            $(#[$doc])*
+            #[must_use]
+            pub fn $name(&self, message: &str) -> PluginError {
+                self.error($class_name, message)
+            }
+        )*
+    };
+}
 
 /// Safe access to the host VM for the duration of one plugin call.
 ///
@@ -101,7 +116,8 @@ impl<'a> Host<'a> {
         (self.api.bool_get)(self.api.ctx, value, &raw mut out).then_some(out)
     }
 
-    /// `None` if the value is not an integer or does not fit in an `i64`.
+    /// The value as an `i64`; `None` if it is not an integer or does not
+    /// fit in an `i64` (big integers — fall back to `display`).
     #[must_use]
     pub fn as_int(&self, value: GenericValue) -> Option<i64> {
         let mut out = 0i64;
@@ -135,15 +151,15 @@ impl<'a> Host<'a> {
     /// afterwards.
     #[must_use]
     pub fn as_str(&self, value: GenericValue) -> Option<&str> {
-        let s = (self.api.string_get)(self.api.ctx, value);
-        if s.ptr.is_null() {
+        let mut out = FfiStr::null();
+        if !(self.api.string_get)(self.api.ctx, value, &raw mut out) {
             return None;
         }
-        // SAFETY: the host returns a pointer to `len` initialized bytes of
-        // interned string data, stable until the next re-entering callback,
-        // which `&mut self` methods make unreachable while the returned
-        // borrow lives.
-        let bytes = unsafe { core::slice::from_raw_parts(s.ptr, s.len) };
+        // SAFETY: on success the host wrote a pointer to `len` initialized
+        // bytes of interned string data, stable until the next re-entering
+        // callback, which `&mut self` methods make unreachable while the
+        // returned borrow lives.
+        let bytes = unsafe { core::slice::from_raw_parts(out.ptr, out.len) };
         // Host strings are always UTF-8; checked anyway as defense in depth.
         core::str::from_utf8(bytes).ok()
     }
@@ -155,11 +171,14 @@ impl<'a> Host<'a> {
         (self.api.list_len)(self.api.ctx, value, &raw mut out).then_some(out)
     }
 
-    /// `None` if the value is not a list or the index is out of bounds.
-    #[must_use]
-    pub fn list_get(&self, value: GenericValue, index: usize) -> Option<GenericValue> {
-        let mut out = GenericValue::zeroed();
-        (self.api.list_get)(self.api.ctx, value, index, &raw mut out).then_some(out)
+    /// The list element at `index`.
+    ///
+    /// # Errors
+    ///
+    /// `TypeError` if the value is not a list; `IndexError` if the index
+    /// is out of bounds.
+    pub fn list_get(&self, value: GenericValue, index: usize) -> Result<GenericValue, PluginError> {
+        self.ffi_result((self.api.list_get)(self.api.ctx, value, index))
     }
 
     /// `None` if the value is not a tuple.
@@ -169,11 +188,18 @@ impl<'a> Host<'a> {
         (self.api.tuple_len)(self.api.ctx, value, &raw mut out).then_some(out)
     }
 
-    /// `None` if the value is not a tuple or the index is out of bounds.
-    #[must_use]
-    pub fn tuple_get(&self, value: GenericValue, index: usize) -> Option<GenericValue> {
-        let mut out = GenericValue::zeroed();
-        (self.api.tuple_get)(self.api.ctx, value, index, &raw mut out).then_some(out)
+    /// The tuple element at `index`.
+    ///
+    /// # Errors
+    ///
+    /// `TypeError` if the value is not a tuple; `IndexError` if the index
+    /// is out of bounds.
+    pub fn tuple_get(
+        &self,
+        value: GenericValue,
+        index: usize,
+    ) -> Result<GenericValue, PluginError> {
+        self.ffi_result((self.api.tuple_get)(self.api.ctx, value, index))
     }
 
     /// `None` if the value is not a dict.
@@ -188,6 +214,32 @@ impl<'a> Host<'a> {
     pub fn set_len(&self, value: GenericValue) -> Option<usize> {
         let mut out = 0usize;
         (self.api.set_len)(self.api.ctx, value, &raw mut out).then_some(out)
+    }
+
+    /// Look up a builtin global by name — exception classes like
+    /// `"TypeError"`, native classes, builtin functions.
+    ///
+    /// # Errors
+    ///
+    /// `NameError` if absent.
+    pub fn builtin(&self, name: &str) -> Result<GenericValue, PluginError> {
+        self.ffi_result((self.api.builtin_get)(self.api.ctx, Self::ffi_str(name)))
+    }
+
+    /// Whether `value` is an instance of `class` or of a subclass of it —
+    /// the exact semantics of the `isinstance` builtin, value-type proxy
+    /// classes included.
+    ///
+    /// # Errors
+    ///
+    /// `TypeError` if `class` is not a class.
+    pub fn is_instance(
+        &self,
+        value: GenericValue,
+        class: GenericValue,
+    ) -> Result<bool, PluginError> {
+        let result = self.ffi_result((self.api.is_instance)(self.api.ctx, value, class))?;
+        Ok(self.as_bool(result).unwrap_or_default())
     }
 
     // --- attributes (plain field access; never re-enters) ---
@@ -230,13 +282,18 @@ impl<'a> Host<'a> {
         .map(|_| ())
     }
 
-    /// Whether an instance has a field; `None` if the receiver is not an
-    /// instance.
-    #[must_use]
-    pub fn attr_has(&self, receiver: GenericValue, name: &str) -> Option<bool> {
-        let mut out = false;
-        (self.api.attr_has)(self.api.ctx, receiver, Self::ffi_str(name), &raw mut out)
-            .then_some(out)
+    /// Whether an instance has a field.
+    ///
+    /// # Errors
+    ///
+    /// `TypeError` if the receiver is not an instance.
+    pub fn attr_has(&self, receiver: GenericValue, name: &str) -> Result<bool, PluginError> {
+        let result = self.ffi_result((self.api.attr_has)(
+            self.api.ctx,
+            receiver,
+            Self::ffi_str(name),
+        ))?;
+        Ok(self.as_bool(result).unwrap_or_default())
     }
 
     // --- construct ---
@@ -269,16 +326,12 @@ impl<'a> Host<'a> {
     /// strings (they are always valid UTF-8).
     #[must_use]
     pub fn make_str(&self, value: &str) -> GenericValue {
-        let mut out = GenericValue::zeroed();
         let ffi = FfiStr {
             ptr: value.as_ptr(),
             len: value.len(),
         };
-        assert!(
-            (self.api.string_new)(self.api.ctx, ffi, &raw mut out),
-            "host rejected a valid UTF-8 string"
-        );
-        out
+        self.ffi_result((self.api.string_new)(self.api.ctx, ffi))
+            .expect("host rejected a valid UTF-8 string")
     }
 
     /// A new, empty list.
@@ -287,18 +340,87 @@ impl<'a> Host<'a> {
         (self.api.list_new)(self.api.ctx)
     }
 
-    /// Append to a list value; `false` if the target is not a list.
-    #[must_use]
-    pub fn list_push(&self, list: GenericValue, item: GenericValue) -> bool {
-        (self.api.list_push)(self.api.ctx, list, item)
+    /// Append to a list value.
+    ///
+    /// # Errors
+    ///
+    /// `TypeError` if the target is not a list.
+    pub fn list_push(&self, list: GenericValue, item: GenericValue) -> Result<(), PluginError> {
+        self.ffi_result((self.api.list_push)(self.api.ctx, list, item))
+            .map(|_| ())
     }
 
-    /// Replace the element at an index; `false` if the target is not a list
-    /// or the index is out of bounds.
-    #[must_use]
-    pub fn list_set(&self, list: GenericValue, index: usize, value: GenericValue) -> bool {
-        (self.api.list_set)(self.api.ctx, list, index, value)
+    /// Replace the element at an index.
+    ///
+    /// # Errors
+    ///
+    /// `TypeError` if the target is not a list; `IndexError` if the index
+    /// is out of bounds.
+    pub fn list_set(
+        &self,
+        list: GenericValue,
+        index: usize,
+        value: GenericValue,
+    ) -> Result<(), PluginError> {
+        self.ffi_result((self.api.list_set)(self.api.ctx, list, index, value))
+            .map(|_| ())
     }
+
+    /// A new exception instance of `class` (any class deriving from
+    /// `Exception` — builtin or user-defined), ready to be thrown
+    /// (returned inside [`PluginError::Exception`]) or passed to generic
+    /// code. Sets the message directly, bypassing `__init__`. Prefer the
+    /// typed constructors below for the common builtin-class case.
+    ///
+    /// # Errors
+    ///
+    /// `TypeError` if `class` is not a class deriving from `Exception`.
+    pub fn make_exception(
+        &self,
+        class: GenericValue,
+        message: &str,
+    ) -> Result<GenericValue, PluginError> {
+        self.ffi_result((self.api.exception_new)(
+            self.api.ctx,
+            class,
+            Self::ffi_str(message),
+        ))
+    }
+
+    /// A [`PluginError`] carrying a fresh instance of the builtin
+    /// exception class `class_name`. Unknown names fall back to the base
+    /// `Exception` (unreachable through the typed constructors below).
+    fn error(&self, class_name: &str, message: &str) -> PluginError {
+        self.builtin(class_name)
+            .and_then(|class| self.make_exception(class, message))
+            .or_else(|_| {
+                let class = self.builtin("Exception")?;
+                self.make_exception(class, message)
+            })
+            .map_or_else(
+                // Unreachable (the base `Exception` always exists), but a
+                // real nil keeps this a valid `Value`: if it ever escaped,
+                // the host would reject the non-exception gracefully rather
+                // than transmute an invalid blob.
+                |_| PluginError::Exception(self.make_nil()),
+                PluginError::Exception,
+            )
+    }
+
+    host_error_constructors!(
+        /// The base `Exception` class.
+        exception => "Exception",
+        type_error => "TypeError",
+        value_error => "ValueError",
+        name_error => "NameError",
+        const_reassignment_error => "ConstReassignmentError",
+        attribute_error => "AttributeError",
+        import_error => "ImportError",
+        assertion_error => "AssertionError",
+        io_error => "IoError",
+        key_error => "KeyError",
+        index_error => "IndexError",
+    );
 
     // --- display ---
 
@@ -505,13 +627,15 @@ impl<'a> Host<'a> {
     }
 
     fn ffi_result(&self, ret: FfiReturn) -> Result<GenericValue, PluginError> {
-        if ret.status == 0 {
-            Ok(ret.value)
-        } else {
-            Err(PluginError {
-                kind: ret.status,
-                message: self.as_str(ret.value).unwrap_or_default().to_owned(),
-            })
+        match FfiStatus::from_u32(ret.status) {
+            Some(FfiStatus::Ok) => Ok(ret.value),
+            Some(FfiStatus::Exception) => Err(PluginError::Exception(ret.value)),
+            Some(FfiStatus::Fatal) => Err(PluginError::Fatal),
+            // The host only produces valid statuses.
+            None => Err(self.exception(&format!(
+                "host callback returned unknown status {}",
+                ret.status
+            ))),
         }
     }
 }
@@ -573,27 +697,33 @@ pub unsafe fn __invoke_plugin_fn(
 
     let host = Host::new(api);
     match result {
-        Ok(Ok(value)) => FfiReturn { status: 0, value },
-        Ok(Err(error)) => error_return(&host, &error),
+        Ok(Ok(value)) => FfiReturn {
+            status: FfiStatus::Ok as u32,
+            value,
+        },
+        Ok(Err(error)) => error_return(&host, error),
         Err(panic) => {
             let message = panic
                 .downcast_ref::<&str>()
                 .map(ToString::to_string)
                 .or_else(|| panic.downcast_ref::<String>().cloned())
                 .unwrap_or_else(|| "plugin function panicked".to_owned());
-            error_return(&host, &PluginError::exception(format!("panic: {message}")))
+            error_return(&host, host.exception(&format!("panic: {message}")))
         }
     }
 }
 
-fn error_return(host: &Host, error: &PluginError) -> FfiReturn {
-    let status = if error.kind == 0 {
-        ExceptionCode::Exception as u32
-    } else {
-        error.kind
-    };
-    FfiReturn {
-        status,
-        value: host.make_str(&error.message),
+fn error_return(host: &Host, error: PluginError) -> FfiReturn {
+    match error {
+        PluginError::Exception(value) => FfiReturn {
+            status: FfiStatus::Exception as u32,
+            value,
+        },
+        // The value is never read for a fatal status; a real nil keeps it a
+        // valid `Value` rather than a zeroed blob that is not one.
+        PluginError::Fatal => FfiReturn {
+            status: FfiStatus::Fatal as u32,
+            value: host.make_nil(),
+        },
     }
 }

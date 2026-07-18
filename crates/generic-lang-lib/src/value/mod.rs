@@ -12,6 +12,7 @@ use crate::heap::{
 };
 pub use classes::{
     BoundMethod, Class, Instance, get_native_class_id, is_exception_subclass, is_subclass_of,
+    value_isinstance,
 };
 pub use functions::{Closure, Function, Module, Upvalue};
 pub use natives::{

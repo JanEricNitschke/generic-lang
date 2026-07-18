@@ -7,18 +7,29 @@ cpp_compat = true
 documentation = true
 usize_is_size_t = true
 header = "/* Plugin ABI of the generic programming language. GENERATED — do not edit. */"
+# The trailer is emitted after the header's own `extern "C"` block closes,
+# so it needs its own guard — without it, C++ consumers see the declaration
+# with C++ linkage and cannot define the symbol as `extern "C"`.
 trailer = """
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+
 /**
  * The one symbol every plugin must export.
  */
 const ModuleDesc *generic_plugin_init(void);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
 """
 
 [export]
 # The crate exports no extern functions itself, so the ABI types (and the
 # two code enums) must be listed explicitly (they pull in everything they
 # reference).
-include = ["HostApi", "ModuleDesc", "FunctionDesc", "PluginFn", "GenericValue", "FfiStr", "FfiReturn", "ExceptionCode", "ValueKind"]
+include = ["HostApi", "ModuleDesc", "FunctionDesc", "PluginFn", "GenericValue", "FfiStr", "FfiReturn", "FfiStatus", "ValueKind"]
 exclude = ["RustPluginFn"]
 
 # The code enums cross the FFI as plain u32 (see FfiReturn.status and
@@ -26,7 +37,7 @@ exclude = ["RustPluginFn"]
 # Constant names are derived per-variant from the renamed enum type, so new
 # variants get correct prefixed C names automatically.
 [export.rename]
-"ExceptionCode" = "GenericExceptionCode"
+"FfiStatus" = "GenericFfiStatus"
 "ValueKind" = "GenericValueKind"
 
 [enum]

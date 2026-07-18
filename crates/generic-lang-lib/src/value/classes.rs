@@ -3,7 +3,7 @@ use crate::heap::{ClassId, Heap, StringId};
 use derivative::Derivative;
 use rustc_hash::FxHashMap as HashMap;
 
-use super::{NativeClass, Value};
+use super::{NativeClass, Number, Value};
 
 #[derive(Debug, Clone, Derivative)]
 #[derivative(PartialOrd)]
@@ -76,6 +76,22 @@ pub fn get_native_class_id(heap: &Heap, native_class: &str) -> ClassId {
 /// Check if a class is a subclass of Exception
 pub fn is_exception_subclass(heap: &Heap, class_id: ClassId) -> bool {
     is_subclass_of(heap, class_id, get_native_class_id(heap, "Exception"))
+}
+
+/// Whether `value` is an instance of `class_id` or of a subclass of it —
+/// the semantics of the `isinstance` builtin. Value types match their
+/// proxy classes exactly (`Bool`, `String`, `Integer`, `Float`,
+/// `Rational`); everything else that is not an instance is `false`.
+pub fn value_isinstance(heap: &Heap, value: Value, class_id: ClassId) -> bool {
+    match value {
+        Value::Instance(instance) => is_subclass_of(heap, instance.to_value(heap).class, class_id),
+        Value::Bool(_) => class_id == get_native_class_id(heap, "Bool"),
+        Value::String(_) => class_id == get_native_class_id(heap, "String"),
+        Value::Number(Number::Integer(_)) => class_id == get_native_class_id(heap, "Integer"),
+        Value::Number(Number::Float(_)) => class_id == get_native_class_id(heap, "Float"),
+        Value::Number(Number::Rational(_)) => class_id == get_native_class_id(heap, "Rational"),
+        _ => false,
+    }
 }
 
 impl std::fmt::Display for Class {

@@ -6,22 +6,47 @@
 #![allow(clippy::missing_const_for_fn)]
 
 use core::ffi::c_void;
+use core::mem::MaybeUninit;
 use std::cell::RefCell;
 
 use generic_lang_api::{
-    ExceptionCode, FfiReturn, FfiStr, GENERIC_PLUGIN_ABI_VERSION, GenericValue, Host, HostApi,
+    FfiReturn, FfiStatus, FfiStr, GENERIC_PLUGIN_ABI_VERSION, GenericValue, Host, HostApi,
     PluginError, ValueKind,
 };
 
+/// A blob carrying `first` in its first opaque limb (the rest zeroed) — the
+/// tests build values this way to check bytes survive the FFI glue.
+fn blob(first: u64) -> GenericValue {
+    GenericValue {
+        opaque: [
+            MaybeUninit::new(first),
+            MaybeUninit::new(0),
+            MaybeUninit::new(0),
+            MaybeUninit::new(0),
+        ],
+    }
+}
+
+/// Read the first opaque limb of a blob built by [`blob`].
+///
+/// # Safety
+///
+/// The first limb must be initialized — it is for anything from `blob` or a
+/// mock echoing such a value.
+unsafe fn limb0(value: GenericValue) -> u64 {
+    // SAFETY: guaranteed by the caller.
+    unsafe { value.opaque[0].assume_init() }
+}
+
 fn add(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
     let (Some(a), Some(b)) = (host.as_int(args[0]), host.as_int(args[1])) else {
-        return Err(PluginError::type_error("add expects two integers"));
+        return Err(host.type_error("add expects two integers"));
     };
     Ok(host.make_int(a + b))
 }
 
-fn fail(_host: &mut Host, _args: &[GenericValue]) -> Result<GenericValue, PluginError> {
-    Err(PluginError::index_error("out of bounds"))
+fn fail(host: &mut Host, _args: &[GenericValue]) -> Result<GenericValue, PluginError> {
+    Err(host.index_error("out of bounds"))
 }
 
 fn explode(_host: &mut Host, _args: &[GenericValue]) -> Result<GenericValue, PluginError> {
@@ -41,71 +66,112 @@ thread_local! {
     static INTERNED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
+// --- Mocks with real behavior: they read arguments, encode values, or
+// intern strings, so the tests can check data survives the FFI glue. ---
+
+// `int_get`/`int_new` carry integers in the first opaque limb, so the
+// tests verify values travel through the glue byte-exact.
+#[allow(clippy::cast_possible_wrap)]
+extern "C" fn mock_int_get(_ctx: *mut c_void, value: GenericValue, out: *mut i64) -> bool {
+    // SAFETY: the out-pointer is valid, and the first limb is initialized
+    // for the values the tests build with `blob` and pass in.
+    unsafe { *out = limb0(value) as i64 };
+    true
+}
+#[allow(clippy::cast_sign_loss)]
+extern "C" fn mock_int_new(_ctx: *mut c_void, value: i64) -> GenericValue {
+    blob(value as u64)
+}
+extern "C" fn mock_string_new(_ctx: *mut c_void, value: FfiStr) -> FfiReturn {
+    // SAFETY: callers pass valid UTF-8 of the given length.
+    let s = unsafe {
+        core::str::from_utf8_unchecked(core::slice::from_raw_parts(value.ptr, value.len))
+    };
+    INTERNED.with_borrow_mut(|strings| strings.push(s.to_owned()));
+    FfiReturn {
+        status: 0,
+        value: blob(0),
+    }
+}
+// `builtin_get`/`exception_new` intern class names and messages, and hand
+// back values echoing the class handle, so the tests can check both travel
+// through the glue.
+extern "C" fn mock_builtin_get(_ctx: *mut c_void, name: FfiStr) -> FfiReturn {
+    // SAFETY: callers pass valid UTF-8 of the given length.
+    let s =
+        unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(name.ptr, name.len)) };
+    INTERNED.with_borrow_mut(|strings| strings.push(s.to_owned()));
+    // A fake class handle tagged by the name's length.
+    FfiReturn {
+        status: 0,
+        value: blob(name.len as u64),
+    }
+}
+extern "C" fn mock_exception_new(
+    _ctx: *mut c_void,
+    class: GenericValue,
+    message: FfiStr,
+) -> FfiReturn {
+    // SAFETY: callers pass valid UTF-8 of the given length.
+    let s = unsafe {
+        core::str::from_utf8_unchecked(core::slice::from_raw_parts(message.ptr, message.len))
+    };
+    INTERNED.with_borrow_mut(|strings| strings.push(s.to_owned()));
+    // Echo the class handle so the test can see which class was used.
+    FfiReturn {
+        status: 0,
+        value: class,
+    }
+}
+
+// --- Inert stubs: return a fixed placeholder regardless of input, present
+// only to fill out the vtable. ---
+
 extern "C" fn mock_value_kind(_ctx: *mut c_void, _value: GenericValue) -> u32 {
     ValueKind::Int as u32
 }
 extern "C" fn mock_bool_get(_ctx: *mut c_void, _value: GenericValue, _out: *mut bool) -> bool {
     false
 }
-// The mock encodes integers in the first opaque limb, so the tests verify
-// values travel through the FFI glue byte-exact.
-#[allow(clippy::cast_possible_wrap)]
-extern "C" fn mock_int_get(_ctx: *mut c_void, value: GenericValue, out: *mut i64) -> bool {
-    // SAFETY: callers pass a valid out-pointer.
-    unsafe { *out = value.opaque[0] as i64 };
-    true
-}
 extern "C" fn mock_float_get(_ctx: *mut c_void, _value: GenericValue, _out: *mut f64) -> bool {
     false
 }
-extern "C" fn mock_string_get(_ctx: *mut c_void, _value: GenericValue) -> FfiStr {
-    FfiStr::null()
+extern "C" fn mock_string_get(_ctx: *mut c_void, _value: GenericValue, _out: *mut FfiStr) -> bool {
+    false
 }
 extern "C" fn mock_list_len(_ctx: *mut c_void, _value: GenericValue, _out: *mut usize) -> bool {
     false
 }
-extern "C" fn mock_list_get(
-    _ctx: *mut c_void,
-    _value: GenericValue,
-    _index: usize,
-    _out: *mut GenericValue,
-) -> bool {
-    false
-}
-extern "C" fn mock_nil_new(_ctx: *mut c_void) -> GenericValue {
-    GenericValue::zeroed()
-}
-extern "C" fn mock_bool_new(_ctx: *mut c_void, _value: bool) -> GenericValue {
-    GenericValue::zeroed()
-}
-#[allow(clippy::cast_sign_loss)]
-extern "C" fn mock_int_new(_ctx: *mut c_void, value: i64) -> GenericValue {
-    GenericValue {
-        opaque: [value as u64, 0, 0, 0],
+extern "C" fn mock_list_get(_ctx: *mut c_void, _value: GenericValue, _index: usize) -> FfiReturn {
+    FfiReturn {
+        status: 0,
+        value: blob(0),
     }
 }
-extern "C" fn mock_float_new(_ctx: *mut c_void, _value: f64) -> GenericValue {
-    GenericValue::zeroed()
+extern "C" fn mock_nil_new(_ctx: *mut c_void) -> GenericValue {
+    blob(0)
 }
-extern "C" fn mock_string_new(_ctx: *mut c_void, value: FfiStr, out: *mut GenericValue) -> bool {
-    // SAFETY: callers pass valid UTF-8 of the given length and a valid
-    // out-pointer.
-    let s = unsafe {
-        core::str::from_utf8_unchecked(core::slice::from_raw_parts(value.ptr, value.len))
-    };
-    INTERNED.with_borrow_mut(|strings| strings.push(s.to_owned()));
-    // SAFETY: see above.
-    unsafe { *out = GenericValue::zeroed() };
-    true
+extern "C" fn mock_bool_new(_ctx: *mut c_void, _value: bool) -> GenericValue {
+    blob(0)
+}
+extern "C" fn mock_float_new(_ctx: *mut c_void, _value: f64) -> GenericValue {
+    blob(0)
 }
 extern "C" fn mock_list_new(_ctx: *mut c_void) -> GenericValue {
-    GenericValue::zeroed()
+    blob(0)
 }
-extern "C" fn mock_list_push(_ctx: *mut c_void, _list: GenericValue, _item: GenericValue) -> bool {
-    false
+extern "C" fn mock_list_push(
+    _ctx: *mut c_void,
+    _list: GenericValue,
+    _item: GenericValue,
+) -> FfiReturn {
+    FfiReturn {
+        status: 0,
+        value: blob(0),
+    }
 }
 extern "C" fn mock_value_display(_ctx: *mut c_void, _value: GenericValue) -> GenericValue {
-    GenericValue::zeroed()
+    blob(0)
 }
 extern "C" fn mock_call_value(
     _ctx: *mut c_void,
@@ -115,7 +181,7 @@ extern "C" fn mock_call_value(
 ) -> FfiReturn {
     FfiReturn {
         status: 0,
-        value: GenericValue::zeroed(),
+        value: blob(0),
     }
 }
 extern "C" fn mock_invoke_method(
@@ -127,13 +193,13 @@ extern "C" fn mock_invoke_method(
 ) -> FfiReturn {
     FfiReturn {
         status: 0,
-        value: GenericValue::zeroed(),
+        value: blob(0),
     }
 }
 extern "C" fn mock_value_str(_ctx: *mut c_void, _value: GenericValue) -> FfiReturn {
     FfiReturn {
         status: 0,
-        value: GenericValue::zeroed(),
+        value: blob(0),
     }
 }
 extern "C" fn mock_root(_ctx: *mut c_void, _value: GenericValue) {}
@@ -141,13 +207,11 @@ extern "C" fn mock_unroot(_ctx: *mut c_void, _n: usize) {}
 extern "C" fn mock_tuple_len(_ctx: *mut c_void, _value: GenericValue, _out: *mut usize) -> bool {
     false
 }
-extern "C" fn mock_tuple_get(
-    _ctx: *mut c_void,
-    _value: GenericValue,
-    _index: usize,
-    _out: *mut GenericValue,
-) -> bool {
-    false
+extern "C" fn mock_tuple_get(_ctx: *mut c_void, _value: GenericValue, _index: usize) -> FfiReturn {
+    FfiReturn {
+        status: 0,
+        value: blob(0),
+    }
 }
 extern "C" fn mock_container_len(
     _ctx: *mut c_void,
@@ -163,7 +227,7 @@ extern "C" fn mock_attr_get(
 ) -> FfiReturn {
     FfiReturn {
         status: 0,
-        value: GenericValue::zeroed(),
+        value: blob(0),
     }
 }
 extern "C" fn mock_attr_set(
@@ -174,24 +238,29 @@ extern "C" fn mock_attr_set(
 ) -> FfiReturn {
     FfiReturn {
         status: 0,
-        value: GenericValue::zeroed(),
+        value: blob(0),
     }
 }
 extern "C" fn mock_attr_has(
     _ctx: *mut c_void,
     _receiver: GenericValue,
     _name: FfiStr,
-    _out: *mut bool,
-) -> bool {
-    false
+) -> FfiReturn {
+    FfiReturn {
+        status: 0,
+        value: blob(0),
+    }
 }
 extern "C" fn mock_list_set(
     _ctx: *mut c_void,
     _list: GenericValue,
     _index: usize,
     _value: GenericValue,
-) -> bool {
-    false
+) -> FfiReturn {
+    FfiReturn {
+        status: 0,
+        value: blob(0),
+    }
 }
 extern "C" fn mock_value_binary(
     _ctx: *mut c_void,
@@ -200,7 +269,7 @@ extern "C" fn mock_value_binary(
 ) -> FfiReturn {
     FfiReturn {
         status: 0,
-        value: GenericValue::zeroed(),
+        value: blob(0),
     }
 }
 extern "C" fn mock_dict_set(
@@ -211,13 +280,23 @@ extern "C" fn mock_dict_set(
 ) -> FfiReturn {
     FfiReturn {
         status: 0,
-        value: GenericValue::zeroed(),
+        value: blob(0),
     }
 }
 extern "C" fn mock_value_unary(_ctx: *mut c_void, _value: GenericValue) -> FfiReturn {
     FfiReturn {
         status: 0,
-        value: GenericValue::zeroed(),
+        value: blob(0),
+    }
+}
+extern "C" fn mock_is_instance(
+    _ctx: *mut c_void,
+    _value: GenericValue,
+    _class: GenericValue,
+) -> FfiReturn {
+    FfiReturn {
+        status: 0,
+        value: blob(0),
     }
 }
 
@@ -236,6 +315,8 @@ fn mock_host_api() -> HostApi {
         tuple_get: mock_tuple_get,
         dict_len: mock_container_len,
         set_len: mock_container_len,
+        builtin_get: mock_builtin_get,
+        is_instance: mock_is_instance,
         attr_get: mock_attr_get,
         attr_set: mock_attr_set,
         attr_has: mock_attr_has,
@@ -247,6 +328,7 @@ fn mock_host_api() -> HostApi {
         list_new: mock_list_new,
         list_push: mock_list_push,
         list_set: mock_list_set,
+        exception_new: mock_exception_new,
         value_display: mock_value_display,
         call_value: mock_call_value,
         invoke_method: mock_invoke_method,
@@ -270,16 +352,18 @@ fn last_interned() -> String {
 
 #[test]
 fn descriptor_contents() {
+    // Descriptor is non-null and init is idempotent
     let desc = generic_plugin_init();
     assert!(!desc.is_null());
-    // Initialization happens exactly once; repeated calls return the same
-    // leaked descriptor.
     assert_eq!(desc, generic_plugin_init());
+
+    // ABI version and function count are correct
     // SAFETY: generic_plugin_init returns a valid, leaked descriptor.
     let desc = unsafe { &*desc };
     assert_eq!(desc.abi_version, GENERIC_PLUGIN_ABI_VERSION);
     assert_eq!(desc.functions_len, 3);
 
+    // The three exported names, in declaration order.
     // SAFETY: the descriptor references a leaked slice of functions_len entries.
     let functions = unsafe { core::slice::from_raw_parts(desc.functions, desc.functions_len) };
     let names: Vec<&str> = functions
@@ -292,6 +376,8 @@ fn descriptor_contents() {
         })
         .collect();
     assert_eq!(names, ["add", "fail", "explode"]);
+
+    // Arities: `add` accepts exactly two arguments.
     // SAFETY: arities are leaked static slices.
     let arities =
         unsafe { core::slice::from_raw_parts(functions[0].arities, functions[0].arities_len) };
@@ -312,24 +398,27 @@ fn ok_path() {
     // The mock encodes integers in the first opaque limb, so this checks
     // the arguments and the result travel through the glue byte-exact:
     // 19 + 23 must come back as 42.
-    let args = [
-        GenericValue {
-            opaque: [19, 0, 0, 0],
-        },
-        GenericValue {
-            opaque: [23, 0, 0, 0],
-        },
-    ];
+    let args = [blob(19), blob(23)];
     let ret = call_exported(0, &args);
     assert_eq!(ret.status, 0);
-    assert_eq!(ret.value.opaque[0], 42);
+    // SAFETY: `add` returns an int built via `blob`, so limb 0 is set.
+    assert_eq!(unsafe { limb0(ret.value) }, 42);
 }
 
 #[test]
 fn typed_error_path() {
     let ret = call_exported(1, &[]);
-    assert_eq!(ret.status, ExceptionCode::IndexError as u32);
-    assert_eq!(last_interned(), "out of bounds");
+    // A typed error materializes as an exception instance of the class
+    // looked up by name and built through `exception_new` (the mock class
+    // handle carries the name's length; "IndexError" is 10 long).
+    assert_eq!(ret.status, FfiStatus::Exception as u32);
+    // SAFETY: the class handle is built via `blob`, so limb 0 is set.
+    assert_eq!(unsafe { limb0(ret.value) }, "IndexError".len() as u64);
+    let interned = INTERNED.with_borrow(Clone::clone);
+    assert_eq!(
+        &interned[interned.len() - 2..],
+        ["IndexError", "out of bounds"]
+    );
 }
 
 #[test]
@@ -340,6 +429,8 @@ fn panic_becomes_exception() {
     let ret = call_exported(2, &[]);
     std::panic::set_hook(previous);
 
-    assert_eq!(ret.status, ExceptionCode::Exception as u32);
+    assert_eq!(ret.status, FfiStatus::Exception as u32);
+    // SAFETY: the class handle is built via `blob`, so limb 0 is set.
+    assert_eq!(unsafe { limb0(ret.value) }, "Exception".len() as u64);
     assert_eq!(last_interned(), "panic: kaboom");
 }

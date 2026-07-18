@@ -20,6 +20,8 @@ clap             = { workspace = true }
 generic-lang-lib = { workspace = true }
 
 [features]
+default                 = ["plugins"]
+plugins                 = ["generic-lang-lib/plugins"]
 print_code              = ["generic-lang-lib/print_code"]
 print_code_verbose      = ["generic-lang-lib/print_code_verbose"]
 print_code_builtin      = ["generic-lang-lib/print_code_builtin"]
