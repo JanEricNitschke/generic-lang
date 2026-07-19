@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
 members = ["crates/generic-lang", "crates/generic-lang-lib", "crates/generic-lang-api"]
+# The plugin test fixtures are built out-of-band by `make plugin-test-fixture`
+# and must not be part of the workspace: `cargo package --workspace` must not
+# package them, `--locked` release builds must not resolve their deps, and
+# `cargo test --workspace` must not build cdylibs nobody runs directly.
+exclude = ["plugin-examples/rust"]
 
 [workspace.package]
 version      = "2.1.0"

@@ -1,0 +1,26 @@
+# Rust test-plugin fixture for the generic plugin ABI.
+#
+# Deliberately EXCLUDED from the workspace (see the root Cargo.toml
+# `[workspace] exclude`): `cargo package --workspace` in publish.yaml must not
+# try to package it, `--locked` release builds must not resolve its deps, and
+# `cargo test --workspace` should not build a cdylib nobody runs directly. The
+# Makefile `plugin-test-fixture` step builds it explicitly and copies the
+# resulting dylib next to the `.gen` tests.
+[package]
+name         = "generic-test-plugin"
+version      = "0.0.0"
+edition      = "2024"
+rust-version = "1.88"
+publish      = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Path dep on the ABI crate. Because this crate is workspace-excluded, the
+# path is spelled relative to this manifest, not the workspace root.
+generic-lang-api = { path = "../../crates/generic-lang-api" }
+
+[profile.dev]
+# The fixture is small; keep it obviously debuggable.
+panic = "unwind"

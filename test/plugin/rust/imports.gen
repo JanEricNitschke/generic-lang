@@ -1,0 +1,18 @@
+# Import forms for a plugin module: plain import, a second import hitting the
+# per-path cache, from-import of selected names, and an alias.
+#
+# Exports exercised here:
+#   add(a, b) -- numeric addition
+#   shout(s)  -- uppercase the string, append "!"
+import "rust_demo_plugin";
+import "rust_demo_plugin"; # second import reuses the cached library
+print(rust_demo_plugin.add(1, 2)); # expect: 3
+
+# from-import pulls selected exports into scope.
+from "rust_demo_plugin" import add, shout;
+print(add(40, 2)); # expect: 42
+print(shout("hi")); # expect: HI!
+
+# An alias binds the module under a new name.
+import "rust_demo_plugin" as short;
+print(short.add(10, 20)); # expect: 30

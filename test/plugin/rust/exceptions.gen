@@ -1,0 +1,96 @@
+# Every exception a plugin can raise is a real generic exception, catchable
+# by its class. Also: a subclass caught by the base, the typed-constructor
+# form, a plugin panic surfacing as a catchable base Exception (not a process
+# abort), and a plugin-side argument type error.
+#
+# Exports exercised here:
+#   raise(class_name, message) -- throw a fresh instance of the named builtin class
+#   throw_type(message)        -- typed-constructor form (host.type_error)
+#   boom()                     -- panic inside the plugin
+#   add(a, b)                  -- numeric addition (used for its TypeError path)
+import "rust_demo_plugin";
+
+try {
+    rust_demo_plugin.raise("TypeError", "te");
+} catch TypeError as e {
+    print("TypeError: " + str(e)); # expect: TypeError: te
+}
+
+try {
+    rust_demo_plugin.raise("ValueError", "ve");
+} catch ValueError as e {
+    print("ValueError: " + str(e)); # expect: ValueError: ve
+}
+
+try {
+    rust_demo_plugin.raise("KeyError", "ke");
+} catch KeyError as e {
+    print("KeyError: " + str(e)); # expect: KeyError: ke
+}
+
+try {
+    rust_demo_plugin.raise("IndexError", "ie");
+} catch IndexError as e {
+    print("IndexError: " + str(e)); # expect: IndexError: ie
+}
+
+try {
+    rust_demo_plugin.raise("NameError", "ne");
+} catch NameError as e {
+    print("NameError: " + str(e)); # expect: NameError: ne
+}
+
+try {
+    rust_demo_plugin.raise("AttributeError", "ae");
+} catch AttributeError as e {
+    print("AttributeError: " + str(e)); # expect: AttributeError: ae
+}
+
+try {
+    rust_demo_plugin.raise("IoError", "io");
+} catch IoError as e {
+    print("IoError: " + str(e)); # expect: IoError: io
+}
+
+try {
+    rust_demo_plugin.raise("AssertionError", "as");
+} catch AssertionError as e {
+    print("AssertionError: " + str(e)); # expect: AssertionError: as
+}
+
+try {
+    rust_demo_plugin.raise("ImportError", "im");
+} catch ImportError as e {
+    print("ImportError: " + str(e)); # expect: ImportError: im
+}
+
+# A subclass is caught by the base class.
+try {
+    rust_demo_plugin.raise("KeyError", "sub");
+} catch Exception as e {
+    print("as base: " + str(e)); # expect: as base: sub
+}
+
+# Typed constructor on the Rust Host (host.type_error).
+try {
+    rust_demo_plugin.throw_type("typed");
+} catch TypeError as e {
+    print("throw_type: " + str(e)); # expect: throw_type: typed
+}
+
+# A panic inside the plugin becomes a catchable base Exception; the process
+# does NOT abort.
+try {
+    rust_demo_plugin.boom();
+} catch Exception as e {
+    print("boom: " + str(e)); # expect: boom: panic: intentional plugin panic
+}
+
+# A plugin-side argument-type error is an ordinary generic TypeError.
+try {
+    rust_demo_plugin.add("a", "b");
+} catch TypeError as e {
+    print("add err: " + str(e)); # expect: add err: add expects two numbers
+}
+
+print("done"); # expect: done

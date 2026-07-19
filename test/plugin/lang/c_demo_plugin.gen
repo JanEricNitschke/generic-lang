@@ -1,0 +1,24 @@
+# C plugin fixture (plugin-examples/c/c_demo_plugin.c), built by the Makefile
+# `plugin-lang-fixture` step. Same ABI as the Rust plugin, exercised from
+# plain C.
+#
+# Exports exercised here:
+#   add(a, b)                  -- integer addition
+#   shout(s)                   -- ASCII-uppercase the string, append "!"
+#   raise(class_name, message) -- throw a fresh instance of the named class
+import "c_demo_plugin";
+
+print(c_demo_plugin.add(40, 2)); # expect: 42
+print(c_demo_plugin.shout("hi there")); # expect: HI THERE!
+
+try {
+    c_demo_plugin.raise("KeyError", "boom");
+} catch KeyError as e {
+    print("caught: " + str(e)); # expect: caught: boom
+}
+
+try {
+    c_demo_plugin.add("x", "y");
+} catch TypeError as e {
+    print("type: " + str(e)); # expect: type: c_demo_plugin.add expects two ints
+}

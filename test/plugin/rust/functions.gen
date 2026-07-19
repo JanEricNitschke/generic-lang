@@ -1,0 +1,43 @@
+# Happy-path surface of the Rust example plugin (plugin-examples/rust), built
+# and copied to test/plugin/rust/rust_demo_plugin.<ext> by the Makefile
+# `plugin-test-fixture` step.
+#
+# Exports exercised here:
+#   add(a, b)    -- numeric addition over the int/float mixes
+#   shout(s)     -- uppercase the string, append "!"
+#   sum(list)    -- sum a numeric list (int result if all elements are ints)
+#   identity(v)  -- return the argument unchanged through the FFI
+#   kind_name(v) -- the host's ValueKind classification of v, as a string
+#   big_probe(n) -- "fits:<n>" for i64-range ints, "big:<n>" for bigints
+import "rust_demo_plugin";
+
+print(rust_demo_plugin.add(19, 23)); # expect: 42
+print(rust_demo_plugin.add(1, 2.5)); # expect: 3.5
+print(rust_demo_plugin.add(2.5, 1)); # expect: 3.5
+print(rust_demo_plugin.add(1.5, 2.5)); # expect: 4.0
+
+print(rust_demo_plugin.shout("hello plugin")); # expect: HELLO PLUGIN!
+print(rust_demo_plugin.shout("héllo")); # expect: HÉLLO!
+
+print(rust_demo_plugin.sum([1, 2, 3, 4])); # expect: 10
+print(rust_demo_plugin.sum([1, 2.5, 3])); # expect: 6.5
+print(rust_demo_plugin.sum([])); # expect: 0
+
+# identity round-trips any value kind through the FFI unchanged.
+print(rust_demo_plugin.identity(42)); # expect: 42
+print(rust_demo_plugin.identity("str")); # expect: str
+print(rust_demo_plugin.identity(nil)); # expect: nil
+print(rust_demo_plugin.identity(TypeError("type error"))); # expect: type error
+
+# The host's ValueKind classification of each argument.
+print(rust_demo_plugin.kind_name("x")); # expect: String
+print(rust_demo_plugin.kind_name(42)); # expect: Int
+print(rust_demo_plugin.kind_name(3.14)); # expect: Float
+print(rust_demo_plugin.kind_name([1, 2])); # expect: List
+print(rust_demo_plugin.kind_name(nil)); # expect: Nil
+print(rust_demo_plugin.kind_name(true)); # expect: Bool
+
+# int_get succeeds for i64-range integers and fails (BigInt) beyond it, where
+# the plugin falls back to the display string.
+print(rust_demo_plugin.big_probe(42)); # expect: fits:42
+print(rust_demo_plugin.big_probe(100000000000000000000000000)); # expect: big:100000000000000000000000000

@@ -1,0 +1,8 @@
+# Style for the C and C++ example plugins. Checked in CI with
+# `clang-format --dry-run --Werror` (see `make plugin-lint`).
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 100
+# cpplint (also run in `make plugin-lint`) requires at least two spaces
+# between code and a trailing comment; LLVM's default of one would fight it.
+SpacesBeforeTrailingComments: 2

@@ -2,7 +2,33 @@
 //!
 //! Native modules for generic are shared libraries speaking the C ABI
 //! defined in [`abi`]. Rust plugin authors use the safe layer in this crate
-//! root; other languages use the generated `include/generic_plugin.h`.
+//! root; other languages use the generated `include/generic.h`.
+//!
+//! This crate is versioned independently from the interpreter — it tracks ABI
+//! stability for plugin authors. Build against the version matching the
+//! interpreter you target ([`GENERIC_PLUGIN_ABI_VERSION`] is checked at load).
+//!
+//! See the [plugin authoring guide][guide] for worked quickstarts (Rust and
+//! C), the value model, calling back into generic, the exception model, and
+//! the rooting contract.
+//!
+//! [guide]: https://github.com/JanEricNitschke/generic-lang/blob/main/docs/plugin-authors.md
+//!
+//! # Example
+//!
+//! ```no_run
+//! use generic_lang_api::{ArgValue, GenericValue, Host, PluginError};
+//!
+//! fn add(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
+//!     match (host.decode(args[0]), host.decode(args[1])) {
+//!         (ArgValue::Int(a), ArgValue::Int(b)) => Ok(host.make_int(a + b)),
+//!         _ => Err(host.type_error("add expects two ints")),
+//!     }
+//! }
+//!
+//! generic_lang_api::export_module![("add", &[2], add)];
+//! ```
+#![warn(missing_docs)]
 
 pub mod abi;
 mod export;
