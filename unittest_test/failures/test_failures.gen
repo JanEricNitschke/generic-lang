@@ -1,0 +1,31 @@
+# FAIL-outcome fixture: failing tests without any ERROR outcome must still
+# fail the run — the runner validates the exit code (1) derived from the
+# summary line. Regression test for FAIL outcomes not counting toward the
+# exit status.
+# expect: Running tests in unittest_test/failures/test_failures.gen...
+# expect:
+# expect: Running 3 test(s)...
+# expect:
+# expect:   test_that_fails            ... FAIL
+# expect:     Runtime error occurred
+# expect:   test_that_fails_type_error ... FAIL
+# expect:     Runtime error occurred
+# expect:   test_that_passes           ... PASS
+# expect: === Test Results ===
+# expect: Tests run: 3
+# expect: ✓ Passed: 1
+# expect: ⚠ Failed: 2
+# expect:
+# expect: Some tests failed or had errors.
+
+fun test_that_passes() {
+    assert(1 + 1 == 2);
+}
+
+fun test_that_fails() {
+    assert(false);
+}
+
+fun test_that_fails_type_error() {
+    throw TypeError("BAD TYPE");
+}

@@ -6,11 +6,11 @@ import 'package:glob/glob.dart';
 import 'package:glob/list_local_fs.dart';
 import 'package:path/path.dart' as p;
 
+import 'package:tool/src/expectations.dart';
 import 'package:tool/src/term.dart' as term;
 
 /// Runs the tests.
 
-final _expectedOutputPattern = RegExp(r"# expect: ?(.*)");
 final _expectedErrorPattern = RegExp(r"# (Error.*)");
 final _errorLinePattern = RegExp(r"# \[((java|c) )?line (\d+)\] (Error.*)");
 final _expectedRuntimeErrorPattern = RegExp(r"# expect runtime error: (.+)");
@@ -195,16 +195,6 @@ void _runTest(String path) {
   }
 }
 
-class ExpectedOutput {
-  final int line;
-  final String output;
-
-  ExpectedOutput(this.line, this.output);
-
-  @override
-  String toString() => 'ExpectedOutput(line: $line, output: "$output")';
-}
-
 class Test {
   final String _path;
   final String? _expectationFile;
@@ -294,7 +284,7 @@ class Test {
       var match = _nonTestPattern.firstMatch(line);
       if (match != null) return false;
 
-      match = _expectedOutputPattern.firstMatch(line);
+      match = expectedOutputPattern.firstMatch(line);
       if (match != null) {
         _expectedOutput.add(ExpectedOutput(lineNum, match[1]!));
         _expectations++;
@@ -346,6 +336,16 @@ class Test {
       return false;
     }
 
+    if (_isUnitTest) {
+      // A unit-test run signals failure through the summary line and exit
+      // code 1; the 65/70 codes derived from inline error expectations
+      // apply only to normal script runs.
+      _expectedExitCode = _expectedOutput.any((expected) =>
+              expected.output == "Some tests failed or had errors.")
+          ? 1
+          : 0;
+    }
+
     // If we got here, it's a valid test.
     return true;
   }
@@ -375,10 +375,10 @@ class Test {
       } else {
         _validateCompileErrors(errorLines);
       }
-      _validateExitCode(result.exitCode, errorLines);
     }
+    _validateExitCode(result.exitCode, errorLines);
 
-    _validateOutput(outputLines);
+    _failures.addAll(compareOutput(_expectedOutput, outputLines));
     return _failures;
   }
 
@@ -452,35 +452,6 @@ class Test {
 
     fail("Expected return code $_expectedExitCode and got $exitCode. Stderr:",
         errorLines);
-  }
-
-  void _validateOutput(List<String> outputLines) {
-    // Remove the trailing last empty line.
-    if (outputLines.isNotEmpty && outputLines.last == "") {
-      outputLines.removeLast();
-    }
-
-    var index = 0;
-    for (; index < outputLines.length; index++) {
-      var line = outputLines[index];
-      if (index >= _expectedOutput.length) {
-        fail("Got output '$line' when none was expected.");
-        continue;
-      }
-
-      var expected = _expectedOutput[index];
-      if (expected.output != line) {
-        fail("Expected output '${expected.output}' on line ${expected.line} "
-            " and got '$line'.");
-      }
-    }
-
-    while (index < _expectedOutput.length) {
-      var expected = _expectedOutput[index];
-      fail("Missing expected output '${expected.output}' on line "
-          "${expected.line}.");
-      index++;
-    }
   }
 
   void fail(String message, [List<String>? lines]) {
@@ -755,12 +726,6 @@ void _defineTestSuites() {
     ...noJavaLimits,
   });
 
-  c("clox", {
-    "test": "pass",
-    ...earlyChapters,
-    ...onlyImport,
-  });
-
   c("chap17_compiling", {
     // No real interpreter yet.
     "test": "skip",
@@ -889,6 +854,24 @@ void _defineTestSuites() {
     ...earlyChapters,
   });
 
+  c("clox", {
+    "test": "pass",
+    ...earlyChapters,
+    ...onlyImport,
+    // Cross-language plugin tests (C/C++/Zig) need non-Rust toolchains and
+    // their built dylibs. They run in the dedicated `plugin-lang` suite via
+    // `make plugin-lang-test`, which builds the plugins first. The Rust plugin
+    // tests directly under test/plugin/ still run here as normal.
+    "test/plugin/lang": "skip",
+  });
+
+  // Cross-language plugin tests. Built and run by `make plugin-lang-test`,
+  // which compiles the C/C++/Zig example plugins into test/plugin/lang/ first.
+  // Separate from `clox` so the normal suite needs no extra toolchains.
+  _allSuites["plugin-lang"] = Suite(
+      "plugin-lang", "c", "build/cloxd", [], {"test/plugin/lang": "pass"},
+      testGlobPattern: "test/plugin/lang/**.gen");
+
   // Unit testing functionality suite - using custom glob pattern to only find unit tests
   _allSuites["generic-unittest"] = Suite(
       "generic-unittest",
@@ -899,6 +882,7 @@ void _defineTestSuites() {
         "unittest_test/test_basic.gen": "pass",
         "unittest_test/test_empty.gen": "pass",
         "unittest_test/errors/test_errors.gen": "pass",
+        "unittest_test/failures/test_failures.gen": "pass",
       },
       testGlobPattern: "unittest_test/**.gen",
       isUnitTest: true);

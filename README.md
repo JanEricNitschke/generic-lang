@@ -1,7 +1,15 @@
 # The Generic Programming Language
 
-This is the main source code repository for **Generic**. It contains the interpreter and will at some point contain the
-standard library, and documentation.
+This is the main source code repository for **Generic**. It contains the interpreter, the bundled standard library, and
+the documentation.
+
+## Documentation
+
+- **[Language guide](docs/language/README.md)** — syntax, types, classes, exceptions, modules, the standard library, and the built-in unit-test framework, for people writing generic programs.
+- **[Plugin authoring guide](docs/plugin-authors.md)** — write native modules (Rust, C, C++, Zig) loaded with a plain `import`. API reference: [`generic-lang-api` on docs.rs](https://docs.rs/generic-lang-api).
+- **[Architecture](docs/ARCHITECTURE.md)** — internals for contributors: the scanner → compiler → bytecode → VM pipeline, the value/heap/GC model, the exception model, and the load-bearing invariants.
+
+The workspace is three crates: `generic-lang` (the `generic` binary), `generic-lang-lib` (the interpreter as a library), and `generic-lang-api` (the plugin ABI/authoring API).
 
 ## Influence
 
@@ -15,7 +23,7 @@ A rudimentary vscode extension exists in the form of [generic-lang-vscode](https
 
 ## Building
 
-The interpreter can be build like this:
+The interpreter can be built like this:
 ```bash
 cargo build --release
 ```
@@ -32,7 +40,7 @@ The language includes built-in unit testing support. Write test functions (start
 generic --test your_file.gen
 ```
 
-This will discover and run all test functions in isolation, providing detailed reporting. See [TESTING.md](TESTING.md) for complete documentation.
+This will discover and run all test functions in isolation, providing detailed reporting. See the [Testing chapter](docs/language/testing.md) of the language guide for complete documentation.
 
 ### Integration Testing
 
@@ -113,3 +121,14 @@ Now to use generic, in your terminal, run:
 ```bash
 generic
 ```
+
+## Native plugins
+
+Generic programs can load native modules — shared libraries (`.so`/`.dylib`/`.dll`) — with a normal `import`:
+
+```generic
+import "demo";
+print(demo.add(19, 23));   # 42
+```
+
+Plugins are written in Rust against the [`generic-lang-api`](https://docs.rs/generic-lang-api) crate, or in any C-ABI language against the generated `crates/generic-lang-api/include/generic.h`. Worked examples in Rust, C, C++, and Zig live in [`plugin-examples/`](plugin-examples). See the [plugin authoring guide](docs/plugin-authors.md).

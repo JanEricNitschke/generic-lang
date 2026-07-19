@@ -35,6 +35,7 @@ jobs:
     - name: Install C/C++ lint tools
       # Both wheels track the latest stable releases; no version pins.
       run: pip install clang-format cpplint
+
     - name: Build
       run: |
         # Feature powerset on the lib crate, where the features are defined
