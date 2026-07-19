@@ -1,3 +1,6 @@
+# mac stuff
+*.DS_Store
+
 # Compiled class file
 *.class
 
@@ -37,3 +40,29 @@ reference/
 
 /tool/.dart_tool/
 /tool/.packages
+
+# IDE and editor state
+.idea/
+
+# Git bundles used to shuttle branches around
+*.bundle
+
+# Built plugin fixtures: dylibs compiled by the Makefile fixture steps from the
+# sources in plugin-examples/ and placed next to the .gen tests in test/plugin/.
+# The sources are tracked; the build artifacts (including debug-symbol
+# side-products: macOS .dSYM bundles, Windows .pdb/.lib/.exp) are not.
+test/plugin/**/*.so
+test/plugin/**/*.dylib
+test/plugin/**/*.dll
+test/plugin/**/*.o
+test/plugin/**/*.dSYM/
+test/plugin/**/*.pdb
+test/plugin/**/*.lib
+test/plugin/**/*.exp
+plugin-examples/rust/target/
+plugin-examples/**/*.o
+plugin-examples/**/*.dSYM/
+
+# Zig build-system outputs for the zig example plugin
+plugin-examples/zig/zig-out/
+plugin-examples/zig/.zig-cache/

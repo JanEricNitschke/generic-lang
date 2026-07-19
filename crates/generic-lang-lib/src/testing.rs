@@ -186,7 +186,7 @@ fn run_tests_for_single_file(file: &PathBuf) -> FileTestResult {
     }
 }
 
-/// Find all test files in a directory recursively (files that contain "test" in the name before the .gen extension)
+/// Find all test files in a directory recursively (files named `test_*.gen`).
 fn find_test_files(dir: &PathBuf) -> Vec<PathBuf> {
     let mut files: Vec<_> = WalkDir::new(dir)
         .into_iter()

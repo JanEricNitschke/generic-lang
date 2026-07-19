@@ -841,7 +841,7 @@ fn trampoline_recovers_the_pointer_from_the_callee() {
     vm.stack.extend_from_slice(&args);
     let result = plugin_trampoline(&mut vm, &args).unwrap();
     assert_eq!(result, Value::from(42i64));
-    vm.stack.truncate(0);
+    vm.stack.clear();
 }
 
 /// The integration counterpart to

@@ -1,0 +1,28 @@
+# C++ plugin fixture (plugin-examples/cpp/cpp_demo_plugin.cpp), built by the
+# Makefile `plugin-lang-fixture` step. Iterates a generic list through the
+# vtable and converts an escaping C++ exception into a generic one.
+#
+# Exports exercised here:
+#   add(a, b) -- integer addition
+#   shout(s)  -- ASCII-uppercase the string, append "!"
+#   sum(list) -- sum a list of ints
+#   boom()    -- throw a C++ exception inside the plugin
+import "cpp_demo_plugin";
+
+print(cpp_demo_plugin.add(40, 2)); # expect: 42
+print(cpp_demo_plugin.shout("hello")); # expect: HELLO!
+print(cpp_demo_plugin.sum([10, 20, 30])); # expect: 60
+
+# A C++ exception thrown inside the plugin is caught by `guarded` and surfaces
+# as a generic Exception rather than aborting the process.
+try {
+    cpp_demo_plugin.boom();
+} catch Exception as e {
+    print("caught: " + str(e)); # expect: caught: cpp_demo_plugin: intentional C++ exception
+}
+
+try {
+    cpp_demo_plugin.sum([1, "x"]);
+} catch TypeError as e {
+    print("type: " + str(e)); # expect: type: cpp_demo_plugin.sum expects a list of ints
+}

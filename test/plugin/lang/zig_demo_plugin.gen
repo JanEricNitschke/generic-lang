@@ -1,0 +1,25 @@
+# Zig plugin fixture (plugin-examples/zig/zig_demo_plugin.zig), built by the
+# Makefile `plugin-lang-fixture` step throughh its build.zig which
+# translate-c's the generated header into a module. Same ABI, exercised
+# from Zig.
+#
+# Exports exercised here:
+#   add(a, b)                  -- integer addition
+#   shout(s)                   -- ASCII-uppercase the string, append "!"
+#   raise(class_name, message) -- throw a fresh instance of the named class
+import "zig_demo_plugin";
+
+print(zig_demo_plugin.add(40, 2)); # expect: 42
+print(zig_demo_plugin.shout("hi zig")); # expect: HI ZIG!
+
+try {
+    zig_demo_plugin.raise("ValueError", "from zig");
+} catch ValueError as e {
+    print("caught: " + str(e)); # expect: caught: from zig
+}
+
+try {
+    zig_demo_plugin.add("x", "y");
+} catch TypeError as e {
+    print("type: " + str(e)); # expect: type: zig_demo_plugin.add expects two ints
+}

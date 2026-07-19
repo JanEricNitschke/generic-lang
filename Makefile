@@ -24,14 +24,187 @@ cargo-test:
 generate-plugin-header:
 	cbindgen --config crates/generic-lang-api/cbindgen.toml \
 		--crate generic-lang-api \
-		--output crates/generic-lang-api/include/generic_plugin.h \
+		--output crates/generic-lang-api/include/generic.h \
 		crates/generic-lang-api
+
+# Regenerate the header and verify the committed copy matches. The header is
+# purely cbindgen's output — nothing else is checked or linted here; whether
+# it compiles is covered by building the example plugins against it.
+.PHONY: check-plugin-header
+check-plugin-header: generate-plugin-header
+	git diff --exit-code crates/generic-lang-api/include/generic.h
 
 setup-dart:
 	dart pub get --directory=tool
 
+# Static analysis + format check for the dart test runner.
+.PHONY: dart-lint
+dart-lint: setup-dart
+	dart analyze --fatal-infos tool
+	dart format --output=none --set-exit-if-changed tool
+
+# Run the code samples embedded in the markdown docs (docs/ and the README),
+# so they cannot drift from the language: ```generic fences must run cleanly
+# (and match any `# expect:` comments), ```generic-error fences must exit
+# with an error. The built Rust example plugin is placed beside the samples
+# as demo.<ext>, so the plugin-import samples really run.
+.PHONY: docs-test
+docs-test: $(DEBUG_BIN) setup-dart plugin-test-fixture
+	dart tool/bin/doc_test.dart --interpreter ./$(DEBUG_BIN) \
+		--docs docs --docs README.md \
+		--fixture demo.$(DYLIB_EXT)=test/plugin/rust/rust_demo_plugin.$(DYLIB_EXT)
+
+# C/C++ drivers for the plugin fixtures. make's builtin default for CXX is
+# g++; use the platform driver instead. On Windows there is no `cc`/`c++`
+# driver — Zig (required for the Zig fixture anyway) doubles as the C/C++
+# compiler. Override on the command line if needed (make ... CC=... CXX=...).
+# All recipes assume an sh-compatible shell (on Windows: Git Bash / MSYS).
+CXX = c++
+ifeq ($(OS),Windows_NT)
+CC  = zig cc
+CXX = zig c++
+endif
+
+# Warnings for the example plugins, modeled on the strictest practical set
+# (see the TicTacToe reference repo). -Waggregate-return is omitted on
+# purpose: the plugin ABI returns structs by value by design.
+PLUGIN_WARNINGS = -Wall -Wextra -pedantic -Werror -Wfloat-equal -Wundef \
+	-Wshadow -Wpointer-arith -Wcast-align -Wstrict-overflow=5 -Wwrite-strings \
+	-Wcast-qual -Wswitch-default -Wswitch-enum -Wconversion -Wunreachable-code \
+	-Wformat=2 -Winit-self
+PLUGIN_WARNINGS_C = $(PLUGIN_WARNINGS) -Wstrict-prototypes
+
+# Platform shared-library extension for the plugin fixtures.
+DYLIB_EXT := $(if $(filter Darwin,$(shell uname -s)),dylib,$(if $(filter Windows_NT,$(OS)),dll,so))
+# The Rust cdylib file cargo produces (no `lib` prefix on Windows).
+PLUGIN_LIB := $(if $(filter Windows_NT,$(OS)),generic_test_plugin.dll,libgeneric_test_plugin.$(DYLIB_EXT))
+PLUGIN_INC := crates/generic-lang-api/include
+
+# Build the Rust example plugin (its source lives in plugin-examples/rust)
+# and place its dylib next to the Rust `.gen` tests as
+# test/plugin/rust/rust_demo_plugin.<ext>, where import resolution looks for
+# it. This runs as part of the normal dart suite, so the Rust plugin tests
+# always run with everything else.
+.PHONY: plugin-test-fixture
+plugin-test-fixture:
+	cargo build --manifest-path plugin-examples/rust/Cargo.toml
+	cp plugin-examples/rust/target/debug/$(PLUGIN_LIB) test/plugin/rust/rust_demo_plugin.$(DYLIB_EXT)
+
+# The Zig plugin builds through its build.zig (translate-c of the header).
+# Zig's install-dir naming follows the platform dylib convention (no `lib` prefix on Windows).
+# Path within zig-out/: Zig installs DLLs as runtime artifacts into bin/ on
+# Windows (lib/ holds only the import .lib there); POSIX dylibs go to lib/.
+ZIG_OUT_LIB := $(if $(filter Windows_NT,$(OS)),bin/zig_demo_plugin.dll,lib/libzig_demo_plugin.$(DYLIB_EXT))
+
+# Build the cross-language example plugins (C, C++, Zig, then the bad-plugin
+# loader-path fixtures) from plugin-examples/ into test/plugin/lang/, next to
+# their `.gen` tests. Requires the C/C++/Zig toolchains; run via
+# `make plugin-lang-test`, which is separate from the normal suite.
+# The demo plugins build with the full warning set as errors — they are
+# showcase code. The bad/ fixtures are deliberately wrong (wrong_abi.c uses a
+# zero-length array, a GNU extension) and build without -Werror/-pedantic.
+.PHONY: plugin-lang-fixture
+plugin-lang-fixture:
+	mkdir -p test/plugin/lang
+	$(CC)  -shared -fPIC -std=c2x $(PLUGIN_WARNINGS_C) -I $(PLUGIN_INC) -o test/plugin/lang/c_demo_plugin.$(DYLIB_EXT) plugin-examples/c/c_demo_plugin.c
+	$(CXX) -shared -fPIC -std=c++23 $(PLUGIN_WARNINGS) -I $(PLUGIN_INC) -o test/plugin/lang/cpp_demo_plugin.$(DYLIB_EXT) plugin-examples/cpp/cpp_demo_plugin.cpp
+	cd plugin-examples/zig && zig build -Doptimize=ReleaseSafe
+	cp plugin-examples/zig/zig-out/$(ZIG_OUT_LIB) test/plugin/lang/zig_demo_plugin.$(DYLIB_EXT)
+	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/wrongabi.$(DYLIB_EXT) plugin-examples/bad/wrong_abi.c
+	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/noinit.$(DYLIB_EXT)   plugin-examples/bad/no_init.c
+	printf 'not a real dylib, just text\n' > test/plugin/lang/corrupt.$(DYLIB_EXT)
+
+# Build the cross-language plugins, then run only their `.gen` tests (the
+# `plugin-lang` dart suite, which the normal `clox` suite skips).
+.PHONY: plugin-lang-test
+plugin-lang-test: $(DEBUG_BIN) plugin-lang-fixture
+	dart tool/bin/test.dart plugin-lang --interpreter ./$(DEBUG_BIN)
+
+# The example plugins must compile at the oldest standards we support — C99
+# (designated initializers, // comments, <stdint.h>/<stdbool.h>) and C++11
+# (the lambda-based `guarded` exception wall; the header alone is fine as
+# C++03) — as well as at the newest published ones, which the fixture builds
+# above use. The oldest-standard checks drop -pedantic: the header's FATAL
+# status value exceeds `int`, which only became standard C in C23.
+.PHONY: plugin-std-check
+plugin-std-check:
+	$(CC)  -c -std=c99   $(filter-out -pedantic,$(PLUGIN_WARNINGS_C)) -I $(PLUGIN_INC) -o plugin-examples/std_check.o plugin-examples/c/c_demo_plugin.c
+	$(CXX) -c -std=c++11 $(filter-out -pedantic,$(PLUGIN_WARNINGS))   -I $(PLUGIN_INC) -o plugin-examples/std_check.o plugin-examples/cpp/cpp_demo_plugin.cpp
+	rm -f plugin-examples/std_check.o
+
+# Lint the example plugin sources: C/C++ with clang-format + cpplint, Zig
+# with zig fmt, Rust with rustfmt + clippy (workspace-excluded, so
+# `--all`/`--workspace` invocations do not cover it). The generated C header
+# is generated code with its own gate (`make check-plugin-header`), so it is
+# not style-linted here.
+CLANG_FORMAT ?= clang-format
+.PHONY: plugin-lint
+plugin-lint:
+	$(CLANG_FORMAT) --dry-run --Werror --style=file plugin-examples/c/*.c plugin-examples/cpp/*.cpp plugin-examples/bad/*.c
+	cpplint --filter=-build/include_subdir,-build/include_order,-legal/copyright,-readability/casting --linelength=100 plugin-examples/c/*.c plugin-examples/cpp/*.cpp plugin-examples/bad/*.c
+	zig fmt --check plugin-examples/zig/*.zig
+	cargo fmt --check --manifest-path plugin-examples/rust/Cargo.toml
+	cargo clippy --manifest-path plugin-examples/rust/Cargo.toml --all-targets -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo -D warnings
+
+# Run every plugin `.gen` test with an AddressSanitizer-instrumented host and
+# Rust plugin, plus sanitized C/C++ plugins (rust nightly for -Zsanitizer;
+# the Zig plugin is loaded uninstrumented — Zig has no ASan link option, and
+# ReleaseSafe carries its own checks). Catches memory errors and UB across
+# the dlopen/FFI boundary that miri cannot see. Leak detection is off: the
+# VM does not tear down its heap at exit.
+#
+# The C/C++ plugins get ASan only on Linux, built with clang: its static
+# runtime model resolves the plugin's ASan symbols from the host executable.
+# macOS ships only a dynamic ASan runtime for dylibs, which cannot be
+# dlopen'ed into a statically-sanitized host ("loaded too late"), so there
+# they get trap-mode UBSan only (runtime-free; UB aborts the test).
+ifeq ($(shell uname -s),Darwin)
+ASAN_PLUGIN_CC       := $(CC)
+ASAN_PLUGIN_CXX      := $(CXX)
+ASAN_PLUGIN_SANITIZE := -fsanitize=undefined -fsanitize-trap=undefined
+else
+ASAN_PLUGIN_CC       := clang
+ASAN_PLUGIN_CXX      := clang++
+ASAN_PLUGIN_SANITIZE := -fsanitize=address,undefined -fsanitize-trap=undefined
+endif
+ASAN_TARGET := $(shell rustc -vV | sed -n 's/^host: //p')
+ASAN_BIN    := target/$(ASAN_TARGET)/debug/generic
+.PHONY: plugin-asan-test
+plugin-asan-test:
+	RUSTFLAGS=-Zsanitizer=address cargo +nightly build --target $(ASAN_TARGET) -p generic-lang
+	RUSTFLAGS=-Zsanitizer=address cargo +nightly build --target $(ASAN_TARGET) --manifest-path plugin-examples/rust/Cargo.toml
+	cp plugin-examples/rust/target/$(ASAN_TARGET)/debug/$(PLUGIN_LIB) test/plugin/rust/rust_demo_plugin.$(DYLIB_EXT)
+	mkdir -p test/plugin/lang
+	$(ASAN_PLUGIN_CC)  -shared -fPIC -g -std=c2x $(ASAN_PLUGIN_SANITIZE) $(PLUGIN_WARNINGS_C) -I $(PLUGIN_INC) -o test/plugin/lang/c_demo_plugin.$(DYLIB_EXT) plugin-examples/c/c_demo_plugin.c
+	$(ASAN_PLUGIN_CXX) -shared -fPIC -g -std=c++23 $(ASAN_PLUGIN_SANITIZE) $(PLUGIN_WARNINGS) -I $(PLUGIN_INC) -o test/plugin/lang/cpp_demo_plugin.$(DYLIB_EXT) plugin-examples/cpp/cpp_demo_plugin.cpp
+	cd plugin-examples/zig && zig build -Doptimize=ReleaseSafe
+	cp plugin-examples/zig/zig-out/$(ZIG_OUT_LIB) test/plugin/lang/zig_demo_plugin.$(DYLIB_EXT)
+	$(CC)  -shared -fPIC -I $(PLUGIN_INC) -o test/plugin/lang/wrongabi.$(DYLIB_EXT) plugin-examples/bad/wrong_abi.c
+	$(CC)  -shared -fPIC -I $(PLUGIN_INC) -o test/plugin/lang/noinit.$(DYLIB_EXT)   plugin-examples/bad/no_init.c
+	printf 'not a real dylib, just text\n' > test/plugin/lang/corrupt.$(DYLIB_EXT)
+	for f in test/plugin/rust/*.gen test/plugin/lang/*.gen; do \
+		echo "asan $$f"; \
+		ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 ./$(ASAN_BIN) $$f >/dev/null || { echo "sanitizer failure in $$f"; exit 1; }; \
+	done
+	$(MAKE) plugin-test-fixture plugin-lang-fixture  # restore uninstrumented fixtures
+
+# Run every plugin `.gen` test under valgrind memcheck (Linux CI; valgrind
+# does not support recent macOS). This catches memory errors across the
+# dlopen/FFI boundary that neither miri (which cannot dlopen) nor the plain
+# suites see. Leak checking stays off: the VM does not tear down its heap at
+# exit, so leak reports would be all host noise. Any valgrind-detected error
+# fails via the sentinel exit code; the tests' own exit codes pass through.
+.PHONY: plugin-valgrind-test
+plugin-valgrind-test: $(DEBUG_BIN) plugin-test-fixture plugin-lang-fixture
+	command -v valgrind >/dev/null || { echo "valgrind is not installed"; exit 1; }
+	for f in test/plugin/rust/*.gen test/plugin/lang/*.gen; do \
+		echo "valgrind $$f"; \
+		valgrind --quiet --error-exitcode=97 ./$(DEBUG_BIN) $$f >/dev/null; \
+		if [ $$? -eq 97 ]; then echo "valgrind found errors in $$f"; exit 1; fi; \
+	done
+
 .PHONY: custom-dart-test
-custom-dart-test: $(DEBUG_BIN)
+custom-dart-test: $(DEBUG_BIN) plugin-test-fixture
 	dart tool/bin/test.dart clox --interpreter ./$(DEBUG_BIN)
 
 .PHONY: unittest-test
@@ -47,7 +220,7 @@ unittest-test-directory: $(DEBUG_BIN)
 	dart tool/bin/test.dart generic-unittest-directory --interpreter $(DEBUG_BIN) --arguments --test
 
 .PHONY: stress-gc-test
-stress-gc-test: $(STRESS_GC_BIN)
+stress-gc-test: $(STRESS_GC_BIN) plugin-test-fixture
 	dart tool/bin/test.dart clox --interpreter ./$(STRESS_GC_BIN)
 
 .PHONY: test

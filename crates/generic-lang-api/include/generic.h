@@ -1,7 +1,7 @@
 /* Plugin ABI of the generic programming language. GENERATED — do not edit. */
 
-#ifndef GENERIC_PLUGIN_H
-#define GENERIC_PLUGIN_H
+#ifndef GENERIC_H
+#define GENERIC_H
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -204,7 +204,13 @@ typedef struct GenericValue {
  * passed to a host callback only needs to be valid for that call.
  */
 typedef struct FfiStr {
+  /**
+   * Pointer to the first byte (may be null only for the empty sentinel).
+   */
   const uint8_t *ptr;
+  /**
+   * Length in bytes.
+   */
   size_t len;
 } FfiStr;
 
@@ -216,7 +222,13 @@ typedef struct FfiStr {
  * a meaningless placeholder accompanying a fatal pass-through error.
  */
 typedef struct FfiReturn {
+  /**
+   * A [`FfiStatus`] as `u32`: what `value` means.
+   */
   uint32_t status;
+  /**
+   * The result, the exception instance, or a fatal-status placeholder.
+   */
   struct GenericValue value;
 } FfiReturn;
 
@@ -246,7 +258,14 @@ typedef struct FfiReturn {
  * - Infallible callbacks return their value directly.
  */
 typedef struct HostApi {
+  /**
+   * ABI version of the host ([`GENERIC_PLUGIN_ABI_VERSION`]).
+   */
   uint32_t abi_version;
+  /**
+   * Opaque host context; pass it back as the first argument of every
+   * callback. Never dereference it.
+   */
   void *ctx;
   /**
    * Kind of the value, as a [`ValueKind`](crate::ValueKind) code.
@@ -330,9 +349,21 @@ typedef struct HostApi {
    * invalid UTF-8.
    */
   struct FfiReturn (*attr_has)(void *ctx, struct GenericValue receiver, struct FfiStr name);
+  /**
+   * A new nil value.
+   */
   struct GenericValue (*nil_new)(void *ctx);
+  /**
+   * A new bool value.
+   */
   struct GenericValue (*bool_new)(void *ctx, bool value);
+  /**
+   * A new integer value.
+   */
   struct GenericValue (*int_new)(void *ctx, int64_t value);
+  /**
+   * A new float value.
+   */
   struct GenericValue (*float_new)(void *ctx, double value);
   /**
    * Interns the given UTF-8 bytes into a string value; `ValueError` on
@@ -433,6 +464,9 @@ typedef struct HostApi {
    * the `n` most recent roots early.
    */
   void (*root)(void *ctx, struct GenericValue value);
+  /**
+   * Release the `n` most recently rooted values.
+   */
   void (*unroot)(void *ctx, size_t n);
 } HostApi;
 
@@ -458,7 +492,13 @@ typedef struct FunctionDesc {
    * Accepted argument counts (the host checks arity before calling).
    */
   const uint8_t *arities;
+  /**
+   * Number of entries in `arities`.
+   */
   size_t arities_len;
+  /**
+   * The function implementation.
+   */
   PluginFn fun;
 } FunctionDesc;
 
@@ -471,12 +511,21 @@ typedef struct FunctionDesc {
  * ```
  */
 typedef struct ModuleDesc {
+  /**
+   * ABI version the plugin was built against ([`GENERIC_PLUGIN_ABI_VERSION`]).
+   */
   uint32_t abi_version;
+  /**
+   * Pointer to `functions_len` contiguous [`FunctionDesc`] entries.
+   */
   const struct FunctionDesc *functions;
+  /**
+   * Number of entries in `functions`.
+   */
   size_t functions_len;
 } ModuleDesc;
 
-#endif  /* GENERIC_PLUGIN_H */
+#endif  /* GENERIC_H */
 
 #ifdef __cplusplus
 extern "C" {

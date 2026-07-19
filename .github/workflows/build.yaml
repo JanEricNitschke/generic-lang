@@ -21,28 +21,60 @@ jobs:
       uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
     - name: Install cargo-hack and cbindgen
       run: cargo install cargo-hack cbindgen --locked
+    # Toolchains for the C/C++/Zig example plugins. cc/c++ are the runner's
+    # own compilers; everything else tracks the latest stable release
+    # automatically instead of pinning a version.
+    - name: Set up Zig
+      uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+      with:
+        version: latest
+    - name: Set up Python
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: "3.x"
+    - name: Install C/C++ lint tools
+      # Both wheels track the latest stable releases; no version pins.
+      run: pip install clang-format cpplint
     - name: Build
       run: |
         # Feature powerset on the lib crate, where the features are defined
         # (the bin crate's features are pure forwards).
         cargo hack build --feature-powerset --skip print_code_builtin,trace_execution_builtin,debug_parser_builtin,debug_scanner_builtin --no-dev-deps -p generic-lang-lib
         cargo build --verbose
-    - name: Lint
+    - name: Check Rust formatting
       run: |
-        rustup component add clippy rustfmt
-        # Formatting check across all workspace crates
+        rustup component add rustfmt
         cargo fmt --all --check
-        # Run normal configuration and fail on default warnings
-        # (unscoped invocations lint every workspace member, including the bin crate)
+    - name: Clippy
+      run: |
+        rustup component add clippy
+        # Normal configuration, fail on default warnings (unscoped
+        # invocations lint every workspace member, including the bin crate)
         cargo clippy -- -D warnings
-        # Run pedantic
+        # Pedantic set — the repo is zero-warnings here too
         cargo clippy --all-targets -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
-        cargo hack clippy --each-feature --no-dev-deps -p generic-lang-lib -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
-        # The checked-in C header must match the ABI types
-        make generate-plugin-header
-        git diff --exit-code crates/generic-lang-api/include/generic_plugin.h
+    - name: Clippy per feature
+      run: cargo hack clippy --each-feature --no-dev-deps -p generic-lang-lib -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
+    - name: Check generated plugin header
+      # Regenerates the header and fails on drift — the header is purely
+      # cbindgen's output, nothing else.
+      run: make check-plugin-header
+    - name: Lint example plugins
+      # clang-format + cpplint (C/C++), zig fmt (Zig), rustfmt + clippy
+      # (Rust — workspace-excluded, so the workspace-wide checks miss it).
+      run: make plugin-lint
+    - name: Check example plugins at the oldest supported standards
+      # C99 / C++11; the fixture builds cover the newest (C23 / C++23).
+      run: make plugin-std-check
+    - name: Check API docs
+      # The public plugin ABI must be fully documented (missing_docs) and its
+      # rustdoc must build without warnings (broken links etc.)
+      run: RUSTDOCFLAGS="-D warnings" cargo doc -p generic-lang-api --no-deps
     - name: Test
-      run: cargo test --verbose
+      run: |
+        cargo test --verbose
+        # The lib must also build and pass tests with plugins (and everything) off
+        cargo test --no-default-features -p generic-lang-lib
     - name: Install Miri
       run: |
         rustup toolchain install nightly --component miri
@@ -69,6 +101,8 @@ jobs:
       uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1.7.2
       with:
         sdk: stable
+    - name: Lint dart test runner
+      run: make dart-lint
     - name: Checkout book repo
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       with:
@@ -83,16 +117,29 @@ jobs:
       run: |
         cargo build
         make test
+    - name: Run documentation samples
+      # Executes the ```generic / ```generic-error code blocks in docs/.
+      run: make docs-test
+    - name: Run cross-language plugin tests
+      # Builds the C/C++/Zig example plugins and runs the plugin-lang suite.
+      run: make plugin-lang-test
+    - name: Run plugin tests under valgrind
+      # Memory errors across the dlopen/FFI boundary — one of the places miri
+      # cannot look. Uses the fixtures built by the previous steps.
+      run: |
+        sudo apt-get update && sudo apt-get install -y valgrind
+        make plugin-valgrind-test
+    - name: Run plugin tests under AddressSanitizer
+      # ASan-instrumented host + Rust plugin, ASan+UBSan C/C++ plugins.
+      # Complements valgrind with compile-time instrumentation (stack bugs,
+      # UB). Uses the nightly toolchain installed for miri.
+      run: make plugin-asan-test
     - name: Install hyperfine
       run: |
         cargo install --locked hyperfine
-    - name: Set up Python
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-      with:
-        python-version: '3.13'
     - name: Set up Ruby
       uses: ruby/setup-ruby@d45b1a4e94b71acab930e56e79c6aa188764e7f9 # v1.316.0
       with:
-        ruby-version: "3.4.2"
+        ruby-version: "3.4"
     - name: Run benchmarks
       run: make benchmark-ci

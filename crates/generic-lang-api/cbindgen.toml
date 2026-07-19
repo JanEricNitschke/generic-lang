@@ -1,8 +1,8 @@
-# Configuration for generating include/generic_plugin.h from the ABI types.
+# Configuration for generating include/generic.h from the ABI types.
 # Regenerate with `make generate-plugin-header`; CI fails if the checked-in
 # header is out of date. Never edit the header by hand.
 language = "C"
-include_guard = "GENERIC_PLUGIN_H"
+include_guard = "GENERIC_H"
 cpp_compat = true
 documentation = true
 usize_is_size_t = true

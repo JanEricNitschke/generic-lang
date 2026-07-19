@@ -1,7 +1,7 @@
 //! The raw C ABI shared between the generic interpreter and its plugins.
 //!
 //! Everything in this module is `#[repr(C)]` and mirrored in the generated
-//! `include/generic_plugin.h` for non-Rust plugins. Plugin authors normally
+//! `include/generic.h` for non-Rust plugins. Plugin authors normally
 //! use the safe wrapper in the crate root instead of these types directly.
 
 use core::ffi::c_void;
@@ -46,7 +46,9 @@ impl core::fmt::Debug for GenericValue {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct FfiStr {
+    /// Pointer to the first byte (may be null only for the empty sentinel).
     pub ptr: *const u8,
+    /// Length in bytes.
     pub len: usize,
 }
 
@@ -116,7 +118,9 @@ impl FfiStatus {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct FfiReturn {
+    /// A [`FfiStatus`] as `u32`: what `value` means.
     pub status: u32,
+    /// The result, the exception instance, or a fatal-status placeholder.
     pub value: GenericValue,
 }
 
@@ -134,7 +138,9 @@ pub struct FunctionDesc {
     pub name: FfiStr,
     /// Accepted argument counts (the host checks arity before calling).
     pub arities: *const u8,
+    /// Number of entries in `arities`.
     pub arities_len: usize,
+    /// The function implementation.
     pub fun: PluginFn,
 }
 
@@ -146,8 +152,11 @@ pub struct FunctionDesc {
 /// ```
 #[repr(C)]
 pub struct ModuleDesc {
+    /// ABI version the plugin was built against ([`GENERIC_PLUGIN_ABI_VERSION`]).
     pub abi_version: u32,
+    /// Pointer to `functions_len` contiguous [`FunctionDesc`] entries.
     pub functions: *const FunctionDesc,
+    /// Number of entries in `functions`.
     pub functions_len: usize,
 }
 
@@ -192,7 +201,10 @@ unsafe impl Sync for ModuleDesc {}
 /// - Infallible callbacks return their value directly.
 #[repr(C)]
 pub struct HostApi {
+    /// ABI version of the host ([`GENERIC_PLUGIN_ABI_VERSION`]).
     pub abi_version: u32,
+    /// Opaque host context; pass it back as the first argument of every
+    /// callback. Never dereference it.
     pub ctx: *mut c_void,
 
     // --- inspect (never re-enter) ---
@@ -255,9 +267,13 @@ pub struct HostApi {
         extern "C" fn(ctx: *mut c_void, receiver: GenericValue, name: FfiStr) -> FfiReturn,
 
     // --- construct (never re-enter) ---
+    /// A new nil value.
     pub nil_new: extern "C" fn(ctx: *mut c_void) -> GenericValue,
+    /// A new bool value.
     pub bool_new: extern "C" fn(ctx: *mut c_void, value: bool) -> GenericValue,
+    /// A new integer value.
     pub int_new: extern "C" fn(ctx: *mut c_void, value: i64) -> GenericValue,
+    /// A new float value.
     pub float_new: extern "C" fn(ctx: *mut c_void, value: f64) -> GenericValue,
     /// Interns the given UTF-8 bytes into a string value; `ValueError` on
     /// invalid UTF-8.
@@ -343,5 +359,6 @@ pub struct HostApi {
     /// automatically when the plugin function returns; `unroot` releases
     /// the `n` most recent roots early.
     pub root: extern "C" fn(ctx: *mut c_void, value: GenericValue),
+    /// Release the `n` most recently rooted values.
     pub unroot: extern "C" fn(ctx: *mut c_void, n: usize),
 }

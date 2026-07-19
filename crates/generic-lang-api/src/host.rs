@@ -33,19 +33,30 @@ pub struct Host<'a> {
 /// A decoded view of a [`GenericValue`], obtained via [`Host::decode`].
 #[derive(Debug, Clone, Copy)]
 pub enum ArgValue<'h> {
+    /// The `nil` value.
     Nil,
+    /// A boolean.
     Bool(bool),
+    /// An integer that fits in an `i64`.
     Int(i64),
     /// An integer that does not fit in an `i64`; convert via
     /// [`Host::display`] if a textual form suffices.
     BigInt(GenericValue),
+    /// A float.
     Float(f64),
+    /// A rational number; inspect via [`Host::display`].
     Rational(GenericValue),
+    /// A string, borrowed from the host (see the re-fetch rule).
     Str(&'h str),
+    /// A list ([`Host::list_len`], [`Host::list_get`]).
     List(GenericValue),
+    /// A tuple ([`Host::tuple_len`], [`Host::tuple_get`]).
     Tuple(GenericValue),
+    /// A dict ([`Host::dict_get`], [`Host::dict_set`]).
     Dict(GenericValue),
+    /// A set ([`Host::set_add`], [`Host::set_contains`]).
     Set(GenericValue),
+    /// A range; inspect via [`Host::display`] or drive its iterator.
     Range(GenericValue),
     /// The exhausted-iterator sentinel.
     StopIteration,
@@ -55,9 +66,11 @@ pub enum ArgValue<'h> {
     Class(GenericValue),
     /// A callable ([`Host::call`]).
     Function(GenericValue),
+    /// A module.
     Module(GenericValue),
     /// An exception instance.
     Exception(GenericValue),
+    /// A generator; drive via [`Host::invoke`] with `__next__`.
     Generator(GenericValue),
     /// An iterator (drive via [`Host::invoke`] with `__next__`).
     Iterator(GenericValue),
@@ -298,21 +311,25 @@ impl<'a> Host<'a> {
 
     // --- construct ---
 
+    /// A new `nil` value.
     #[must_use]
     pub fn make_nil(&self) -> GenericValue {
         (self.api.nil_new)(self.api.ctx)
     }
 
+    /// A new boolean value.
     #[must_use]
     pub fn make_bool(&self, value: bool) -> GenericValue {
         (self.api.bool_new)(self.api.ctx, value)
     }
 
+    /// A new integer value.
     #[must_use]
     pub fn make_int(&self, value: i64) -> GenericValue {
         (self.api.int_new)(self.api.ctx, value)
     }
 
+    /// A new float value.
     #[must_use]
     pub fn make_float(&self, value: f64) -> GenericValue {
         (self.api.float_new)(self.api.ctx, value)
@@ -408,17 +425,27 @@ impl<'a> Host<'a> {
     }
 
     host_error_constructors!(
-        /// The base `Exception` class.
+        /// A [`PluginError`] carrying a fresh base `Exception` instance.
         exception => "Exception",
+        /// A [`PluginError`] carrying a fresh `TypeError` instance.
         type_error => "TypeError",
+        /// A [`PluginError`] carrying a fresh `ValueError` instance.
         value_error => "ValueError",
+        /// A [`PluginError`] carrying a fresh `NameError` instance.
         name_error => "NameError",
+        /// A [`PluginError`] carrying a fresh `ConstReassignmentError` instance.
         const_reassignment_error => "ConstReassignmentError",
+        /// A [`PluginError`] carrying a fresh `AttributeError` instance.
         attribute_error => "AttributeError",
+        /// A [`PluginError`] carrying a fresh `ImportError` instance.
         import_error => "ImportError",
+        /// A [`PluginError`] carrying a fresh `AssertionError` instance.
         assertion_error => "AssertionError",
+        /// A [`PluginError`] carrying a fresh `IoError` instance.
         io_error => "IoError",
+        /// A [`PluginError`] carrying a fresh `KeyError` instance.
         key_error => "KeyError",
+        /// A [`PluginError`] carrying a fresh `IndexError` instance.
         index_error => "IndexError",
     );
 

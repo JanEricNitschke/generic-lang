@@ -24,12 +24,27 @@ jobs:
       - name: Login to crates.io
         run: cargo login ${{ secrets.CRATES_IO_API_TOKEN }}
 
-      - name: Publish packages
+      - name: Publish changed crates
+        # Publish every crate whose local version is not on crates.io yet, in
+        # dependency order: api -> lib -> bin (cargo waits for index
+        # propagation in between). The lib and bin move in lockstep with the
+        # release tag; the api crate is versioned separately and only
+        # publishes when its version was bumped. Skipping instead of failing
+        # also makes the job safe to re-run.
         run: |
-          # Dependency order: the lib must be on the registry before the bin
-          # that depends on it (cargo waits for index propagation in between).
-          cargo publish -p generic-lang-lib --allow-dirty
-          cargo publish -p generic-lang --allow-dirty
+          for crate in generic-lang-api generic-lang-lib generic-lang; do
+            version=$(cargo metadata --format-version=1 --no-deps |
+              jq -r --arg name "$crate" '.packages[] | select(.name == $name) | .version')
+            # The sparse index lists published versions as JSON lines under
+            # <first two>/<next two letters of the name>/<name>.
+            # 404 (never published) falls through to the publish branch
+            if curl -fsSL "https://index.crates.io/${crate:0:2}/${crate:2:2}/$crate" 2>/dev/null |
+                jq -e --arg v "$version" 'select(.vers == $v)' >/dev/null; then
+              echo "$crate $version is already on crates.io, skipping"
+            else
+              cargo publish -p "$crate"
+            fi
+          done
 
   build-binaries:
     name: Build Binaries
@@ -116,10 +131,6 @@ jobs:
 
       - name: Package crates
         run: cargo package --workspace
-
-      - name: Extract version from Cargo.toml
-        id: version
-        run: echo "VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "generic-lang") | .version')" >> "$GITHUB_ENV"
 
       - name: Upload crate package as artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -262,6 +273,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Derive version from the tag
+        # Env vars do not cross jobs, so derive it here from the vX.Y.Z tag.
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1

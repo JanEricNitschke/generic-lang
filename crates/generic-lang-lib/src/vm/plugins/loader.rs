@@ -99,7 +99,7 @@ impl VM {
         };
 
         // SAFETY: the symbol is declared with exactly this signature in the
-        // plugin ABI (`generic_plugin_init` in generic_plugin.h).
+        // plugin ABI (`generic_plugin_init` in generic.h).
         let init = match unsafe {
             library.get::<extern "C" fn() -> *const ModuleDesc>(b"generic_plugin_init")
         } {

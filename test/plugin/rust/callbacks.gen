@@ -1,0 +1,65 @@
+# Re-entering callbacks: the plugin runs generic bytecode mid-call. Calling a
+# closure, propagating a generic exception back out through the plugin,
+# honoring __str__, reading a field, invoking a method, mutating dict/set via
+# __hash__/__eq__, and the rooting contract (a rooted value survives a
+# re-entering call — exercised hard under the stress-GC profile).
+#
+# Exports exercised here:
+#   call_with_21_and_double(f)       -- call f(21), double the result
+#   describe(x)                      -- "describe:" + str(x), honoring __str__
+#   get_field(instance, name)        -- read a field via attr_get
+#   call_method(instance, name, arg) -- invoke a named method
+#   dict_put(d, k, v)                -- insert via __hash__/__eq__, return d
+#   set_put(s, item)                 -- add via __hash__/__eq__, return s
+#   keep_across(f)                   -- root a value across a re-entering call
+import "rust_demo_plugin";
+
+fun answer(n) {
+    return n + 21;
+}
+print(rust_demo_plugin.call_with_21_and_double(answer)); # expect: 84
+
+# An exception raised inside the re-entered closure propagates through the
+# plugin unchanged, back to the generic caller.
+fun raiser(n) {
+    throw ValueError("from generic");
+}
+try {
+    rust_demo_plugin.call_with_21_and_double(raiser);
+} catch ValueError as e {
+    print("propagated: " + str(e)); # expect: propagated: from generic
+}
+
+class Point {
+    __init__(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+    __str__() {
+        return "Point(" + str(this.x) + ", " + str(this.y) + ")";
+    }
+    add_coords(bonus) {
+        return this.x + this.y + bonus;
+    }
+}
+var p = Point(3, 4);
+
+print(rust_demo_plugin.describe(p)); # expect: describe:Point(3, 4)
+print(rust_demo_plugin.get_field(p, "x")); # expect: 3
+print(rust_demo_plugin.call_method(p, "add_coords", 10)); # expect: 17
+
+# dict_put / set_put re-enter through __hash__/__eq__ and return the container.
+var d = {:};
+rust_demo_plugin.dict_put(d, "k", 99);
+print(d["k"]); # expect: 99
+
+var s = {1, 2};
+rust_demo_plugin.set_put(s, 3);
+print(3 in s); # expect: true
+
+# A value the plugin allocates, roots, and holds across a re-entering call
+# survives collection.
+fun sidefx() {
+    return 0;
+}
+print(rust_demo_plugin.keep_across(sidefx)); # expect: kept-alive

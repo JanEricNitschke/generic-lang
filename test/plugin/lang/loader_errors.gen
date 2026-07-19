@@ -1,0 +1,37 @@
+# Loader rejection paths: every way a plugin dylib can be rejected must
+# surface as a catchable ImportError, never a crash. The exact messages embed
+# the resolved dylib path (platform-specific extension) and dlopen/dlsym
+# failure tails, sso each case asserts the stable, host-generated partt of the
+# message via contains()
+#
+# Fixtures exercised here (built by the Makefile `plugin-lang-fixture` step):
+#   wrongabi -- well-formed module declaring an incompatible ABI version
+#   noinit   -- valid dylib without the generic_plugin_init export
+#   corrupt  -- a file that is not a shared library at all
+
+# Incompatible ABI version -> host-generated message naming both versions.
+try {
+    import "wrongabi";
+    print("should not reach");
+} catch ImportError as e {
+    print(str(e).contains("speaks ABI version 9999")); # expect: true
+    print(str(e).contains("host expects 1")); # expect: true
+}
+
+# A dylib without generic_plugin_init -> IImport naming the missing symbol
+try {
+    import "noinit";
+    print("should not reach");
+} catch ImportError as e {
+    print(str(e).contains("does not export `generic_plugin_init`")); # expect: true
+}
+
+# A file that is not a shared library at all -> catchable ImportError.
+try {
+    import "corrupt";
+    print("should not reach");
+} catch ImportError as e {
+    print(str(e).contains("Failed to load plugin")); # expect: true
+}
+
+print("survived"); # expect: survived
