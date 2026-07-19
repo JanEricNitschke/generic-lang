@@ -21,7 +21,7 @@ pub enum TestRunResult {
 /// Run tests from a file or directory.
 ///
 /// If a file is provided, compiles and executes it, then discovers and runs all test functions.
-/// If a directory is provided, finds all .gen files whose names contain "test" and runs tests on each.
+/// If a directory is provided, finds all .gen files whose names start with "test_" and runs tests on each.
 /// Test functions are those whose names start with "test_".
 /// Provides a summary report of test results.
 #[must_use]
@@ -60,7 +60,7 @@ fn run_tests_for_file(file: &PathBuf) -> TestRunResult {
     // Print test summary
     print_test_summary(&result.test_results);
 
-    if result.had_error {
+    if result.had_error || result.test_results.failed > 0 {
         TestRunResult::HadFailures
     } else {
         TestRunResult::AllPassed
@@ -78,7 +78,7 @@ fn run_tests_for_directory(dir: &PathBuf) -> TestRunResult {
                 .replace('\\', "/")
                 .trim_start_matches("./")
         );
-        println!("Looking for .gen files that contain 'test' in the name");
+        println!("Looking for .gen files whose names start with 'test_'");
         return TestRunResult::AllPassed;
     }
 
@@ -109,7 +109,7 @@ fn run_tests_for_directory(dir: &PathBuf) -> TestRunResult {
         overall_results.errors += result.test_results.errors;
         overall_results.failed += result.test_results.failed;
 
-        if result.had_error {
+        if result.had_error || result.test_results.failed > 0 {
             any_failures = true;
         }
 

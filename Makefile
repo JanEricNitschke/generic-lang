@@ -65,9 +65,8 @@ CC  = zig cc
 CXX = zig c++
 endif
 
-# Warnings for the example plugins, modeled on the strictest practical set
-# (see the TicTacToe reference repo). -Waggregate-return is omitted on
-# purpose: the plugin ABI returns structs by value by design.
+# Warnings for the example plugins, modeled on the strictest practical set.
+# -Waggregate-return is omitted on purpose: the plugin ABI returns structs by value by design.
 PLUGIN_WARNINGS = -Wall -Wextra -pedantic -Werror -Wfloat-equal -Wundef \
 	-Wshadow -Wpointer-arith -Wcast-align -Wstrict-overflow=5 -Wwrite-strings \
 	-Wcast-qual -Wswitch-default -Wswitch-enum -Wconversion -Wunreachable-code \
