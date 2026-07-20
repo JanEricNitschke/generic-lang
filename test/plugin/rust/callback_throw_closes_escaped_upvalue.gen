@@ -1,0 +1,35 @@
+# A generic callee run via a plugin's call_value callback stores a closure
+# capturing its parameter in a global and then throws. The exception crosses
+# the re-entry boundary back into the plugin; that boundary's cleanup must
+# close the upvalue over the truncated stack region — exactly like a normal
+# return would — so the escaped closure keeps seeing the captured value.
+#
+# Exports exercised here:
+#   call_with_21_and_double(f) -- call f(21) through the host's call_value
+import "rust_demo_plugin";
+
+var escaped;
+
+fun capture_and_throw(n) {
+    fun inner() {
+        return n;
+    }
+    escaped = inner;
+    throw ValueError("boom");
+}
+
+try {
+    rust_demo_plugin.call_with_21_and_double(capture_and_throw);
+} catch ValueError as e {
+    print("caught: " + str(e)); # expect: caught: boom
+}
+
+# Reuse and overwrite the stack region where n used to live before reading
+# the capture back (mirrors throw_in_str_dunder_closes_escaped_upvalue.gen).
+var a = "junk1";
+var b = "junk2";
+fun deep(p, q, r) {
+    return p + q + r;
+}
+print(deep("A", "B", "C")); # expect: ABC
+print(escaped()); # expect: 21

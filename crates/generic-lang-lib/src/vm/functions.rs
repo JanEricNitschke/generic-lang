@@ -5,6 +5,7 @@ use crate::vm::ExceptionKind::{
 };
 use crate::vm::arithmetics::IntoResultValue;
 use crate::vm::errors::{Return, VmErrorKind, VmResult};
+use crate::vm::exception_handling::RegionSnapshot;
 use crate::{
     chunk::OpCode,
     heap::{NativeFunctionId, NativeMethodId, StringId, UpvalueId},
@@ -47,9 +48,11 @@ impl VM {
         arg_count: u8,
         method_is_native: bool,
     ) -> VmResult {
-        let entry_frames = self.callstack.len();
-        let entry_modules = self.modules.len();
-        let entry_stack = self.stack.len() - usize::from(arg_count) - 1;
+        // The region starts below the callee and its arguments.
+        let entry = RegionSnapshot {
+            stack: self.stack.len() - usize::from(arg_count) - 1,
+            ..self.current_region()
+        };
 
         let result = match self.invoke(method_name, arg_count) {
             Ok(_) if method_is_native => Ok(None),
@@ -65,9 +68,7 @@ impl VM {
                 // leftover frames and stack, keep the exception on top in
                 // place of the result.
                 let exception = self.stack.pop().expect("Pending exception missing");
-                self.stack.truncate(entry_stack);
-                self.callstack.truncate(entry_frames, &self.heap);
-                self.modules.truncate(entry_modules);
+                self.unwind_region(entry);
                 self.stack.push(exception);
                 Err(VmErrorKind::Exception(kind))
             }

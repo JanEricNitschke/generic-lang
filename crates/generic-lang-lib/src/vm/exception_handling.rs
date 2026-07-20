@@ -29,22 +29,28 @@ pub enum ExceptionKind {
     IndexError,
 }
 
-/// An exception handlers
+/// A snapshot of the three lengths that define a callstack region: the
+/// callstack depth, the value-stack height, and the module count.
 ///
-/// Holds the index of the frame where the exception handler is located
-/// and the instruction pointer (ip) where the exception handler starts.
+/// Captured when a region is entered (or a handler registered) and consumed
+/// by [`VM::unwind_region`], which cuts the VM back to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RegionSnapshot {
+    pub frames: usize,
+    pub stack: usize,
+    pub modules: usize,
+}
+
+/// An exception handler.
 ///
-/// All indices are absolute positions in the live VM: `frames_to_keep` is a
-/// callstack depth, `stack_length` a value-stack length, and
-/// `modules_to_keep` a module-stack length. Only `ip` is chunk-relative.
-/// For the generator-relative form saved across suspensions see
-/// [`SuspendedExceptionHandler`].
+/// Holds the region to unwind to when the handler catches — absolute
+/// positions in the live VM — and the instruction pointer (chunk-relative)
+/// where the catch block starts. For the generator-relative form saved
+/// across suspensions see [`SuspendedExceptionHandler`].
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ExceptionHandler {
-    pub frames_to_keep: usize,
+    pub region: RegionSnapshot,
     pub ip: usize,
-    pub stack_length: usize,
-    pub modules_to_keep: usize,
 }
 
 /// An exception handler saved inside a suspended generator.
@@ -61,7 +67,7 @@ pub struct ExceptionHandler {
 ///   (normally 0 — imports cannot yield, so a resume is module-balanced).
 /// - `ip`: chunk-relative, identical in both forms.
 ///
-/// The fields are private on purpose: the only way in or out is
+/// The fields are private: the only way in or out is
 /// [`ExceptionHandler::suspend`] / [`Self::resume`], so a suspended handler
 /// can never be used as an absolute one by accident.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -85,18 +91,18 @@ impl ExceptionHandler {
         module_base: usize,
     ) -> SuspendedExceptionHandler {
         debug_assert!(
-            self.frames_to_keep > frame_base,
+            self.region.frames > frame_base,
             "suspending a handler that does not belong to the generator frame"
         );
         debug_assert!(
-            self.stack_length >= stack_base && self.modules_to_keep >= module_base,
+            self.region.stack >= stack_base && self.region.modules >= module_base,
             "suspending a handler registered below the generator frame"
         );
         SuspendedExceptionHandler {
-            frames_above_base: self.frames_to_keep - frame_base,
+            frames_above_base: self.region.frames - frame_base,
             ip: self.ip,
-            stack_length: self.stack_length - stack_base,
-            modules_above_base: self.modules_to_keep - module_base,
+            stack_length: self.region.stack - stack_base,
+            modules_above_base: self.region.modules - module_base,
         }
     }
 }
@@ -114,27 +120,45 @@ impl SuspendedExceptionHandler {
         module_base: usize,
     ) -> ExceptionHandler {
         ExceptionHandler {
-            frames_to_keep: self.frames_above_base + frame_base,
+            region: RegionSnapshot {
+                frames: self.frames_above_base + frame_base,
+                stack: self.stack_length + stack_base,
+                modules: self.modules_above_base + module_base,
+            },
             ip: self.ip,
-            stack_length: self.stack_length + stack_base,
-            modules_to_keep: self.modules_above_base + module_base,
         }
     }
 }
 
 impl VM {
-    pub(super) fn register_exception_handler(
-        &mut self,
-        frames_to_keep: usize,
-        ip: usize,
-        stack_length: usize,
-        modules_to_keep: usize,
-    ) {
+    /// The current callstack depth, value-stack height, and module count —
+    /// the state a later [`VM::unwind_region`] restores.
+    pub(crate) fn current_region(&self) -> RegionSnapshot {
+        RegionSnapshot {
+            frames: self.callstack.len(),
+            stack: self.stack.len(),
+            modules: self.modules.len(),
+        }
+    }
+
+    /// Cut the value stack, callstack, and module stack back to `region`,
+    /// closing upvalues over the removed stack slots exactly like a normal
+    /// return would — a closure that escaped the region must keep seeing
+    /// the captured values, and a stale open upvalue would index out of
+    /// bounds (or read a reused slot) later.
+    pub(crate) fn unwind_region(&mut self, region: RegionSnapshot) {
+        self.close_upvalue(region.stack);
+        self.stack.truncate(region.stack);
+        self.callstack.truncate(region.frames, &self.heap);
+        self.modules.truncate(region.modules);
+    }
+
+    /// Register a handler for the current region whose catch block starts
+    /// at the chunk-relative `ip`.
+    pub(super) fn register_exception_handler(&mut self, ip: usize) {
         self.exception_handlers.push(ExceptionHandler {
-            frames_to_keep,
+            region: self.current_region(),
             ip,
-            stack_length,
-            modules_to_keep,
         });
     }
 
@@ -159,7 +183,7 @@ impl VM {
         let split = self
             .exception_handlers
             .iter()
-            .position(|handler| handler.frames_to_keep > frame_base)
+            .position(|handler| handler.region.frames > frame_base)
             .unwrap_or(self.exception_handlers.len());
         self.exception_handlers
             .drain(split..)
@@ -243,15 +267,13 @@ impl VM {
     /// Pass `0` for `call_depth` to accept any handler (the top-level loop).
     pub(crate) fn resolve_pending_exception(&mut self, call_depth: usize) -> bool {
         match self.exception_handlers.last() {
-            Some(handler) if handler.frames_to_keep >= call_depth => {
+            Some(handler) if handler.region.frames >= call_depth => {
                 let handler = self
                     .pop_exception_handler()
                     .expect("Handler vanished during resolution");
                 let exception = self.stack.pop().expect("Pending exception missing");
-                self.modules.truncate(handler.modules_to_keep);
-                self.callstack.truncate(handler.frames_to_keep, &self.heap);
+                self.unwind_region(handler.region);
                 self.callstack.current_mut().ip = handler.ip;
-                self.stack.truncate(handler.stack_length);
                 self.stack.push(exception);
                 true
             }

@@ -169,12 +169,8 @@ impl VM {
 
         for (i, handler) in self.exception_handlers.iter().enumerate() {
             println!(
-                "  [{:3}] modules_to_keep: {:3}, frames_to_keep: {:3}, ip: {:5}, stack_length: {:5}",
-                i,
-                handler.modules_to_keep,
-                handler.frames_to_keep,
-                handler.ip,
-                handler.stack_length,
+                "  [{:3}] modules: {:3}, frames: {:3}, ip: {:5}, stack: {:5}",
+                i, handler.region.modules, handler.region.frames, handler.ip, handler.region.stack,
             );
         }
     }

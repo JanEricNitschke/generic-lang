@@ -1,0 +1,42 @@
+# A throw that unwinds through a frame whose local was captured by a
+# closure that escaped (stored in a global) must close the open upvalue,
+# exactly like a return would: the closure keeps seeing the captured
+# value, and no stale open upvalue is left pointing above the truncated
+# stack.
+var holder;
+
+fun inner() {
+  var x = "captured";
+  fun capture() {
+    print(x);
+  }
+  holder = capture;
+  throw ValueError("boom");
+}
+
+fun outer() {
+  # A local below the handler snapshot, captured by a closure that is
+  # used after the catch: its upvalue must stay OPEN across the unwind
+  # (guards the closing boundary against an off-by-one).
+  var y = "live";
+  fun readY() {
+    print(y);
+  }
+  try {
+    inner();
+  } catch ValueError as e {
+    print("caught"); # expect: caught
+    y = "mutated";
+  }
+  readY(); # expect: mutated
+}
+
+outer();
+# Reuse and overwrite the stack region where x used to live.
+var a = "junk1";
+var b = "junk2";
+fun deep(p, q, r) {
+  return p + q + r;
+}
+print(deep("A", "B", "C")); # expect: ABC
+holder(); # expect: captured
