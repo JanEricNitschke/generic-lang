@@ -139,11 +139,19 @@ symbol:
 #include <string.h>
 #include "generic.h"
 
+/* Each host call can itself fail (EXCEPTION or FATAL); forward any non-OK
+ * FfiReturn unchanged, immediately — never relabel or swallow it. */
 static FfiReturn throw_new(const HostApi *host, const char *class_name, const char *msg) {
     FfiStr name = {.ptr = (const uint8_t *)class_name, .len = strlen(class_name)};
     FfiStr message = {.ptr = (const uint8_t *)msg, .len = strlen(msg)};
     FfiReturn cls = host->builtin_get(host->ctx, name);
+    if (cls.status != GENERIC_FFI_STATUS_OK) {
+        return cls;
+    }
     FfiReturn exc = host->exception_new(host->ctx, cls.value, message);
+    if (exc.status != GENERIC_FFI_STATUS_OK) {
+        return exc;
+    }
     FfiReturn ret = {.status = GENERIC_FFI_STATUS_EXCEPTION, .value = exc.value};
     return ret;
 }
@@ -380,11 +388,19 @@ base `"Exception"`), create the instance with `exception_new(class,
 message)`, and return it:
 
 ```c
+/* Each host call can itself fail (EXCEPTION or FATAL); forward any non-OK
+ * FfiReturn unchanged, immediately — never relabel or swallow it. */
 static FfiReturn throw_new(const HostApi *host, const char *class_name, const char *msg) {
     FfiStr name = {.ptr = (const uint8_t *)class_name, .len = strlen(class_name)};
     FfiStr message = {.ptr = (const uint8_t *)msg, .len = strlen(msg)};
     FfiReturn cls = host->builtin_get(host->ctx, name);
+    if (cls.status != GENERIC_FFI_STATUS_OK) {
+        return cls;
+    }
     FfiReturn exc = host->exception_new(host->ctx, cls.value, message);
+    if (exc.status != GENERIC_FFI_STATUS_OK) {
+        return exc;
+    }
     FfiReturn ret = {.status = GENERIC_FFI_STATUS_EXCEPTION, .value = exc.value};
     return ret;
 }

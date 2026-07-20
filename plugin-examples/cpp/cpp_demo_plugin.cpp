@@ -37,11 +37,19 @@ FfiStr as_ffi(const std::string &s) {
 }
 
 // Build an exception instance of the named builtin class and return it under
-// the EXCEPTION status.
+// the EXCEPTION status. Each host call can itself fail (EXCEPTION or FATAL);
+// forward any non-OK FfiReturn unchanged, immediately — never relabel or
+// swallow it.
 FfiReturn throw_new(const HostApi *host, const char *class_name, const std::string &msg) {
     FfiStr name{reinterpret_cast<const uint8_t *>(class_name), std::strlen(class_name)};
     FfiReturn cls = host->builtin_get(host->ctx, name);
+    if (cls.status != GENERIC_FFI_STATUS_OK) {
+        return cls;
+    }
     FfiReturn exc = host->exception_new(host->ctx, cls.value, as_ffi(msg));
+    if (exc.status != GENERIC_FFI_STATUS_OK) {
+        return exc;
+    }
     return FfiReturn{GENERIC_FFI_STATUS_EXCEPTION, exc.value};
 }
 
