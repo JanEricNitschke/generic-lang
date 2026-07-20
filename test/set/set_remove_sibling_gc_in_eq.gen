@@ -1,0 +1,43 @@
+# Set lookups snapshot the same-hash candidate items before probing them
+# with `__eq__`. A candidate that `__eq__` removes from the set (dropping
+# its last external reference) must stay rooted for the rest of the
+# probe; otherwise a GC inside `__eq__` sweeps it while it still sits in
+# the snapshot. Relies on stress_gc to collect right after the roots are
+# dropped.
+var armed = false;
+var g1 = nil;
+var g2 = nil;
+var s = Set();
+
+class Elem {
+    __init__(id) {
+        this.id = id;
+    }
+
+    __hash__() {
+        return 7; # deliberate collision so both items are probe candidates
+    }
+
+    __eq__(other) {
+        if armed {
+            armed = false;
+            if this.id == 1 {
+                s.remove(g2); # remove the not-yet-compared sibling candidate
+            } else {
+                s.remove(g1);
+            }
+            g1 = nil;
+            g2 = nil; # drop the last external roots
+        }
+        return this.id == other.id;
+    }
+}
+
+g1 = Elem(1);
+g2 = Elem(2);
+s.insert(g1);
+s.insert(g2);
+armed = true;
+
+print(Elem(3) in s); # misses: the first candidate's __eq__ removes the second # expect: false
+print(len(s)); # expect: 1
