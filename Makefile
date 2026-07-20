@@ -195,14 +195,17 @@ plugin-asan-test:
 # dlopen/FFI boundary that neither miri (which cannot dlopen) nor the plain
 # suites see. Leak checking stays off: the VM does not tear down its heap at
 # exit, so leak reports would be all host noise. Any valgrind-detected error
-# fails via the sentinel exit code; the tests' own exit codes pass through.
+# fails via the sentinel exit code; any other nonzero exit (a crash, panic,
+# or test failure of the run itself) fails the target too.
 .PHONY: plugin-valgrind-test
 plugin-valgrind-test: $(DEBUG_BIN) plugin-test-fixture plugin-lang-fixture
 	command -v valgrind >/dev/null || { echo "valgrind is not installed"; exit 1; }
 	for f in test/plugin/rust/*.gen test/plugin/lang/*.gen; do \
 		echo "valgrind $$f"; \
 		valgrind --quiet --error-exitcode=97 ./$(DEBUG_BIN) $$f >/dev/null; \
-		if [ $$? -eq 97 ]; then echo "valgrind found errors in $$f"; exit 1; fi; \
+		rc=$$?; \
+		if [ $$rc -eq 97 ]; then echo "valgrind found errors in $$f"; exit 1; \
+		elif [ $$rc -ne 0 ]; then echo "test failed (exit $$rc) in $$f"; exit 1; fi; \
 	done
 
 .PHONY: custom-dart-test
