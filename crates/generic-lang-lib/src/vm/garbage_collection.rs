@@ -27,6 +27,7 @@ impl VM {
     /// - The open upvalues
     /// - The modules
     /// - The builtins
+    /// - The plugin export cache's interned names (`plugins` feature)
     ///
     /// Trace all the references from the roots.
     /// Remove all the unmarked strings from the globals, builtins and heap strings.
@@ -64,6 +65,17 @@ impl VM {
         eprintln!("Marking builtins.");
         for builtin in self.builtins.values() {
             self.heap.mark_value(&builtin.value);
+        }
+        // The plugin loader's per-path export cache holds interned name
+        // `StringId`s that a cache-hit re-import feeds into module setup;
+        // nothing else keeps them reachable, so they are roots.
+        #[cfg(feature = "plugins")]
+        {
+            #[cfg(feature = "log_gc")]
+            eprintln!("Marking plugin export names.");
+            for (name_id, _, _) in self.plugins.loaded.values().flatten() {
+                self.heap.mark_value(&crate::value::Value::String(*name_id));
+            }
         }
 
         // Trace references
