@@ -59,7 +59,13 @@ impl VM {
         local_import: bool,
     ) -> Option<VmResult> {
         let path = find_plugin_candidate(file_path, name_id.to_value(&self.heap))?;
+        // Canonicalize the cache key so different spellings of the same
+        // file (relative vs. absolute, `./` prefixes, symlinks) share one
+        // entry and one loaded library. The candidate was just found on
+        // disk, so this only fails on races — fall back to the raw path.
+        let path = path.canonicalize().unwrap_or(path);
 
+        // Failed loads are deliberately not cached.
         let exports = if let Some(exports) = self.plugins.loaded.get(&path) {
             exports.clone()
         } else {
