@@ -14,12 +14,20 @@ fn ok(value: c.GenericValue) c.FfiReturn {
 }
 
 // Build an exception instance of the named builtin class and return it under
-// the EXCEPTION status.
+// the EXCEPTION status. Each host call can itself fail (EXCEPTION or FATAL);
+// forward any non-OK FfiReturn unchanged, immediately — never relabel or
+// swallow it.
 fn throwNew(host: [*c]const c.HostApi, class_name: [*c]const u8, msg: [*c]const u8) c.FfiReturn {
     const name = c.FfiStr{ .ptr = class_name, .len = std.mem.len(class_name) };
     const message = c.FfiStr{ .ptr = msg, .len = std.mem.len(msg) };
     const cls = host.*.builtin_get.?(host.*.ctx, name);
+    if (cls.status != c.GENERIC_FFI_STATUS_OK) {
+        return cls;
+    }
     const exc = host.*.exception_new.?(host.*.ctx, cls.value, message);
+    if (exc.status != c.GENERIC_FFI_STATUS_OK) {
+        return exc;
+    }
     return c.FfiReturn{ .status = c.GENERIC_FFI_STATUS_EXCEPTION, .value = exc.value };
 }
 
