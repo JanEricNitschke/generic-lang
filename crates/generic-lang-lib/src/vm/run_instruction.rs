@@ -477,25 +477,13 @@ macro_rules! run_instruction {
                 };
                 $self.import_file(file_path, names_to_import, None, local_import)
             }
-            // Register an exception handler.
+            // Register an exception handler for the current region.
             // The operand is the offset from the current instruction right before
             // the try block to the start of the first catch block.
-            // The know where to  resume the handler we need the frame we are -> the frames to keep
-            // as well as the instruction pointer to jump to in that frame.
-            // We also need to know the stack length to be able to remove any
-            // left over values on there.
             OpCode::RegisterCatches => {
                 let offset = $self.read_16bit_number();
                 let target_ip = $self.callstack.current().ip + offset;
-                let frames_to_keep = $self.callstack.len();
-                let stack_length = $self.stack.len();
-                let modules_to_keep = $self.modules.len();
-                $self.register_exception_handler(
-                    frames_to_keep,
-                    target_ip,
-                    stack_length,
-                    modules_to_keep,
-                );
+                $self.register_exception_handler(target_ip);
                 Ok(None)
             }
             // Just pop the top most handler. No operand, no work with the stack.

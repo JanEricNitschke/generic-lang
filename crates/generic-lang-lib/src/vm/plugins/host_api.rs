@@ -213,13 +213,11 @@ fn reenter_call(
     values: &[Value],
     dispatch: impl FnOnce(&mut VM) -> VmResult,
 ) -> FfiReturn {
-    let entry_stack = vm.stack.len();
-    let entry_frames = vm.callstack.len();
-    let entry_modules = vm.modules.len();
+    let entry = vm.current_region();
     vm.stack.extend_from_slice(values);
 
     let result = match dispatch(vm) {
-        Ok(_) if vm.callstack.len() > entry_frames => vm.run_function_from_depth(entry_frames + 1),
+        Ok(_) if vm.callstack.len() > entry.frames => vm.run_function_from_depth(entry.frames + 1),
         other => other,
     };
 
@@ -227,7 +225,7 @@ fn reenter_call(
         Ok(_) => {
             debug_assert_eq!(
                 vm.stack.len(),
-                entry_stack + 1,
+                entry.stack + 1,
                 "re-entering callback must leave exactly the result on the stack"
             );
             ffi_ok(vm.stack.pop().expect("Result missing after re-entry"))
@@ -237,15 +235,11 @@ fn reenter_call(
             // like `invoke_and_run_function` does, then hand the exception
             // to the plugin.
             let exception = vm.stack.pop().expect("Pending exception missing");
-            vm.stack.truncate(entry_stack);
-            vm.callstack.truncate(entry_frames, &vm.heap);
-            vm.modules.truncate(entry_modules);
+            vm.unwind_region(entry);
             ffi_exception(exception)
         }
         Err(VmErrorKind::Runtime(_)) => {
-            vm.stack.truncate(entry_stack);
-            vm.callstack.truncate(entry_frames, &vm.heap);
-            vm.modules.truncate(entry_modules);
+            vm.unwind_region(entry);
             ffi_fatal()
         }
     }

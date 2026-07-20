@@ -99,9 +99,7 @@ impl VM {
     /// Run a single test function in isolation
     fn run_single_test(&mut self, closure_id: ClosureId) -> TestOutcome {
         // Save VM state before running test
-        let stack_len = self.stack.len();
-        let callstack_len = self.callstack.len();
-        let module_len = self.modules.len();
+        let entry = self.current_region();
 
         // Push the closure onto the stack and call it
         let closure_value = Value::Closure(closure_id);
@@ -118,10 +116,9 @@ impl VM {
             Err(_) => TestOutcome::Error("Failed to call test function".to_string()),
         };
 
-        // Restore VM state
-        self.stack.truncate(stack_len);
-        self.callstack.truncate(callstack_len, &self.heap);
-        self.modules.truncate(module_len);
+        // Restore VM state. A failed test may leave its frames behind
+        // (uncaught exceptions are reported, not unwound).
+        self.unwind_region(entry);
 
         result
     }

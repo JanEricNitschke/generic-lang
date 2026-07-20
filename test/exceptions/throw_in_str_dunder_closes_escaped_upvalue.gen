@@ -1,0 +1,31 @@
+# A throw escaping a __str__ invoked by a native (print) crosses the
+# invoke_and_run_function boundary: its Err-arm cleanup truncates the
+# callee's frames and stack, and must close the upvalue over the dunder's
+# local that a closure captured and stored in a global — the closure must
+# keep seeing the captured value after the exception is caught upstream.
+var holder;
+
+class Sneaky {
+    __str__() {
+        var x = "captured";
+        fun capture() {
+            print(x);
+        }
+        holder = capture;
+        throw ValueError("boom");
+    }
+}
+
+try {
+    print(Sneaky());
+} catch ValueError as e {
+    print("caught"); # expect: caught
+}
+# Reuse and overwrite the stack region where x used to live.
+var a = "junk1";
+var b = "junk2";
+fun deep(p, q, r) {
+  return p + q + r;
+}
+print(deep("A", "B", "C")); # expect: ABC
+holder(); # expect: captured
