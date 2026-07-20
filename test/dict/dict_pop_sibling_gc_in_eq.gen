@@ -1,0 +1,47 @@
+# Dict lookups snapshot the same-hash candidate keys before probing them
+# with `__eq__`. A candidate that `__eq__` pops from the dict (dropping
+# its last external reference) must stay rooted for the rest of the
+# probe; otherwise a GC inside `__eq__` sweeps it while it still sits in
+# the snapshot. Relies on stress_gc to collect right after the roots are
+# dropped.
+var armed = false;
+var g1 = nil;
+var g2 = nil;
+var d = {:};
+
+class Key {
+    __init__(id) {
+        this.id = id;
+    }
+
+    __hash__() {
+        return 7; # deliberate collision so both keys are probe candidates
+    }
+
+    __eq__(other) {
+        if armed {
+            armed = false;
+            if this.id == 1 {
+                d.pop(g2); # pop the not-yet-compared sibling candidate
+            } else {
+                d.pop(g1);
+            }
+            g1 = nil;
+            g2 = nil; # drop the last external roots
+        }
+        return this.id == other.id;
+    }
+}
+
+g1 = Key(1);
+g2 = Key(2);
+d[g1] = "one";
+d[g2] = "two";
+armed = true;
+
+try {
+    print(d[Key(3)]); # misses: the first candidate's __eq__ pops the second
+} catch KeyError as e {
+    print("KeyError raised"); # expect: KeyError raised
+}
+print(len(d)); # expect: 1

@@ -11,10 +11,16 @@ use crate::{
 
 use hashbrown::HashTable;
 use hashbrown::hash_table::Entry;
+use tinyvec::TinyVec;
 
 use super::Value;
 
 use derivative::Derivative;
+
+/// Sizing (same idea as `INLINE_NATIVE_ARGS` in `src/vm/functions.rs`) of the
+/// probe-candidate vector: stack storage for up to this many same-hash
+/// candidates, heap beyond (collisions are almost always 0-2 entries).
+const INLINE_PROBE_CANDIDATES: usize = 8;
 
 // Values related to natives
 #[derive(Derivative)]
@@ -313,20 +319,15 @@ impl Set {
 
     /// Find the stored item equal to `item` among the same-hash entries.
     /// May run `__eq__`; the table is only borrowed for the pure candidate
-    /// snapshot.
+    /// snapshot. GC safety: see [`probe_candidates`].
     fn probe(vm: &mut VM, receiver: &Value, item: Value, hash: u64) -> VmResult<Option<Value>> {
-        let candidates: Vec<Value> = receiver
+        let candidates: TinyVec<[Value; INLINE_PROBE_CANDIDATES]> = receiver
             .as_set(&vm.heap)
             .items
             .iter_hash(hash)
             .map(|(v, _h)| *v)
             .collect();
-        for candidate in candidates {
-            if vm.compare_values(candidate, item)? {
-                return Ok(Some(candidate));
-            }
-        }
-        Ok(None)
+        probe_candidates(vm, candidates, item)
     }
 }
 
@@ -428,22 +429,48 @@ impl Dict {
 
     /// Find the stored key equal to `key` among the same-hash entries.
     /// May run `__eq__`; the table is only borrowed for the pure candidate
-    /// snapshot. The `?` bails on the first exception, so no further
-    /// candidate is compared while an exception is in flight.
+    /// snapshot. GC safety: see [`probe_candidates`].
     fn probe(vm: &mut VM, receiver: &Value, key: Value, hash: u64) -> VmResult<Option<Value>> {
-        let candidates: Vec<Value> = receiver
+        let candidates: TinyVec<[Value; INLINE_PROBE_CANDIDATES]> = receiver
             .as_dict(&vm.heap)
             .items
             .iter_hash(hash)
             .map(|(k, _v, _h)| *k)
             .collect();
-        for candidate in candidates {
-            if vm.compare_values(candidate, key)? {
-                return Ok(Some(candidate));
-            }
-        }
-        Ok(None)
+        probe_candidates(vm, candidates, key)
     }
+}
+
+/// Find the first of `candidates` that compares equal to `needle` — the
+/// shared `__eq__` probe loop behind [`Set::probe`] and [`Dict::probe`].
+///
+/// GC safety: the candidates are a plain `TinyVec` snapshot of a container's
+/// same-hash entries — not a GC root — and `__eq__` re-enters the
+/// interpreter: it can remove a sibling candidate from the container, drop
+/// its last external reference, and trigger a GC that sweeps the value while
+/// it still sits in the snapshot. So the snapshot is rooted on the VM stack
+/// for the whole loop (same discipline as `VM::for_each_rooted`, plus early
+/// return on a match). The `?` bails on the first exception, so no further
+/// candidate is compared while an exception is in flight; the rooted
+/// candidates are then left on the stack below the pending exception, and
+/// the eventual handler resolution truncates them.
+fn probe_candidates(
+    vm: &mut VM,
+    candidates: TinyVec<[Value; INLINE_PROBE_CANDIDATES]>,
+    needle: Value,
+) -> VmResult<Option<Value>> {
+    let start = vm.stack.len();
+    vm.stack.extend(candidates);
+    let end = vm.stack.len();
+    for index in start..end {
+        let candidate = vm.stack[index];
+        if vm.compare_values(candidate, needle)? {
+            vm.stack.truncate(start);
+            return Ok(Some(candidate));
+        }
+    }
+    vm.stack.truncate(start);
+    Ok(None)
 }
 
 impl std::fmt::Display for Dict {
