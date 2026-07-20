@@ -1,0 +1,17 @@
+gen numbers() {
+    yield 1;
+}
+
+# raise() on a generator that ran to completion does not raise the given
+# exception; it returns StopIteration, exactly like send()/next() would.
+var completed = numbers();
+print(next(completed));               # expect: 1
+print(next(completed));               # expect: StopIteration
+print(completed.raise(ValueError));   # expect: StopIteration
+print(completed.raise(ValueError));   # expect: StopIteration
+
+# The same holds for a generator finished via an explicit close().
+var closed = numbers();
+print(closed.send(nil));              # expect: 1
+print(closed.close());                # expect: nil
+print(closed.raise(ValueError));      # expect: StopIteration
