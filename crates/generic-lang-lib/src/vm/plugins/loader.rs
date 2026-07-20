@@ -35,8 +35,11 @@ pub struct PluginState {
     /// memory.
     libraries: Vec<Library>,
     /// Re-imports of the same dylib rebuild the module from here instead of
-    /// re-loading the library.
-    loaded: HashMap<PathBuf, Vec<PluginExport>>,
+    /// re-loading the library. Keyed by the canonicalized plugin path so
+    /// every spelling of the same file shares one entry (and one loaded
+    /// library). The cached name `StringId`s are GC roots, marked inline by
+    /// `collect_garbage` like every other root category.
+    pub(in crate::vm) loaded: HashMap<PathBuf, Vec<PluginExport>>,
 }
 
 impl VM {
