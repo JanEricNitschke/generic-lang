@@ -3,11 +3,11 @@
 // `cpp_demo_plugin`. Built by the Makefile `plugin-lang-fixture` step when a
 // C++ compiler is present:
 //
-//   c++ -shared -fPIC -std=c++23 -I crates/generic-lang-api/include \
+//   c++ -shared -fPIC -std=c++23 -I crates/generic-lang-api/include
 //       -o test/plugin/lang/cpp_demo_plugin.<ext> plugin-examples/cpp/cpp_demo_plugin.cpp
 //
 // C++11 is the oldest supported standard (`guarded` needs lambdas; the
-// descriptor structs use positional aggregate initialization on purpose —
+// descriptor structs use positional aggregate initialization —
 // C-style designated initializers would demand C++20). CI compiles this
 // file at C++11 via `make plugin-std-check`.
 //
