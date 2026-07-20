@@ -87,12 +87,12 @@ pub enum FfiStatus {
     Exception = 1,
     /// A fatal host runtime error passing through the plugin.
     ///
-    /// Not an exception — it is uncatchable by design. A re-entering host
+    /// Not an exception — it is uncatchable. A re-entering host
     /// callback returns it when the interpreter hit a fatal error; the
     /// plugin must forward it unchanged (the safe wrapper's `?` does), and
     /// the host re-raises it as a fatal error when the plugin call
     /// returns. `value` carries no meaning for this status.
-    Fatal = u32::MAX,
+    Fatal = 99,
 }
 
 impl FfiStatus {
@@ -104,7 +104,7 @@ impl FfiStatus {
         match status {
             0 => Some(Self::Ok),
             1 => Some(Self::Exception),
-            u32::MAX => Some(Self::Fatal),
+            99 => Some(Self::Fatal),
             _ => None,
         }
     }
@@ -140,8 +140,13 @@ pub struct FunctionDesc {
     pub arities: *const u8,
     /// Number of entries in `arities`.
     pub arities_len: usize,
-    /// The function implementation.
-    pub fun: PluginFn,
+    /// The function implementation; a null pointer is rejected at load.
+    /// The type is [`PluginFn`] spelled out inline — cbindgen only renders
+    /// a nullable C function pointer for an inline `Option<fn>`, not
+    /// through the alias.
+    pub fun: Option<
+        extern "C" fn(host: *const HostApi, args: *const GenericValue, nargs: usize) -> FfiReturn,
+    >,
 }
 
 /// Description of a plugin module; returned by `generic_plugin_init`, the
@@ -181,8 +186,8 @@ unsafe impl Sync for ModuleDesc {}
 /// `ctx` is an opaque pointer owned by the host; pass it as the first
 /// argument to every callback. Callbacks marked **re-entering** run generic
 /// bytecode, during which garbage collection may occur — see the rooting
-/// contract: across a re-entering callback, `root` every value you still
-/// hold and re-fetch any [`FfiStr`] afterward. All other callbacks never
+/// contract: across a re-entering callback, `root` every value still
+/// held and re-fetch any [`FfiStr`] afterward. All other callbacks never
 /// trigger collection.
 ///
 /// Return conventions, decided solely by whether the payload forces an
@@ -359,6 +364,7 @@ pub struct HostApi {
     /// automatically when the plugin function returns; `unroot` releases
     /// the `n` most recent roots early.
     pub root: extern "C" fn(ctx: *mut c_void, value: GenericValue),
-    /// Release the `n` most recently rooted values.
+    /// Release the `n` most recently rooted values. Releasing more roots
+    /// than were pushed corrupts interpreter state.
     pub unroot: extern "C" fn(ctx: *mut c_void, n: usize),
 }

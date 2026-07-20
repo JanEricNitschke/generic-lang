@@ -6,7 +6,7 @@
 //!
 //! This crate is versioned independently from the interpreter — it tracks ABI
 //! stability for plugin authors. Build against the version matching the
-//! interpreter you target ([`GENERIC_PLUGIN_ABI_VERSION`] is checked at load).
+//! target interpreter ([`GENERIC_PLUGIN_ABI_VERSION`] is checked at load).
 //!
 //! See the [plugin authoring guide][guide] for worked quickstarts (Rust and
 //! C), the value model, calling back into generic, the exception model, and
@@ -44,7 +44,7 @@ pub use host::{__invoke_plugin_fn, ArgValue, Host, Rooted, RustPluginFn};
 ///
 /// Over the FFI these travel as plain `u32` — convert with `as u32` /
 /// [`ValueKind::from_u32`]. The host-side mapping (and the coverage test
-/// guarding that every interpreter value maps to one of these) lands with
+/// guarding that every interpreter value maps to one of these) lives in
 /// the feature-gated plugin module in the interpreter crate.
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

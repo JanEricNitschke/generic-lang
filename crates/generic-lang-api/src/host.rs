@@ -22,9 +22,9 @@ macro_rules! host_error_constructors {
 ///
 /// Methods that run generic bytecode (and may therefore trigger garbage
 /// collection) take `&mut self`: the borrow checker then guarantees the
-/// rooting contract's string rule for you — any [`&str`](str) obtained from
+/// rooting contract's string rule — any [`&str`](str) obtained from
 /// the host borrows `self` and cannot be held across a re-entering call.
-/// Values you want to keep across a re-entering call must be rooted, e.g.
+/// Values held across a re-entering call must be rooted, e.g.
 /// via [`Host::rooted`].
 pub struct Host<'a> {
     api: &'a HostApi,
@@ -147,8 +147,8 @@ impl<'a> Host<'a> {
     /// The contents of a string value; `None` if the value is not a string.
     ///
     /// The returned string borrows the host and therefore cannot be held
-    /// across a re-entering call (`&mut self` methods) — by design. This is
-    /// rejected by the compiler:
+    /// across a re-entering call (`&mut self` methods); the compiler
+    /// rejects it:
     ///
     /// ```compile_fail,E0502
     /// use generic_lang_api::{GenericValue, Host, PluginError};
@@ -160,20 +160,26 @@ impl<'a> Host<'a> {
     /// }
     /// ```
     ///
-    /// Copy the string out (`.to_owned()`) before re-entering if you need it
-    /// afterwards.
+    /// Copy the string out (`.to_owned()`) before re-entering if it is
+    /// needed afterwards.
     #[must_use]
     pub fn as_str(&self, value: GenericValue) -> Option<&str> {
         let mut out = FfiStr::null();
         if !(self.api.string_get)(self.api.ctx, value, &raw mut out) {
             return None;
         }
-        // SAFETY: on success the host wrote a pointer to `len` initialized
-        // bytes of interned string data, stable until the next re-entering
-        // callback, which `&mut self` methods make unreachable while the
-        // returned borrow lives.
+        // `FfiStr`'s contract (see `abi::FfiStr`) allows a null pointer as
+        // the empty-string sentinel; `from_raw_parts` requires non-null
+        // even for length zero, so hand back "" without touching it.
+        if out.ptr.is_null() {
+            return Some("");
+        }
+        // SAFETY: on success the host wrote a non-null pointer (checked
+        // above, per the `FfiStr` contract) to `len` initialized bytes of
+        // interned string data, stable until the next re-entering callback,
+        // which `&mut self` methods make unreachable while the returned
+        // borrow lives.
         let bytes = unsafe { core::slice::from_raw_parts(out.ptr, out.len) };
-        // Host strings are always UTF-8; checked anyway as defense in depth.
         core::str::from_utf8(bytes).ok()
     }
 
@@ -628,7 +634,9 @@ impl<'a> Host<'a> {
         (self.api.root)(self.api.ctx, value);
     }
 
-    /// Release the `n` most recent roots early.
+    /// Release the `n` most recent roots early. Releasing more roots than
+    /// were pushed corrupts interpreter state; prefer the RAII form,
+    /// [`Host::rooted`].
     pub fn unroot(&self, n: usize) {
         (self.api.unroot)(self.api.ctx, n);
     }
@@ -658,7 +666,7 @@ impl<'a> Host<'a> {
             Some(FfiStatus::Ok) => Ok(ret.value),
             Some(FfiStatus::Exception) => Err(PluginError::Exception(ret.value)),
             Some(FfiStatus::Fatal) => Err(PluginError::Fatal),
-            // The host only produces valid statuses.
+            // A status outside the enum is a protocol violation.
             None => Err(self.exception(&format!(
                 "host callback returned unknown status {}",
                 ret.status
@@ -670,7 +678,7 @@ impl<'a> Host<'a> {
 /// RAII guard for a rooted value; see [`Host::rooted`].
 ///
 /// Holds the vtable (not the [`Host`] borrow), so re-entering `&mut Host`
-/// methods remain callable while guards are alive — which is the point.
+/// methods remain callable while guards are alive.
 pub struct Rooted<'a> {
     api: &'a HostApi,
     value: GenericValue,
