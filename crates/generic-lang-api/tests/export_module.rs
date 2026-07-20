@@ -53,10 +53,20 @@ fn explode(_host: &mut Host, _args: &[GenericValue]) -> Result<GenericValue, Plu
     panic!("kaboom");
 }
 
+fn forward_fatal(_host: &mut Host, _args: &[GenericValue]) -> Result<GenericValue, PluginError> {
+    Err(PluginError::Fatal)
+}
+
+fn explode_any(_host: &mut Host, _args: &[GenericValue]) -> Result<GenericValue, PluginError> {
+    std::panic::panic_any(42);
+}
+
 generic_lang_api::export_module![
     ("add", &[2], add),
     ("fail", &[0], fail),
     ("explode", &[0], explode),
+    ("forward_fatal", &[0], forward_fatal),
+    ("explode_any", &[0], explode_any),
 ];
 
 // --- mock host ---
@@ -361,9 +371,9 @@ fn descriptor_contents() {
     // SAFETY: generic_plugin_init returns a valid, leaked descriptor.
     let desc = unsafe { &*desc };
     assert_eq!(desc.abi_version, GENERIC_PLUGIN_ABI_VERSION);
-    assert_eq!(desc.functions_len, 3);
+    assert_eq!(desc.functions_len, 5);
 
-    // The three exported names, in declaration order.
+    // The exported names, in declaration order.
     // SAFETY: the descriptor references a leaked slice of functions_len entries.
     let functions = unsafe { core::slice::from_raw_parts(desc.functions, desc.functions_len) };
     let names: Vec<&str> = functions
@@ -375,13 +385,19 @@ fn descriptor_contents() {
             }
         })
         .collect();
-    assert_eq!(names, ["add", "fail", "explode"]);
+    assert_eq!(
+        names,
+        ["add", "fail", "explode", "forward_fatal", "explode_any"]
+    );
 
     // Arities: `add` accepts exactly two arguments.
     // SAFETY: arities are leaked static slices.
     let arities =
         unsafe { core::slice::from_raw_parts(functions[0].arities, functions[0].arities_len) };
     assert_eq!(arities, [2]);
+
+    // The macro always emits a non-null function pointer.
+    assert!(functions.iter().all(|f| f.fun.is_some()));
 }
 
 fn call_exported(index: usize, args: &[GenericValue]) -> FfiReturn {
@@ -390,7 +406,10 @@ fn call_exported(index: usize, args: &[GenericValue]) -> FfiReturn {
     // SAFETY: see above.
     let functions = unsafe { core::slice::from_raw_parts(desc.functions, desc.functions_len) };
     let api = mock_host_api();
-    (functions[index].fun)(&raw const api, args.as_ptr(), args.len())
+    let fun = functions[index]
+        .fun
+        .expect("export_module! emits non-null function pointers");
+    fun(&raw const api, args.as_ptr(), args.len())
 }
 
 #[test]
@@ -421,6 +440,27 @@ fn typed_error_path() {
     );
 }
 
+/// `string_get` writing the null-pointer empty sentinel (allowed by the
+/// `FfiStr` contract): `Host::as_str` must hand back `""` instead of
+/// building a slice from a null pointer.
+extern "C" fn mock_string_get_null_empty(
+    _ctx: *mut c_void,
+    _value: GenericValue,
+    out: *mut FfiStr,
+) -> bool {
+    // SAFETY: the out-pointer is valid (test-controlled).
+    unsafe { *out = FfiStr::null() };
+    true
+}
+
+#[test]
+fn as_str_handles_the_null_empty_sentinel() {
+    let mut api = mock_host_api();
+    api.string_get = mock_string_get_null_empty;
+    let host = Host::new(&api);
+    assert_eq!(host.as_str(blob(0)), Some(""));
+}
+
 #[test]
 fn panic_becomes_exception() {
     // Silence the default panic hook for the expected panic.
@@ -433,4 +473,65 @@ fn panic_becomes_exception() {
     // SAFETY: the class handle is built via `blob`, so limb 0 is set.
     assert_eq!(unsafe { limb0(ret.value) }, "Exception".len() as u64);
     assert_eq!(last_interned(), "panic: kaboom");
+}
+
+#[test]
+fn fatal_forwards_unchanged() {
+    let ret = call_exported(3, &[]);
+    assert_eq!(ret.status, FfiStatus::Fatal as u32);
+    // Pin the wire value: 99 is part of the C ABI.
+    assert_eq!(ret.status, 99);
+}
+
+#[test]
+fn non_string_panic_payload_gets_the_fallback_message() {
+    // Silence the default panic hook for the expected panic.
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let ret = call_exported(4, &[]);
+    std::panic::set_hook(previous);
+
+    assert_eq!(ret.status, FfiStatus::Exception as u32);
+    assert_eq!(last_interned(), "panic: plugin function panicked");
+}
+
+#[test]
+fn null_args_with_zero_nargs_is_accepted() {
+    // A C host may pass a null argument pointer for a zero-argument call;
+    // the glue must not build a slice from it.
+    let desc = unsafe { &*generic_plugin_init() };
+    // SAFETY: valid leaked descriptor, see descriptor_contents.
+    let functions = unsafe { core::slice::from_raw_parts(desc.functions, desc.functions_len) };
+    let api = mock_host_api();
+    let fun = functions[1]
+        .fun
+        .expect("export_module! emits non-null function pointers");
+    let ret = fun(&raw const api, core::ptr::null(), 0);
+    // `fail` still runs and produces its IndexError.
+    assert_eq!(ret.status, FfiStatus::Exception as u32);
+}
+
+/// A host callback answering with a status outside the enum: the safe
+/// wrapper must surface it as a protocol-violation exception, never
+/// interpret `value`.
+extern "C" fn mock_call_value_unknown_status(
+    _ctx: *mut c_void,
+    _callee: GenericValue,
+    _args: *const GenericValue,
+    _nargs: usize,
+) -> FfiReturn {
+    FfiReturn {
+        status: 7,
+        value: blob(0),
+    }
+}
+
+#[test]
+fn unknown_host_status_is_a_protocol_violation_exception() {
+    let mut api = mock_host_api();
+    api.call_value = mock_call_value_unknown_status;
+    let mut host = Host::new(&api);
+    let result = host.call(blob(0), &[]);
+    assert!(matches!(result, Err(PluginError::Exception(_))));
+    assert_eq!(last_interned(), "host callback returned unknown status 7");
 }

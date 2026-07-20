@@ -49,13 +49,13 @@ enum GenericFfiStatus
   /**
    * A fatal host runtime error passing through the plugin.
    *
-   * Not an exception — it is uncatchable by design. A re-entering host
+   * Not an exception — it is uncatchable. A re-entering host
    * callback returns it when the interpreter hit a fatal error; the
    * plugin must forward it unchanged (the safe wrapper's `?` does), and
    * the host re-raises it as a fatal error when the plugin call
    * returns. `value` carries no meaning for this status.
    */
-  GENERIC_FFI_STATUS_FATAL = UINT32_MAX,
+  GENERIC_FFI_STATUS_FATAL = 99,
 };
 #ifndef __cplusplus
 #if __STDC_VERSION__ >= 202311L
@@ -70,7 +70,7 @@ typedef uint32_t GenericFfiStatus;
  *
  * Over the FFI these travel as plain `u32` — convert with `as u32` /
  * [`ValueKind::from_u32`]. The host-side mapping (and the coverage test
- * guarding that every interpreter value maps to one of these) lands with
+ * guarding that every interpreter value maps to one of these) lives in
  * the feature-gated plugin module in the interpreter crate.
  */
 enum GenericValueKind
@@ -238,8 +238,8 @@ typedef struct FfiReturn {
  * `ctx` is an opaque pointer owned by the host; pass it as the first
  * argument to every callback. Callbacks marked **re-entering** run generic
  * bytecode, during which garbage collection may occur — see the rooting
- * contract: across a re-entering callback, `root` every value you still
- * hold and re-fetch any [`FfiStr`] afterward. All other callbacks never
+ * contract: across a re-entering callback, `root` every value still
+ * held and re-fetch any [`FfiStr`] afterward. All other callbacks never
  * trigger collection.
  *
  * Return conventions, decided solely by whether the payload forces an
@@ -465,20 +465,11 @@ typedef struct HostApi {
    */
   void (*root)(void *ctx, struct GenericValue value);
   /**
-   * Release the `n` most recently rooted values.
+   * Release the `n` most recently rooted values. Releasing more roots
+   * than were pushed corrupts interpreter state.
    */
   void (*unroot)(void *ctx, size_t n);
 } HostApi;
-
-/**
- * The signature every exported plugin function has.
- *
- * `args` points at `nargs` contiguous values owned by the host; they stay
- * valid (and GC-rooted) for the whole call.
- */
-typedef struct FfiReturn (*PluginFn)(const struct HostApi *host,
-                                     const struct GenericValue *args,
-                                     size_t nargs);
 
 /**
  * Description of one exported plugin function.
@@ -497,9 +488,12 @@ typedef struct FunctionDesc {
    */
   size_t arities_len;
   /**
-   * The function implementation.
+   * The function implementation; a null pointer is rejected at load.
+   * The type is [`PluginFn`] spelled out inline — cbindgen only renders
+   * a nullable C function pointer for an inline `Option<fn>`, not
+   * through the alias.
    */
-  PluginFn fun;
+  struct FfiReturn (*fun)(const struct HostApi *host, const struct GenericValue *args, size_t nargs);
 } FunctionDesc;
 
 /**
@@ -524,6 +518,16 @@ typedef struct ModuleDesc {
    */
   size_t functions_len;
 } ModuleDesc;
+
+/**
+ * The signature every exported plugin function has.
+ *
+ * `args` points at `nargs` contiguous values owned by the host; they stay
+ * valid (and GC-rooted) for the whole call.
+ */
+typedef struct FfiReturn (*PluginFn)(const struct HostApi *host,
+                                     const struct GenericValue *args,
+                                     size_t nargs);
 
 #endif  /* GENERIC_H */
 

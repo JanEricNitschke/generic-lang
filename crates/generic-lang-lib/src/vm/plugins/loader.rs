@@ -155,41 +155,59 @@ impl VM {
             unsafe { std::slice::from_raw_parts(desc.functions, desc.functions_len) }
         };
 
-        let mut exports = Vec::with_capacity(functions.len());
-        for function in functions {
-            let name = if function.name.ptr.is_null() {
-                None
-            } else {
-                // SAFETY: non-null function name of `len` bytes, valid for
-                // the library's lifetime (ABI contract).
-                let bytes =
-                    unsafe { std::slice::from_raw_parts(function.name.ptr, function.name.len) };
-                std::str::from_utf8(bytes).ok()
-            };
-            let Some(name) = name else {
-                import_error!(
-                    "Plugin `{}` exports a function with an invalid name.",
-                    path.display()
-                );
-            };
-            if function.arities.is_null() || function.arities_len == 0 {
-                import_error!(
-                    "Plugin function `{name}` in `{}` declares no arities.",
-                    path.display()
-                );
-            }
+        // First pass: validate (and borrow) every export before interning
+        // or leaking anything — a plugin rejected halfway through the table
+        // must not leak the per-function arity allocations. Inside the
+        // closure `import_error!`'s return produces the `Err` element that
+        // short-circuits the collect.
+        let validated = functions
+            .iter()
+            .map(|function| {
+                let name = if function.name.ptr.is_null() {
+                    None
+                } else {
+                    // SAFETY: non-null function name of `len` bytes, valid
+                    // for the library's lifetime (ABI contract).
+                    let bytes =
+                        unsafe { std::slice::from_raw_parts(function.name.ptr, function.name.len) };
+                    std::str::from_utf8(bytes).ok()
+                };
+                let Some(name) = name else {
+                    import_error!(
+                        "Plugin `{}` exports a function with an invalid name.",
+                        path.display()
+                    );
+                };
+                if function.arities.is_null() || function.arities_len == 0 {
+                    import_error!(
+                        "Plugin function `{name}` in `{}` declares no arities.",
+                        path.display()
+                    );
+                }
+                // SAFETY: non-null arity array of `arities_len` bytes (ABI
+                // contract).
+                let arities =
+                    unsafe { std::slice::from_raw_parts(function.arities, function.arities_len) };
+                let Some(fun) = function.fun else {
+                    import_error!(
+                        "Plugin function `{name}` in `{}` has a null function pointer.",
+                        path.display()
+                    );
+                };
+                Ok((name, arities, fun))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
-            // SAFETY: non-null arity array of `arities_len` bytes (ABI
-            // contract); copied out immediately.
-            let arities =
-                unsafe { std::slice::from_raw_parts(function.arities, function.arities_len) };
-            // Leaked once per function at load time — bounded, since
-            // plugins are cached per path and never unloaded.
-            let arities: &'static [u8] = Box::leak(arities.to_vec().into_boxed_slice());
-
-            let name_id = self.heap.string_id(&name);
-            exports.push((name_id, arities, function.fun));
-        }
+        // Second pass: the whole table validated — now intern and leak.
+        // Leaked once per function at load time — bounded, since plugins
+        // are cached per canonical path and never unloaded.
+        let exports: Vec<PluginExport> = validated
+            .into_iter()
+            .map(|(name, arities, fun)| {
+                let arities: &'static [u8] = Box::leak(arities.to_vec().into_boxed_slice());
+                (self.heap.string_id(&name), arities, fun)
+            })
+            .collect();
 
         self.plugins.libraries.push(library);
         self.plugins

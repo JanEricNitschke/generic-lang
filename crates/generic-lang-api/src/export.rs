@@ -52,7 +52,7 @@ macro_rules! export_module {
                             },
                             arities: ARITIES.as_ptr(),
                             arities_len: ARITIES.len(),
-                            fun: wrapper,
+                            fun: Some(wrapper),
                         }
                     }
                 ),*
