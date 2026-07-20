@@ -74,6 +74,13 @@ void main(List<String> arguments) {
     tempDir.deleteSync(recursive: true);
   }
 
+  if (checked == 0) {
+    // Zero samples means the docs moved or the fence extraction broke —
+    // either way the suite verified nothing, which must not look like a pass.
+    print("No documentation samples found in ${options['docs']} "
+        "(scanned ${files.length} markdown files).");
+    exit(1);
+  }
   if (failures.isNotEmpty) {
     print("\n${failures.length} of $checked documentation samples failed.");
     exit(1);
