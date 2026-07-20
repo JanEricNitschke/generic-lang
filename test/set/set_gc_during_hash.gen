@@ -1,4 +1,4 @@
-# Regression test: set natives take the backing store out of the heap while
+# Set natives take the backing store out of the heap while
 # `__hash__`/`__eq__` re-enter the interpreter. A GC during those calls must
 # still see the set's elements, even when the set is the only thing
 # referencing them (elements here are never bound to variables).

@@ -39,7 +39,7 @@ fn passing_test_file_exits_zero() {
 
 #[test]
 fn failing_test_file_exits_one() {
-    // Regression: FAIL outcomes alone (no ERROR) must produce exit code 1.
+    // FAIL outcomes alone (no ERROR) must produce exit code 1.
     let code = run_generic(&[
         "--test",
         &fixture("unittest_test/failures/test_failures.gen"),

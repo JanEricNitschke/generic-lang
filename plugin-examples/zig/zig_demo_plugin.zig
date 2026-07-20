@@ -1,6 +1,6 @@
 // Tiny Zig test plugin — proves the plugin ABI is usable from Zig, consuming
 // the generated `generic.h` through the build system's translate-c step
-// (see build.zig; the `@cImport` builtin is deprecated since Zig 0.16).
+// (see build.zig).
 // Registers under the module name `zig_demo_plugin`. Built by the Makefile
 // `plugin-lang-fixture` step when a Zig toolchain is present:
 //
