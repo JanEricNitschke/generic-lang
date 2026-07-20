@@ -111,6 +111,9 @@ plugin-lang-fixture:
 	cp plugin-examples/zig/zig-out/$(ZIG_OUT_LIB) test/plugin/lang/zig_demo_plugin.$(DYLIB_EXT)
 	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/wrongabi.$(DYLIB_EXT) plugin-examples/bad/wrong_abi.c
 	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/noinit.$(DYLIB_EXT)   plugin-examples/bad/no_init.c
+	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/nullfun.$(DYLIB_EXT)  plugin-examples/bad/null_fun.c
+	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/badname.$(DYLIB_EXT)  plugin-examples/bad/bad_name.c
+	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/noarities.$(DYLIB_EXT) plugin-examples/bad/no_arities.c
 	printf 'not a real dylib, just text\n' > test/plugin/lang/corrupt.$(DYLIB_EXT)
 
 # Build the cross-language plugins, then run only their `.gen` tests (the

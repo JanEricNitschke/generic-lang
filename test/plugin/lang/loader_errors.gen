@@ -1,13 +1,16 @@
 # Loader rejection paths: every way a plugin dylib can be rejected must
 # surface as a catchable ImportError, never a crash. The exact messages embed
 # the resolved dylib path (platform-specific extension) and dlopen/dlsym
-# failure tails, sso each case asserts the stable, host-generated partt of the
+# failure tails, so each case asserts the stable, host-generated part of the
 # message via contains()
 #
 # Fixtures exercised here (built by the Makefile `plugin-lang-fixture` step):
-#   wrongabi -- well-formed module declaring an incompatible ABI version
-#   noinit   -- valid dylib without the generic_plugin_init export
-#   corrupt  -- a file that is not a shared library at all
+#   wrongabi  -- well-formed module declaring an incompatible ABI version
+#   noinit    -- valid dylib without the generic_plugin_init export
+#   corrupt   -- a file that is not a shared library at all
+#   badname   -- export whose name pointer is null
+#   noarities -- export declaring no arities
+#   nullfun   -- export whose function pointer is null (zero-initialized)
 
 # Incompatible ABI version -> host-generated message naming both versions.
 try {
@@ -18,12 +21,39 @@ try {
     print(str(e).contains("host expects 1")); # expect: true
 }
 
-# A dylib without generic_plugin_init -> IImport naming the missing symbol
+# A dylib without generic_plugin_init -> ImportError naming the missing symbol
 try {
     import "noinit";
     print("should not reach");
 } catch ImportError as e {
     print(str(e).contains("does not export `generic_plugin_init`")); # expect: true
+}
+
+# An export with a null name pointer -> ImportError, no read through the null.
+try {
+    import "badname";
+    print("should not reach");
+} catch ImportError as e {
+    print(str(e).contains("exports a function with an invalid name")); # expect: true
+}
+
+# An export declaring no arities -> ImportError naming the function.
+try {
+    import "noarities";
+    print("should not reach");
+} catch ImportError as e {
+    print(str(e).contains("Plugin function `broken`")); # expect: true
+    print(str(e).contains("declares no arities")); # expect: true
+}
+
+# An export with a null function pointer (a zero-initialized descriptor is
+# the easy way to produce one from C) -> ImportError, not a call into nothing.
+try {
+    import "nullfun";
+    print("should not reach");
+} catch ImportError as e {
+    print(str(e).contains("Plugin function `broken`")); # expect: true
+    print(str(e).contains("has a null function pointer")); # expect: true
 }
 
 # A file that is not a shared library at all -> catchable ImportError.
