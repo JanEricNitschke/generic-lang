@@ -20,8 +20,6 @@ crates/generic-lang-api/   plugin FFI/ABI crate — the only repr(C) code anywhe
 test/                      .gen end-to-end tests (dart runner, `# expect:` comments)
 tool/                      the dart test runner
 docs/                      this file, plugin-authors.md
-PLUGIN_SYSTEM.md           plugin design doc (its Part 1 is a deeper cut of several
-                           sections below); PLUGIN_OVERVIEW.md, PLUGIN_NEXT_STEPS.md
 ```
 
 ## Execution pipeline
@@ -187,8 +185,7 @@ individual globals instead of registering the module.
 
 ## Plugin host
 
-Full design and rationale: `PLUGIN_SYSTEM.md` (+ condensed
-`PLUGIN_OVERVIEW.md`); author-facing docs: `docs/plugin-authors.md`. The
+Author-facing docs: `docs/plugin-authors.md`. The
 one-paragraph internal view: values cross the C ABI as opaque 32-byte
 bit-copies of `Value`; plugins operate on them exclusively through a
 `HostApi` vtable whose re-entering callbacks run bytecode through the
