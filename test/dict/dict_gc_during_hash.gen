@@ -1,4 +1,4 @@
-# Regression test: dict natives take the backing store out of the heap while
+# Dict natives take the backing store out of the heap while
 # `__hash__`/`__eq__` re-enter the interpreter. A GC during those calls must
 # still see the dict's keys and values, even when the dict is the only thing
 # referencing them (keys and values here are never bound to variables).
