@@ -144,7 +144,9 @@ impl<'a> Host<'a> {
         (self.api.float_get)(self.api.ctx, value, &raw mut out).then_some(out)
     }
 
-    /// The contents of a string value; `None` if the value is not a string.
+    /// The contents of a string value; `None` if the value is not a string
+    /// (or the host answered with malformed string data — a null pointer or
+    /// invalid UTF-8, both protocol violations).
     ///
     /// The returned string borrows the host and therefore cannot be held
     /// across a re-entering call (`&mut self` methods); the compiler
@@ -168,11 +170,12 @@ impl<'a> Host<'a> {
         if !(self.api.string_get)(self.api.ctx, value, &raw mut out) {
             return None;
         }
-        // `FfiStr`'s contract (see `abi::FfiStr`) allows a null pointer as
-        // the empty-string sentinel; `from_raw_parts` requires non-null
-        // even for length zero, so hand back "" without touching it.
+        // A null pointer is not a valid `FfiStr` (see `abi::FfiStr`): a host
+        // that wrote one — or answered `true` without writing at all —
+        // violated the protocol. Report "not a string" rather than fabricate
+        // a value from it.
         if out.ptr.is_null() {
-            return Some("");
+            return None;
         }
         // SAFETY: on success the host wrote a non-null pointer (checked
         // above, per the `FfiStr` contract) to `len` initialized bytes of
