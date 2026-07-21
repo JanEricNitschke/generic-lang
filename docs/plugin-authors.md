@@ -6,9 +6,6 @@ in Rust against the `generic-lang-api` crate, or in any language that
 speaks the C ABI against the generated header
 `crates/generic-lang-api/include/generic.h`.
 
-Both quickstarts in this document are verified end to end against the
-current interpreter.
-
 **Trust model up front:** plugins are trusted native code. The interpreter
 checks the ABI version and validates the module descriptor, but a buggy or
 malicious plugin can crash or corrupt the process. Do not load plugins you
@@ -29,8 +26,8 @@ chain:
 3. the embedded generic stdlib,
 4. the native Rust stdlib.
 
-Because plugins resolve *before* the stdlib, a plugin can deliberately
-shadow a stdlib module of the same name. `from "demo" import shout;` works
+Because plugins resolve *before* the stdlib, a plugin can shadow a
+stdlib module of the same name. `from "demo" import shout;` works
 like any from-import. Re-importing the same plugin reuses the already
 loaded library (per-path cache); libraries are never unloaded while the
 interpreter runs.
@@ -292,8 +289,8 @@ cp zig-out/lib/libzig_demo_plugin.dylib zig_demo_plugin.dylib   # macOS
 ```
 
 Zig releases break source compatibility routinely — CI tracks the latest
-release, currently 0.16, and expects churn (`callconv(.C)` became
-`callconv(.c)` in 0.14; `@cImport` was deprecated in 0.16).
+release and expects churn (`callconv(.C)` became `callconv(.c)` in 0.14;
+`@cImport` was deprecated in 0.16).
 
 ## Worked example plugins
 
@@ -328,9 +325,10 @@ handle is undefined behavior.
 | `Exception` | an exception instance |
 | `Generator`, `Iterator` | drive with `invoke_method("__next__")` until `StopIteration` |
 | `StopIteration` | the exhausted-iterator sentinel value |
-| `Module`, `Other` | VM-internal; you should not need these |
+| `Module` | a module object |
+| `Other` | VM-internal; a plugin should never meaningfully receive one |
 
-There is deliberately no dict/set enumeration callback: iterate any
+There is no dict/set enumeration callback: iterate any
 container by invoking its `__iter__`/`__next__` protocol.
 
 Constructors: `nil_new`, `bool_new`, `int_new`, `float_new`, `string_new`
@@ -385,33 +383,15 @@ Throwing your own exception means returning an instance under the
 `EXCEPTION` status. Exception classes are ordinary values: look one up
 with `builtin_get("TypeError")` (any builtin exception class name — or the
 base `"Exception"`), create the instance with `exception_new(class,
-message)`, and return it:
-
-```c
-/* Each host call can itself fail (EXCEPTION or FATAL); forward any non-OK
- * FfiReturn unchanged, immediately — never relabel or swallow it. */
-static FfiReturn throw_new(const HostApi *host, const char *class_name, const char *msg) {
-    FfiStr name = {.ptr = (const uint8_t *)class_name, .len = strlen(class_name)};
-    FfiStr message = {.ptr = (const uint8_t *)msg, .len = strlen(msg)};
-    FfiReturn cls = host->builtin_get(host->ctx, name);
-    if (cls.status != GENERIC_FFI_STATUS_OK) {
-        return cls;
-    }
-    FfiReturn exc = host->exception_new(host->ctx, cls.value, message);
-    if (exc.status != GENERIC_FFI_STATUS_OK) {
-        return exc;
-    }
-    FfiReturn ret = {.status = GENERIC_FFI_STATUS_EXCEPTION, .value = exc.value};
-    return ret;
-}
-```
+message)`, and return it — exactly what the `throw_new` helper in the
+[C quickstart](#quickstart-c) does.
 
 (`exception_new` sets the message directly, bypassing the class's
 `__init__` — exactly like the interpreter's own throw; call the class via
 `call_value` if you need full construction semantics. It also works with
 user-defined exception classes your plugin received.) Rust authors use the
 typed constructors on `Host` — `host.key_error("...")` and friends — which
-do the lookup and creation in one call; `PluginError` itself is just
+do the lookup and creation in one call; `PluginError` itself is
 `Exception(instance)` or `Fatal`, mirroring the wire statuses exactly.
 
 Catching works like a generic `catch` clause, because it uses the same
@@ -465,5 +445,5 @@ ordinary `TypeError` in generic code and your function never runs.
 
 `GENERIC_PLUGIN_ABI_VERSION` (currently 1) is checked at load; a mismatch
 is a clean `ImportError` naming both versions. The `generic-lang-api` crate
-is versioned independently of the interpreter precisely to track ABI
-stability — build against the version matching the interpreter you target.
+is versioned independently of the interpreter to track ABI stability —
+build against the version matching the interpreter you target.

@@ -60,9 +60,10 @@ print(type(d));                  # <type Dog>
 
 ## Operator overloading
 
-Classes customize built-in operations by defining dunder methods. Defining
-`__eq__` on one operand is enough for `==`; without it, equality falls back
-to identity.
+Classes customize built-in operations by defining dunder methods. Binary
+operators dispatch on the **left** operand only: `a == b` consults `a`'s
+`__eq__` and never `b`'s, and the same goes for the arithmetic, bitwise,
+and comparison hooks. Without `__eq__`, equality falls back to identity.
 
 ```generic
 class Vec {
@@ -91,7 +92,7 @@ The supported hooks:
 | Call (`obj(...)`) | `__call__` |
 | Iteration | `__iter__`, `__next__` |
 
-Note the membership hook is named `contains`, not `__contains__`. To make a
+The membership hook is named `contains`, not `__contains__`. To make a
 class iterable, return an iterator from `__iter__` and advance it with
 `__next__`, returning the `StopIteration` sentinel when exhausted:
 
@@ -108,7 +109,7 @@ class Countdown {
 foreach (var i in Countdown(3)) { print(i); }   # 3, 2, 1
 ```
 
-Individual dunders can even be overridden per instance by assigning a lambda
+Individual dunders can be overridden per instance by assigning a lambda
 (`obj.__str__ = ->() "custom";`).
 
 Next: [Exceptions →](exceptions.md)

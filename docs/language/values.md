@@ -149,6 +149,7 @@ exception classes.
 | Comparison | `<` `<=` `>` `>=` `==` `!=` |
 | Logical | `and` `or` (word operators, short-circuiting), `!` (negation) |
 | Membership | `x in collection` |
+| Identity | `x is y` |
 | Conditional | `cond ? a : b` |
 
 There is no `&&`/`||` and no `not` — use `and`/`or`/`!`. The logical
@@ -160,6 +161,20 @@ print(true and 1);    # 1
 print(false or 2);    # 2
 print(!true);         # false
 print(true ? "y" : "n");  # y
+```
+
+`is` compares **identity**, not equality: heap values (strings, containers,
+instances, big integers, …) match only when they are the same object, while
+immediates (`nil`, booleans, small integers, floats) compare by value.
+Equal string literals are interned to the same object, so `"a" is "a"` is
+true.
+
+```generic
+var xs = [1, 2];
+var ys = xs;
+print(xs is ys);       # true — same object
+print(xs is [1, 2]);   # false — distinct objects
+print(1 is 1);         # true — immediates compare by value
 ```
 
 Compound assignment is available for the common operators: `+=`, `-=`, `*=`,

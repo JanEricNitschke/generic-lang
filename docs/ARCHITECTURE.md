@@ -1,13 +1,12 @@
 # generic-lang Architecture
 
-Internals documentation for contributors and coding agents. One concept per
-section, stable headings, `file:line` anchors into the code. Paths are
+Internals documentation for contributors and coding agents. Paths are
 relative to `crates/generic-lang-lib/` unless stated otherwise. Line
 numbers drift — treat them as "near here" and re-verify when precision
 matters; function names are the stable handle.
 
 The interpreter descends from *Crafting Interpreters*' clox (bytecode VM,
-single-pass compiler) and has grown far beyond it: modules, exceptions,
+single-pass compiler) and extends it with modules, exceptions,
 generators, native container classes, big integers/rationals, f-strings,
 and a C-ABI plugin system.
 
@@ -19,7 +18,7 @@ crates/generic-lang-lib/   the language: scanner, compiler, heap, VM, natives, s
 crates/generic-lang-api/   plugin FFI/ABI crate — the only repr(C) code anywhere
 test/                      .gen end-to-end tests (dart runner, `# expect:` comments)
 tool/                      the dart test runner
-docs/                      this file, plugin-authors.md
+docs/                      this file, plugin-authors.md, language/ (user-facing guide)
 ```
 
 ## Execution pipeline
@@ -33,13 +32,13 @@ compile the script → run.
 Compilation is scanner → single-pass compiler → bytecode `Chunk`
 (`src/scanner.rs`, `src/compiler/`, `src/chunk.rs`). Even the top-level
 script is a function wrapped in a closure. The VM
-(`src/vm/`) is a stack machine: `run` (`src/vm/mod.rs:289`) loops over
+(`src/vm/`) is a stack machine: `run` (`src/vm/mod.rs:293`) loops over
 `run_instruction!` (`src/vm/run_instruction.rs`, a macro so tracing and GC
 hooks inline).
 
 ## Value representation
 
-`Value` (`src/value/mod.rs:29`) is a 32-byte `Copy` enum: immediates
+`Value` (`src/value/mod.rs:30`) is a 32-byte `Copy` enum: immediates
 (`Bool`, `Nil`, `StopIteration`, `Number`) plus arena IDs for everything
 heap-allocated (`String`, `Closure`, `Function`, `Module`, `Upvalue`,
 `NativeFunction`, `NativeMethod`, `Class`, `Instance`, `BoundMethod`).
@@ -50,7 +49,7 @@ drift.
 
 - IDs are versioned `slotmap` keys (`src/heap/arenas.rs`): using a stale ID
   after its slot was reused is a deterministic panic, never silent
-  aliasing. This converts use-after-free bugs into loud crashes.
+  aliasing.
 - `Number` = `Float(f64) | Integer(GenericInt) | Rational(..)`;
   `GenericInt = Small(i64) | Big(BigIntId)` (`src/value/number.rs`).
 - Strings are interned: `Heap::string_id` (`src/heap/mod.rs`) returns the
@@ -60,7 +59,7 @@ drift.
 - Containers (`List`, `Tuple`, `Dict`, `Set`, `Range`), iterators,
   exceptions, generators, and templates are all `Instance` values whose
   `backing: Option<NativeClass>` holds the native payload
-  (`src/value/natives.rs:100`, `src/value/classes.rs::Instance`). A user
+  (`src/value/natives.rs:106`, `src/value/classes.rs::Instance`). A user
   class inheriting from a native class gets that backing on
   instantiation — behavior follows the backing, identity follows the
   class.
@@ -72,21 +71,22 @@ Mark-and-sweep over per-type arenas (`src/heap/mod.rs`,
 
 **The one invariant everything leans on: allocation never collects.**
 `Heap::add_*` only track `bytes_allocated`/`needs_gc`. `collect_garbage`
-(`src/vm/garbage_collection.rs:34`) has exactly one call site — the
+(`src/vm/garbage_collection.rs:35`) has exactly one call site — the
 instruction-dispatch macro (`src/vm/run_instruction.rs:14`). Therefore GC
 can only run at instruction boundaries, which means: straight-line native
 code cannot trigger a sweep, and only code that re-enters the interpreter
 (runs bytecode) must think about rooting.
 
-- Root set (`garbage_collection.rs:42-65`): VM stack, callstack, open
-  upvalues, modules, builtins.
+- Root set (`garbage_collection.rs:44-79`): VM stack, callstack, open
+  upvalues, modules, builtins, and (with `plugins`) the loader's cached
+  export-name strings.
 - The rooting discipline for mid-call temporaries in natives: push onto the
   VM stack (it is a root), rely on the dispatch site's post-call truncate
   for cleanup. `VM::for_each_rooted` (`src/vm/dunder.rs:149`) is the
   canonical helper: roots a batch, runs a stack-neutral callback per
   element (which may re-enter via `__hash__`/`__eq__`), truncates.
 - Dict/Set are GC-safe via static-method APIs `Dict::{add,get,contains,
-  remove,probe}` / `Set::{...}` (`src/value/natives.rs:350` / `:266`)
+  remove,probe}` / `Set::{...}` (`src/value/natives.rs:351` / `:272`)
   taking `(vm, receiver, ...)`: the container stays in the heap the whole
   time; the table is only borrowed between re-entry points; matched
   entries are re-located by identity because a reentrant dunder may have
@@ -110,14 +110,14 @@ state on the VM.
   `Runtime(RuntimeErrorKind)` is fatal and always propagates;
   `Exception(ExceptionRaisedKind)` means *a pending exception instance is
   sitting rooted on the stack top*. `VmResult<T> = Result<T, VmErrorKind>`.
-- `VM::throw(kind, msg)` (`exception_handling.rs:411`) creates a real
+- `VM::throw(kind, msg)` (`exception_handling.rs:433`) creates a real
   instance of the named builtin class (`create_exception`, single
   kind→class mapping), pushes it (pending, rooted), attaches the stack
   trace at the throw site, and returns `Err(Exception)`. **No unwinding
   happens at the throw site.** Natives throw with
   `Err(vm.throw(Kind, &msg).unwrap_err())`.
 - Control transfer happens in exactly one place:
-  `resolve_pending_exception(call_depth)` (`exception_handling.rs:244`) —
+  `resolve_pending_exception(call_depth)` (`exception_handling.rs:268`) —
   pops the innermost handler if it belongs to the current callstack region,
   truncates modules/callstack/stack to the handler's snapshot, jumps to the
   catch block, re-delivers the exception on the stack for
@@ -128,7 +128,7 @@ state on the VM.
   `report_uncaught_exception` → fatal) and region-scoped
   `run_function_from_depth` (`src/vm/functions.rs`), which hands escapes
   over **untruncated** — cleanup belongs to the caller.
-- `invoke_and_run_function` (`src/vm/functions.rs:44`) is the single entry
+- `invoke_and_run_function` (`src/vm/functions.rs:45`) is the single entry
   point for every native/dunder re-entry and owns the cleanup contract:
   snapshot frames/modules/stack; on `Err(Exception)` restore the snapshot
   with the exception re-pushed on top. Result: a native always sees "state
@@ -138,11 +138,11 @@ state on the VM.
 - Generators suspend their active handlers into the generator object
   (`SuspendedExceptionHandler`, re-based on resume) and mark themselves
   `Completed` when an exception escapes them (`Generator::resume_with`,
-  `src/value/natives.rs:782`).
+  `src/value/natives.rs:809`).
 
 ## Native calling convention
 
-- Signatures (`src/value/natives.rs:94-96`):
+- Signatures (`src/value/natives.rs:100-101`):
   `NativeFunctionImpl = fn(&mut VM, &[Value]) -> VmResult<Value>`, methods
   additionally take a `&Value` receiver.
 - Both dispatch sites live in `src/vm/functions.rs`
@@ -166,7 +166,7 @@ state on the VM.
 
 ## Import machinery
 
-`import_file` (`src/vm/import.rs:22`) resolves a fallback chain:
+`import_file` (`src/vm/import.rs:24`) resolves a fallback chain:
 
 1. user `.gen` file on disk (with a circular-import check against the
    module stack),
@@ -185,8 +185,8 @@ individual globals instead of registering the module.
 
 ## Plugin host
 
-Author-facing docs: `docs/plugin-authors.md`. The
-one-paragraph internal view: values cross the C ABI as opaque 32-byte
+Author-facing docs: `docs/plugin-authors.md`.
+Internally: values cross the C ABI as opaque 32-byte
 bit-copies of `Value`; plugins operate on them exclusively through a
 `HostApi` vtable whose re-entering callbacks run bytecode through the
 `invoke_and_run_function` contract and root their arguments first; plugin
@@ -232,15 +232,13 @@ Test pyramid:
   plugin tests (`test/plugin/lang/`, skipped by the normal suite) build the
   C/C++/Zig example plugins from `plugin-examples/` and run via
   `make plugin-lang-test`.
-- miri runs the whole workspace test suite (plugin blob-crossing tests are
-  `#[cfg(not(miri))]` — bit-copying `Value` padding is what miri rejects,
-  by ABI design) and one example program.
+- miri runs the whole workspace test suite (only the two plugin loader
+  tests are `#[cfg(not(miri))]` — they do real filesystem and `dlopen`
+  work miri cannot execute) and one example program.
 
 **Run the full CI matrix locally before declaring any change done** — CI
 only runs on `main` pushes/PRs, so local runs are the only gate on feature
-branches (this has bitten: a stale call in `trace_execution_verbose`-gated
-code shipped three commits before anything compiled it). The complete
-list mirrors `.github/workflows/build.yaml`:
+branches. The complete list mirrors `.github/workflows/build.yaml`:
 
 ```sh
 cargo hack build --feature-powerset --skip print_code_builtin,trace_execution_builtin,debug_parser_builtin,debug_scanner_builtin --no-dev-deps -p generic-lang-lib
@@ -267,6 +265,7 @@ make test          # dart suites incl. stress-gc + unittest runners
 make plugin-lang-test   # C/C++/Zig example plugins + their .gen tests (needs cc/c++/zig)
 make plugin-valgrind-test   # plugin .gen tests under valgrind memcheck (Linux only)
 make plugin-asan-test   # plugin .gen tests with ASan host + ASan/UBSan C/C++ plugins (rust nightly)
+make benchmark-ci   # hyperfine vs clox/jlox/python/ruby (needs hyperfine, ruby, and clox/jlox built in reference/craftinginterpreters)
 ```
 
 ## Feature flags (`crates/generic-lang-lib/Cargo.toml`)

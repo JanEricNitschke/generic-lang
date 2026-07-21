@@ -19,6 +19,7 @@ Three forms:
 import "math";                 # bind the whole module as `math`
 import "math" as m;            # bind under an alias
 from "math" import sqrt;       # pull selected names into the current scope
+from "testing" import assert_equal, assert_true;   # several, comma-separated
 ```
 
 Members are accessed with `.`:
@@ -31,7 +32,8 @@ print(math.sqrt(9));           # 3.0
 Imports may appear inside a function ("local import"), in which case the
 binding disappears when the function returns. A module's `const` bindings stay
 `const` across the boundary. The special variable `__name__` is `"<script>"`
-in the entry file.
+in the entry file and the module's name (its file stem) inside an imported
+module.
 
 ### Resolution order
 
@@ -43,8 +45,8 @@ For `import "name";` the interpreter tries, in order:
 3. a bundled generic-source stdlib module,
 4. a bundled Rust-native stdlib module.
 
-Because plugins resolve before the stdlib, a plugin can deliberately shadow a
-stdlib module of the same name.
+Because plugins resolve before the stdlib, a plugin can shadow a stdlib
+module of the same name.
 
 ## Built-in functions
 
@@ -63,7 +65,7 @@ These are always in scope (no import needed):
 | `assert(x)` | Raise `AssertionError` if `x` is falsey. |
 | `getattr/setattr/hasattr/delattr(obj, name, …)` | Reflective field access. |
 | `clock()`, `sleep(s)`, `input(prompt)` | Time, delay, read a line. |
-| `rng(low, high)` | Random integer in `[low, high)`. |
+| `rng(low, high)` | Random integer in `[low, high)`; bounds must be 64-bit integers. |
 
 ```generic
 foreach (var pair in enumerate(["a", "b"])) { print(pair); }   # (0, a) then (1, b)
@@ -71,7 +73,7 @@ foreach (var pair in enumerate(["a", "b"])) { print(pair); }   # (0, a) then (1,
 
 ## The standard library
 
-The bundled modules today:
+The bundled modules:
 
 - **`math`** — numeric helpers (currently just `math.sqrt(x)`).
 - **`testing`** — assertion helpers for the test runner: `assert_equal`,

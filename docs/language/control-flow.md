@@ -56,8 +56,9 @@ foreach (var item in [10, 20, 30]) {
 foreach (var i in 1..<5) { print(i); }   # ranges are iterables
 ```
 
-Iterables are lists, tuples, ranges, generators, and any class implementing
-the [iterator protocol](functions.md#generators). Sets, dicts, and strings
+Iterables are lists, tuples, ranges, generators,
+[templates](values.md#strings), and any class implementing the
+[iterator protocol](functions.md#generators). Sets, dicts, and strings
 are *not* iterable.
 
 ## `break` and `continue`
