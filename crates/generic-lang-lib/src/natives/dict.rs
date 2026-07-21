@@ -68,8 +68,14 @@ pub(super) fn dict_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) ->
     receiver.as_dict_mut(&mut vm.heap).items.clear(); // reset
 
     for arg in args {
-        // Copy the pair out before re-entering the interpreter; the values
-        // stay rooted through `args` on the VM stack.
+        // Copy the pair out before re-entering the interpreter. The pair
+        // containers stay rooted through the dispatch site's copies on the
+        // VM stack (`execute_native_method_call` truncates them only after
+        // this native returns), but a List pair can be mutated by user
+        // `__hash__`/`__eq__` during the add, dropping its references — so
+        // the key and value copies must be rooted separately below. (The `Option`
+        // round-trip also ends the heap borrow before `Dict::add` needs the
+        // VM mutably.)
         let pair = if let Value::Instance(inst) = arg
             && let Some(backing) = &inst.to_value(&vm.heap).backing
             && let Some(items) = match backing {
@@ -83,19 +89,25 @@ pub(super) fn dict_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) ->
         } else {
             None
         };
-        if let Some((key, value)) = pair {
-            Dict::add(vm, receiver, key, value)?;
-        } else {
+        let Some((key, value)) = pair else {
             return Err(vm
                 .throw(
                     TypeError,
                     &format!(
-                        "Dict initializer expects 2-element tuples, got `{}`.",
+                        "Dict initializer expects 2-element tuples or lists, got `{}`.",
                         arg.to_string(&vm.heap)
                     ),
                 )
                 .unwrap_err());
-        }
+        };
+        // Same discipline as `VM::for_each_rooted`: keep the copies on the
+        // VM stack while the add re-enters the interpreter. On error they
+        // stay below the pending exception for the handler to truncate.
+        let roots_start = vm.stack.len();
+        vm.stack.push(key);
+        vm.stack.push(value);
+        Dict::add(vm, receiver, key, value)?;
+        vm.stack.truncate(roots_start);
     }
     Ok(*receiver)
 }

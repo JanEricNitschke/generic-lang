@@ -1,0 +1,29 @@
+# The Dict constructor takes one [key, value] pair per argument, so
+# `Dict(pair)` below builds a one-entry dict from a single List pair. The
+# constructor copies key and value out of the pair before re-entering the
+# interpreter; a List pair (unlike a Tuple) can be mutated by the key's
+# `__hash__`/`__eq__`, dropping the pair's own references — the copies must
+# be rooted separately or the value is collected mid-init.
+# Relies on stress_gc to collect while the pair no longer holds the value.
+var armed = true;
+var pair = nil;
+
+class Key {
+    __hash__() {
+        if armed {
+            armed = false;
+            pair.pop();
+            pair.pop();
+        }
+        return 7;
+    }
+
+    __eq__(other) {
+        return true;
+    }
+}
+
+var k = Key();
+pair = [k, [1, 2, 3]];
+var d = Dict(pair);
+print(d[k]); # expect: [1, 2, 3]
