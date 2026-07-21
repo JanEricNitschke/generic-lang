@@ -46,7 +46,6 @@ impl VM {
         &mut self,
         method_name: StringId,
         arg_count: u8,
-        method_is_native: bool,
     ) -> VmResult {
         // The region starts below the callee and its arguments.
         let entry = RegionSnapshot {
@@ -54,9 +53,16 @@ impl VM {
             ..self.current_region()
         };
 
+        // Whether the callee needs its bytecode run cannot be decided from
+        // the looked-up method: `invoke` may dispatch to an instance *field*
+        // instead (e.g. a native function stored under `__str__`, or a
+        // field-held closure), so trust the callstack — run exactly when
+        // `invoke` pushed a frame. Anything that completed natively already
+        // left its result on the stack.
+        let frames_before = self.callstack.len();
         let result = match self.invoke(method_name, arg_count) {
-            Ok(_) if method_is_native => Ok(None),
-            Ok(_) => self.run_function(),
+            Ok(_) if self.callstack.len() > frames_before => self.run_function(),
+            Ok(_) => Ok(None),
             err => err,
         };
 

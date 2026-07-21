@@ -26,16 +26,13 @@ impl VM {
         let method_id = self.heap.string_id(&method_name);
 
         if let Value::Instance(instance) = values[0]
-            && let Some(method) = instance
+            && instance
                 .to_value(&self.heap)
                 .get_field_or_method(method_id, &self.heap)
+                .is_some()
         {
             self.stack.extend_from_slice(values);
-            self.invoke_and_run_function(
-                method_id,
-                (values.len() - 1).try_into().unwrap(),
-                matches!(method, Value::NativeMethod(_)),
-            )?;
+            self.invoke_and_run_function(method_id, (values.len() - 1).try_into().unwrap())?;
             Ok(Some(
                 self.stack.pop().expect("Stack underflow in len_native"),
             ))
@@ -193,18 +190,15 @@ impl VM {
             Value::Instance(instance_id) => {
                 let hash_method_id = self.heap.string_id(&"__hash__");
 
-                if let Some(hash_method) = instance_id
+                if instance_id
                     .to_value(&self.heap)
                     .get_field_or_method(hash_method_id, &self.heap)
+                    .is_some()
                 {
                     // Push the instance onto the stack for method call
                     self.stack.push(value);
 
-                    self.invoke_and_run_function(
-                        hash_method_id,
-                        0,
-                        matches!(hash_method, Value::NativeMethod(_)),
-                    )?;
+                    self.invoke_and_run_function(hash_method_id, 0)?;
 
                     let result = self.stack.pop().expect("Stack underflow in compute_hash");
                     return match result {
