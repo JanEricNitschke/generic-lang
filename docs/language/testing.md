@@ -12,7 +12,8 @@ generic --test tests/           # recurse a directory (files named `test_*.gen`)
 
 Tests run in alphabetical order. The VM's stack, call frames, and module
 state are restored between tests, but the tests in a file share one VM:
-global variables mutated by one test remain visible to later ones.
+global variables mutated by one test remain visible to later ones. Each
+file gets a fresh VM, so nothing leaks between files.
 Failures and uncaught exceptions are reported per test and never stop the
 other tests; the process exits non-zero if any test failed.
 
@@ -77,6 +78,26 @@ Traceback (most recent call last):
 Tests run: 2
 ✓ Passed: 1
 ⚠ Failed: 1
+
+Some tests failed or had errors.
+```
+
+Errored tests are tallied separately (in directory mode also as an
+`N errors` line in the per-file summary):
+
+```text
+$ generic --test params.gen
+Running tests in params.gen...
+
+Running 2 test(s)...
+
+  test_needs_arg ... ERROR
+    Failed to call test function
+  test_ok        ... PASS
+=== Test Results ===
+Tests run: 2
+✓ Passed: 1
+❌ Errors: 1
 
 Some tests failed or had errors.
 ```
@@ -157,15 +178,6 @@ fun assert_greater_than(actual, expected, message) {
 
 assert_greater_than(10, 5, "10 should be greater than 5");
 ```
-
-## Best practices
-
-1. **Start test functions with `test_`** - Only these will be discovered
-2. **Use descriptive names** - `test_calculator_division` vs `test1`
-3. **Test one thing per function** - Keep tests focused and small
-4. **Use assertion helpers** - Create reusable assertion functions
-5. **Handle exceptions properly** - Use try/catch for testing error conditions
-6. **Keep tests independent** - Don't rely on execution order or shared state
 
 ## Exit codes
 

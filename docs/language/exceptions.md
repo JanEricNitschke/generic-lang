@@ -55,7 +55,8 @@ try {
 - A `try` may have several `catch` blocks; the first matching class wins, and
   matching is subclass-aware (a `catch Exception` catches everything).
 - The optional `else` block runs only when the `try` body completed without
-  throwing.
+  throwing. A `try` needs at least one `catch` — `else` alone is a compile
+  error.
 
 ```generic
 try {
@@ -79,6 +80,9 @@ var e = ValueError("msg");
 print(e.message());   # msg
 print(str(e));        # msg
 ```
+
+`e.stack_trace()` returns the traceback recorded where the exception was
+thrown, or `nil` for an instance that was never thrown.
 
 ## Custom exceptions
 

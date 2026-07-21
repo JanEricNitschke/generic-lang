@@ -2,8 +2,8 @@
 
 Generic is a small, dynamically-typed, class-based language with closures,
 generators, operator overloading, exceptions, and a module system — a
-descendant of [Lox](https://craftinginterpreters.com) with a good deal
-added. Programs run on a bytecode VM.
+descendant of [Lox](https://craftinginterpreters.com). Programs run on a
+bytecode VM.
 
 Run a file, or start a REPL with no argument:
 
@@ -58,6 +58,3 @@ gen squares(xs) {                     # generators use `gen` + `yield`
 }
 foreach (var s in squares([1, 2, 3])) { print(s); }   # 1, 4, 9
 ```
-
-Everything above is real, runnable syntax. The rest of the guide covers each
-piece in depth.
