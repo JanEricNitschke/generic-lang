@@ -8,10 +8,8 @@ use strum_macros::{EnumIter, IntoStaticStr};
 
 use self::ExceptionKind::TypeError;
 /// The kinds of exceptions the VM can throw. Each variant is named exactly
-/// like the builtin exception class it maps to.
-///
-/// The discriminants are stable: `0` is reserved for "no exception" so the
-/// values can double as status codes.
+/// like the builtin exception class it maps to (the mapping goes through
+/// the name — see `every_exception_kind_has_a_builtin_class`).
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, IntoStaticStr)]
 pub enum ExceptionKind {
