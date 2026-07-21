@@ -1,0 +1,25 @@
+# A generator resuming itself finds the Executing placeholder in its heap
+# slot and must get a catchable ValueError — never re-run the placeholder's
+# empty frame.
+var g = nil;
+
+gen make() {
+    yield 1;
+    next(g);
+    yield 2;
+}
+
+g = make();
+print(next(g)); # expect: 1
+
+# The ValueError is thrown inside the generator body at `next(g)`, is
+# uncaught there, escapes, and completes the generator.
+try {
+    next(g);
+    print("should not reach");
+} catch ValueError as e {
+    print(e.message()); # expect: Generator already executing.
+}
+
+# Completed by the escaped exception: further resumes yield StopIteration.
+print(next(g)); # expect: StopIteration

@@ -1,0 +1,20 @@
+# Closing a generator from inside its own body would only mark the
+# Executing placeholder, which the native wrapper then overwrites when it
+# puts the real generator back — silently undoing the close. It must throw
+# a catchable ValueError instead.
+var g = nil;
+
+gen make() {
+    g.close();
+    yield 1;
+}
+
+g = make();
+try {
+    next(g);
+    print("should not reach");
+} catch ValueError as e {
+    print(e.message()); # expect: Generator already executing.
+}
+
+print(next(g)); # expect: StopIteration
