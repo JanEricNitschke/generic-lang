@@ -99,12 +99,23 @@ impl VM {
             };
         }
 
+        // libloading's `Display` is generic ("dlopen failed"); the actual
+        // `dlerror`/OS detail is the error's `source`.
+        fn describe(error: &libloading::Error) -> String {
+            std::error::Error::source(error)
+                .map_or_else(|| error.to_string(), |source| format!("{error}: {source}"))
+        }
+
         // SAFETY: loading a shared library runs its initializers — this is
         // the trust boundary of the plugin system (plugins are trusted
         // native code).
         let library = match unsafe { Library::new(path) } {
             Ok(library) => library,
-            Err(error) => import_error!("Failed to load plugin `{}`: {error}", path.display()),
+            Err(error) => import_error!(
+                "Failed to load plugin `{}`: {}",
+                path.display(),
+                describe(&error)
+            ),
         };
 
         // SAFETY: the symbol is declared with exactly this signature in the
@@ -114,8 +125,9 @@ impl VM {
         } {
             Ok(symbol) => symbol,
             Err(error) => import_error!(
-                "Plugin `{}` does not export `generic_plugin_init`: {error}",
-                path.display()
+                "Plugin `{}` does not export `generic_plugin_init`: {}",
+                path.display(),
+                describe(&error)
             ),
         };
 
