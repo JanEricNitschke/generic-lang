@@ -475,20 +475,16 @@ impl VM {
     /// this to deliver constructor errors at the suspension point.
     pub(crate) fn instantiate_exception(&mut self, class_id: ClassId) -> VmResult<Value> {
         let init_method_id = self.heap.builtin_constants().init_string;
-        let init_method = *class_id
+        class_id
             .to_value(&self.heap)
             .methods
             .get(&init_method_id)
-            .unwrap();
+            .expect("Exception classes always define __init__");
         let instance = self
             .heap
             .add_instance(Instance::new(class_id, Some(NativeClass::new("Exception"))));
         self.stack.push(instance);
-        self.invoke_and_run_function(
-            init_method_id,
-            0,
-            matches!(init_method, Value::NativeMethod(_)),
-        )?;
+        self.invoke_and_run_function(init_method_id, 0)?;
         Ok(self
             .stack
             .pop()

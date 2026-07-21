@@ -500,13 +500,14 @@ impl VM {
 
         // Check if left value is an instance with __eq__ method
         if let Value::Instance(instance) = left_id
-            && let Some(eq_method) = instance
+            && instance
                 .to_value(&self.heap)
                 .get_field_or_method(eq_id, &self.heap)
+                .is_some()
         {
             // If the left value is an instance, use its __eq__ method
             // Values are already on stack in correct order for method call
-            self.invoke_and_run_function(eq_id, 1, matches!(eq_method, Value::NativeMethod(_)))?;
+            self.invoke_and_run_function(eq_id, 1)?;
             let result = *self.peek(0).expect("Stack underflow in OP_EQUAL");
             return if let Value::Bool(bool) = result {
                 if mode == EqualityMode::NotEqual {

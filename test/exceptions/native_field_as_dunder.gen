@@ -1,0 +1,17 @@
+# Dunder dispatch can land on an instance *field* instead of a class
+# method. A field holding a native callable completes without pushing a
+# frame — the VM must not run the caller's bytecode in its place.
+class Foo {}
+
+var f = Foo();
+f.__str__ = clock;
+
+try {
+    print(f);
+    print("should not reach");
+} catch TypeError as e {
+    # clock() returns a number, so the __str__ contract check fires.
+    print(e.message().contains("`__str__` must return a string")); # expect: true
+}
+
+print("done"); # expect: done
