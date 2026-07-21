@@ -556,3 +556,21 @@ fn unknown_status_during_error_construction_does_not_recurse() {
     let result = host.call(blob(0), &[]);
     assert!(matches!(result, Err(PluginError::Exception(_))));
 }
+
+/// A host whose `builtin_get` reports a fatal error: error construction
+/// must propagate `Fatal` instead of downgrading it to a catchable
+/// exception carrying nil.
+extern "C" fn mock_builtin_get_fatal(_ctx: *mut c_void, _name: FfiStr) -> FfiReturn {
+    FfiReturn {
+        status: FfiStatus::Fatal as u32,
+        value: blob(0),
+    }
+}
+
+#[test]
+fn fatal_during_error_construction_stays_fatal() {
+    let mut api = mock_host_api();
+    api.builtin_get = mock_builtin_get_fatal;
+    let host = Host::new(&api);
+    assert!(matches!(host.type_error("boom"), PluginError::Fatal));
+}

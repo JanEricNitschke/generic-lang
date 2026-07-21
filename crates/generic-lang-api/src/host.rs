@@ -412,22 +412,32 @@ impl<'a> Host<'a> {
 
     /// A [`PluginError`] carrying a fresh instance of the builtin
     /// exception class `class_name`. Unknown names fall back to the base
-    /// `Exception` (unreachable through the typed constructors below).
+    /// `Exception` (unreachable through the typed constructors below). A
+    /// fatal host error during construction stays [`PluginError::Fatal`] —
+    /// it must never be downgraded to something catchable.
     fn error(&self, class_name: &str, message: &str) -> PluginError {
-        self.builtin(class_name)
+        let result = self
+            .builtin(class_name)
             .and_then(|class| self.make_exception(class, message))
-            .or_else(|_| {
+            .or_else(|error| {
+                // Only fall back for catchable failures (an unknown class
+                // name); a fatal host error must propagate as-is.
+                if matches!(error, PluginError::Fatal) {
+                    return Err(error);
+                }
                 let class = self.builtin("Exception")?;
                 self.make_exception(class, message)
-            })
-            .map_or_else(
-                // Unreachable (the base `Exception` always exists), but a
-                // real nil keeps this a valid `Value`: if it ever escaped,
-                // the host would reject the non-exception gracefully rather
-                // than transmute an invalid blob.
-                |_| PluginError::Exception(self.make_nil()),
-                PluginError::Exception,
-            )
+            });
+        match result {
+            Ok(exception) => PluginError::Exception(exception),
+            Err(PluginError::Fatal) => PluginError::Fatal,
+            // Unreachable with the real host (the base `Exception` always
+            // exists and `builtin_get`/`exception_new` fail catchably at
+            // worst), but a real nil keeps this a valid `Value`: if it ever
+            // escaped, the host would reject the non-exception gracefully
+            // rather than transmute an invalid blob.
+            Err(_) => PluginError::Exception(self.make_nil()),
+        }
     }
 
     host_error_constructors!(
