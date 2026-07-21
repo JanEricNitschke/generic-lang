@@ -2,10 +2,21 @@ class Error1 < Exception {}
 class Error2 < Exception {}
 
 try {
-    throw Error1("error message");
+    throw Error1("error1 message");
     print("Try");
 } catch (Error1, Error2) as e {
-    print(e); # expect: error message
+    print("Caught Error1 or Error2"); # expect: Caught Error1 or Error2
+    print(e); # expect: error1 message
+} else {
+    print("Else");
+}
+
+try {
+    throw Error2("error2 message");
+    print("Try");
+} catch (Error1, Error2) as e {
+    print("Caught Error1 or Error2"); # expect: Caught Error1 or Error2
+    print(e); # expect: error2 message
 } else {
     print("Else");
 }

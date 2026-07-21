@@ -3,9 +3,10 @@ class Error2 < Exception {}
 
 fun inner_1() {
     try {
-        throw Error2("error message");
-        print("Try");
+        throw Error2("error1 message");
+        print("Tryi1");
     } catch Error1 as e {
+        print("Caught inside1");
         print(e);
     } else {
         print("Else Inner");
@@ -14,10 +15,11 @@ fun inner_1() {
 
 fun inner_2() {
     try {
-        throw Error1("error message");
-        print("Try");
+        throw Error1("error2 message");
+        print("Tryi2");
     } catch Error1 as e {
-        print(e); 
+        print("Caught inside1");
+        print(e);
     } else {
         print("Else Inner");
     }
@@ -26,15 +28,20 @@ fun inner_2() {
 
 try {
     inner_1();
+    print("Tryo1");
 } catch Error2 as e {
-    print(e); # expect: error message
+    print("Caught o1"); # expect: Caught o1
+    print(e); # expect: error1 message
 } else {
     print("Else Outer");
 }
 
 try {
-    inner_2(); # expect: error message
+    inner_2(); # expect: Caught inside1
+               # expect: error2 message
+    print("Tryo2"); # expect: Tryo2
 } catch Error2 as e {
+    print("Caught o2");
     print(e);
 } else {
     print("Else Outer"); # expect: Else Outer

@@ -2,29 +2,37 @@ class Error1 < Exception {}
 class Error2 < Exception {}
 
 
+# A throw inside a catch block escapes the whole try; the sibling catches of
+# the same try are not eligible to handle it — it goes to the outer try.
 try {
     try {
-        throw Error1("error message");
+        throw Error1("error1 message");
     } catch Error1 as e1 {
-        print(e1);  # expect: error message
-        throw Error2("error message");
+        print("Caught inner Error1"); # expect: Caught inner Error1
+        print(e1); # expect: error1 message
+        throw Error2("error2 message");
     } catch Error2 as e2 {
+        print("Caught sibling Error2");
         print(e2);
     }
 } catch Error2 as e {
-    print(e);   # expect: error message
+    print("Caught outer Error2"); # expect: Caught outer Error2
+    print(e); # expect: error2 message
 }
 
 
 try {
     try {
-        throw Error2("error message");
+        throw Error2("error3 message");
     } catch Error1 as e1 {
+        print("Caught sibling Error1");
         print(e1);
     } catch Error2 as e2 {
-        print(e2);  # expect: error message
-        throw Error1("error message");
+        print("Caught inner Error2"); # expect: Caught inner Error2
+        print(e2); # expect: error3 message
+        throw Error1("error4 message");
     }
 } catch Error1 as e {
-    print(e);   # expect: error message
+    print("Caught outer Error1"); # expect: Caught outer Error1
+    print(e); # expect: error4 message
 }
