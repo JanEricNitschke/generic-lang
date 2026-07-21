@@ -175,6 +175,22 @@ mod tests {
         assert_eq!(size_of::<FfiStr>(), 2 * size_of::<usize>());
     }
 
+    /// The crate version encodes the ABI version: `0.<abi>.<patch>`. A
+    /// major bump would decouple the two schemes, and an ABI bump without
+    /// the matching minor bump would publish a crate whose version lies
+    /// about compatibility.
+    #[test]
+    fn crate_version_encodes_the_abi_version() {
+        let mut parts = env!("CARGO_PKG_VERSION").split('.');
+        let major: u32 = parts.next().unwrap().parse().unwrap();
+        let minor: u32 = parts.next().unwrap().parse().unwrap();
+        assert_eq!(major, 0, "the version scheme is 0.<abi>.<patch>");
+        assert_eq!(
+            minor, GENERIC_PLUGIN_ABI_VERSION,
+            "bump GENERIC_PLUGIN_ABI_VERSION and the crate minor version together"
+        );
+    }
+
     #[test]
     fn kind_round_trips() {
         for kind in [
