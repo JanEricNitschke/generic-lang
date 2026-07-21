@@ -46,15 +46,18 @@ impl core::fmt::Debug for GenericValue {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct FfiStr {
-    /// Pointer to the first byte (may be null only for the empty sentinel).
+    /// Pointer to the first byte. Must be non-null in both directions — an
+    /// empty string is a non-null pointer with `len == 0` (e.g. C's `""`);
+    /// a null pointer is not a valid string value.
     pub ptr: *const u8,
     /// Length in bytes.
     pub len: usize,
 }
 
 impl FfiStr {
-    /// An empty string with a null pointer, used by host callbacks to signal
-    /// "not a string".
+    /// A null-pointer `FfiStr` for initializing the out-parameter of a
+    /// bool-probe callback (`string_get` overwrites it on success). Not a
+    /// valid string value — see [`FfiStr::ptr`].
     #[must_use]
     pub const fn null() -> Self {
         Self {

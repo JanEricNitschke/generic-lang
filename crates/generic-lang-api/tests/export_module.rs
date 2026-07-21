@@ -440,10 +440,11 @@ fn typed_error_path() {
     );
 }
 
-/// `string_get` writing the null-pointer empty sentinel (allowed by the
-/// `FfiStr` contract): `Host::as_str` must hand back `""` instead of
-/// building a slice from a null pointer.
-extern "C" fn mock_string_get_null_empty(
+/// `string_get` answering success but writing a null pointer (or not
+/// writing at all — the out-param is initialized null): a protocol
+/// violation. `Host::as_str` must report "not a string" instead of
+/// building a slice from the null pointer or fabricating an empty string.
+extern "C" fn mock_string_get_null_ptr(
     _ctx: *mut c_void,
     _value: GenericValue,
     out: *mut FfiStr,
@@ -454,11 +455,11 @@ extern "C" fn mock_string_get_null_empty(
 }
 
 #[test]
-fn as_str_handles_the_null_empty_sentinel() {
+fn as_str_rejects_a_null_pointer() {
     let mut api = mock_host_api();
-    api.string_get = mock_string_get_null_empty;
+    api.string_get = mock_string_get_null_ptr;
     let host = Host::new(&api);
-    assert_eq!(host.as_str(blob(0)), Some(""));
+    assert_eq!(host.as_str(blob(0)), None);
 }
 
 #[test]

@@ -205,7 +205,9 @@ typedef struct GenericValue {
  */
 typedef struct FfiStr {
   /**
-   * Pointer to the first byte (may be null only for the empty sentinel).
+   * Pointer to the first byte. Must be non-null in both directions — an
+   * empty string is a non-null pointer with `len == 0` (e.g. C's `""`);
+   * a null pointer is not a valid string value.
    */
   const uint8_t *ptr;
   /**

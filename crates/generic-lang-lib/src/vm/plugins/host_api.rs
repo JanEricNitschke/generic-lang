@@ -452,7 +452,7 @@ extern "C" fn cb_builtin_get(ctx: *mut c_void, name: FfiStr) -> FfiReturn {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
-            "Builtin name must be UTF-8.",
+            "Builtin name must be non-null UTF-8.",
         );
     };
     let name_id = vm.heap.string_id(&name);
@@ -502,7 +502,7 @@ extern "C" fn cb_attr_get(ctx: *mut c_void, receiver: GenericValue, name: FfiStr
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
-            "Attribute name must be UTF-8.",
+            "Attribute name must be non-null UTF-8.",
         );
     };
     let Value::Instance(id) = from_ffi(receiver) else {
@@ -532,7 +532,7 @@ extern "C" fn cb_attr_set(
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
-            "Attribute name must be UTF-8.",
+            "Attribute name must be non-null UTF-8.",
         );
     };
     let Value::Instance(id) = from_ffi(receiver) else {
@@ -556,7 +556,7 @@ extern "C" fn cb_attr_has(ctx: *mut c_void, receiver: GenericValue, name: FfiStr
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
-            "Attribute name must be UTF-8.",
+            "Attribute name must be non-null UTF-8.",
         );
     };
     let Value::Instance(id) = from_ffi(receiver) else {
@@ -594,7 +594,7 @@ extern "C" fn cb_string_new(ctx: *mut c_void, value: FfiStr) -> FfiReturn {
         return ffi_error(
             vm,
             ExceptionKind::ValueError,
-            "String is not valid UTF-8.",
+            "String must be non-null UTF-8.",
         );
     };
     let id = vm.heap.string_id(&s);
@@ -657,7 +657,7 @@ extern "C" fn cb_exception_new(
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
-            "Exception message must be UTF-8.",
+            "Exception message must be non-null UTF-8.",
         );
     };
     let Value::Class(class_id) = from_ffi(of_class) else {
@@ -722,7 +722,7 @@ extern "C" fn cb_invoke_method(
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
-            "Method name must be UTF-8.",
+            "Method name must be non-null UTF-8.",
         );
     };
     let Ok(arg_count) = u8::try_from(nargs) else {
