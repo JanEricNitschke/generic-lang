@@ -187,9 +187,9 @@ else
 ASAN_PLUGIN_CC       := clang
 ASAN_PLUGIN_CXX      := clang++
 ASAN_PLUGIN_SANITIZE := -fsanitize=address,undefined -fsanitize-trap=undefined
-# --export-dynamic: isntrumented plugins resolve __asan_* from the host.
-# -lstdc++ (kept via --no-as-needed): ASan'ss __cxa_throw interceptor needs
-# libstdc++ present at init, or a C++ plugin's `throw` hitss a null "real"
+# --export-dynamic: instrumented plugins resolve __asan_* from the host.
+# -lstdc++ (kept via --no-as-needed): ASan's __cxa_throw interceptor needs
+# libstdc++ present at init, or a C++ plugin's `throw` hits a null "real"
 # pointer (the interceptor CHECK-fails) once the host exports its symbols.
 ASAN_HOST_RUSTFLAGS  := -Zsanitizer=address -Clink-arg=-Wl,--export-dynamic \
                         -Clink-arg=-Wl,--no-as-needed -Clink-arg=-lstdc++
