@@ -1,0 +1,45 @@
+# An integer returned by a user __hash__ lands in the same bucket as the equal
+# plain integer key (and a big-integer-typed value of the same magnitude), so
+# all of them are interchangeable as keys. A non-integer __hash__ is rejected.
+class MyInt {
+    __init__(v) {
+        this.v = v;
+    }
+    __hash__() {
+        return this.v;
+    }
+    __eq__(other) {
+        if isinstance(other, MyInt) {
+            return this.v == other.v;
+        }
+        return this.v == other;
+    }
+}
+
+var d = {:};
+d[MyInt(5)] = "instance";
+print(5 in d);          # expect: true
+d[5] = "plain";
+print(len(d));          # expect: 1
+print(d[MyInt(5)]);     # expect: plain
+
+# A big-integer-typed 5 collapses with the small 5.
+var big = 100000000000000000000000000000;
+var five = big + 5 - big;
+print(five in d);       # expect: true
+
+# A non-integer __hash__ return is rejected before it is used.
+class BadHash {
+    __hash__() {
+        return 1.5;
+    }
+    __eq__(other) {
+        return false;
+    }
+}
+try {
+    var s = {BadHash()};
+    print("no error");
+} catch TypeError as e {
+    print(str(e)); # expect: __hash__ method must return an integer, got: 1.5
+}
