@@ -318,7 +318,7 @@ handle is undefined behavior.
 | `Rational` | inspect via display/str |
 | `String` | `string_get` returns borrowed UTF-8 bytes (see lifetime rule below) |
 | `List`, `Tuple` | `list_len`/`list_get`, `tuple_len`/`tuple_get`; lists also `list_push`/`list_set` |
-| `Dict`, `Set` | `dict_get/set/contains`, `set_add/contains`, lengths — these **re-enter** (user `__hash__`/`__eq__` may run) |
+| `Dict`, `Set` | `dict_len`/`set_len` never re-enter; `dict_get/set/contains`, `set_add/contains` **re-enter** (user `__hash__`/`__eq__` may run) |
 | `Range` | inspect via display, or drive its iterator |
 | `Instance` | plain object: fields via `attr_get`/`attr_set`/`attr_has`, methods via `invoke_method` |
 | `Class`, `Function` | callable with `call_value` (calling a class instantiates it) |
