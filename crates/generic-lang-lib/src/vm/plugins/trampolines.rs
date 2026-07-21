@@ -10,6 +10,7 @@
 use generic_lang_api::{FfiReturn, FfiStatus, GenericValue, PluginFn};
 
 use super::host_api::{build_host_api, from_ffi};
+use crate::heap::StringId;
 use crate::value::Value;
 use crate::vm::ExceptionKind::Exception;
 use crate::vm::VM;
@@ -28,11 +29,12 @@ pub(super) fn plugin_trampoline(vm: &mut VM, args: &[Value]) -> VmResult<Value> 
     let Value::NativeFunction(id) = callee else {
         unreachable!("plugin trampoline dispatched without its native function on the stack")
     };
-    let fun = id
-        .to_value(&vm.heap)
+    let native = id.to_value(&vm.heap);
+    let fun = native
         .plugin_fn
         .expect("plugin trampoline on a native without a plugin function");
-    call_plugin(vm, fun, args)
+    let name = native.name;
+    call_plugin(vm, fun, args, name)
 }
 
 /// Call a plugin function with zero-copy arguments.
@@ -50,7 +52,12 @@ pub(super) fn plugin_trampoline(vm: &mut VM, args: &[Value]) -> VmResult<Value> 
 /// - [`FfiStatus::Fatal`] → a fatal runtime error (uncatchable, forwarded from
 ///   a re-entering host callback).
 /// - anything else is a plugin bug and becomes a base `Exception`.
-pub(super) fn call_plugin(vm: &mut VM, fun: PluginFn, args: &[Value]) -> VmResult<Value> {
+pub(super) fn call_plugin(
+    vm: &mut VM,
+    fun: PluginFn,
+    args: &[Value],
+    name: StringId,
+) -> VmResult<Value> {
     let host = build_host_api(vm);
     let ret: FfiReturn = fun(
         &raw const host,
@@ -68,7 +75,17 @@ pub(super) fn call_plugin(vm: &mut VM, fun: PluginFn, args: &[Value]) -> VmResul
                 .raise_pending_from_stack()
                 .expect_err("raising is never a success"))
         }
-        Some(FfiStatus::Fatal) => Err(RuntimeErrorKind.into()),
+        Some(FfiStatus::Fatal) => {
+            // Fatal errors print at the site that produced them; a fatal the
+            // plugin returned on its own has no such site in the host, so
+            // name the function here (for a forwarded host fatal this adds
+            // placement context to the line the original site printed).
+            eprintln!(
+                "Fatal error reported by plugin function `{}`.",
+                *name.to_value(&vm.heap)
+            );
+            Err(RuntimeErrorKind.into())
+        }
         // A protocol violation: `value` must not be interpreted at all.
         None => {
             let message = format!("Plugin returned unknown status {}.", ret.status);

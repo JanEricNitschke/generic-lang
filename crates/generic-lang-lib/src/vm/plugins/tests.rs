@@ -873,33 +873,34 @@ fn plugin_native_dispatches_through_the_real_call_path() {
 #[test]
 fn call_plugin_maps_every_status() {
     let mut vm = VM::new();
+    let name = vm.heap.string_id(&"test_plugin_fn");
 
     // Ok → the returned value.
     assert_eq!(
-        call_plugin(&mut vm, plugin_returns_seven, &[]).unwrap(),
+        call_plugin(&mut vm, plugin_returns_seven, &[], name).unwrap(),
         Value::from(7i64)
     );
 
     // A typed throw (instance built via `exception_new`) becomes a
     // pending exception of the matching class.
-    let error = call_plugin(&mut vm, plugin_throws_type_error, &[]).unwrap_err();
+    let error = call_plugin(&mut vm, plugin_throws_type_error, &[], name).unwrap_err();
     assert!(matches!(error, VmErrorKind::Exception(_)));
     assert_eq!(pop_pending_exception_class(&mut vm), "TypeError");
 
     // A non-exception value under STATUS_EXCEPTION is a plugin bug and
     // surfaces as the raise-validation TypeError, not a crash.
-    let error = call_plugin(&mut vm, plugin_invalid_exception_value, &[]).unwrap_err();
+    let error = call_plugin(&mut vm, plugin_invalid_exception_value, &[], name).unwrap_err();
     assert!(matches!(error, VmErrorKind::Exception(_)));
     assert_eq!(pop_pending_exception_class(&mut vm), "TypeError");
 
     // Unknown statuses fall back to the base Exception.
-    let error = call_plugin(&mut vm, plugin_unknown_code, &[]).unwrap_err();
+    let error = call_plugin(&mut vm, plugin_unknown_code, &[], name).unwrap_err();
     assert!(matches!(error, VmErrorKind::Exception(_)));
     assert_eq!(pop_pending_exception_class(&mut vm), "Exception");
 
     // STATUS_FATAL comes back as an uncatchable runtime error — no
     // pending exception is created.
-    let error = call_plugin(&mut vm, plugin_fatal, &[]).unwrap_err();
+    let error = call_plugin(&mut vm, plugin_fatal, &[], name).unwrap_err();
     assert!(matches!(error, VmErrorKind::Runtime(_)));
     assert_eq!(vm.stack.len(), 0);
 }
@@ -947,7 +948,9 @@ fn rethrown_exceptions_keep_their_identity() {
     let ret = (api.is_instance)(api.ctx, to_ffi(my_error_exception), nil);
     assert_error(&api, ret, "TypeError");
 
-    let error = call_plugin(&mut vm, plugin_rethrows_arg, &[my_error_exception]).unwrap_err();
+    let name_id = vm.heap.string_id(&"plugin_rethrows_arg");
+    let error =
+        call_plugin(&mut vm, plugin_rethrows_arg, &[my_error_exception], name_id).unwrap_err();
     assert!(matches!(error, VmErrorKind::Exception(_)));
     let pending = *vm.stack.last().expect("pending exception missing");
     assert!(pending.is(&my_error_exception), "must be the same instance");
