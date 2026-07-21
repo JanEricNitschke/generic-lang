@@ -667,11 +667,28 @@ impl<'a> Host<'a> {
             Some(FfiStatus::Exception) => Err(PluginError::Exception(ret.value)),
             Some(FfiStatus::Fatal) => Err(PluginError::Fatal),
             // A status outside the enum is a protocol violation.
-            None => Err(self.exception(&format!(
+            None => Err(self.protocol_violation(&format!(
                 "host callback returned unknown status {}",
                 ret.status
             ))),
         }
+    }
+
+    /// Builds the protocol-violation exception without going through
+    /// [`Self::ffi_result`]: a host broken enough to answer `builtin_get`/
+    /// `exception_new` with unknown statuses too would otherwise recurse
+    /// through error construction forever. Any failure here falls back to
+    /// a nil-carrying exception rather than another decode attempt.
+    fn protocol_violation(&self, message: &str) -> PluginError {
+        let class = (self.api.builtin_get)(self.api.ctx, Self::ffi_str("Exception"));
+        if FfiStatus::from_u32(class.status) == Some(FfiStatus::Ok) {
+            let exception =
+                (self.api.exception_new)(self.api.ctx, class.value, Self::ffi_str(message));
+            if FfiStatus::from_u32(exception.status) == Some(FfiStatus::Ok) {
+                return PluginError::Exception(exception.value);
+            }
+        }
+        PluginError::Exception(self.make_nil())
     }
 }
 
