@@ -11,7 +11,7 @@
 ///
 /// fn add(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
 ///     let (Some(a), Some(b)) = (host.as_int(args[0]), host.as_int(args[1])) else {
-///         return Err(PluginError::type_error("add expects two integers"));
+///         return Err(host.type_error("add expects two integers"));
 ///     };
 ///     Ok(host.make_int(a + b))
 /// }

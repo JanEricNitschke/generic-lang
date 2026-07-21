@@ -490,7 +490,7 @@ macro_rules! run_instruction {
             OpCode::PopHandler => {
                 $self
                     .pop_exception_handler()
-                    .expect("Exception handler unflow in OP_POP_HANDLER");
+                    .expect("Exception handler underflow in OP_POP_HANDLER");
                 Ok(None)
             }
             // Throw the exception on the top of the stack: mark it pending

@@ -1,7 +1,6 @@
 # Zig plugin fixture (plugin-examples/zig/zig_demo_plugin.zig), built by the
-# Makefile `plugin-lang-fixture` step throughh its build.zig which
-# translate-c's the generated header into a module. Same ABI, exercised
-# from Zig.
+# Makefile `plugin-lang-fixture` step through its build.zig, which translates
+# the generated C header into a Zig module. Same ABI, exercised from Zig.
 #
 # Exports exercised here:
 #   add(a, b)                  -- integer addition
