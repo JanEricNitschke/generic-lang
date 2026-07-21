@@ -1,0 +1,15 @@
+# A built-in big integer (beyond the i64 range) works directly as a set and
+# dict key: equal big-int values hash equal and collapse to one entry.
+var big = 100000000000000000000000000;
+
+var s = {big, big, big + 1};
+print(len(s)); # expect: 2
+print(big in s); # expect: true
+print(big + 1 in s); # expect: true
+print(big + 2 in s); # expect: false
+
+var d = {:};
+d[big] = "a";
+d[100000000000000000000000000] = "b"; # same value, distinct literal
+print(len(d)); # expect: 1
+print(d[big]); # expect: b

@@ -205,6 +205,10 @@ impl VM {
                         Value::Number(Number::Integer(GenericInt::Small(n))) => {
                             Ok(n.unsigned_abs())
                         }
+                        Value::Number(Number::Integer(GenericInt::Big(big))) => {
+                            big.to_value(&self.heap).hash(&mut state);
+                            Ok(state.finish())
+                        }
                         _ => Err(self
                             .throw(
                                 TypeError,
