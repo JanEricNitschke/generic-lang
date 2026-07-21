@@ -61,12 +61,25 @@ fn explode_any(_host: &mut Host, _args: &[GenericValue]) -> Result<GenericValue,
     std::panic::panic_any(42);
 }
 
+/// Multi-arity export: sums however many integers it receives.
+fn sum_any(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
+    let mut sum = 0;
+    for arg in args {
+        let Some(value) = host.as_int(*arg) else {
+            return Err(host.type_error("sum_any expects integers"));
+        };
+        sum += value;
+    }
+    Ok(host.make_int(sum))
+}
+
 generic_lang_api::export_module![
     ("add", &[2], add),
     ("fail", &[0], fail),
     ("explode", &[0], explode),
     ("forward_fatal", &[0], forward_fatal),
     ("explode_any", &[0], explode_any),
+    ("sum_any", &[1, 3], sum_any),
 ];
 
 // --- mock host ---
@@ -371,7 +384,7 @@ fn descriptor_contents() {
     // SAFETY: generic_plugin_init returns a valid, leaked descriptor.
     let desc = unsafe { &*desc };
     assert_eq!(desc.abi_version, GENERIC_PLUGIN_ABI_VERSION);
-    assert_eq!(desc.functions_len, 5);
+    assert_eq!(desc.functions_len, 6);
 
     // The exported names, in declaration order.
     // SAFETY: the descriptor references a leaked slice of functions_len entries.
@@ -387,14 +400,25 @@ fn descriptor_contents() {
         .collect();
     assert_eq!(
         names,
-        ["add", "fail", "explode", "forward_fatal", "explode_any"]
+        [
+            "add",
+            "fail",
+            "explode",
+            "forward_fatal",
+            "explode_any",
+            "sum_any"
+        ]
     );
 
-    // Arities: `add` accepts exactly two arguments.
-    // SAFETY: arities are leaked static slices.
-    let arities =
-        unsafe { core::slice::from_raw_parts(functions[0].arities, functions[0].arities_len) };
-    assert_eq!(arities, [2]);
+    // Every function's full arity list survives the glue, including the
+    // multi-arity `sum_any`.
+    let expected_arities: [&[u8]; 6] = [&[2], &[0], &[0], &[0], &[0], &[1, 3]];
+    for (function, expected) in functions.iter().zip(expected_arities) {
+        // SAFETY: arities are leaked static slices of arities_len entries.
+        let arities =
+            unsafe { core::slice::from_raw_parts(function.arities, function.arities_len) };
+        assert_eq!(arities, expected);
+    }
 
     // The macro always emits a non-null function pointer.
     assert!(functions.iter().all(|f| f.fun.is_some()));
@@ -410,6 +434,22 @@ fn call_exported(index: usize, args: &[GenericValue]) -> FfiReturn {
         .fun
         .expect("export_module! emits non-null function pointers");
     fun(&raw const api, args.as_ptr(), args.len())
+}
+
+#[test]
+fn multi_arity_export_runs_at_each_declared_arity() {
+    // Arity enforcement lives in the host's dispatch, not the glue — this
+    // pins that the wrapper handles whichever declared argument count
+    // arrives.
+    let ret = call_exported(5, &[blob(40), blob(1), blob(1)]);
+    assert_eq!(ret.status, 0);
+    // SAFETY: `sum_any` returns an int built via the mock, so limb 0 is set.
+    assert_eq!(unsafe { limb0(ret.value) }, 42);
+
+    let ret = call_exported(5, &[blob(7)]);
+    assert_eq!(ret.status, 0);
+    // SAFETY: as above.
+    assert_eq!(unsafe { limb0(ret.value) }, 7);
 }
 
 #[test]
