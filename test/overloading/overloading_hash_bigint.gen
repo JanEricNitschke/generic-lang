@@ -1,0 +1,25 @@
+# A user __hash__ may return a big integer (beyond the i64 range), not only a
+# small int. Equal instances returning the same big-int hash collapse to one
+# entry in sets and dicts.
+class Big {
+    __init__(id) {
+        this.id = id;
+    }
+
+    __hash__() {
+        return 100000000000000000000000000 + this.id;
+    }
+
+    __eq__(o) {
+        return this.id == o.id;
+    }
+}
+
+var s = {Big(1), Big(1), Big(2)};
+print(len(s)); # expect: 2
+
+var d = {:};
+d[Big(1)] = "a";
+d[Big(1)] = "b";
+print(len(d)); # expect: 1
+print(d[Big(1)]); # expect: b
