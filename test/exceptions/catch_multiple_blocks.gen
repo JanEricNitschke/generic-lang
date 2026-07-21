@@ -3,13 +3,16 @@ class Error2 < Exception {}
 class Error3 < Exception {}
 
 try {
-    throw Error2("error message");
+    throw Error2("error2 message");
     print("Try");
 } catch Error1 as e1 {
+    print("Caught Error1");
     print(e1);
 } catch Error2 as e2 {
-    print(e2); # expect: error message
+    print("Caught Error2"); # expect: Caught Error2
+    print(e2); # expect: error2 message
 } catch Error3 as e3 {
+    print("Caught Error3");
     print(e3);
 } else {
     print("Else");
