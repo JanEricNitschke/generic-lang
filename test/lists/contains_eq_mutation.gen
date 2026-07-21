@@ -1,0 +1,20 @@
+# A user __eq__ that mutates the list is observed live: generic iterates the
+# list by index and re-reads its length on each step, like Python's
+# list.__contains__. Removing the matching element during an earlier element's
+# __eq__ hides it before the loop reaches its index, so membership is false.
+
+var log = [];
+
+class Bomb {
+    __eq__(other) {
+        log.append("ran");
+        my_list.pop(1); # drop "target" before the search reaches index 1
+        return false;
+    }
+}
+
+var my_list = [Bomb(), "target"];
+
+print("target" in my_list); # expect: false
+print(len(log));            # expect: 1
+print(len(my_list));        # expect: 1

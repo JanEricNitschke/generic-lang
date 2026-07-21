@@ -211,12 +211,18 @@ pub(super) fn list_contains_native(
     receiver: &Value,
     args: &[Value],
 ) -> VmResult<Value> {
-    let my_list = receiver.as_list(&vm.heap);
-    Ok(my_list
-        .items
-        .iter()
-        .any(|el| el.eq(&args[0], &vm.heap))
-        .into())
+    let needle = args[0];
+    let mut index = 0;
+    // Re-fetch by index each step: `compare_values` re-enters and may mutate
+    // or reallocate the list.
+    while index < receiver.as_list(&vm.heap).items.len() {
+        let element = receiver.as_list(&vm.heap).items[index];
+        if vm.compare_values(element, needle)? {
+            return Ok(true.into());
+        }
+        index += 1;
+    }
+    Ok(false.into())
 }
 
 /// Produce an iterator over the list `var iter = list.__iter__()`.

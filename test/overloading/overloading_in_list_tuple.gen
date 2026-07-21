@@ -1,0 +1,29 @@
+# `in` / `.contains` on lists and tuples honours a user __eq__, matching the
+# behaviour of sets and dicts. Previously they used structural (identity)
+# equality and missed a value that is equal by __eq__ but stored as a
+# different instance.
+
+class Point {
+    __init__(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    __eq__(other) {
+        return this.x == other.x and this.y == other.y;
+    }
+}
+
+var needle = Point(3, 4);
+var stored = Point(3, 4);   # equal by value, different instance
+var absent = Point(5, 6);
+
+var my_list = [Point(1, 1), stored, Point(9, 9)];
+print(needle in my_list);         # expect: true
+print(absent in my_list);         # expect: false
+print(my_list.contains(needle));  # expect: true
+
+var my_tuple = (Point(1, 1), stored, Point(9, 9));
+print(needle in my_tuple);        # expect: true
+print(absent in my_tuple);        # expect: false
+print(my_tuple.contains(needle)); # expect: true

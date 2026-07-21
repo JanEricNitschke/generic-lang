@@ -49,12 +49,16 @@ pub(super) fn tuple_contains_native(
     receiver: &Value,
     args: &[Value],
 ) -> VmResult<Value> {
-    let my_tuple = receiver.as_tuple(&vm.heap);
-    Ok(my_tuple
-        .items()
-        .iter()
-        .any(|el| el.eq(&args[0], &vm.heap))
-        .into())
+    let needle = args[0];
+    let mut index = 0;
+    while index < receiver.as_tuple(&vm.heap).items().len() {
+        let element = receiver.as_tuple(&vm.heap).items()[index];
+        if vm.compare_values(element, needle)? {
+            return Ok(true.into());
+        }
+        index += 1;
+    }
+    Ok(false.into())
 }
 
 /// Produce an iterator over the tuple `var iter = tuple.__iter__()`.
