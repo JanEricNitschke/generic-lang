@@ -86,9 +86,13 @@ PLUGIN_INC := crates/generic-lang-api/include
 # test/plugin/rust/rust_demo_plugin.<ext>, where import resolution looks for
 # it. This runs as part of the normal dart suite, so the Rust plugin tests
 # always run with everything else.
+# The dylib is removed before the copy: overwriting a dylib in place
+# invalidates macOS's cached code signature for that inode, and later
+# dlopen()s of it get SIGKILLed.
 .PHONY: plugin-test-fixture
 plugin-test-fixture:
 	cargo build --manifest-path plugin-examples/rust/Cargo.toml
+	rm -f test/plugin/rust/rust_demo_plugin.$(DYLIB_EXT)
 	cp plugin-examples/rust/target/debug/$(PLUGIN_LIB) test/plugin/rust/rust_demo_plugin.$(DYLIB_EXT)
 
 # The Zig plugin builds through its build.zig (translate-c of the header).
@@ -110,6 +114,7 @@ plugin-lang-fixture: plugin-bad-fixture
 	$(CC)  -shared -fPIC -std=c2x $(PLUGIN_WARNINGS_C) -I $(PLUGIN_INC) -o test/plugin/lang/c_demo_plugin.$(DYLIB_EXT) plugin-examples/c/c_demo_plugin.c
 	$(CXX) -shared -fPIC -std=c++23 $(PLUGIN_WARNINGS) -I $(PLUGIN_INC) -o test/plugin/lang/cpp_demo_plugin.$(DYLIB_EXT) plugin-examples/cpp/cpp_demo_plugin.cpp
 	cd plugin-examples/zig && zig build -Doptimize=ReleaseSafe
+	rm -f test/plugin/lang/zig_demo_plugin.$(DYLIB_EXT)
 	cp plugin-examples/zig/zig-out/$(ZIG_OUT_LIB) test/plugin/lang/zig_demo_plugin.$(DYLIB_EXT)
 
 # Every loader-rejection fixture, in one place so the plain, ASan, and
@@ -195,11 +200,13 @@ ASAN_BIN    := target/$(ASAN_TARGET)/debug/generic
 plugin-asan-test: plugin-bad-fixture
 	RUSTFLAGS="$(ASAN_HOST_RUSTFLAGS)" cargo +nightly build --target $(ASAN_TARGET) -p generic-lang
 	RUSTFLAGS=-Zsanitizer=address cargo +nightly build --target $(ASAN_TARGET) --manifest-path plugin-examples/rust/Cargo.toml
+	rm -f test/plugin/rust/rust_demo_plugin.$(DYLIB_EXT)
 	cp plugin-examples/rust/target/$(ASAN_TARGET)/debug/$(PLUGIN_LIB) test/plugin/rust/rust_demo_plugin.$(DYLIB_EXT)
 	mkdir -p test/plugin/lang
 	$(ASAN_PLUGIN_CC)  -shared -fPIC -g -std=c2x $(ASAN_PLUGIN_SANITIZE) $(PLUGIN_WARNINGS_C) -I $(PLUGIN_INC) -o test/plugin/lang/c_demo_plugin.$(DYLIB_EXT) plugin-examples/c/c_demo_plugin.c
 	$(ASAN_PLUGIN_CXX) -shared -fPIC -g -std=c++23 $(ASAN_PLUGIN_SANITIZE) $(PLUGIN_WARNINGS) -I $(PLUGIN_INC) -o test/plugin/lang/cpp_demo_plugin.$(DYLIB_EXT) plugin-examples/cpp/cpp_demo_plugin.cpp
 	cd plugin-examples/zig && zig build -Doptimize=ReleaseSafe
+	rm -f test/plugin/lang/zig_demo_plugin.$(DYLIB_EXT)
 	cp plugin-examples/zig/zig-out/$(ZIG_OUT_LIB) test/plugin/lang/zig_demo_plugin.$(DYLIB_EXT)
 	for f in test/plugin/rust/*.gen test/plugin/lang/*.gen; do \
 		echo "asan $$f"; \
