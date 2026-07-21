@@ -3,7 +3,7 @@ use crate::{
     heap::{Heap, StringId},
     value::{ClosureId, GenericInt, InstanceId},
     vm::{
-        SuspendedExceptionHandler, VM,
+        ExceptionKind, SuspendedExceptionHandler, VM,
         callstack::CallFrame,
         errors::{VmErrorKind, VmResult},
     },
@@ -21,6 +21,10 @@ use derivative::Derivative;
 /// probe-candidate vector: stack storage for up to this many same-hash
 /// candidates, heap beyond (collisions are almost always 0-2 entries).
 const INLINE_PROBE_CANDIDATES: usize = 8;
+
+/// How many times a probe is retried when a re-entrant `__hash__`/`__eq__`
+/// mutates the bucket under it, before the operation raises instead.
+const MAX_REPROBE: usize = 3;
 
 // Values related to natives
 #[derive(Derivative)]
@@ -323,16 +327,29 @@ impl Set {
     }
 
     /// Find the stored item equal to `item` among the same-hash entries.
-    /// May run `__eq__`; the table is only borrowed for the pure candidate
-    /// snapshot. GC safety: see [`probe_candidates`].
+    /// Retried like [`Dict::probe`]. GC safety: see [`probe_candidates`].
     fn probe(vm: &mut VM, receiver: &Value, item: Value, hash: u64) -> VmResult<Option<Value>> {
-        let candidates: TinyVec<[Value; INLINE_PROBE_CANDIDATES]> = receiver
-            .as_set(&vm.heap)
-            .items
-            .iter_hash(hash)
-            .map(|(v, _h)| *v)
-            .collect();
-        probe_candidates(vm, candidates, item)
+        for _ in 0..MAX_REPROBE {
+            let before: TinyVec<[Value; INLINE_PROBE_CANDIDATES]> = receiver
+                .as_set(&vm.heap)
+                .items
+                .iter_hash(hash)
+                .map(|(v, _h)| *v)
+                .collect();
+            let matched = probe_candidates(vm, before.clone(), item)?;
+            let after: TinyVec<[Value; INLINE_PROBE_CANDIDATES]> = receiver
+                .as_set(&vm.heap)
+                .items
+                .iter_hash(hash)
+                .map(|(v, _h)| *v)
+                .collect();
+            if before == after {
+                return Ok(matched);
+            }
+        }
+        Err(vm
+            .throw(ExceptionKind::Exception, "set changed size during lookup")
+            .unwrap_err())
     }
 }
 
@@ -438,16 +455,34 @@ impl Dict {
     }
 
     /// Find the stored key equal to `key` among the same-hash entries.
-    /// May run `__eq__`; the table is only borrowed for the pure candidate
-    /// snapshot. GC safety: see [`probe_candidates`].
+    ///
+    /// `__eq__` can re-enter and mutate the dict, so the probe is retried
+    /// against a fresh snapshot until the same-hash bucket is identical before
+    /// and after the comparison, so `matched` reflects a table unchanged during
+    /// the probe. Raises after [`MAX_REPROBE`] attempts. GC safety: see
+    /// [`probe_candidates`].
     fn probe(vm: &mut VM, receiver: &Value, key: Value, hash: u64) -> VmResult<Option<Value>> {
-        let candidates: TinyVec<[Value; INLINE_PROBE_CANDIDATES]> = receiver
-            .as_dict(&vm.heap)
-            .items
-            .iter_hash(hash)
-            .map(|(k, _v, _h)| *k)
-            .collect();
-        probe_candidates(vm, candidates, key)
+        for _ in 0..MAX_REPROBE {
+            let before: TinyVec<[Value; INLINE_PROBE_CANDIDATES]> = receiver
+                .as_dict(&vm.heap)
+                .items
+                .iter_hash(hash)
+                .map(|(k, _v, _h)| *k)
+                .collect();
+            let matched = probe_candidates(vm, before.clone(), key)?;
+            let after: TinyVec<[Value; INLINE_PROBE_CANDIDATES]> = receiver
+                .as_dict(&vm.heap)
+                .items
+                .iter_hash(hash)
+                .map(|(k, _v, _h)| *k)
+                .collect();
+            if before == after {
+                return Ok(matched);
+            }
+        }
+        Err(vm
+            .throw(ExceptionKind::Exception, "dict changed size during lookup")
+            .unwrap_err())
     }
 }
 

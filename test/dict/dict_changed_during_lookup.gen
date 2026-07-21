@@ -1,0 +1,33 @@
+# Artificial: a candidate `__eq__` that changes the probed bucket on every
+# outer probe — but not on the nested inserts, so it churns instead of
+# recursing — must hit the re-probe limit and raise, not spin forever.
+var d = {:};
+
+class Filler {
+    __hash__() { return 7; }
+    __eq__(other) { return false; }
+}
+
+class Probe {
+    __hash__() { return 7; }
+    __eq__(other) { return false; }
+}
+
+class Mutator {
+    __hash__() { return 7; }
+    __eq__(other) {
+        if isinstance(other, Probe) {
+            d[Filler()] = 0; # one fresh same-hash key per outer probe
+        }
+        return false;
+    }
+}
+
+d[Mutator()] = "m";
+
+try {
+    Probe() in d;
+    print("no error");
+} catch Exception as e {
+    print(str(e)); # expect: dict changed size during lookup
+}

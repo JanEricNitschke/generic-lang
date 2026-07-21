@@ -1,0 +1,33 @@
+# A reentrant insert of an EQUAL key from inside `__eq__` (under a hash
+# collision) must not create a duplicate: the outer insert updates the
+# existing entry and the outer write wins.
+var trigger = false;
+var d = {:};
+
+class Key {
+    __init__(id) {
+        this.id = id;
+    }
+
+    __hash__() {
+        return 7; # force a collision so `__eq__` runs
+    }
+
+    __eq__(other) {
+        if trigger {
+            trigger = false;
+            d[Key(99)] = "inner";
+        }
+        return this.id == other.id;
+    }
+}
+
+d[Key(1)] = "a";
+trigger = true;
+d[Key(99)] = "outer";
+
+print(len(d)); # expect: 2
+print(d[Key(99)]); # expect: outer
+d.pop(Key(99));
+print(Key(99) in d); # expect: false
+print(len(d)); # expect: 1
