@@ -10,9 +10,10 @@ import 'package:tool/src/expectations.dart';
 /// Fenced blocks tagged ```` ```generic ```` must run cleanly (exit 0); if
 /// the block contains `# expect: <text>` comments (the same dialect the
 /// `.gen` test suites use), the interpreter's stdout must match them.
-/// Blocks tagged ```` ```generic-error ```` must exit with a non-zero
-/// status (they demonstrate errors on purpose). Every other fence tag
-/// (`text`, `sh`, `rust`, ...) is skipped.
+/// Blocks tagged ```` ```generic-error ```` must exit with a compile-error
+/// (65) or runtime-error (70) status (they demonstrate language errors on
+/// purpose; a crash or usage error is still a failure). Every other fence
+/// tag (`text`, `sh`, `rust`, ...) is skipped.
 ///
 /// Samples run from a temp directory; `--fixture name=path` copies a file
 /// in beside them (e.g. a built plugin dylib, so `import "demo"` samples
@@ -131,9 +132,13 @@ String? _runBlock(String interpreter, Directory tempDir, _Block block) {
   var result = Process.runSync(File(interpreter).absolute.path, [genFile.path]);
 
   if (block.tag == "generic-error") {
-    return result.exitCode == 0
-        ? "expected an error, but the sample ran cleanly"
-        : null;
+    // Only the interpreter's language-error codes count; anything else
+    // (clean run, VM panic, signal, usage error) is a failure.
+    const errorExitCodes = {65, 70};
+    return errorExitCodes.contains(result.exitCode)
+        ? null
+        : "expected a compile (65) or runtime (70) error exit, "
+            "got ${result.exitCode}";
   }
 
   if (result.exitCode != 0) {
