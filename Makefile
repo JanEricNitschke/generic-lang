@@ -3,7 +3,9 @@ STRESS_GC_BIN := ./target/stress_gc/generic
 REL_BIN := ./target/release/generic
 
 test_level := chap30_optimization
-sources := crates/*/src/*.rs crates/*/src/*/*.rs Cargo.toml crates/*/Cargo.toml
+sources := crates/*/src/*.rs crates/*/src/*/*.rs crates/*/src/*/*/*.rs \
+           crates/*/src/*/*.gen crates/*/src/*/*/*.gen \
+           Cargo.toml crates/*/Cargo.toml
 
 $(DEBUG_BIN): $(sources)
 	cargo build
