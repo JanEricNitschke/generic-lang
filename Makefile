@@ -155,8 +155,10 @@ plugin-lint:
 # the dlopen/FFI boundary that miri cannot see. Leak detection is off: the
 # VM does not tear down its heap at exit.
 #
-# The C/C++ plugins get ASan only on Linux, built with clang: its static
-# runtime model resolves the plugin's ASan symbols from the host executable.
+# The plugins get ASan only on Linux (C/C++ built with clang): instrumented
+# shared libraries leave the __asan_* symbols undefined and resolve them at
+# dlopen from the host executable's statically-linked runtime — which is
+# only visible if the host is linked with --export-dynamic.
 # macOS ships only a dynamic ASan runtime for dylibs, which cannot be
 # dlopen'ed into a statically-sanitized host ("loaded too late"), so there
 # they get trap-mode UBSan only (runtime-free; UB aborts the test).
@@ -164,16 +166,18 @@ ifeq ($(shell uname -s),Darwin)
 ASAN_PLUGIN_CC       := $(CC)
 ASAN_PLUGIN_CXX      := $(CXX)
 ASAN_PLUGIN_SANITIZE := -fsanitize=undefined -fsanitize-trap=undefined
+ASAN_HOST_RUSTFLAGS  := -Zsanitizer=address
 else
 ASAN_PLUGIN_CC       := clang
 ASAN_PLUGIN_CXX      := clang++
 ASAN_PLUGIN_SANITIZE := -fsanitize=address,undefined -fsanitize-trap=undefined
+ASAN_HOST_RUSTFLAGS  := -Zsanitizer=address -Clink-arg=-Wl,--export-dynamic
 endif
 ASAN_TARGET := $(shell rustc -vV | sed -n 's/^host: //p')
 ASAN_BIN    := target/$(ASAN_TARGET)/debug/generic
 .PHONY: plugin-asan-test
 plugin-asan-test:
-	RUSTFLAGS=-Zsanitizer=address cargo +nightly build --target $(ASAN_TARGET) -p generic-lang
+	RUSTFLAGS="$(ASAN_HOST_RUSTFLAGS)" cargo +nightly build --target $(ASAN_TARGET) -p generic-lang
 	RUSTFLAGS=-Zsanitizer=address cargo +nightly build --target $(ASAN_TARGET) --manifest-path plugin-examples/rust/Cargo.toml
 	cp plugin-examples/rust/target/$(ASAN_TARGET)/debug/$(PLUGIN_LIB) test/plugin/rust/rust_demo_plugin.$(DYLIB_EXT)
 	mkdir -p test/plugin/lang
