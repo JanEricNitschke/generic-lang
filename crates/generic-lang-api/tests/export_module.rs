@@ -535,3 +535,24 @@ fn unknown_host_status_is_a_protocol_violation_exception() {
     assert!(matches!(result, Err(PluginError::Exception(_))));
     assert_eq!(last_interned(), "host callback returned unknown status 7");
 }
+
+/// A host answering `builtin_get` with an unknown status too — the very
+/// callback the protocol-violation path uses to build its exception. Error
+/// construction must bottom out at a nil-carrying exception instead of
+/// recursing through itself until the stack overflows.
+extern "C" fn mock_builtin_get_unknown_status(_ctx: *mut c_void, _name: FfiStr) -> FfiReturn {
+    FfiReturn {
+        status: 7,
+        value: blob(0),
+    }
+}
+
+#[test]
+fn unknown_status_during_error_construction_does_not_recurse() {
+    let mut api = mock_host_api();
+    api.call_value = mock_call_value_unknown_status;
+    api.builtin_get = mock_builtin_get_unknown_status;
+    let mut host = Host::new(&api);
+    let result = host.call(blob(0), &[]);
+    assert!(matches!(result, Err(PluginError::Exception(_))));
+}
