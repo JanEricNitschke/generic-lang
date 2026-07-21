@@ -1,8 +1,21 @@
 # Style for the C and C++ example plugins. Checked in CI with
 # `clang-format --dry-run --Werror` (see `make plugin-lint`).
+# Modeled on the vertical, block-indented look of Ruff/Black
 BasedOnStyle: LLVM
 IndentWidth: 4
 ColumnLimit: 100
 # cpplint (also run in `make plugin-lint`) requires at least two spaces
 # between code and a trailing comment; LLVM's default of one would fight it.
 SpacesBeforeTrailingComments: 2
+# When a call or declaration wraps, put each argument on its own line with the
+# closing bracket dedented on its own line, and add a trailing comma
+AlignAfterOpenBracket: BlockIndent
+BinPackArguments: false
+BinPackParameters: false
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+InsertTrailingCommas: Wrapped
+# Keep the return type on the declaration line; explode the parameterss instead.
+PenaltyReturnTypeOnItsOwnLine: 1000
+# Put a template declaration on its own line above the declaration
+AlwaysBreakTemplateDeclarations: Yes

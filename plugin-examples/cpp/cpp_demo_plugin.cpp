@@ -22,7 +22,6 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
-#include <functional>
 #include <stdexcept>
 #include <string>
 
@@ -54,8 +53,11 @@ FfiReturn throw_new(const HostApi *host, const char *class_name, const std::stri
 }
 
 // Run a plugin body, converting any escaping C++ exception into a generic one
-// so nothing unwinds across the C ABI boundary.
-FfiReturn guarded(const HostApi *host, const std::function<FfiReturn()> &body) {
+// so nothing unwinds across the C ABI boundary. `body` is taken by forwarding
+// reference and invoked in place: constructing a std::function here could
+// itself throw (bad_alloc) outside the try, defeating the guard.
+template <typename Body>
+FfiReturn guarded(const HostApi *host, Body &&body) {
     try {
         return body();
     } catch (const std::exception &e) {
@@ -122,8 +124,9 @@ FfiReturn sum(const HostApi *host, const GenericValue *args, size_t) {
 // boom() — throw a C++ exception; guarded turns it into a generic Exception
 // instead of aborting the process.
 FfiReturn boom(const HostApi *host, const GenericValue *, size_t) {
-    return guarded(host,
-                   [&]() -> FfiReturn { throw std::runtime_error("intentional C++ exception"); });
+    return guarded(host, [&]() -> FfiReturn {
+        throw std::runtime_error("intentional C++ exception");
+    });
 }
 
 const uint8_t ARITY_1[] = {1};
