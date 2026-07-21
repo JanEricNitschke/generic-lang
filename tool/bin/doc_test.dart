@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:args/args.dart';
@@ -152,6 +153,7 @@ String? _runBlock(String interpreter, Directory tempDir, _Block block) {
   // without them only need to run cleanly.
   var expected = parseExpectedOutput(block.lines);
   if (expected.isEmpty) return null;
-  var failures = compareOutput(expected, (result.stdout as String).split("\n"));
+  var failures = compareOutput(
+      expected, const LineSplitter().convert(result.stdout as String));
   return failures.isEmpty ? null : failures.join("; ");
 }
