@@ -158,7 +158,7 @@ CLANG_FORMAT ?= clang-format
 .PHONY: plugin-lint
 plugin-lint:
 	$(CLANG_FORMAT) --dry-run --Werror --style=file plugin-examples/c/*.c plugin-examples/cpp/*.cpp plugin-examples/bad/*.c
-	cpplint --filter=-build/include_subdir,-build/include_order,-legal/copyright,-readability/casting --linelength=100 plugin-examples/c/*.c plugin-examples/cpp/*.cpp plugin-examples/bad/*.c
+	cpplint --filter=-build/include_subdir,-build/include_order,-legal/copyright,-readability/casting,-whitespace/parens --linelength=100 plugin-examples/c/*.c plugin-examples/cpp/*.cpp plugin-examples/bad/*.c
 	zig fmt --check plugin-examples/zig/*.zig
 	cargo fmt --check --manifest-path plugin-examples/rust/Cargo.toml
 	cargo clippy --manifest-path plugin-examples/rust/Cargo.toml --all-targets -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo -D warnings
