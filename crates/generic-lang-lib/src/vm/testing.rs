@@ -100,6 +100,7 @@ impl VM {
     fn run_single_test(&mut self, closure_id: ClosureId) -> TestOutcome {
         // Save VM state before running test
         let entry = self.current_region();
+        let handlers_before = self.exception_handlers.len();
 
         // Push the closure onto the stack and call it
         let closure_value = Value::Closure(closure_id);
@@ -119,6 +120,11 @@ impl VM {
         // Restore VM state. A failed test may leave its frames behind
         // (uncaught exceptions are reported, not unwound).
         self.unwind_region(entry);
+        // A fatal error skips handler resolution, so a `try` the test was
+        // sitting in leaves its handler behind, pointing into the frames
+        // just unwound — drop it, or a later test's exception could resolve
+        // against it.
+        self.exception_handlers.truncate(handlers_before);
 
         result
     }
