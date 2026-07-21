@@ -4,10 +4,12 @@
 # failure tails, so each case asserts the stable, host-generated part of the
 # message via contains()
 #
-# Fixtures exercised here (built by the Makefile `plugin-lang-fixture` step):
+# Fixtures exercised here (built by the Makefile `plugin-bad-fixture` step):
 #   wrongabi  -- well-formed module declaring an incompatible ABI version
 #   noinit    -- valid dylib without the generic_plugin_init export
 #   corrupt   -- a file that is not a shared library at all
+#   nulldesc  -- generic_plugin_init that returns NULL
+#   nulltable -- descriptor declaring functions but a null function table
 #   badname   -- export whose name pointer is null
 #   noarities -- export declaring no arities
 #   nullfun   -- export whose function pointer is null (zero-initialized)
@@ -27,6 +29,24 @@ try {
     print("should not reach");
 } catch ImportError as e {
     print(str(e).contains("does not export `generic_plugin_init`")); # expect: true
+}
+
+# `generic_plugin_init` returning NULL -> ImportError, not a dereference of
+# the null descriptor.
+try {
+    import "nulldesc";
+    print("should not reach");
+} catch ImportError as e {
+    print(str(e).contains("returned no module description")); # expect: true
+}
+
+# A descriptor declaring functions but a null table -> ImportError, no read
+# through the null table.
+try {
+    import "nulltable";
+    print("should not reach");
+} catch ImportError as e {
+    print(str(e).contains("declares 1 functions but a null table")); # expect: true
 }
 
 # An export with a null name pointer -> ImportError, no read through the null.
