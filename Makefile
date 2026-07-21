@@ -103,17 +103,26 @@ ZIG_OUT_LIB := $(if $(filter Windows_NT,$(OS)),bin/zig_demo_plugin.dll,lib/libzi
 # showcase code. The bad/ fixtures are deliberately wrong (wrong_abi.c uses a
 # zero-length array, a GNU extension) and build without -Werror/-pedantic.
 .PHONY: plugin-lang-fixture
-plugin-lang-fixture:
+plugin-lang-fixture: plugin-bad-fixture
 	mkdir -p test/plugin/lang
 	$(CC)  -shared -fPIC -std=c2x $(PLUGIN_WARNINGS_C) -I $(PLUGIN_INC) -o test/plugin/lang/c_demo_plugin.$(DYLIB_EXT) plugin-examples/c/c_demo_plugin.c
 	$(CXX) -shared -fPIC -std=c++23 $(PLUGIN_WARNINGS) -I $(PLUGIN_INC) -o test/plugin/lang/cpp_demo_plugin.$(DYLIB_EXT) plugin-examples/cpp/cpp_demo_plugin.cpp
 	cd plugin-examples/zig && zig build -Doptimize=ReleaseSafe
 	cp plugin-examples/zig/zig-out/$(ZIG_OUT_LIB) test/plugin/lang/zig_demo_plugin.$(DYLIB_EXT)
+
+# Every loader-rejection fixture, in one place so the plain, ASan, and
+# valgrind suites all exercise the same full set. Never instrumented: the
+# loader rejects these before any plugin code runs.
+.PHONY: plugin-bad-fixture
+plugin-bad-fixture:
+	mkdir -p test/plugin/lang
 	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/wrongabi.$(DYLIB_EXT) plugin-examples/bad/wrong_abi.c
 	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/noinit.$(DYLIB_EXT)   plugin-examples/bad/no_init.c
 	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/nullfun.$(DYLIB_EXT)  plugin-examples/bad/null_fun.c
 	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/badname.$(DYLIB_EXT)  plugin-examples/bad/bad_name.c
 	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/noarities.$(DYLIB_EXT) plugin-examples/bad/no_arities.c
+	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/nulldesc.$(DYLIB_EXT) plugin-examples/bad/null_desc.c
+	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/nulltable.$(DYLIB_EXT) plugin-examples/bad/null_table.c
 	printf 'not a real dylib, just text\n' > test/plugin/lang/corrupt.$(DYLIB_EXT)
 
 # Build the cross-language plugins, then run only their `.gen` tests (the
@@ -181,7 +190,7 @@ endif
 ASAN_TARGET := $(shell rustc -vV | sed -n 's/^host: //p')
 ASAN_BIN    := target/$(ASAN_TARGET)/debug/generic
 .PHONY: plugin-asan-test
-plugin-asan-test:
+plugin-asan-test: plugin-bad-fixture
 	RUSTFLAGS="$(ASAN_HOST_RUSTFLAGS)" cargo +nightly build --target $(ASAN_TARGET) -p generic-lang
 	RUSTFLAGS=-Zsanitizer=address cargo +nightly build --target $(ASAN_TARGET) --manifest-path plugin-examples/rust/Cargo.toml
 	cp plugin-examples/rust/target/$(ASAN_TARGET)/debug/$(PLUGIN_LIB) test/plugin/rust/rust_demo_plugin.$(DYLIB_EXT)
@@ -190,9 +199,6 @@ plugin-asan-test:
 	$(ASAN_PLUGIN_CXX) -shared -fPIC -g -std=c++23 $(ASAN_PLUGIN_SANITIZE) $(PLUGIN_WARNINGS) -I $(PLUGIN_INC) -o test/plugin/lang/cpp_demo_plugin.$(DYLIB_EXT) plugin-examples/cpp/cpp_demo_plugin.cpp
 	cd plugin-examples/zig && zig build -Doptimize=ReleaseSafe
 	cp plugin-examples/zig/zig-out/$(ZIG_OUT_LIB) test/plugin/lang/zig_demo_plugin.$(DYLIB_EXT)
-	$(CC)  -shared -fPIC -I $(PLUGIN_INC) -o test/plugin/lang/wrongabi.$(DYLIB_EXT) plugin-examples/bad/wrong_abi.c
-	$(CC)  -shared -fPIC -I $(PLUGIN_INC) -o test/plugin/lang/noinit.$(DYLIB_EXT)   plugin-examples/bad/no_init.c
-	printf 'not a real dylib, just text\n' > test/plugin/lang/corrupt.$(DYLIB_EXT)
 	for f in test/plugin/rust/*.gen test/plugin/lang/*.gen; do \
 		echo "asan $$f"; \
 		ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 ./$(ASAN_BIN) $$f >/dev/null || { echo "sanitizer failure in $$f"; exit 1; }; \
