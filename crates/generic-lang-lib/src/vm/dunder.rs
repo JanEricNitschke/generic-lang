@@ -34,7 +34,9 @@ impl VM {
             self.stack.extend_from_slice(values);
             self.invoke_and_run_function(method_id, (values.len() - 1).try_into().unwrap())?;
             Ok(Some(
-                self.stack.pop().expect("Stack underflow in len_native"),
+                self.stack
+                    .pop()
+                    .expect("Stack underflow in invoke_method_by_name"),
             ))
         } else {
             Ok(None)

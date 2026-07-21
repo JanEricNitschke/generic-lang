@@ -3,9 +3,8 @@ STRESS_GC_BIN := ./target/stress_gc/generic
 REL_BIN := ./target/release/generic
 
 test_level := chap30_optimization
-sources := crates/*/src/*.rs crates/*/src/*/*.rs crates/*/src/*/*/*.rs \
-           crates/*/src/*/*.gen crates/*/src/*/*/*.gen \
-           Cargo.toml crates/*/Cargo.toml
+sources := $(shell find crates -type f \( -name '*.rs' -o -name '*.gen' \)) \
+           Cargo.toml Cargo.lock $(wildcard crates/*/Cargo.toml)
 
 $(DEBUG_BIN): $(sources)
 	cargo build
