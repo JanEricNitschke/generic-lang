@@ -134,7 +134,11 @@ unsafe fn vm_from_ctx<'a>(ctx: *mut c_void) -> &'a mut VM {
 }
 
 /// Decode a borrowed FFI string; `None` on null or invalid UTF-8.
-fn str_from_ffi<'a>(s: FfiStr) -> Option<&'a str> {
+///
+/// The returned borrow is tied to the caller's `FfiStr` so it cannot be
+/// made to outlive the callback frame that received the string (the bytes
+/// are only guaranteed valid for that call — ABI contract).
+fn str_from_ffi(s: &FfiStr) -> Option<&str> {
     if s.ptr.is_null() {
         return None;
     }
@@ -448,7 +452,7 @@ extern "C" fn cb_dict_len(ctx: *mut c_void, value: GenericValue, out: *mut usize
 extern "C" fn cb_builtin_get(ctx: *mut c_void, name: FfiStr) -> FfiReturn {
     // SAFETY: ctx per build_host_api.
     let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(name) = str_from_ffi(name) else {
+    let Some(name) = str_from_ffi(&name) else {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
@@ -498,7 +502,7 @@ extern "C" fn cb_set_len(ctx: *mut c_void, value: GenericValue, out: *mut usize)
 extern "C" fn cb_attr_get(ctx: *mut c_void, receiver: GenericValue, name: FfiStr) -> FfiReturn {
     // SAFETY: ctx per build_host_api.
     let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(name) = str_from_ffi(name) else {
+    let Some(name) = str_from_ffi(&name) else {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
@@ -528,7 +532,7 @@ extern "C" fn cb_attr_set(
 ) -> FfiReturn {
     // SAFETY: ctx per build_host_api.
     let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(name) = str_from_ffi(name) else {
+    let Some(name) = str_from_ffi(&name) else {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
@@ -552,7 +556,7 @@ extern "C" fn cb_attr_set(
 extern "C" fn cb_attr_has(ctx: *mut c_void, receiver: GenericValue, name: FfiStr) -> FfiReturn {
     // SAFETY: ctx per build_host_api.
     let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(name) = str_from_ffi(name) else {
+    let Some(name) = str_from_ffi(&name) else {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
@@ -590,7 +594,7 @@ extern "C" fn cb_float_new(_ctx: *mut c_void, value: f64) -> GenericValue {
 extern "C" fn cb_string_new(ctx: *mut c_void, value: FfiStr) -> FfiReturn {
     // SAFETY: ctx per build_host_api.
     let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(s) = str_from_ffi(value) else {
+    let Some(s) = str_from_ffi(&value) else {
         return ffi_error(
             vm,
             ExceptionKind::ValueError,
@@ -653,7 +657,7 @@ extern "C" fn cb_exception_new(
 ) -> FfiReturn {
     // SAFETY: ctx per build_host_api.
     let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(message) = str_from_ffi(message) else {
+    let Some(message) = str_from_ffi(&message) else {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
@@ -718,7 +722,7 @@ extern "C" fn cb_invoke_method(
 ) -> FfiReturn {
     // SAFETY: ctx per build_host_api.
     let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(name) = str_from_ffi(name) else {
+    let Some(name) = str_from_ffi(&name) else {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
