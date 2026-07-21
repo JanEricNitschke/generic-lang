@@ -214,6 +214,7 @@ fn reenter_call(
     dispatch: impl FnOnce(&mut VM) -> VmResult,
 ) -> FfiReturn {
     let entry = vm.current_region();
+    let handlers_before = vm.exception_handlers.len();
     vm.stack.extend_from_slice(values);
 
     let result = match dispatch(vm) {
@@ -240,6 +241,10 @@ fn reenter_call(
         }
         Err(VmErrorKind::Runtime(_)) => {
             vm.unwind_region(entry);
+            // A fatal error skips handler resolution; drop any handlers
+            // registered inside the region so a plugin that swallows the
+            // Fatal status cannot leave stale handlers behind.
+            vm.exception_handlers.truncate(handlers_before);
             ffi_fatal()
         }
     }
@@ -444,7 +449,11 @@ extern "C" fn cb_builtin_get(ctx: *mut c_void, name: FfiStr) -> FfiReturn {
     // SAFETY: ctx per build_host_api.
     let vm = unsafe { vm_from_ctx(ctx) };
     let Some(name) = str_from_ffi(name) else {
-        return ffi_error(vm, ExceptionKind::TypeError, "Builtin name must be UTF-8.");
+        return ffi_error(
+            vm,
+            ExceptionKind::TypeError,
+            "Builtin name must be UTF-8.",
+        );
     };
     let name_id = vm.heap.string_id(&name);
     if let Some(global) = vm.builtins.get(&name_id) {
@@ -582,7 +591,11 @@ extern "C" fn cb_string_new(ctx: *mut c_void, value: FfiStr) -> FfiReturn {
     // SAFETY: ctx per build_host_api.
     let vm = unsafe { vm_from_ctx(ctx) };
     let Some(s) = str_from_ffi(value) else {
-        return ffi_error(vm, ExceptionKind::ValueError, "String is not valid UTF-8.");
+        return ffi_error(
+            vm,
+            ExceptionKind::ValueError,
+            "String is not valid UTF-8.",
+        );
     };
     let id = vm.heap.string_id(&s);
     ffi_ok(Value::String(id))
@@ -706,7 +719,11 @@ extern "C" fn cb_invoke_method(
     // SAFETY: ctx per build_host_api.
     let vm = unsafe { vm_from_ctx(ctx) };
     let Some(name) = str_from_ffi(name) else {
-        return ffi_error(vm, ExceptionKind::TypeError, "Method name must be UTF-8.");
+        return ffi_error(
+            vm,
+            ExceptionKind::TypeError,
+            "Method name must be UTF-8.",
+        );
     };
     let Ok(arg_count) = u8::try_from(nargs) else {
         return ffi_error(
