@@ -281,7 +281,12 @@ impl Set {
         )
     }
 
-    /// Add an item to a set (`receiver` must back a `Set` and be rooted).
+    /// Add an item to a set.
+    ///
+    /// `receiver` must back a `Set`, and the caller must keep `receiver`
+    /// and `item` rooted (e.g. on the VM stack) for the duration of the
+    /// call: the probe re-enters the interpreter through
+    /// `__hash__`/`__eq__`, which can allocate and collect.
     ///
     /// GC-safety: see [`Dict::add`] — the set is never taken out of the
     /// heap, and the table is never borrowed while the interpreter runs.
@@ -368,7 +373,12 @@ impl Dict {
         )
     }
 
-    /// Add an entry to a dict (`receiver` must back a `Dict` and be rooted).
+    /// Add an entry to a dict.
+    ///
+    /// `receiver` must back a `Dict`, and the caller must keep `receiver`,
+    /// `key`, and `value` rooted (e.g. on the VM stack) for the duration of
+    /// the call: the probe re-enters the interpreter through
+    /// `__hash__`/`__eq__`, which can allocate and collect.
     ///
     /// GC-safety: the dict is never taken out of the heap. `__hash__`/`__eq__`
     /// re-enter the interpreter, which can trigger a GC (which must be able
