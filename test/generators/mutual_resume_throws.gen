@@ -1,0 +1,33 @@
+# Two generators resuming each other: the inner resume of an
+# already-executing generator throws a catchable ValueError instead of
+# re-running its Executing placeholder.
+var a = nil;
+var b = nil;
+
+gen ga() {
+    yield 1;
+    next(b);
+    yield 2;
+}
+
+gen gb() {
+    next(a);
+    yield 10;
+}
+
+a = ga();
+b = gb();
+print(next(a)); # expect: 1
+
+# Resuming a runs `next(b)`; b immediately does `next(a)` while a is
+# executing -> ValueError inside b, escapes b (completing it), lands at
+# a's `next(b)` call site, escapes a (completing it), caught here.
+try {
+    next(a);
+    print("should not reach");
+} catch ValueError as e {
+    print(e.message()); # expect: Generator already executing.
+}
+
+print(next(a)); # expect: StopIteration
+print(next(b)); # expect: StopIteration

@@ -714,6 +714,12 @@ pub enum GeneratorState {
     /// Note that a generator waiting at a `yield` is `Running`, not
     /// `Suspended` — `Suspended` strictly means "never started".
     Running,
+    /// Only ever observed on the placeholder a native wrapper leaves in the
+    /// heap slot while the real generator (taken out of the heap) executes.
+    /// Reaching it means a generator is resuming itself — directly or
+    /// through mutual resumption — which throws instead of re-running the
+    /// placeholder's empty frame.
+    Executing,
     /// Finished: returned, threw out, or was closed. Resuming a completed
     /// generator returns `StopIteration` without running any bytecode.
     Completed,
@@ -744,12 +750,14 @@ impl Generator {
         }
     }
 
-    pub(crate) fn from_closure_id(closure: ClosureId) -> Self {
+    /// The stand-in a native wrapper leaves in the heap slot while the real
+    /// generator runs; see [`GeneratorState::Executing`].
+    pub(crate) fn executing_placeholder(closure: ClosureId) -> Self {
         Self {
             callframe: CallFrame::from_closure_id(closure),
             exception_handlers: Vec::new(),
             stack: Vec::new(),
-            state: GeneratorState::default(),
+            state: GeneratorState::Executing,
         }
     }
 
