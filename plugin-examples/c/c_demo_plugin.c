@@ -103,6 +103,16 @@ static FfiReturn raise(const HostApi *host, const GenericValue *args, size_t nar
     return ret;
 }
 
+/* empty_string() — build "" inside the plugin: a valid empty FfiStr is a
+ * non-null pointer with len 0 (a null pointer is not a valid string). */
+static FfiReturn empty_string(const HostApi *host, const GenericValue *args, size_t nargs) {
+    (void)args;
+    (void)nargs;
+    FfiStr out = {.ptr = (const uint8_t *)"", .len = 0};
+    return host->string_new(host->ctx, out);
+}
+
+static const uint8_t ARITY_0[] = {0};
 static const uint8_t ARITY_1[] = {1};
 static const uint8_t ARITY_2[] = {2};
 static const FunctionDesc FUNCTIONS[] = {
@@ -110,6 +120,10 @@ static const FunctionDesc FUNCTIONS[] = {
      .arities = ARITY_2,
      .arities_len = 1,
      .fun = add},
+    {.name = {.ptr = (const uint8_t *)"empty_string", .len = 12},
+     .arities = ARITY_0,
+     .arities_len = 1,
+     .fun = empty_string},
     {.name = {.ptr = (const uint8_t *)"shout", .len = 5},
      .arities = ARITY_1,
      .arities_len = 1,

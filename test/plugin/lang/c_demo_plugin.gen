@@ -6,10 +6,14 @@
 #   add(a, b)                  -- integer addition
 #   shout(s)                   -- ASCII-uppercase the string, append "!"
 #   raise(class_name, message) -- throw a fresh instance of the named class
+#   empty_string()             -- build "" inside the plugin (non-null, len 0)
 import "c_demo_plugin";
 
 print(c_demo_plugin.add(40, 2)); # expect: 42
 print(c_demo_plugin.shout("hi there")); # expect: HI THERE!
+
+print(c_demo_plugin.empty_string() == ""); # expect: true
+print(c_demo_plugin.shout(c_demo_plugin.empty_string())); # expect: !
 
 try {
     c_demo_plugin.raise("KeyError", "boom");
