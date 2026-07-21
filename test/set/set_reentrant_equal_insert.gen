@@ -1,0 +1,31 @@
+# A reentrant insert of an EQUAL element from inside `__eq__` (under a hash
+# collision) must not create a duplicate.
+var trigger = false;
+var s = Set();
+
+class Elem {
+    __init__(id) {
+        this.id = id;
+    }
+
+    __hash__() {
+        return 7; # force a collision so `__eq__` runs
+    }
+
+    __eq__(other) {
+        if trigger {
+            trigger = false;
+            s.insert(Elem(99));
+        }
+        return this.id == other.id;
+    }
+}
+
+s.insert(Elem(1));
+trigger = true;
+s.insert(Elem(99));
+
+print(len(s)); # expect: 2
+s.remove(Elem(99));
+print(Elem(99) in s); # expect: false
+print(len(s)); # expect: 1

@@ -1,0 +1,23 @@
+# A `__eq__` that inserts a fresh, unequal, same-hash key on every call keeps
+# the probe from ever stabilising. It must terminate with a catchable
+# exception rather than looping forever or crashing.
+var d = {:};
+
+class Bad {
+    __hash__() {
+        return 7;
+    }
+
+    __eq__(other) {
+        d[Bad()] = 0; # fresh, unequal, same-hash key each call
+        return false;
+    }
+}
+
+d[Bad()] = "a";
+try {
+    d[Bad()] = "b";
+    print("did not terminate");
+} catch Exception as e {
+    print(str(e)); # expect: Stack overflow.
+}
