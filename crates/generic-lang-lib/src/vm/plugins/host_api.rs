@@ -187,20 +187,26 @@ fn rooted_dunder<T>(
     roots: &[Value],
     operation: impl FnOnce(&mut VM) -> VmResult<T>,
 ) -> Result<T, FfiReturn> {
-    let start = vm.stack.len();
+    let entry = vm.current_region();
+    let handlers_before = vm.exception_handlers.len();
     vm.stack.extend_from_slice(roots);
     match operation(vm) {
         Ok(value) => {
-            vm.stack.truncate(start);
+            vm.stack.truncate(entry.stack);
             Ok(value)
         }
         Err(VmErrorKind::Exception(_)) => {
             let exception = vm.stack.pop().expect("Pending exception missing");
-            vm.stack.truncate(start);
+            vm.stack.truncate(entry.stack);
             Err(ffi_exception(exception))
         }
         Err(VmErrorKind::Runtime(_)) => {
-            vm.stack.truncate(start);
+            // A fatal error skips handler resolution and is not unwound by the
+            // operation, so restore the region and drop any handlers
+            // registered inside it: a plugin that swallows the Fatal status
+            // must not leave stale frames or handlers behind.
+            vm.unwind_region(entry);
+            vm.exception_handlers.truncate(handlers_before);
             Err(ffi_fatal())
         }
     }
