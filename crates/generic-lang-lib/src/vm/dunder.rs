@@ -184,6 +184,30 @@ impl VM {
         }
     }
 
+    /// Bucket hash for a numeric value — used both when a `Number` is a key
+    /// directly and for the integer a user `__hash__` returns, so equal numbers
+    /// (`5`, a big-integer-typed `5`, `5.0`, and an instance hashing as `5`)
+    /// share a bucket. Integers hash by their `BigInt` value, so the `Small`
+    /// and `Big` representations of the same integer agree.
+    fn hash_number(&self, number: Number) -> u64 {
+        let mut state = FxHasher::default();
+        match number {
+            Number::Float(f) => {
+                let f = if f == 0.0 { 0.0 } else { f };
+                if f.fract() == 0.0 {
+                    #[allow(clippy::cast_possible_truncation)]
+                    BigInt::from(f as i64).hash(&mut state);
+                } else {
+                    f.to_bits().hash(&mut state);
+                }
+            }
+            Number::Integer(GenericInt::Small(n)) => BigInt::from(n).hash(&mut state),
+            Number::Integer(GenericInt::Big(n)) => n.to_value(&self.heap).hash(&mut state),
+            Number::Rational(rational) => rational.hash(&mut state, &self.heap),
+        }
+        state.finish()
+    }
+
     pub(crate) fn compute_hash(&mut self, value: Value) -> VmResult<u64> {
         let mut state = FxHasher::default();
 
@@ -204,13 +228,7 @@ impl VM {
 
                     let result = self.stack.pop().expect("Stack underflow in compute_hash");
                     return match result {
-                        Value::Number(Number::Integer(GenericInt::Small(n))) => {
-                            Ok(n.unsigned_abs())
-                        }
-                        Value::Number(Number::Integer(GenericInt::Big(big))) => {
-                            big.to_value(&self.heap).hash(&mut state);
-                            Ok(state.finish())
-                        }
+                        Value::Number(number @ Number::Integer(_)) => Ok(self.hash_number(number)),
                         _ => Err(self
                             .throw(
                                 TypeError,
@@ -235,28 +253,7 @@ impl VM {
             Value::StopIteration => {
                 state.write_u8(1);
             }
-            Value::Number(n) => {
-                match n {
-                    Number::Float(f) => {
-                        let f = if f == 0.0 { 0.0 } else { f };
-                        // If f has no fractional part, we treat it like an integer.
-                        if f.fract() == 0.0 {
-                            // Convert to an integer if the float has no fractional part
-                            #[allow(clippy::cast_possible_truncation)]
-                            BigInt::from(f as i64).hash(&mut state);
-                        } else {
-                            f.to_bits().hash(&mut state); // Otherwise, hash the float as is
-                        }
-                    }
-                    Number::Integer(i) => match i {
-                        GenericInt::Small(n) => BigInt::from(n).hash(&mut state),
-                        GenericInt::Big(n) => (n.to_value(&self.heap)).hash(&mut state),
-                    },
-                    Number::Rational(rational) => {
-                        rational.hash(&mut state, &self.heap);
-                    }
-                }
-            }
+            Value::Number(number) => return Ok(self.hash_number(number)),
             Value::String(s) => {
                 s.to_value(&self.heap)
                     .nfc()
