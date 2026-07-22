@@ -1,9 +1,9 @@
-# `:` binds tigther than `**`, so we get `(5:3)**2` instead of `5:(3**2)`
+# `:` binds tighter than `**`, so we get `(5:3)**2` instead of `5:(3**2)`
 print(5:3**2);  # expect: 25:9
 
 # Also binds tighter than call level `.`.
 # `2:3.foo` is `(2:3).foo` not `2:(3.foo)`
-# As rational dont support any Call level syntax (`.`, `()`, `[]`) we have
+# As rationals don't support any Call level syntax (`.`, `()`, `[]`) we have
 # to check against the error
 try {
     var unreached = 2:3.foo;

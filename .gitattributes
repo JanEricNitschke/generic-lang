@@ -1,0 +1,5 @@
+# The `.gen` tests are authored with LF and compared against tracebacks the VM
+# renders with LF. A CRLF checkout would put `\r` into the embedded
+# source/underline string literals and break those comparisons on Windows, so
+# keep LF in the working tree on every platform.
+*.gen text eol=lf

@@ -476,8 +476,8 @@ impl VM {
     /// Jump if the top of stack is `Nil`.
     ///
     /// The top of the stack is popped in neither case.
-    /// This use used for null-safe (`?.` / `?[]`) short-circuit logic.
-    /// We either need to keep the `Nil` or the value so i can be used for the
+    /// This is used for null-safe (`?.` / `?[]`) short-circuit logic.
+    /// We either need to keep the `Nil` or the value so it can be used for the
     /// attribute/key/index access.
     fn jump_if_nil(&mut self) {
         let offset = self.read_16bit_number();

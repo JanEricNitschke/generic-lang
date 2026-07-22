@@ -409,3 +409,44 @@
             ^^^^^^^^^^^^^^^^^^^^^^^" in normalized); # expect: true
     }
 }
+
+# nil-safe get chain: a normal access after `?.` blames itself, with the
+# whole `?.` receiver (not just the base) as context.
+{
+    class Inner {}
+    class Outer { __init__() { this.b = Inner(); } }
+    var a = Outer();
+    try {
+        a?.b.c;
+    } catch Exception as e {
+        print("
+            a?.b.c;
+            ~~~~^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# nil-safe subscript then dot: '.c' blamed, `a?[0]` receiver context
+{
+    var a = [1, 2];
+    try {
+        a?[0].c;
+    } catch Exception as e {
+        print("
+            a?[0].c;
+            ~~~~~^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# nil-safe dot then subscript: '[0]' blamed, `a?.b` receiver context
+{
+    class Inner {}
+    class Outer { __init__() { this.b = Inner(); } }
+    var a = Outer();
+    try {
+        a?.b[0];
+    } catch Exception as e {
+        print("
+            a?.b[0];
+            ~~~~^^^" in e.stack_trace()); # expect: true
+    }
+}

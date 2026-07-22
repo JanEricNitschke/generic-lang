@@ -1,4 +1,4 @@
-# `?.` and `?[]` bind att Precedence::Call - thhe same level as `.` and `[]`,
+# `?.` and `?[]` bind at Precedence::Call - the same level as `.` and `[]`,
 # tighter than `**`.
 
 class Box {
@@ -35,9 +35,9 @@ print(lst?.v[1]);  # expect: 3
 print(lst.v?[1]);  # expect: 3
 print(lst?.v?[1]);  # expect: 3
 
-# NOT tigther than `:`
+# NOT tighter than `:`
 # `2:3?.foo` is `(2:3)?.foo` not `2:(3?.foo)`
-# As rational dont support any Call level syntax (`.`, `()`, `[]`) we have
+# As rationals don't support any Call level syntax (`.`, `()`, `[]`) we have
 # to check against the error
 try {
     var unreached = 2:3?.foo;
