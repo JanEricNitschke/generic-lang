@@ -112,7 +112,7 @@ plugin-lang-fixture: plugin-bad-fixture
 	mkdir -p test/plugin/lang
 	$(CC)  -shared -fPIC -std=c2x $(PLUGIN_WARNINGS_C) -I $(PLUGIN_INC) -o test/plugin/lang/c_demo_plugin.$(DYLIB_EXT) plugin-examples/c/c_demo_plugin.c
 	$(CXX) -shared -fPIC -std=c++23 $(PLUGIN_WARNINGS) -I $(PLUGIN_INC) -o test/plugin/lang/cpp_demo_plugin.$(DYLIB_EXT) plugin-examples/cpp/cpp_demo_plugin.cpp
-	cd plugin-examples/zig && zig build -Doptimize=ReleaseSafe
+	cd plugin-examples/zig && zig build -Doptimize=ReleaseSafe -Dcpu=baseline
 	rm -f test/plugin/lang/zig_demo_plugin.$(DYLIB_EXT)
 	cp plugin-examples/zig/zig-out/$(ZIG_OUT_LIB) test/plugin/lang/zig_demo_plugin.$(DYLIB_EXT)
 
