@@ -92,6 +92,10 @@ macro_rules! run_instruction {
             OpCode::PopJumpIfTrue => $self.pop_jump_conditional(JumpCondition::IfTrue),
             OpCode::JumpIfTrueOrPop => $self.jump_if_or_pop(JumpCondition::IfTrue),
             OpCode::JumpIfFalseOrPop => $self.jump_if_or_pop(JumpCondition::IfFalse),
+            OpCode::JumpIfNil => {
+                $self.jump_if_nil();
+                Ok(None)
+            }
             // Arg count is passed as the operand
             // The function to call is on the stack followed by all arguments
             // in order from left to right.

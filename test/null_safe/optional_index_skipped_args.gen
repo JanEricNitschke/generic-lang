@@ -1,0 +1,10 @@
+fun side_effect() {
+    print("called");
+    return 42;
+}
+
+var data = {42: "Stuff"};
+var none = nil;
+print(none?[side_effect()]);  # expect: nil
+print(data[side_effect()]);  # expect: called
+                             # expect: Stuff

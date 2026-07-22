@@ -1,0 +1,7 @@
+# `?.` must not consume the `:` of a surrounding ternary.
+var a = nil;
+var r = true ? a?.foo : "fallback";
+print(r);  # expect: nil
+
+var r2 = false ? "x" : a?.foo;
+print(r2);  # expect: nil

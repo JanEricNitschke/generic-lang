@@ -1,0 +1,13 @@
+class Obj {
+    __init__() {
+        this.value = 42;
+    }
+}
+
+var obj = Obj();
+
+try {
+    print(obj?.missing);
+} catch AttributeError {
+    print("AttributeError");  # expect: AttributeError
+}

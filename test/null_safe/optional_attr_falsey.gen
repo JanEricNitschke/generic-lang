@@ -1,0 +1,7 @@
+var zero = 0;
+
+try {
+    print(zero?.x);
+} catch TypeError {
+    print("TypeError");  # expect: TypeError
+}
