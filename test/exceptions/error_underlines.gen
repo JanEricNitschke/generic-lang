@@ -1,0 +1,411 @@
+# Underline regression: one case per operator / failure type.
+# Each assertion embeds the exact source line + underline as it renders,
+# so the caret position (^ = blamed, ~ = context) is checked, not just its
+# shape. Regenerate if a case changes. Portable: no file paths / line numbers.
+
+# binary: '+' blamed, operands context
+{
+    try {
+        var x = nil + 1;
+    } catch Exception as e {
+        print("
+            var x = nil + 1;
+                    ~~~~^~~" in e.stack_trace()); # expect: true
+    }
+}
+
+# unary: '-' blamed
+{
+    try {
+        var x = -nil;
+    } catch Exception as e {
+        print("
+            var x = -nil;
+                    ^~~~" in e.stack_trace()); # expect: true
+    }
+}
+
+# range: '..<' blamed, operands context
+{
+    try {
+        var x = 1 ..< nil;
+    } catch Exception as e {
+        print("
+            var x = 1 ..< nil;
+                    ~~^^^~~~~" in e.stack_trace()); # expect: true
+    }
+}
+
+# rational: ':' blamed, operands context
+{
+    try {
+        var x = 1 : nil;
+    } catch Exception as e {
+        print("
+            var x = 1 : nil;
+                    ~~^~~~~" in e.stack_trace()); # expect: true
+    }
+}
+
+# variable get: whole name
+{
+    try {
+        var x = undefined_name;
+    } catch Exception as e {
+        print("
+            var x = undefined_name;
+                    ^^^^^^^^^^^^^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# variable set (undefined global): whole name blamed, '=' context
+{
+    try {
+        undefined_g = 5;
+    } catch Exception as e {
+        print("
+            undefined_g = 5;
+            ^^^^^^^^^^^~~" in e.stack_trace()); # expect: true
+    }
+}
+
+# dot get (non-instance): '.foo' blamed, receiver context
+{
+    try {
+        var x = (2:3).foo;
+    } catch Exception as e {
+        print("
+            var x = (2:3).foo;
+                    ~~~~~^^^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# dot get (missing property)
+{
+    class C {}
+    try {
+        var x = C().foo;
+    } catch Exception as e {
+        print("
+            var x = C().foo;
+                    ~~~^^^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# dot set: '.foo' blamed, receiver + '=' context
+{
+    var r = 2:3;
+    try {
+        r.foo = 1;
+    } catch Exception as e {
+        print("
+            r.foo = 1;
+            ~^^^^~~" in e.stack_trace()); # expect: true
+    }
+}
+
+# dot compound-assign: '+=' blamed, target + rhs context
+{
+    class C { __init__() { this.x = 1; } }
+    var c = C();
+    try {
+        c.x += nil;
+    } catch Exception as e {
+        print("
+            c.x += nil;
+            ~~~~^^~~~~" in e.stack_trace()); # expect: true
+    }
+}
+
+# invoke: args blamed, receiver.method context
+{
+    class C {}
+    try {
+        C().missing();
+    } catch Exception as e {
+        print("
+            C().missing();
+            ~~~~~~~~~~~^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# subscript get: '[i]' blamed, receiver context
+{
+    try {
+        var x = (2:3)[0];
+    } catch Exception as e {
+        print("
+            var x = (2:3)[0];
+                    ~~~~~^^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# subscript set
+{
+    var r = 2:3;
+    try {
+        r[0] = 1;
+    } catch Exception as e {
+        print("
+            r[0] = 1;
+            ~^^^~~" in e.stack_trace()); # expect: true
+    }
+}
+
+# subscript compound-assign: '+=' blamed, target + rhs context
+{
+    var arr = [1, 2];
+    try {
+        arr[0] += nil;
+    } catch Exception as e {
+        print("
+            arr[0] += nil;
+            ~~~~~~~^^~~~~" in e.stack_trace()); # expect: true
+    }
+}
+
+# call: args blamed, callee context
+{
+    try {
+        nil();
+    } catch Exception as e {
+        print("
+            nil();
+            ~~~^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# compound assign (variable): operator blamed
+{
+    var a = 1;
+    try {
+        a += nil;
+    } catch Exception as e {
+        print("
+            a += nil;
+            ~~^^~~~~" in e.stack_trace()); # expect: true
+    }
+}
+
+# and: left operand blamed
+{
+    class B { __bool__() { return 5; } }
+    try {
+        var x = B() and 1;
+    } catch Exception as e {
+        print("
+            var x = B() and 1;
+                    ^^^~~~~" in e.stack_trace()); # expect: true
+    }
+}
+
+# or: left operand blamed
+{
+    class B { __bool__() { return 5; } }
+    try {
+        var x = false or B() or 2;
+    } catch Exception as e {
+        print("
+            var x = false or B() or 2;
+                             ^^^~~~" in e.stack_trace()); # expect: true
+    }
+}
+
+# ternary: condition blamed
+{
+    class B { __bool__() { return 5; } }
+    try {
+        var x = B() ? 1 : 2;
+    } catch Exception as e {
+        print("
+            var x = B() ? 1 : 2;
+                    ^^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# in: container blamed, element context
+{
+    try {
+        var x = 1 in 2;
+    } catch Exception as e {
+        print("
+            var x = 1 in 2;
+                    ~~~~~^" in e.stack_trace()); # expect: true
+    }
+}
+
+# super get: '.foo' blamed, 'super' context
+{
+    class A {}
+        class B < A {
+            m() {
+                return super.foo;
+            }
+        }
+    try {
+        B().m();
+    } catch Exception as e {
+        print("
+                    return super.foo;
+                           ~~~~~^^^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# super invoke: args blamed
+{
+    class A {}
+        class B < A {
+            m() {
+                super.foo();
+            }
+        }
+    try {
+        B().m();
+    } catch Exception as e {
+        print("
+                    super.foo();
+                    ~~~~~~~~~^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# class inheritance: superclass blamed
+{
+    var nc = 5;
+    try {
+        class X < nc {}
+    } catch Exception as e {
+        print("
+            class X < nc {}
+                    ~~^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# switch: matched value blamed (outer frame of a throwing __eq__)
+{
+    class B { __eq__(o) { throw TypeError(o); } }
+    try {
+        switch B() { case 1: print(1); }
+    } catch Exception as e {
+        print("
+            switch B() { case 1: print(1); }
+                   ^^^^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# throw non-exception: value blamed
+{
+    try {
+        throw 5;
+    } catch Exception as e {
+        print("
+            throw 5;
+            ~~~~~~^" in e.stack_trace()); # expect: true
+    }
+}
+
+# foreach over non-iterable: iterable blamed
+{
+    var not_iterable = 5;
+    try {
+        foreach (var item in not_iterable) { print(item); }
+    } catch Exception as e {
+        print("
+            foreach (var item in not_iterable) { print(item); }
+                                 ^^^^^^^^^^^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# if condition blamed
+{
+    class B { __bool__() { return 5; } }
+    try {
+        if B() { print(1); }
+    } catch Exception as e {
+        print("
+            if B() { print(1); }
+               ^^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# while condition blamed
+{
+    class B { __bool__() { return 5; } }
+    try {
+        while B() { break; }
+    } catch Exception as e {
+        print("
+            while B() { break; }
+                  ^^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# decorator: non-callable blamed
+{
+    try {
+        @123456 fun f() {}
+    } catch Exception as e {
+        print("
+            @123456 fun f() {}
+             ^^^^^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# import (module not found): quoted path blamed
+# Source contains a double-quote (impossible in a string literal), so it is
+# pulled from the trace and swapped to a single-quote before matching.
+{
+    try {
+        import "does_not_exist";
+    } catch Exception as e {
+        var t = e.stack_trace();
+        var normalized = t.replace(t.get_char(t.find("  File ") + 7), "'");
+        print("
+            import 'does_not_exist';
+                   ^^^^^^^^^^^^^^^^" in normalized); # expect: true
+    }
+}
+
+# import-as (module not found): quoted path blamed, not the alias
+# Source contains a double-quote (impossible in a string literal), so it is
+# pulled from the trace and swapped to a single-quote before matching.
+{
+    try {
+        import "does_not_exist_zzz" as y;
+    } catch Exception as e {
+        var t = e.stack_trace();
+        var normalized = t.replace(t.get_char(t.find("  File ") + 7), "'");
+        print("
+            import 'does_not_exist_zzz' as y;
+                   ^^^^^^^^^^^^^^^^^^^^" in normalized); # expect: true
+    }
+}
+
+# from-import (module not found): whole statement blamed
+# Source contains a double-quote (impossible in a string literal), so it is
+# pulled from the trace and swapped to a single-quote before matching.
+{
+    try {
+        from "nonexistent_xyz" import a, b;
+    } catch Exception as e {
+        var t = e.stack_trace();
+        var normalized = t.replace(t.get_char(t.find("  File ") + 7), "'");
+        print("
+            from 'nonexistent_xyz' import a, b;
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^" in normalized); # expect: true
+    }
+}
+
+# from-import (name not found): whole statement blamed
+# Source contains a double-quote (impossible in a string literal), so it is
+# pulled from the trace and swapped to a single-quote before matching.
+{
+    try {
+        from "math" import nope;
+    } catch Exception as e {
+        var t = e.stack_trace();
+        var normalized = t.replace(t.get_char(t.find("  File ") + 7), "'");
+        print("
+            from 'math' import nope;
+            ^^^^^^^^^^^^^^^^^^^^^^^" in normalized); # expect: true
+    }
+}
