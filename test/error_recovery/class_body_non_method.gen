@@ -1,0 +1,3 @@
+class C {
+  var y = 1;  # Error at 'var': Expect method name.
+}  # Error at '}': Expect expression.

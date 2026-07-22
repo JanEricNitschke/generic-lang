@@ -1,0 +1,4 @@
+var x = 1;
+switch x {
+  )  # Error at ')': Expect 'case' or 'default'.
+}
