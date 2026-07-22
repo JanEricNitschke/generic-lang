@@ -1,8 +1,18 @@
+# `-D warnings` lives here rather than in CI's RUSTFLAGS: setting RUSTFLAGS in
+# the environment makes cargo ignore every rustflags entry in this file, which
+# would silently drop the Windows stack-size link-arg below. CI passes
+# `rustflags: ""` to setup-rust-toolchain so this file is the single source.
+# Dependency lints are capped by cargo, so this only denies warnings in-tree.
+[build]
+rustflags = ["-D", "warnings"]
+
 # Windows' default 1 MiB main-thread stack overflows before the VM's
-# FRAMES_MAX guard can throw. Reserve 8 MiB to match Linux/macOS main-thread
-# stacks, where catchable "Stack overflow" exception fires as intended.
+# FRAMES_MAX guard can throw. Reserve 8 MiB to match the Linux/macOS main-thread
+# stacks, where the catchable "Stack overflow" exception fires as intended.
+# cfg-matched target rustflags replace `[build]` wholesale, so `-D warnings` is
+# repeated here to keep it in effect on Windows.
 [target.'cfg(all(windows, target_env = "msvc"))']
-rustflags = ["-C", "link-arg=/STACK:8388608"]
+rustflags = ["-D", "warnings", "-C", "link-arg=/STACK:8388608"]
 
 [target.'cfg(all(windows, target_env = "gnu"))']
-rustflags = ["-C", "link-arg=-Wl,--stack,8388608"]
+rustflags = ["-D", "warnings", "-C", "link-arg=-Wl,--stack,8388608"]

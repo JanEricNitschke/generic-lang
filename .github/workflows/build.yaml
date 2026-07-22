@@ -21,7 +21,7 @@ jobs:
     defaults:
       run:
         # The make recipes are sh-based; on Windows this selects Git Bash so
-        # find/for/sed/cp and env-var prefixes behave the same everywhhere
+        # find/for/sed/cp and env-var prefixes behave the same everywhere
         shell: bash
     steps:
     - name: Configure git line endings
@@ -38,6 +38,11 @@ jobs:
       uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
       with:
         components: rustfmt,clippy
+        # Leave RUSTFLAGS unset so `.cargo/config.toml` rustflags apply — cargo
+        # ignores config-file rustflags whenever RUSTFLAGS is set in the env,
+        # and that file carries the Windows stack-size link-arg. `-D warnings`
+        # moves there too so it still applies everywhere.
+        rustflags: ""
     - name: Install make
       # Not preinstalled on the Windows runner
       if: runner.os == 'Windows'
@@ -140,7 +145,7 @@ jobs:
       # ASan-instrumented host + Rust plugin, ASan+UBSan C/C++ plugins.
       # Complements valgrind with compile-time instrumentation (stack bugs,
       # UB). Uses the nightly toolchain installed for miri.
-      # Skipped on Wiindows: the Makefile's ASan wiiring is POSIX-only;
+      # Skipped on Windows: the Makefile's ASan wiring is POSIX-only;
       # macOS runs the trap-mode UBSan branch.
       if: runner.os != 'Windows'
       run: make plugin-asan-test
@@ -156,6 +161,8 @@ jobs:
       uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
       with:
         components: clippy
+        # See the build job: keep RUSTFLAGS unset so `.cargo/config.toml` wins.
+        rustflags: ""
     - name: Install cargo-hack
       run: cargo install cargo-hack --locked
     - name: Feature powerset build
@@ -170,6 +177,9 @@ jobs:
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
     - name: Set up Rust
       uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+      with:
+        # See the build job: keep RUSTFLAGS unset so `.cargo/config.toml` wins.
+        rustflags: ""
     - name: Set up Python
       uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
       with:
