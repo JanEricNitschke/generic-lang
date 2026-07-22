@@ -128,7 +128,7 @@ iterator protocol, so they cannot be traversed with `foreach`.
 `in`-testable, and has a length; it counts down when `a > b`.
 
 ```generic
-foreach (var i in 1..<5) { print(i); }   # 1 2 3 4
+foreach (var i in 1..<5) { print(i); }    # 1 2 3 4
 print(3 in 0..=3);                        # true
 print(1..=10);                            # 1..<11  (inclusive prints as exclusive-of-next)
 ```
@@ -151,6 +151,8 @@ exception classes.
 | Membership | `x in collection` |
 | Identity | `x is y` |
 | Conditional | `cond ? a : b` |
+| Access | `.` `[]` |
+| Nil-safe | `?.` `?[]` (short-circuit the full expression to `nil` on a `nil` receiver) |
 
 There is no `&&`/`||` and no `not` — use `and`/`or`/`!`. The logical
 operators short-circuit and return one of their operands (not a coerced
@@ -180,6 +182,53 @@ print(1 is 1);         # true — immediates compare by value
 Compound assignment is available for the common operators: `+=`, `-=`, `*=`,
 `/=`, `%=`, `&=`, `|=`, `^=`, and works on variables, fields, and indexed
 targets (`xs[i] += 1`).
+
+## nil-safe access: `?.` and `?[]`
+
+`?.` and `?[]` are nil-safe variants of `.` and `[]`. When the receiver is
+`nil`, they short-circuit the entire following access chain and yield `nil`
+without evaluating any of the skipped accesses, calls, or subscripts (including
+their arguments).
+
+```generic
+var x = nil;
+print(x?.foo);            # nil — GetProperty not attempted
+print(x?.foo.bar);        # nil — entire chain skipped
+print(x?[0]);             # nil — index not evaluated
+
+class Point {
+    __init__(x, y) {
+        this.x = x; this.y = y;
+    }
+    magnitude() {
+        return (this.x**2 + this.y**2)**0.5;
+    }
+}
+var p = Point(3, 4);
+print(p?.x);              # 3 — non-nil receiver, behaves like .x
+print(p?.magnitude());    # 5.0 — non-nil receiver, method called
+```
+
+Short-circuiting triggers **only on `nil`**, not on other falsey values, so
+`false?.x` falls through and raises a `TypeError` (the receiver is not an
+instance). A single `?.` covers the whole chain to its right until a
+lower-precedence operator ends it:
+
+```generic
+print(nil?.a.b.c);        # nil — .b and .c skipped
+try {
+    print(nil?.a + 1);
+} catch TypeError as e {
+    print(str(e));        # Operands must be two numbers, strings or support `__add__`. Got: [nil, 1]
+}
+```
+
+`?.`/`?[]` are not overloadable — they short-circuit before any method lookup
+or property dispatch occurs. To make a chained access conditional on each
+step, repeat the operator: `a?.b?.c?.d`.
+
+Assignment through `?.` or `?[]` (`a?.b = c`, `a?[i] = x`, `a?.b += 1`) is a
+compile-time error.
 
 ## Truthiness
 
