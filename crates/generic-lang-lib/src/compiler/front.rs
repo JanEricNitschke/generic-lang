@@ -955,10 +955,9 @@ impl Compiler<'_, '_> {
     }
 
     fn import_from_statement(&mut self) {
+        // `from` was just consumed by the caller.
+        let from_location = self.location();
         self.consume(TK::String, "Expect import path as a string.");
-        // TODO: Each name to import should point to its own location
-        // However this also requires changes in the VM to not eagerly consume them
-        let name_to_import_location = self.op_location();
         let is_local = *self.scope_depth() > 0;
         let path_str = self.previous.as_ref().unwrap().as_str();
         // Remove the quotation marks at the start and end
@@ -979,26 +978,31 @@ impl Compiler<'_, '_> {
             }
         }
         self.consume(TK::Semicolon, "Expect ';' after names to import name.");
-        self.emit_byte(OpCode::ImportFrom, name_to_import_location);
-        if !self.emit_number(
-            path_constant.0,
-            NumberEncoding::Short,
-            name_to_import_location,
-        ) {
+        // One location covers the whole `from ... import ...`: a failure can
+        // originate from the module or from any of the names, and the single
+        // `ImportFrom` opcode cannot tell which.
+        // TODO: Report the missing module and each invalid name separately,
+        // each pointing at its own span. That needs the VM to resolve the
+        // names one at a time instead of reading them all up front.
+        let statement_location = OpcodeLocation::new(
+            from_location.merge_ordered(&import_tokens.last().unwrap().location),
+        );
+        self.emit_byte(OpCode::ImportFrom, statement_location);
+        if !self.emit_number(path_constant.0, NumberEncoding::Short, statement_location) {
             self.error("Too many constants created for OP_IMPORT_FROM.");
         }
-        self.emit_byte(is_local, name_to_import_location);
+        self.emit_byte(is_local, statement_location);
         if !self.emit_number(
             import_tokens.len(),
             NumberEncoding::Short,
-            name_to_import_location,
+            statement_location,
         ) {
             self.error("Too many constants created for OP_IMPORT_FROM.");
         }
         for constant in import_tokens {
             let long_index = self.identifier_constant(&constant.as_str().to_string());
             if let Ok(short) = u8::try_from(*long_index) {
-                self.emit_byte(short, name_to_import_location);
+                self.emit_byte(short, statement_location);
             } else {
                 self.error("Too many names to import from module.");
             }

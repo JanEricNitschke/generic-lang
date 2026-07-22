@@ -464,12 +464,22 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// This is actually fairly complicated, as cases like
     /// `a.b;`, `a.b = c;` and `a.b()` all have to be handled correctly here.
     fn dot(&mut self, can_assign: bool, _ignore_operators: &[TK], lhs_location: Location) {
+        // The `.` (or `?.` when entered through optional chaining) that
+        // triggered this rule, already consumed by the caller.
+        let accessor_location = self.location();
         self.consume(TK::Identifier, "Expect property name after '.'.");
         let identifier_location = self.location();
         let name_constant =
             self.identifier_constant(&self.previous.as_ref().unwrap().as_str().to_string());
         let target_location = lhs_location.merge_ordered(&identifier_location);
-        let getter_location = OpcodeLocation::new(target_location);
+        // Blame the access itself (`.foo` / `?.foo`) with the receiver as
+        // context, mirroring the subscript getter.
+        let access_location = accessor_location.merge_ordered(&identifier_location);
+        let getter_location = OpcodeLocation {
+            preceding: Some(lhs_location),
+            source: access_location,
+            following: None,
+        };
 
         if can_assign
             && (self.match_(TK::Equal)
@@ -513,8 +523,8 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 }
             }
             let setter_location = OpcodeLocation {
-                preceding: None,
-                source: target_location,
+                preceding: Some(lhs_location),
+                source: access_location,
                 following: Some(operator_location),
             };
             self.emit_byte(OpCode::SetProperty, setter_location);
@@ -979,7 +989,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 }
             }
             let setter_location = OpcodeLocation {
-                preceding: None,
+                preceding: Some(lhs_location),
                 source: target_location,
                 following: Some(operator_location),
             };
@@ -1067,12 +1077,14 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         }
         let super_location = self.location();
         self.consume(TK::Dot, "Expect '.' after 'super'.");
+        let dot_location = self.location();
 
         self.consume(TK::Identifier, "Expect superclass method name.");
         let identifier_location = self.location();
         let name = self.identifier_constant(&self.previous.as_ref().unwrap().as_str().to_string());
 
         let target_location = super_location.merge_ordered(&identifier_location);
+        let access_location = dot_location.merge_ordered(&identifier_location);
 
         self.named_variable(
             &self.synthetic_token(TK::This).as_str(),
@@ -1099,7 +1111,11 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             }
             self.emit_byte(arg_count, invoke_location);
         } else {
-            let getter_location = OpcodeLocation::new(target_location);
+            let getter_location = OpcodeLocation {
+                preceding: Some(super_location),
+                source: access_location,
+                following: None,
+            };
             self.named_variable(
                 &self.synthetic_token(TK::Super).as_str(),
                 false,
