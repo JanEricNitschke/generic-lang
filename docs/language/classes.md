@@ -92,8 +92,14 @@ The supported hooks:
 | Call (`obj(...)`) | `__call__` |
 | Iteration | `__iter__`, `__next__` |
 
-The membership hook is named `contains`, not `__contains__`. To make a
-class iterable, return an iterator from `__iter__` and advance it with
+The membership hook is named `contains`, not `__contains__`.
+
+The nil-safe operators `?.` and `?[]` (see [Values and expressions](values.md#nil-safe-access--and-))
+short-circuit before method dispatch, so they have no dunder hook. When the
+receiver is non-`nil`, they fall through to the regular `__getitem__` /
+property-access path.
+
+To make a class iterable, return an iterator from `__iter__` and advance it with
 `__next__`, returning the `StopIteration` sentinel when exhausted:
 
 ```generic
