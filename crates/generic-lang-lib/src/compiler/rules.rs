@@ -621,7 +621,13 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// The VM then loads the constant from the constant table using that index.
     fn float(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let string = self.previous.as_ref().unwrap().as_str();
-        let value = parse_float_compiler(string).unwrap();
+        let value = match parse_float_compiler(string) {
+            Ok(value) => value,
+            Err(msg) => {
+                self.error(&msg);
+                return;
+            }
+        };
         self.emit_constant(value, self.op_location());
     }
 
@@ -630,7 +636,14 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Works equivalent to [`Compiler::float`].
     fn integer(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
         let integer_str = self.previous.as_ref().unwrap().as_str();
-        match parse_integer_compiler(integer_str).unwrap() {
+        let parsed = match parse_integer_compiler(integer_str) {
+            Ok(parsed) => parsed,
+            Err(msg) => {
+                self.error(&msg);
+                return;
+            }
+        };
+        match parsed {
             ParsedInteger::Small(value) => self.emit_constant(value, self.op_location()),
             ParsedInteger::Big(bigint) => {
                 let bigint_id = self.heap.add_big_int(bigint);

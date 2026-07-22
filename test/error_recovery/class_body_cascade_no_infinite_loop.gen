@@ -1,0 +1,23 @@
+var set;
+class SetMutator {
+    __init__(val) {
+        this.val = val
+    }  # Error at '}': Expect ';' after expression.
+
+    __hash__() {
+        return this.val  # Error at 'return': Can't return a value from an initializer.
+    }
+
+    __str__() {
+        if this.val == 1 {
+            set.remove(Mutator(2))
+        } else {  # Error at '}': Expect ';' after expression.
+            set.remove(Mutator(1))
+        }
+        return "Mutator";  # Error at 'return': Can't return a value from an initializer.
+    }
+}
+var other = Mutator();  # Error at 'var': Expect method name.
+set = {SetMutator(), SetMutator()};
+print(set);
+print(set);

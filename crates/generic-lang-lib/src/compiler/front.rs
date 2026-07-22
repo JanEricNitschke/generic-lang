@@ -165,12 +165,11 @@ impl Compiler<'_, '_> {
         let class_name = self.previous.as_ref().unwrap().as_str().to_string();
         let name_constant = self.identifier_constant(&class_name);
         self.declare_variable(Mutability::Mutable);
-        self.emit_bytes(
-            OpCode::Class,
-            ConstantIndex::try_from(name_constant)
-                .expect("Too many constants when declaring class."),
-            self.op_location(),
-        );
+        let class_name_index = ConstantIndex::try_from(name_constant).unwrap_or_else(|_| {
+            self.error("Too many constants when declaring class.");
+            ConstantIndex(0)
+        });
+        self.emit_bytes(OpCode::Class, class_name_index, self.op_location());
         self.define_variable(Some(name_constant), Mutability::Mutable);
         self.class_state.push(ClassState::new());
 
@@ -204,6 +203,13 @@ impl Compiler<'_, '_> {
         self.consume(TK::LeftBrace, "Expect '{' before class body.");
         while !self.check(TK::RightBrace) && !self.check(TK::Eof) {
             self.method();
+            // `method` does not consume tokens when the class body holds
+            // something that cannot start a method, so without bailing here on
+            // an error the loop would never make progress. Hand control back to
+            // `declaration`, which owns synchronization.
+            if self.panic_mode {
+                break;
+            }
         }
         self.consume(TK::RightBrace, "Expect '}' after class body.");
         self.emit_byte(OpCode::Pop, self.op_location());
@@ -713,8 +719,10 @@ impl Compiler<'_, '_> {
         self.consume(TK::In, "Expect 'in' after variable declaration.");
         self.define_variable(global, mutability);
         // Challenge 25/2: alias loop variables
-        let loop_var = u8::try_from(self.locals().len() - 1)
-            .expect("Creating loop variable led to too many locals.");
+        let loop_var = u8::try_from(self.locals().len() - 1).unwrap_or_else(|_| {
+            self.error("Creating loop variable led to too many locals.");
+            0
+        });
 
         // Get the iterable
         let start_location = self.current_location();
@@ -737,8 +745,10 @@ impl Compiler<'_, '_> {
             Mutability::Mutable,
         );
         self.define_variable(None, Mutability::Mutable);
-        let iter_var = u8::try_from(self.locals().len() - 1)
-            .expect("Creating loop iterator led to too many locals.");
+        let iter_var = u8::try_from(self.locals().len() - 1).unwrap_or_else(|_| {
+            self.error("Creating loop iterator led to too many locals.");
+            0
+        });
 
         // Store old loop state to restore at then end
         // Add new loop state
@@ -771,8 +781,10 @@ impl Compiler<'_, '_> {
         self.emit_bytes(OpCode::GetLocal, loop_var, location);
         self.add_local(name, mutability);
         self.mark_initialized();
-        let inner_var = u8::try_from(self.locals().len() - 1)
-            .expect("Aliasing loop variable led to too many locals.");
+        let inner_var = u8::try_from(self.locals().len() - 1).unwrap_or_else(|_| {
+            self.error("Aliasing loop variable led to too many locals.");
+            0
+        });
 
         // Body of the loop
         self.consume(TK::LeftBrace, "Expect '{' before loop body.");
@@ -864,6 +876,12 @@ impl Compiler<'_, '_> {
                 && !self.check(TK::Eof)
             {
                 self.statement();
+                // A statement that cannot be parsed leaves the cursor unmoved;
+                // stop consuming this case so the outer loop can bail and let
+                // `declaration` synchronize instead of spinning here.
+                if self.panic_mode {
+                    break;
+                }
             }
 
             // If a branch has been entered then after it is finished we jump all the
@@ -872,6 +890,12 @@ impl Compiler<'_, '_> {
 
             if let Some(miss_jump) = miss_jump {
                 self.patch_jump(miss_jump);
+            }
+
+            // A case that cannot be parsed leaves the cursor unmoved; bail so the
+            // enclosing `declaration` can synchronize instead of spinning here.
+            if self.panic_mode {
+                break;
             }
         }
 
@@ -1074,8 +1098,11 @@ impl Compiler<'_, '_> {
 
         self.emit_byte(OpCode::Closure, location);
         let function_id = self.heap.add_function(nested_function);
-        let value_id_byte =
-            u8::try_from(self.current_chunk_mut().make_constant(function_id).0).unwrap();
+        let value_id_byte = u8::try_from(self.current_chunk_mut().make_constant(function_id).0)
+            .unwrap_or_else(|_| {
+                self.error("Too many constants in one chunk.");
+                0
+            });
         self.emit_byte(value_id_byte, location);
 
         for upvalue in nested_upvalues {
@@ -1093,12 +1120,11 @@ impl Compiler<'_, '_> {
             FunctionType::Method
         };
         self.named_function(function_type);
-        self.emit_bytes(
-            OpCode::Method,
-            ConstantIndex::try_from(name_constant)
-                .expect("Too many constants when declaring method."),
-            self.op_location(),
-        );
+        let method_name_index = ConstantIndex::try_from(name_constant).unwrap_or_else(|_| {
+            self.error("Too many constants when declaring method.");
+            ConstantIndex(0)
+        });
+        self.emit_bytes(OpCode::Method, method_name_index, self.op_location());
     }
 
     pub(super) fn location(&self) -> Location {
