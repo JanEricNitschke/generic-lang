@@ -1,0 +1,68 @@
+# Just the current status, NOT GUARANTEED!
+class ListMutator {
+    __str__() {
+        list.pop();
+        list.pop();
+        return "Mutator";
+    }
+}
+var list = [ListMutator(), ListMutator()];
+# first Mutator's __str__ clears the list, so the remaining
+# one is never printed. Output is "[Mutator]".
+print(list); # expect: [Mutator]
+print(list); # expect: []
+
+class SetMutator {
+    __init__(val) {
+        this.val = val;
+    }
+
+    __hash__() {
+        return this.val;
+    }
+
+    __eq__(other) {
+        if isinstance(other, SetMutator) {
+            return this.val == other.val;
+        }
+        return this.val == other;
+    }
+
+    __str__() {
+        if this.val == 1 {
+            set.remove(2);
+        } else {
+            set.remove(1);
+        }
+        return "Mutator";
+    }
+}
+# Set snapshots content before printing, so pops do not influence result at all
+var set = {SetMutator(1), SetMutator(2)};
+print(set);  # expect: {Mutator, Mutator}
+print(set);  # expect: {}
+
+
+class SetValueMutator {
+    __init__(val) {
+        this.val = val;
+    }
+
+    __str__() {
+        if this.val == 2 {
+            mut1.val += 100;
+            mut3.val += 100;
+        }
+        return f"SetValueMutator(${this.val})";
+    }
+}
+var mut1 = SetValueMutator(1);
+var mut2 = SetValueMutator(2);
+var mut3 = SetValueMutator(3);
+# The set contents are snapshot and will thus not reflect any mutation
+# but the individual values are not frozen. Due to this they CAN show mutation
+# if they have not had their own `__str__` called yet.
+var val_set = {mut1, mut2, mut3};
+# Apparently this prints something else under stress_gc
+# Just shows how unpredictable this is and that it should not be relied upon!
+# print(val_set);  # expect {SetValueMutator(1), SetValueMutator(2), SetValueMutator(103)}

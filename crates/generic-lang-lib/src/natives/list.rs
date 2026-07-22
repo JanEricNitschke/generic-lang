@@ -316,3 +316,25 @@ pub(super) fn list_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) ->
     list.items = items;
     Ok(*receiver)
 }
+
+pub(super) fn list_str_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
+    let mut string = String::from("[");
+
+    // Re-fetch by index each step: `value_to_string` may re-enter and mutate
+    // or reallocate the list.
+    let mut index = 0;
+    while index < receiver.as_list(&vm.heap).items.len() {
+        if index > 0 {
+            string.push_str(", ");
+        }
+
+        let element = receiver.as_list(&vm.heap).items[index];
+        string.push_str(vm.value_to_string(&element)?.to_value(&vm.heap));
+
+        index += 1;
+    }
+
+    string.push(']');
+
+    Ok(vm.heap.string_id(&string).into())
+}

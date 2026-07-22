@@ -111,3 +111,37 @@ pub(super) fn dict_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) ->
     }
     Ok(*receiver)
 }
+
+#[allow(clippy::literal_string_with_formatting_args)]
+pub(super) fn dict_str_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
+    let start = vm.stack.len();
+    for (key, value, _hash) in &receiver.as_dict(&vm.heap).items {
+        vm.stack.push(*key);
+        vm.stack.push(*value);
+    }
+    let end = vm.stack.len();
+
+    if start == end {
+        return Ok(vm.heap.string_id(&"{:}").into());
+    }
+
+    let mut string = String::from("{");
+
+    for stack_index in (start..end).step_by(2) {
+        if stack_index > start {
+            string.push_str(", ");
+        }
+
+        let key = vm.stack[stack_index];
+        let value = vm.stack[stack_index + 1];
+
+        string.push_str(vm.value_to_string(&key)?.to_value(&vm.heap));
+        string.push_str(": ");
+        string.push_str(vm.value_to_string(&value)?.to_value(&vm.heap));
+    }
+
+    string.push('}');
+
+    vm.stack.truncate(start);
+    Ok(vm.heap.string_id(&string).into())
+}

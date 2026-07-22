@@ -146,3 +146,30 @@ pub(super) fn tuple_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) -
     *tuple = Tuple::new(items);
     Ok(*receiver)
 }
+
+pub(super) fn tuple_str_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
+    let items_len = receiver.as_tuple(&vm.heap).items().len();
+
+    let mut string = String::from("(");
+
+    let mut index = 0;
+    while index < items_len {
+        if index > 0 {
+            string.push_str(", ");
+        }
+
+        let element = receiver.as_tuple(&vm.heap).items()[index];
+        string.push_str(vm.value_to_string(&element)?.to_value(&vm.heap));
+
+        index += 1;
+    }
+
+    // Single element tuple needs the trailing comma
+    if items_len == 1 {
+        string.push(',');
+    }
+
+    string.push(')');
+
+    Ok(vm.heap.string_id(&string).into())
+}

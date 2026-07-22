@@ -57,3 +57,31 @@ pub(super) fn set_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> 
     vm.for_each_rooted(items, |vm, item| Set::add(vm, receiver, item))?;
     Ok(*receiver)
 }
+
+pub(super) fn set_str_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
+    let start = vm.stack.len();
+    vm.stack.extend(
+        receiver
+            .as_set(&vm.heap)
+            .items
+            .iter()
+            .map(|(item, _hash)| *item),
+    );
+    let end = vm.stack.len();
+
+    let mut string = String::from("{");
+
+    for stack_index in start..end {
+        let item = vm.stack[stack_index];
+        if stack_index > start {
+            string.push_str(", ");
+        }
+
+        string.push_str(vm.value_to_string(&item)?.to_value(&vm.heap));
+    }
+
+    string.push('}');
+
+    vm.stack.truncate(start);
+    Ok(vm.heap.string_id(&string).into())
+}

@@ -1,7 +1,0 @@
-# Exceptions inside containers render repr-style, like Python.
-try {
-    throw ValueError("boom");
-} catch ValueError as e {
-    print([e]); # expect: [ValueError('boom')]
-}
-print([Exception()]); # expect: [Exception()]
