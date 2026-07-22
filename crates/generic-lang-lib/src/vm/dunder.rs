@@ -60,7 +60,7 @@ impl VM {
         }
     }
 
-    /// Convert a value to string, handling instances with __str__ methods.
+    /// Convert a value to string, handling instances with `__str__` methods.
     /// This function is shared between value constructors, `to_string_native`, and `print_native`.
     pub fn value_to_string(&mut self, value: &Value) -> VmResult<StringId> {
         if let Some(string_value) = self.invoke_method_by_name(&[*value], "__str__")? {

@@ -1,0 +1,25 @@
+class Custom {
+    __init__(name) {
+        this.name = name;
+    }
+    __str__() {
+        return f"Custom(${this.name})";
+    }
+}
+
+var a = Custom("Apple");
+var b = Custom("Banana");
+
+# List
+print([a]); # expect: [Custom(Apple)]
+
+# Tuple
+print((a,)); # expect: (Custom(Apple),)
+
+# Set
+print({a}); # expect: {Custom(Apple)}
+
+# Dict
+print({a: b}); # expect: {Custom(Apple): Custom(Banana)}
+
+print(t"${a}, ${Custom("Pear")}"); # expect: Template(strings=("", ", ", ""), interpolations=(Interpolation(value=Custom(Apple), expression=a), Interpolation(value=Custom(Pear), expression=Custom("Pear"))))

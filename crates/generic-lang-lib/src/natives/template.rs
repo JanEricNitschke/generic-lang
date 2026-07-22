@@ -124,3 +124,73 @@ pub(super) fn interpolation_expression_native(
 
     Ok(expression)
 }
+
+pub(super) fn template_str_native(
+    vm: &mut VM,
+    receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    let strings = receiver.as_template(&vm.heap).strings();
+    let strings_str = if strings.len() == 1 {
+        format!("(\"{}\",)", strings[0].to_value(&vm.heap))
+    } else {
+        format!(
+            "({})",
+            strings
+                .iter()
+                .map(|s| format!("\"{}\"", s.to_value(&vm.heap)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+
+    let mut interpolations_str = String::from("(");
+
+    let mut index = 0;
+    while index < receiver.as_template(&vm.heap).interpolations().len() {
+        if index > 0 {
+            interpolations_str.push_str(", ");
+        }
+
+        let interpolation = receiver.as_template(&vm.heap).interpolations()[index];
+
+        interpolations_str.push_str(
+            vm.value_to_string(&interpolation.into())?
+                .to_value(&vm.heap),
+        );
+
+        index += 1;
+    }
+
+    if receiver.as_template(&vm.heap).interpolations().len() == 1 {
+        interpolations_str.push(',');
+    }
+
+    interpolations_str.push(')');
+
+    let string = format!("Template(strings={strings_str}, interpolations={interpolations_str})");
+
+    Ok(vm.heap.string_id(&string).into())
+}
+
+pub(super) fn interpolation_str_native(
+    vm: &mut VM,
+    receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    let interpolation = receiver.as_interpolation(&vm.heap);
+
+    // Copy values out before re-entering the VM
+    let value = interpolation.value();
+    let expression = interpolation.expression();
+
+    let value_str = vm.value_to_string(&value)?.to_value(&vm.heap);
+
+    let string = format!(
+        "Interpolation(value={}, expression={})",
+        value_str,
+        expression.to_value(&vm.heap),
+    );
+
+    Ok(vm.heap.string_id(&string).into())
+}

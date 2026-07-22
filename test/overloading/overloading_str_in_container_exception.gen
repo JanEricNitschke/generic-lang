@@ -1,0 +1,37 @@
+class Boom {
+    __str__() {
+        throw ValueError("boom in __str__");
+    }
+}
+
+var list = [Boom()];
+try {
+    print(list);
+    print("should not reach");
+} catch ValueError as e {
+    print(e); # expect: boom in __str__
+}
+
+var tuple = (Boom(),);
+try {
+    print(tuple);
+    print("should not reach");
+} catch ValueError as e {
+    print(e); # expect: boom in __str__
+}
+
+var set = {Boom()};
+try {
+    print(set);
+    print("should not reach");
+} catch ValueError as e {
+    print(e); # expect: boom in __str__
+}
+
+var dict = {1: Boom()};
+try {
+    print(dict);
+    print("should not reach");
+} catch ValueError as e {
+    print(e); # expect: boom in __str__
+}
