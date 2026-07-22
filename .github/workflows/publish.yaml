@@ -284,6 +284,7 @@ jobs:
             wheels-*/*
             binary-*/*
             crate/*
+            crates/generic-lang-api/include/generic.h
       - name: Publish to PyPI
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         env:
@@ -294,6 +295,7 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
+          fail_on_unmatched_files: true
           tag_name: ${{ github.ref_name }}
           name: Release ${{ env.VERSION }}
           body: "Automated release for version ${{ env.VERSION }}"
@@ -301,5 +303,6 @@ jobs:
             wheels-*/*
             binary-*/*
             crate/*
+            crates/generic-lang-api/include/generic.h
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}

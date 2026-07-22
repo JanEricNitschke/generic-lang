@@ -19,8 +19,10 @@ jobs:
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
     - name: Set up Rust
       uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
-    - name: Install cargo-hack and cbindgen
-      run: cargo install cargo-hack cbindgen --locked
+      with:
+        components: rustfmt,clippy
+    - name: Install cbindgen
+      run: cargo install cbindgen --locked
     # Toolchains for the C/C++/Zig example plugins. cc/c++ are the runner's
     # own compilers; everything else tracks the latest stable release
     # automatically instead of pinning a version.
@@ -37,25 +39,16 @@ jobs:
       run: pip install clang-format cpplint
 
     - name: Build
-      run: |
-        # Feature powerset on the lib crate, where the features are defined
-        # (the bin crate's features are pure forwards).
-        cargo hack build --feature-powerset --skip print_code_builtin,trace_execution_builtin,debug_parser_builtin,debug_scanner_builtin --no-dev-deps -p generic-lang-lib
-        cargo build --verbose
+      run: cargo build --verbose
     - name: Check Rust formatting
-      run: |
-        rustup component add rustfmt
-        cargo fmt --all --check
+      run: cargo fmt --all --check
     - name: Clippy
       run: |
-        rustup component add clippy
         # Normal configuration, fail on default warnings (unscoped
         # invocations lint every workspace member, including the bin crate)
         cargo clippy -- -D warnings
         # Pedantic set — the repo is zero-warnings here too
         cargo clippy --all-targets -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
-    - name: Clippy per feature
-      run: cargo hack clippy --each-feature --no-dev-deps -p generic-lang-lib -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
     - name: Check generated plugin header
       # Regenerates the header and fails on drift — the header is purely
       # cbindgen's output, nothing else.
@@ -104,16 +97,6 @@ jobs:
         sdk: stable
     - name: Lint dart test runner
       run: make dart-lint
-    - name: Checkout book repo
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      with:
-        repository: munificent/craftinginterpreters
-        path: reference/craftinginterpreters
-    - name: Setup book repo
-      working-directory: reference/craftinginterpreters
-      run: |
-        make clox
-        make jlox
     - name: Run custom dart tests
       run: |
         cargo build
@@ -135,12 +118,51 @@ jobs:
       # Complements valgrind with compile-time instrumentation (stack bugs,
       # UB). Uses the nightly toolchain installed for miri.
       run: make plugin-asan-test
+
+  powerset:
+    # Feature powerset build + per-feature clippy on the lib crate, where the
+    # features are defined (the bin crate's features are pure forwards).
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - name: Set up Rust
+      uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+      with:
+        components: clippy
+    - name: Install cargo-hack
+      run: cargo install cargo-hack --locked
+    - name: Feature powerset build
+      run: cargo hack build --feature-powerset --skip print_code_builtin,trace_execution_builtin,debug_parser_builtin,debug_scanner_builtin --no-dev-deps -p generic-lang-lib
+    - name: Clippy per feature
+      run: cargo hack clippy --each-feature --no-dev-deps -p generic-lang-lib -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
+
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - name: Set up Rust
+      uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+    - name: Set up Python
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: "3.x"
     - name: Install hyperfine
-      run: |
-        cargo install --locked hyperfine
+      run: cargo install --locked hyperfine
     - name: Set up Ruby
       uses: ruby/setup-ruby@d45b1a4e94b71acab930e56e79c6aa188764e7f9 # v1.316.0
       with:
         ruby-version: "3.4"
+    - name: Checkout book repo
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        repository: munificent/craftinginterpreters
+        path: reference/craftinginterpreters
+    - name: Setup book repo
+      working-directory: reference/craftinginterpreters
+      run: |
+        make clox
+        make jlox
     - name: Run benchmarks
       run: make benchmark-ci
