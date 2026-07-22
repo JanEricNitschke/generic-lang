@@ -1,0 +1,8 @@
+# Windows' default 1 MiB main-thread stack overflows before the VM's
+# FRAMES_MAX guard can throw. Reserve 8 MiB to match Linux/macOS main-thread
+# stacks, where catchable "Stack overflow" exception fires as intended.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "link-arg=/STACK:8388608"]
+
+[target.'cfg(all(windows, target_env = "gnu"))']
+rustflags = ["-C", "link-arg=-Wl,--stack,8388608"]
