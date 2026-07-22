@@ -1,6 +1,7 @@
-DEBUG_BIN := ./target/debug/generic
-STRESS_GC_BIN := ./target/stress_gc/generic
-REL_BIN := ./target/release/generic
+EXE := $(if $(filter Windows_NT,$(OS)),.exe,)
+DEBUG_BIN := ./target/debug/generic$(EXE)
+STRESS_GC_BIN := ./target/stress_gc/generic$(EXE)
+REL_BIN := ./target/release/generic$(EXE)
 
 test_level := chap30_optimization
 sources := $(shell find crates -type f \( -name '*.rs' -o -name '*.gen' \)) \

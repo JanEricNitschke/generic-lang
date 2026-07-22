@@ -13,14 +13,35 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        # The make recipes are sh-based; on Windows this selects Git Bash so
+        # find/for/sed/cp and env-var prefixes behave the same everywhhere
+        shell: bash
     steps:
+    - name: Configure git line endings
+      # The Windows runner defaults git to core.autocrlf=true, which rewrites
+      # the committed LF header to CRLF on checkout and makes
+      # check-plugin-header report spurious drift
+      if: runner.os == 'Windows'
+      run: |
+        git config --global core.autocrlf false
+        git config --global core.eol lf
     - name: Checkout repo
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
     - name: Set up Rust
       uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
       with:
         components: rustfmt,clippy
+    - name: Install make
+      # Not preinstalled on the Windows runner
+      if: runner.os == 'Windows'
+      run: choco install make --yes --no-progress
     - name: Install cbindgen
       run: cargo install cbindgen --locked
     # Toolchains for the C/C++/Zig example plugins. cc/c++ are the runner's
@@ -110,6 +131,8 @@ jobs:
     - name: Run plugin tests under valgrind
       # Memory errors across the dlopen/FFI boundary — one of the places miri
       # cannot look. Uses the fixtures built by the previous steps.
+      # Linux only: valgrind has no Windows port and does not support recent macOS
+      if: runner.os == 'Linux'
       run: |
         sudo apt-get update && sudo apt-get install -y valgrind
         make plugin-valgrind-test
@@ -117,6 +140,9 @@ jobs:
       # ASan-instrumented host + Rust plugin, ASan+UBSan C/C++ plugins.
       # Complements valgrind with compile-time instrumentation (stack bugs,
       # UB). Uses the nightly toolchain installed for miri.
+      # Skipped on Wiindows: the Makefile's ASan wiiring is POSIX-only;
+      # macOS runs the trap-mode UBSan branch.
+      if: runner.os != 'Windows'
       run: make plugin-asan-test
 
   powerset:
