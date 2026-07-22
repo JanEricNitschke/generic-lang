@@ -1,0 +1,11 @@
+class Obj {
+    __init__() {
+        this.value = 42;
+    }
+}
+
+
+
+var obj = Obj();
+
+print(obj?.value);  # expect: 42

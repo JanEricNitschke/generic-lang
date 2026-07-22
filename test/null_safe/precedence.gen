@@ -1,0 +1,47 @@
+# `?.` and `?[]` bind att Precedence::Call - thhe same level as `.` and `[]`,
+# tighter than `**`.
+
+class Box {
+    __init__(v) {
+        this.v = v;
+    }
+}
+
+var b = Box(3);
+var lst = Box([2, 3, 4]);
+var nested = Box(Box(7));
+
+# `2 ** (b?.v)`; not `(2 ** b)?.v`
+print(2 ** b.v);  # expect: 8
+print(2 ** b?.v);  # expect: 8
+print(2 ** lst.v[1]);  # expect: 8
+print(2 ** lst?.v[1]);  # expect: 8
+print(2 ** lst.v?[1]);  # expect: 8
+print(2 ** lst?.v?[1]);  # expect: 8
+
+# `(b?.v) ** 2`
+print(b.v ** 2); # expect: 9
+print(b?.v ** 2); # expect: 9
+print(lst?.v[1] ** 2); # expect: 9
+print(lst.v?[1] ** 2); # expect: 9
+
+
+print(nested.v.v);  # expect: 7
+print(nested?.v.v);  # expect: 7
+print(nested.v?.v);  # expect: 7
+print(nested?.v?.v);  # expect: 7
+print(lst.v[1]);  # expect: 3
+print(lst?.v[1]);  # expect: 3
+print(lst.v?[1]);  # expect: 3
+print(lst?.v?[1]);  # expect: 3
+
+# NOT tigther than `:`
+# `2:3?.foo` is `(2:3)?.foo` not `2:(3?.foo)`
+# As rational dont support any Call level syntax (`.`, `()`, `[]`) we have
+# to check against the error
+try {
+    var unreached = 2:3?.foo;
+    print(unreached);
+} catch Exception as e {
+    print(str(e));  # expect: Tried to get property 'foo' of non-instance `2:3`.
+}

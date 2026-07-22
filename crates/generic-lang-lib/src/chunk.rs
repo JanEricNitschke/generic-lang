@@ -73,6 +73,7 @@ pub enum OpCode {
     PopJumpIfTrue,
     JumpIfTrueOrPop,
     JumpIfFalseOrPop,
+    JumpIfNil,
     Loop,
     Call,
 
@@ -351,8 +352,8 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
                 | SetProperty | Method | GetSuper | BuildList | BuildTuple | BuildSet
                 | BuildDict | BuildFstring | DupN => 1,
                 Jump | JumpIfFalse | JumpIfTrue | PopJumpIfFalse | PopJumpIfTrue
-                | JumpIfTrueOrPop | JumpIfFalseOrPop | RegisterCatches | Loop | Invoke | Import
-                | SuperInvoke => 2,
+                | JumpIfTrueOrPop | JumpIfFalseOrPop | JumpIfNil | RegisterCatches | Loop
+                | Invoke | Import | SuperInvoke => 2,
                 ConstantLong
                 | GetGlobalLong
                 | SetGlobalLong
@@ -772,6 +773,7 @@ impl Debug for InstructionDisassembler<'_, '_> {
                 PopJumpIfTrue,
                 JumpIfTrueOrPop,
                 JumpIfFalseOrPop,
+                JumpIfNil,
                 Loop,
                 RegisterCatches
             ),

@@ -1,0 +1,11 @@
+class Obj {
+    __init__() {
+        this.child = nil;
+    }
+}
+
+var obj = Obj();
+var none = nil;
+
+print(obj?.child?.value);  # expect: nil
+print(none?.child.value);  # expect: nil

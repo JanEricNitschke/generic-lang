@@ -1,0 +1,18 @@
+class Obj {
+    __init__() {
+        this.x = nil;
+    }
+}
+var a = Obj();
+var b = [nil, nil];
+a?.x = 1; # Error at '=': Invalid assignment target.
+b?[0] = 1; # Error at '=': Invalid assignment target.
+
+a?.x += 1; # Error at '+=': Invalid assignment target.
+b?[0] += 1; # Error at '+=': Invalid assignment target.
+
+a?.x.y = 1; # Error at '=': Invalid assignment target.
+b?[0][1] = 1; # Error at '=': Invalid assignment target.
+
+a.x?.y = 1; # Error at '=': Invalid assignment target.
+b[0]?[1] = 1; # Error at '=': Invalid assignment target.

@@ -1,0 +1,18 @@
+class Obj {
+    test(value) {
+        return value;
+    }
+}
+
+fun side_effect() {
+    print("called");
+    return 42;
+}
+
+
+var obj = Obj();
+var none = nil;
+
+print(obj?.test(side_effect()));  # expect: called
+                                  # expect: 42
+print(none?.test(side_effect()));  # expect: nil

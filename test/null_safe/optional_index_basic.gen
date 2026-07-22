@@ -1,0 +1,3 @@
+var data = {"inner": {"x": [1, 2, 3]}};
+
+print(data?["inner"]?["x"]?[1]);  # expect: 2

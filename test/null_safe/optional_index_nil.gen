@@ -1,0 +1,5 @@
+var none = nil;
+var data = nil;
+
+print(none?.data?["x"]?[1]);  # expect: nil
+print(data?["x"][1]);  # expect: nil

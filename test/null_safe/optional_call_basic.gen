@@ -1,0 +1,10 @@
+class Obj {
+    value() {
+        return 42;
+    }
+}
+
+
+var obj = Obj();
+
+print(obj?.value());  # expect: 42

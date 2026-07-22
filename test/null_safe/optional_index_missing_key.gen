@@ -1,0 +1,7 @@
+var data = {"x": 1};
+
+try {
+    print(data?["missing"]);
+} catch KeyError {
+    print("KeyError");  # expect: KeyError
+}

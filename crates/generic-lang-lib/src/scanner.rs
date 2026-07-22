@@ -21,6 +21,8 @@ pub enum TokenKind {
     Dot,
 
     QuestionMark,
+    QuestionDot,
+    QuestionBracket,
 
     Minus,
     MinusEqual,
@@ -344,7 +346,15 @@ impl<'a> Scanner<'a> {
         use TokenKind as TK;
         let token_kind = match c {
             b'\'' => TK::Apostrophe,
-            b'?' => TK::QuestionMark,
+            b'?' => {
+                if self.match_(b'.') {
+                    TK::QuestionDot
+                } else if self.match_(b'[') {
+                    TK::QuestionBracket
+                } else {
+                    TK::QuestionMark
+                }
+            }
             b':' => TK::Colon,
             b'(' => TK::LeftParen,
             b')' => TK::RightParen,
@@ -921,5 +931,19 @@ mod tests {
         assert_eq!(tokens[0].as_str(), "a");
         assert_eq!(tokens[1].kind, TK::Plus);
         assert_eq!(tokens[2].as_str(), "b");
+    }
+
+    #[test]
+    fn test_null_safe_operators() {
+        assert_token_kinds("a?.b", &[TK::Identifier, TK::QuestionDot, TK::Identifier]);
+        assert_token_kinds(
+            "a?[0]",
+            &[
+                TK::Identifier,
+                TK::QuestionBracket,
+                TK::Integer,
+                TK::RightBracket,
+            ],
+        );
     }
 }
