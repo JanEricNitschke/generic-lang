@@ -235,6 +235,15 @@ pub(super) fn list_iter_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -
     Ok(vm.heap.add_instance(my_instance))
 }
 
+/// Iterators are their own iterators.
+pub(super) fn list_iter_iter_native(
+    _vm: &mut VM,
+    receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    Ok(*receiver)
+}
+
 /// Get the next element from a listiterator `var next = listiter.__next__()`.
 /// Powers `foreach (var a in list)`
 #[allow(clippy::option_if_let_else)]
@@ -259,6 +268,18 @@ pub(super) fn list_iter_next_native(
 
     *receiver.as_list_iterator_mut(&mut vm.heap) = my_iter;
     result
+}
+
+pub(super) fn list_iter_str_native(
+    vm: &mut VM,
+    receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    let list = receiver.as_list_iterator(&vm.heap).list;
+    let list_string = vm.value_to_string(&list.into())?.to_value(&vm.heap);
+
+    let string = format!("<list iterator of {list_string}>");
+    Ok(vm.heap.string_id(&string).into())
 }
 
 pub(super) fn list_add_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {

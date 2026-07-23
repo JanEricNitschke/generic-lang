@@ -19,6 +19,15 @@ pub(super) fn template_iter_native(
     Ok(vm.heap.add_instance(my_instance))
 }
 
+/// Iterators are their own iterators.
+pub(super) fn template_iter_iter_native(
+    _vm: &mut VM,
+    receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    Ok(*receiver)
+}
+
 pub(super) fn template_strings_native(
     vm: &mut VM,
     receiver: &Value,
@@ -101,6 +110,18 @@ pub(super) fn template_iter_next_native(
 
     *receiver.as_template_iterator_mut(&mut vm.heap) = my_iter;
     Ok(result)
+}
+
+pub(super) fn template_iter_str_native(
+    vm: &mut VM,
+    receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    let template = receiver.as_template_iterator(&vm.heap).template;
+    let template_string = vm.value_to_string(&template.into())?.to_value(&vm.heap);
+
+    let string = format!("<template iterator of {template_string}>");
+    Ok(vm.heap.string_id(&string).into())
 }
 
 pub(super) fn interpolation_value_native(

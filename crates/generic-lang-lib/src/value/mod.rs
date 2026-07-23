@@ -16,9 +16,9 @@ pub use classes::{
 };
 pub use functions::{Closure, Function, Module, Upvalue};
 pub use natives::{
-    Dict, Exception, Generator, GeneratorState, Interpolation, List, ListIterator, ModuleContents,
-    NativeClass, NativeFunction, NativeFunctionImpl, NativeMethod, NativeMethodImpl, Range,
-    RangeIterator, Set, Template, TemplateIterator, Tuple, TupleIterator,
+    Dict, DictIterMode, DictIterator, Exception, Generator, GeneratorState, Interpolation, List,
+    ListIterator, ModuleContents, NativeClass, NativeFunction, NativeFunctionImpl, NativeMethod,
+    NativeMethodImpl, Range, RangeIterator, Set, Template, TemplateIterator, Tuple, TupleIterator,
 };
 pub use number::{GenericInt, GenericRational, Number};
 
@@ -328,13 +328,17 @@ macro_rules! impl_as_native_class_mut {
 impl Value {
     impl_as_native_class!(
         List,
+        ListIterator,
         Tuple,
+        TupleIterator,
         Range,
         Set,
         Dict,
+        DictIterator,
         Exception,
         Generator,
         Template,
+        TemplateIterator,
         Interpolation,
     );
 
@@ -347,6 +351,7 @@ impl Value {
         RangeIterator,
         Set,
         Dict,
+        DictIterator,
         Exception,
         Generator,
         TemplateIterator,

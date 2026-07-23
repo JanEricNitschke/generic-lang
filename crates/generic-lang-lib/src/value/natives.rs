@@ -112,6 +112,7 @@ pub enum NativeClass {
     ListIterator(ListIterator),
     Set(Set),
     Dict(Dict),
+    DictIterator(DictIterator),
     Range(Range),
     RangeIterator(RangeIterator),
     Tuple(Tuple),
@@ -154,6 +155,7 @@ impl NativeClass {
             Self::ListIterator(list_iter) => list_iter.to_string(heap),
             Self::Set(set) => set.to_string(heap),
             Self::Dict(dict) => dict.to_string(heap),
+            Self::DictIterator(dict_iter) => dict_iter.to_string(heap),
             Self::Range(range) => range.to_string(heap),
             Self::RangeIterator(range_iter) => range_iter.to_string(heap),
             Self::Tuple(tuple) => tuple.to_string(heap),
@@ -197,6 +199,7 @@ impl_from_for_native_class!(
     TupleIterator,
     Set,
     Dict,
+    DictIterator,
     Range,
     RangeIterator,
     Exception,
@@ -538,6 +541,67 @@ fn hash_table_equal<T: PartialEq>(table1: &HashTable<T>, table2: &HashTable<T>) 
     table1
         .iter()
         .all(|item1| table2.iter().any(|item2| item1 == item2))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DictIterMode {
+    #[default]
+    Keys,
+    Values,
+    Items,
+}
+
+impl DictIterMode {
+    pub fn to_string(&self) -> &str {
+        match self {
+            Self::Items => "items",
+            Self::Values => "values",
+            Self::Keys => "keys",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DictIterator {
+    pub(crate) dict: InstanceId,
+    pub(crate) index: usize,
+    pub(crate) mode: DictIterMode,
+    pub(crate) size: usize,
+}
+
+impl DictIterator {
+    pub(crate) fn get_dict<'a>(&self, heap: &'a Heap) -> &'a Dict {
+        match &self.dict.to_value(heap).backing {
+            Some(NativeClass::Dict(dict)) => dict,
+            _ => unreachable!("Expected a Dict instance, got {:?}", self.dict),
+        }
+    }
+
+    #[allow(clippy::option_if_let_else)]
+    fn to_string(&self, heap: &Heap) -> String {
+        let mode = self.mode.to_string();
+        format!(
+            "<dict_{mode} iterator of {}>",
+            self.dict.to_value(heap).to_string(heap)
+        )
+    }
+}
+
+impl std::fmt::Display for DictIterator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mode = match self.mode {
+            DictIterMode::Items => "item",
+            DictIterMode::Values => "values",
+            DictIterMode::Keys => "keys",
+        };
+        f.pad(&format!("<dict_{mode} iterator of Value>"))
+    }
+}
+
+impl PartialEq for DictIterator {
+    fn eq(&self, other: &Self) -> bool {
+        self.dict == other.dict && self.index == other.index
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

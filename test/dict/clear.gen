@@ -1,0 +1,4 @@
+var d = {"a": 1, "b": 2};
+d.clear();
+print(len(d) == 0);  # expect: true
+print(d);  # expect: {:}

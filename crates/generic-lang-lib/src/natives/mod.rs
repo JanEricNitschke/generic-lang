@@ -16,12 +16,22 @@ mod value_constructors;
 
 use crate::{
     natives::{
-        list::{list_clear_native, list_copy_native, list_extend_native, list_reverse_native},
+        dict::{
+            dict_clear_native, dict_get_method_native, dict_items_native, dict_iter_iter_native,
+            dict_iter_native, dict_iter_next_native, dict_iter_str_native, dict_keys_native,
+            dict_values_native,
+        },
+        list::{
+            list_clear_native, list_copy_native, list_extend_native, list_iter_iter_native,
+            list_reverse_native,
+        },
+        range::range_iter_iter_native,
         string::{
             string_endswith_native, string_removeprefix_native, string_removesuffix_native,
             string_split_native, string_startswith_native, string_strip_native,
         },
-        tuple::tuple_reversed_native,
+        template::{template_iter_iter_native, template_iter_str_native},
+        tuple::{tuple_iter_iter_native, tuple_reversed_native},
     },
     vm::VM,
 };
@@ -34,8 +44,8 @@ use string::{
 
 use list::{
     list_add_native, list_append_native, list_bool_native, list_contains_native, list_get_native,
-    list_init_native, list_insert_native, list_iter_native, list_iter_next_native, list_len_native,
-    list_pop_native, list_set_native, list_str_native,
+    list_init_native, list_insert_native, list_iter_native, list_iter_next_native,
+    list_iter_str_native, list_len_native, list_pop_native, list_set_native, list_str_native,
 };
 
 use range::{
@@ -50,8 +60,8 @@ use set::{
 
 use tuple::{
     tuple_add_native, tuple_bool_native, tuple_contains_native, tuple_get_native,
-    tuple_init_native, tuple_iter_native, tuple_iter_next_native, tuple_len_native,
-    tuple_str_native,
+    tuple_init_native, tuple_iter_native, tuple_iter_next_native, tuple_iter_str_native,
+    tuple_len_native, tuple_str_native,
 };
 
 use dict::{
@@ -151,6 +161,8 @@ pub fn define(vm: &mut VM) {
 
     vm.define_native_class(&"ListIterator", false);
     vm.define_native_method(&"ListIterator", &"__next__", &[0], list_iter_next_native);
+    vm.define_native_method(&"ListIterator", &"__str__", &[0], list_iter_str_native);
+    vm.define_native_method(&"ListIterator", &"__iter__", &[0], list_iter_iter_native);
 
     vm.define_native_class(&"Tuple", true);
     vm.define_native_method(&"Tuple", &"__init__", &VARIADIC_0_PLUS, tuple_init_native);
@@ -165,6 +177,8 @@ pub fn define(vm: &mut VM) {
 
     vm.define_native_class(&"TupleIterator", false);
     vm.define_native_method(&"TupleIterator", &"__next__", &[0], tuple_iter_next_native);
+    vm.define_native_method(&"TupleIterator", &"__str__", &[0], tuple_iter_str_native);
+    vm.define_native_method(&"TupleIterator", &"__iter__", &[0], tuple_iter_iter_native);
 
     vm.define_native_class(&"Set", true);
     vm.define_native_method(&"Set", &"__init__", &VARIADIC_0_PLUS, set_init_native);
@@ -184,6 +198,17 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"Dict", &"__len__", &[0], dict_len_native);
     vm.define_native_method(&"Dict", &"__bool__", &[0], dict_bool_native);
     vm.define_native_method(&"Dict", &"__str__", &[0], dict_str_native);
+    vm.define_native_method(&"Dict", &"__iter__", &[0], dict_iter_native);
+    vm.define_native_method(&"Dict", &"keys", &[0], dict_keys_native);
+    vm.define_native_method(&"Dict", &"values", &[0], dict_values_native);
+    vm.define_native_method(&"Dict", &"items", &[0], dict_items_native);
+    vm.define_native_method(&"Dict", &"get", &[2], dict_get_method_native);
+    vm.define_native_method(&"Dict", &"clear", &[0], dict_clear_native);
+
+    vm.define_native_class(&"DictIterator", false);
+    vm.define_native_method(&"DictIterator", &"__next__", &[0], dict_iter_next_native);
+    vm.define_native_method(&"DictIterator", &"__str__", &[0], dict_iter_str_native);
+    vm.define_native_method(&"DictIterator", &"__iter__", &[0], dict_iter_iter_native);
 
     vm.define_native_class(&"Range", true);
     vm.define_native_method(&"Range", &"__init__", &[2], range_init_native);
@@ -194,6 +219,7 @@ pub fn define(vm: &mut VM) {
 
     vm.define_native_class(&"RangeIterator", false);
     vm.define_native_method(&"RangeIterator", &"__next__", &[0], range_iter_next_native);
+    vm.define_native_method(&"RangeIterator", &"__iter__", &[0], range_iter_iter_native);
 
     vm.define_native_class(&"Exception", true);
     vm.define_native_method(&"Exception", &"__init__", &[0, 1], exception_init_native);
@@ -232,6 +258,18 @@ pub fn define(vm: &mut VM) {
         &"__next__",
         &[0],
         template_iter_next_native,
+    );
+    vm.define_native_method(
+        &"TemplateIterator",
+        &"__str__",
+        &[0],
+        template_iter_str_native,
+    );
+    vm.define_native_method(
+        &"TemplateIterator",
+        &"__iter__",
+        &[0],
+        template_iter_iter_native,
     );
 
     vm.define_native_class(&"Interpolation", true);

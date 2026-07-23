@@ -12,14 +12,20 @@ var b = Custom("Banana");
 
 # List
 print([a]); # expect: [Custom(Apple)]
+print(iter([a]));  # expect: <list iterator of [Custom(Apple)]>
 
 # Tuple
 print((a,)); # expect: (Custom(Apple),)
+print(iter((a,)));  # expect: <tuple iterator of (Custom(Apple),)>
 
 # Set
 print({a}); # expect: {Custom(Apple)}
 
 # Dict
 print({a: b}); # expect: {Custom(Apple): Custom(Banana)}
+print(iter({a: b})); # expect: <dict_keys iterator of {Custom(Apple): Custom(Banana)}>
+print({a: b}.values()); # expect: <dict_values iterator of {Custom(Apple): Custom(Banana)}>
+print({a: b}.items()); # expect: <dict_items iterator of {Custom(Apple): Custom(Banana)}>
 
 print(t"${a}, ${Custom("Pear")}"); # expect: Template(strings=("", ", ", ""), interpolations=(Interpolation(value=Custom(Apple), expression=a), Interpolation(value=Custom(Pear), expression=Custom("Pear"))))
+print(iter(t"${a}, ${Custom("Pear")}")); # expect: <template iterator of Template(strings=("", ", ", ""), interpolations=(Interpolation(value=Custom(Apple), expression=a), Interpolation(value=Custom(Pear), expression=Custom("Pear"))))>
