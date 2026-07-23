@@ -1,0 +1,25 @@
+var t = (1, 2, 3);
+var r = t.reversed();
+print(r);  # expect: (3, 2, 1)
+print(t);  # expect: (1, 2, 3)
+
+var single = (42,).reversed();
+print(single);  # expect: (42,)
+
+var empty = ();
+print(empty.reversed());  # expect: ()
+
+# Reversed is a shallow copy
+class Val {
+    __init__(val) {
+        this.val = val;
+    }
+
+    __str__() {
+        return f"Val(${this.val})";
+    }
+}
+t = (Val(1), Val(2), Val(3));
+r = t.reversed();
+r[0].val += 100;
+print(t);  # expect: (Val(1), Val(2), Val(103))

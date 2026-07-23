@@ -173,3 +173,24 @@ pub(super) fn tuple_str_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -
 
     Ok(vm.heap.string_id(&string).into())
 }
+
+/// Return a new tuple with elements reversed. `tuple.reversed()`.
+pub(super) fn tuple_reversed_native(
+    vm: &mut VM,
+    receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    let items: Vec<Value> = receiver
+        .as_tuple(&vm.heap)
+        .items()
+        .iter()
+        .rev()
+        .copied()
+        .collect();
+    let new_tuple = Tuple::new(items);
+    let instance = Instance::new(
+        *vm.heap.native_classes.get("Tuple").unwrap(),
+        Some(new_tuple.into()),
+    );
+    Ok(vm.heap.add_instance(instance))
+}
