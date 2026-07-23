@@ -338,3 +338,47 @@ pub(super) fn list_str_native(vm: &mut VM, receiver: &Value, _args: &[Value]) ->
 
     Ok(vm.heap.string_id(&string).into())
 }
+
+/// Reverse the list in place. `list.reverse()`.
+pub(super) fn list_reverse_native(
+    vm: &mut VM,
+    receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    receiver.as_list_mut(&mut vm.heap).items.reverse();
+    Ok(Value::Nil)
+}
+
+/// Extend the list with elements from an iterable. `list.extend(iterable)`.
+pub(super) fn list_extend_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    let Some(items) = vm.collect_items_from_iterable(args[0])? else {
+        return Err(vm
+            .throw(
+                TypeError,
+                &format!(
+                    "Expected an iterable, got `{}`.",
+                    args[0].to_string(&vm.heap)
+                ),
+            )
+            .unwrap_err());
+    };
+    receiver.as_list_mut(&mut vm.heap).items.extend(items);
+    Ok(Value::Nil)
+}
+
+/// Remove all elements from the list. `list.clear()`.
+pub(super) fn list_clear_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
+    receiver.as_list_mut(&mut vm.heap).items.clear();
+    Ok(Value::Nil)
+}
+
+/// Return a shallow copy of the list. `list.copy()`.
+pub(super) fn list_copy_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
+    let items = receiver.as_list(&vm.heap).items.clone();
+    let new_list = List::new(items);
+    let instance = Instance::new(
+        *vm.heap.native_classes.get("List").unwrap(),
+        Some(new_list.into()),
+    );
+    Ok(vm.heap.add_instance(instance))
+}

@@ -15,9 +15,12 @@ mod tuple;
 mod value_constructors;
 
 use crate::{
-    natives::string::{
-        string_endswith_native, string_removeprefix_native, string_removesuffix_native,
-        string_split_native, string_startswith_native, string_strip_native,
+    natives::{
+        list::{list_clear_native, list_copy_native, list_extend_native, list_reverse_native},
+        string::{
+            string_endswith_native, string_removeprefix_native, string_removesuffix_native,
+            string_split_native, string_startswith_native, string_strip_native,
+        },
     },
     vm::VM,
 };
@@ -140,6 +143,10 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"List", &"__len__", &[0], list_len_native);
     vm.define_native_method(&"List", &"__bool__", &[0], list_bool_native);
     vm.define_native_method(&"List", &"__str__", &[0], list_str_native);
+    vm.define_native_method(&"List", &"reverse", &[0], list_reverse_native);
+    vm.define_native_method(&"List", &"extend", &[1], list_extend_native);
+    vm.define_native_method(&"List", &"clear", &[0], list_clear_native);
+    vm.define_native_method(&"List", &"copy", &[0], list_copy_native);
 
     vm.define_native_class(&"ListIterator", false);
     vm.define_native_method(&"ListIterator", &"__next__", &[0], list_iter_next_native);

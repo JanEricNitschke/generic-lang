@@ -1,0 +1,47 @@
+var xs = [1, 2];
+xs.extend([3, 4]);
+print(xs);  # expect: [1, 2, 3, 4]
+
+# Extend with tuple
+var ys = [1];
+ys.extend((2, 3));
+print(ys);  # expect: [1, 2, 3]
+
+# Extend with range
+var zs = [];
+zs.extend(1..<4);
+print(zs);  # expect: [1, 2, 3]
+
+# Extend with empty iterable
+var ws = [1];
+ws.extend([]);
+print(ws);  # expect: [1]
+
+class Iterable {
+    __init__() {
+        this.index = 0;
+    }
+
+    __iter__() {
+        return this;
+    }
+
+    __next__() {
+        if this.index >= 5 {
+            return StopIteration;
+        }
+        this.index += 1;
+        return str(this.index);
+    }
+}
+# Extend with empty iterable
+var vs = [0];
+vs.extend(Iterable());
+print(vs);  # expect: [0, 1, 2, 3, 4, 5]
+
+# Non-iterable
+try {
+    [1].extend(42);
+} catch TypeError as e {
+    print(e);  # expect: Expected an iterable, got `42`.
+}

@@ -1,0 +1,26 @@
+var xs = [1, 2, 3];
+var ys = xs.copy();
+print(ys == [1, 2, 3]);  # expect: true
+print(xs is ys);         # expect: false
+
+# Modifying original doesn't affect copy
+xs.append(4);
+print(ys == [1, 2, 3]);  # expect: true
+print(xs == [1, 2, 3, 4]);  # expect: true
+
+# Shallow Copy
+class Val {
+    __init__(val) {
+        this.val = val;
+    }
+
+    __str__() {
+        return f"Val(${this.val})";
+    }
+}
+var zs = [Val(1), Val(2), Val(3)];
+var ws = zs.copy();
+print(zs == ws);  # expect: true
+print(zs is ws);  # expect: false
+ws[0].val += 100;
+print(zs);  # expect: [Val(101), Val(2), Val(3)]
