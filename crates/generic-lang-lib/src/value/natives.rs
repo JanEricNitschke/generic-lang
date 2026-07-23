@@ -342,7 +342,7 @@ impl Set {
                 .iter_hash(hash)
                 .map(|(v, _h)| *v)
                 .collect();
-            let matched = probe_candidates(vm, before.clone(), item)?;
+            let matched = probe_candidates(vm, &before, item)?;
             let after: TinyVec<[Value; INLINE_PROBE_CANDIDATES]> = receiver
                 .as_set(&vm.heap)
                 .items
@@ -519,7 +519,7 @@ impl Dict {
                 .iter_hash(hash)
                 .map(|(k, _v, _h)| *k)
                 .collect();
-            let matched = probe_candidates(vm, before.clone(), key)?;
+            let matched = probe_candidates(vm, &before, key)?;
             let after: TinyVec<[Value; INLINE_PROBE_CANDIDATES]> = receiver
                 .as_dict(&vm.heap)
                 .items
@@ -551,7 +551,7 @@ impl Dict {
 /// the eventual handler resolution truncates them.
 fn probe_candidates(
     vm: &mut VM,
-    candidates: TinyVec<[Value; INLINE_PROBE_CANDIDATES]>,
+    candidates: &TinyVec<[Value; INLINE_PROBE_CANDIDATES]>,
     needle: Value,
 ) -> VmResult<Option<Value>> {
     let start = vm.stack.len();

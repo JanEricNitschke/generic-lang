@@ -26,7 +26,11 @@ use crate::{
             list_reverse_native,
         },
         range::range_iter_iter_native,
-        set::{set_iter_iter_native, set_iter_native, set_iter_next_native, set_iter_str_native},
+        set::{
+            set_bitand_native, set_bitor_native, set_bitxor_native, set_clear_native,
+            set_iter_iter_native, set_iter_native, set_iter_next_native, set_iter_str_native,
+            set_sub_native,
+        },
         string::{
             string_endswith_native, string_removeprefix_native, string_removesuffix_native,
             string_split_native, string_startswith_native, string_strip_native,
@@ -190,6 +194,11 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"Set", &"__bool__", &[0], set_bool_native);
     vm.define_native_method(&"Set", &"__str__", &[0], set_str_native);
     vm.define_native_method(&"Set", &"__iter__", &[0], set_iter_native);
+    vm.define_native_method(&"Set", &"__bitor__", &[1], set_bitor_native);
+    vm.define_native_method(&"Set", &"__bitand__", &[1], set_bitand_native);
+    vm.define_native_method(&"Set", &"__sub__", &[1], set_sub_native);
+    vm.define_native_method(&"Set", &"__bitxor__", &[1], set_bitxor_native);
+    vm.define_native_method(&"Set", &"clear", &[0], set_clear_native);
 
     vm.define_native_class(&"SetIterator", false);
     vm.define_native_method(&"SetIterator", &"__next__", &[0], set_iter_next_native);
