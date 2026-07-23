@@ -6,9 +6,9 @@ include_guard = "GENERIC_H"
 cpp_compat = true
 documentation = true
 usize_is_size_t = true
-header = "/* Plugin ABI of the generic programming language. GENERATED — do not edit. */"
+header = "/* Plugin ABI of the generic programming language. GENERATED - do not edit. */"
 # The trailer is emitted after the header's own `extern "C"` block closes,
-# so it needs its own guard — without it, C++ consumers see the declaration
+# so it needs its own guard - without it, C++ consumers see the declaration
 # with C++ linkage and cannot define the symbol as `extern "C"`.
 trailer = """
 #ifdef __cplusplus

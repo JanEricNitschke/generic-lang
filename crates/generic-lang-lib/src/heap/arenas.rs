@@ -8,6 +8,8 @@ use crate::value::{
     BoundMethod, Class, Closure, Function, Instance, Module, NativeFunction, NativeMethod, Upvalue,
 };
 
+use unicode_normalization::UnicodeNormalization;
+
 /// Wrapper attaching a flag indicating whether an object
 /// has been marked during the mark phase of mark and sweep
 /// garbage collection.
@@ -80,6 +82,13 @@ impl_to_value!(
     BoundMethodId => {bound_method, BoundMethod},
     ModuleId => {module, Module}
 );
+
+impl StringId {
+    /// Helper to get nfc normalized string
+    pub fn as_normalized_string(self, heap: &Heap) -> String {
+        self.to_value(heap).nfc().collect::<String>()
+    }
+}
 
 /// Arenas storing each `Value` variant.
 ///

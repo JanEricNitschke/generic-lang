@@ -1,20 +1,20 @@
 //! Unit tests for the plugin host: value bridging, every host callback
 //! against a real VM, the trampoline, and `call_plugin`'s result mapping.
 //!
-//! These run under miri too — the blob bridge (`to_ffi`/`from_ffi`) is
+//! These run under miri too - the blob bridge (`to_ffi`/`from_ffi`) is
 //! sound: `GenericValue`'s limbs are `MaybeUninit`, so bit-copying a whole
 //! `Value` (whose small variants leave most of the 32 bytes uninitialized)
 //! never asserts those bytes are initialized. Only the two loader tests are
 //! `#[cfg(not(miri))]`, because they do real filesystem and `dlopen` work
 //! miri cannot execute.
 //!
-//! Tests exercise the vtable exactly like a plugin would — raw pointers
+//! Tests exercise the vtable exactly like a plugin would - raw pointers
 //! included.
 //!
 //! Ordering invariant: `build_host_api` stashes a raw pointer to the `VM`
 //! in `ctx`, so a test must do all its `&mut vm` work (allocation, instance
 //! construction) *before* building the vtable and must not touch `vm`
-//! directly again until it is done calling callbacks — otherwise the later
+//! directly again until it is done calling callbacks - otherwise the later
 //! `&mut vm` invalidates the `ctx` pointer and miri (Stacked Borrows)
 //! rejects the reborrow inside the callback. (`call_plugin`, which builds
 //! its own vtable, is fine after the last callback use.)
@@ -174,8 +174,8 @@ fn value_kind_covers_every_kind() {
         false,
     ));
     // Generator and iterator need scaffolding: a generator wraps a
-    // (suspended) callframe over a closure — an empty function suffices for
-    // kind classification — and the iterator drives the list built above.
+    // (suspended) callframe over a closure - an empty function suffices for
+    // kind classification - and the iterator drives the list built above.
     let raw_function = vm.heap.add_function(Function::new(0, module_name));
     let closure = Closure::new(*raw_function.as_function(), false, None, &vm.heap);
     let closure = vm.heap.add_closure(closure);
@@ -218,7 +218,7 @@ fn value_kind_covers_every_kind() {
         (generator, ValueKind::Generator),
         (iterator, ValueKind::Iterator),
         // Raw function objects are VM-internal (not callable via
-        // `call_value`) — the canonical `Other`.
+        // `call_value`) - the canonical `Other`.
         (raw_function, ValueKind::Other),
     ];
     for (value, kind) in expected {
@@ -230,7 +230,7 @@ fn value_kind_covers_every_kind() {
     }
 
     // Reverse direction: every kind the api crate declares must be
-    // exercised above — an orphaned `ValueKind` variant fails here (and a
+    // exercised above - an orphaned `ValueKind` variant fails here (and a
     // brand-new one already failed to compile in `all_value_kinds`).
     let mut exercised: Vec<u32> = expected.iter().map(|(_, kind)| *kind as u32).collect();
     exercised.sort_unstable();
@@ -254,7 +254,7 @@ fn ok_value(ret: FfiReturn) -> Value {
 }
 
 /// Assert `ret` carries an exception and check its class like a plugin
-/// would — `builtin_get` for the class, `is_instance` for the check.
+/// would - `builtin_get` for the class, `is_instance` for the check.
 fn assert_error(api: &HostApi, ret: FfiReturn, class_name: &str) {
     assert_eq!(
         ret.status,
@@ -285,7 +285,7 @@ fn read_ffi_str<'a>(s: FfiStr) -> &'a str {
 
 #[test]
 fn ffi_blob_round_trips() {
-    // Arrange: one value from each broad category — immediates, a bigint, a
+    // Arrange: one value from each broad category - immediates, a bigint, a
     // string, a native container, an exception, a class, and a function.
     let mut vm = VM::new();
     let values = [
@@ -345,7 +345,7 @@ fn value_kind_and_scalar_accessors() {
     assert!(succeeded);
     assert_eq!(n, seven);
 
-    // ...and both its failures — oversized bigint and non-integer — are the
+    // ...and both its failures - oversized bigint and non-integer - are the
     // single `false` (a raw i64 payload needs the out-parameter).
     let succeeded = (api.int_get)(api.ctx, to_ffi(big_overflow), &raw mut n);
     assert!(!succeeded);
@@ -482,7 +482,7 @@ fn dict_and_set_operations() {
     assert_eq!(ret.status, 0);
     assert_eq!(from_ffi(ret.value), Value::Bool(true));
 
-    // dict errors: a missing key is a KeyError, a non-dict a TypeError —
+    // dict errors: a missing key is a KeyError, a non-dict a TypeError -
     // both handed over, never left pending.
     let ret = (api.dict_get)(api.ctx, to_ffi(dict), missing);
     assert_error(&api, ret, "KeyError");
@@ -531,7 +531,7 @@ fn attribute_access() {
     let ret = (api.attr_has)(api.ctx, to_ffi(instance), name);
     assert_eq!(ok_value(ret), Value::Bool(true));
 
-    // Non-instances have no attributes — get and has both TypeError.
+    // Non-instances have no attributes - get and has both TypeError.
     let ret = (api.attr_get)(api.ctx, nil, name);
     assert_error(&api, ret, "TypeError");
     let ret = (api.attr_has)(api.ctx, nil, name);
@@ -545,7 +545,7 @@ fn display_is_raw_and_str_honors_dunder() {
     let exception = vm.create_exception("ValueError", "boom");
     let api = build_host_api(&mut vm);
 
-    // value_display: the raw repr — does NOT run `__str__`.
+    // value_display: the raw repr - does NOT run `__str__`.
     let displayed = (api.value_display)(api.ctx, to_ffi(exception));
     let mut ffi = FfiStr::null();
     let succeeded = (api.string_get)(api.ctx, displayed, &raw mut ffi);
@@ -562,7 +562,7 @@ fn display_is_raw_and_str_honors_dunder() {
 
 #[test]
 fn truthiness_equality_hash() {
-    // Arrange: two equal-but-distinct big integers — separate heap
+    // Arrange: two equal-but-distinct big integers - separate heap
     // allocations (bigints are not deduped) so the equality/hash path runs
     // over different handles rather than short-circuiting on identity.
     let mut vm = VM::new();
@@ -703,7 +703,7 @@ extern "C" fn plugin_adds_args(
     }
 }
 
-/// Returns a plain string under `STATUS_EXCEPTION` — a plugin bug; used
+/// Returns a plain string under `STATUS_EXCEPTION` - a plugin bug; used
 /// below to check the defensive `TypeError`.
 extern "C" fn plugin_invalid_exception_value(
     host: *const HostApi,
@@ -757,7 +757,7 @@ extern "C" fn plugin_throws_type_error(
     }
 }
 
-/// Rethrows its first argument — how a plugin re-raises an exception it
+/// Rethrows its first argument - how a plugin re-raises an exception it
 /// caught from a re-entering callback.
 extern "C" fn plugin_rethrows_arg(
     _host: *const HostApi,
@@ -805,7 +805,7 @@ fn pop_pending_exception_class(vm: &mut VM) -> String {
         .clone()
 }
 
-/// A heap native wrapping a plugin function — the same `add_plugin_native`
+/// A heap native wrapping a plugin function - the same `add_plugin_native`
 /// the loader uses per export, so the two can't drift.
 fn plugin_native(vm: &mut VM, name: &str, arity: &'static [u8], fun: PluginFn) -> Value {
     let name_id = vm.heap.string_id(&name);
@@ -816,7 +816,7 @@ fn plugin_native(vm: &mut VM, name: &str, arity: &'static [u8], fun: PluginFn) -
 /// (callee at `stack[len - argc - 1]`), it recovers that native's
 /// `plugin_fn` pointer and calls it. Two *different* natives share the one
 /// `plugin_trampoline`, so running both proves each routes to its own
-/// pointer with no cross-talk — the heart of the "pointer on the callee"
+/// pointer with no cross-talk - the heart of the "pointer on the callee"
 /// design. This drives the trampoline directly with a hand-built stack;
 /// [`plugin_native_dispatches_through_the_real_call_path`] is the
 /// counterpart proving the *real* dispatch actually produces this layout.
@@ -849,7 +849,7 @@ fn trampoline_recovers_the_pointer_from_the_callee() {
 /// hand-building the stack, it drives a plugin native through the real path
 /// (`call_value` → `execute_native_function_call` → trampoline), proving
 /// the dispatch site genuinely parks the callee where the trampoline
-/// expects — the invariant the unit test only *assumes* — and that arity is
+/// expects - the invariant the unit test only *assumes* - and that arity is
 /// gated at the dispatch site before the trampoline ever runs.
 #[test]
 fn plugin_native_dispatches_through_the_real_call_path() {
@@ -898,7 +898,7 @@ fn call_plugin_maps_every_status() {
     assert!(matches!(error, VmErrorKind::Exception(_)));
     assert_eq!(pop_pending_exception_class(&mut vm), "Exception");
 
-    // STATUS_FATAL comes back as an uncatchable runtime error — no
+    // STATUS_FATAL comes back as an uncatchable runtime error - no
     // pending exception is created.
     let error = call_plugin(&mut vm, plugin_fatal, &[], name).unwrap_err();
     assert!(matches!(error, VmErrorKind::Runtime(_)));
@@ -1032,7 +1032,7 @@ fn corrupt_dylib_is_an_import_error_not_a_crash() {
     std::fs::write(&dylib, b"this is not a shared library").unwrap();
 
     // Importing it claims the plugin arm (the candidate exists) but fails
-    // to load — a catchable ImportError, not a crash.
+    // to load - a catchable ImportError, not a crash.
     let mut vm = VM::new();
     let name_id = vm.heap.string_id(&"demo");
     let result = vm

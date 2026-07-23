@@ -127,7 +127,7 @@ pub struct VM {
 impl VM {
     /// A ready-to-run VM: the prelude (native functions and classes, the
     /// generic builtins, and the rust stdlib modules) is installed here so
-    /// every construction path — `interpret`, the REPL, tests — starts from
+    /// every construction path - `interpret`, the REPL, tests - starts from
     /// the same fully-initialized state.
     #[must_use]
     pub(super) fn new() -> Self {

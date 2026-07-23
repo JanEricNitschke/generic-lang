@@ -1,0 +1,38 @@
+print("ab" * 3);     # expect: ababab
+print(3 * "ab");     # expect: ababab
+print("x" * 0);      # expect:
+print("x" * -1);     # expect:
+print("" * 5);       # expect:
+
+
+
+# String repeat count does not fit usize
+try {
+    "x" * 999999999999999999999999999999999999999999999;
+} catch ValueError as e {
+    print(e);  # expect: String repetition would overflow the maximum string size.
+}
+
+# Large numbers still work for empty strings
+print("" * 999999999999999999999999999999999999999999999);  # expect:
+
+# String repeat total size overflows
+try {
+    "xxxxxxxxxxxxxxxx" * 1000000000000000000;
+} catch ValueError as e{
+    print(e);  # expect: String repetition would overflow the maximum string size.
+}
+
+# String * float is an error
+try {
+    "ab" * 2.0;
+} catch TypeError as e {
+    print(e);  # expect: Operands must be two numbers, string * integer, or support `__mul__`. Got: [ab, 2.0]
+}
+
+# String * string is an error
+try {
+    "ab" * "cd";
+} catch TypeError as e {
+    print(e);  # expect: Operands must be two numbers, string * integer, or support `__mul__`. Got: [ab, cd]
+}

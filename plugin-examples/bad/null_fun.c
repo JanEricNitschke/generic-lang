@@ -1,5 +1,5 @@
 /* Error-path fixture: a module whose only export is a zero-initialized
- * descriptor — its `fun` pointer is null. The loader must reject it with an
+ * descriptor - its `fun` pointer is null. The loader must reject it with an
  * ImportError naming the function, not call into nothing. Registers as
  * `nullfun`.
  *

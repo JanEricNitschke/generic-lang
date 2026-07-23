@@ -1,8 +1,8 @@
 # A generic callee run via a plugin's call_value callback stores a closure
 # capturing its parameter in a global and then throws. The exception crosses
 # the re-entry boundary back into the plugin; that boundary's cleanup must
-# close the upvalue over the truncated stack region — exactly like a normal
-# return would — so the escaped closure keeps seeing the captured value.
+# close the upvalue over the truncated stack region - exactly like a normal
+# return would - so the escaped closure keeps seeing the captured value.
 #
 # Exports exercised here:
 #   call_with_21_and_double(f) -- call f(21) through the host's call_value

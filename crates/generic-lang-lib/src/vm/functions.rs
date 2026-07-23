@@ -39,7 +39,7 @@ impl VM {
     /// - `Ok(..)`: the callee's result.
     /// - `Err(Exception)`: the pending exception that escaped the callee
     ///   (its leftover frames and stack are cleaned up here). The caller may
-    ///   pop the exception and handle it, or propagate with `?` — the
+    ///   pop the exception and handle it, or propagate with `?` - the
     ///   dispatch loops resolve an escaping pending exception against the
     ///   surrounding handlers.
     pub(crate) fn invoke_and_run_function(
@@ -56,7 +56,7 @@ impl VM {
         // Whether the callee needs its bytecode run cannot be decided from
         // the looked-up method: `invoke` may dispatch to an instance *field*
         // instead (e.g. a native function stored under `__str__`, or a
-        // field-held closure), so trust the callstack — run exactly when
+        // field-held closure), so trust the callstack - run exactly when
         // `invoke` pushed a frame. Anything that completed natively already
         // left its result on the stack.
         let frames_before = self.callstack.len();
@@ -92,12 +92,12 @@ impl VM {
     /// error.
     ///
     /// A pending exception is resolved against the innermost handler if that
-    /// handler lies within this region — execution then continues at the
+    /// handler lies within this region - execution then continues at the
     /// catch block. Otherwise the pending exception escapes to whoever
     /// entered the region, which may handle or propagate it. Hard runtime
     /// errors are fatal and always propagate.
     ///
-    /// # Escapes leave the region dirty — every caller cleans up itself
+    /// # Escapes leave the region dirty - every caller cleans up itself
     ///
     /// On an escape NOTHING is truncated here: the region's frames stay on
     /// the callstack and its values on the stack (below the pending
@@ -111,12 +111,12 @@ impl VM {
     ///   that is sound because the generator is marked `Completed` (and
     ///   thrown away) and the generator natives return immediately, so the
     ///   dirty state is only ever truncated by the caller's dispatch loop
-    ///   when it resolves the pending exception against an outer handler —
+    ///   when it resolves the pending exception against an outer handler -
     ///   or the program aborts via the uncaught report.
     ///
     /// # Precondition
     ///
-    /// The callstack must hold at least `call_depth` frames — entering with
+    /// The callstack must hold at least `call_depth` frames - entering with
     /// the region already exited would execute one instruction of the outer
     /// frame before the positional check below fires.
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -615,6 +615,9 @@ impl VM {
     fn get_proxy_class(&self, value: Value) -> Option<ClassId> {
         match value {
             Value::String(_) => Some(get_native_class_id(&self.heap, "String")),
+            Value::Number(Number::Integer(_)) => Some(get_native_class_id(&self.heap, "Integer")),
+            Value::Number(Number::Float(_)) => Some(get_native_class_id(&self.heap, "Float")),
+            Value::Number(Number::Rational(_)) => Some(get_native_class_id(&self.heap, "Rational")),
             _ => None,
         }
     }

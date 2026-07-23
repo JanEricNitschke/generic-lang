@@ -1,5 +1,5 @@
 use super::VM;
-use crate::vm::ExceptionKind::TypeError;
+use crate::vm::ExceptionKind::{TypeError, ValueError};
 use crate::{
     value::{GenericRational, Number, Value},
     vm::errors::VmResult,
@@ -114,6 +114,87 @@ impl VM {
             _ => {
                 let message = format!(
                     "Operands must be two numbers, strings or support `__add__`. Got: [{}]",
+                    self.stack[slice_start..]
+                        .iter()
+                        .map(|v| v.to_string(&self.heap))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                self.throw(TypeError, &message)
+            }
+        }
+    }
+
+    pub(super) fn mul(&mut self) -> VmResult {
+        let slice_start = self.stack.len() - 2;
+        let gen_method_id = self.heap.string_id(&"__mul__");
+        match &self.stack[slice_start..] {
+            [Value::Number(a), Value::Number(b)] => {
+                match binary_op_invoke!(self, a, b, mul, mut_heap).into_result_value() {
+                    Ok(value) => {
+                        self.stack.pop();
+                        self.stack.pop();
+                        self.stack_push(value);
+                        Ok(None)
+                    }
+                    Err(error) => self.throw(ValueError, &error),
+                }
+            }
+            [Value::String(s), Value::Number(Number::Integer(n))]
+            | [Value::Number(Number::Integer(n)), Value::String(s)] => {
+                let string = s.to_value(&self.heap);
+
+                if string.is_empty() {
+                    let new_id = self.heap.string_id(&"");
+                    self.stack.pop();
+                    self.stack.pop();
+                    self.stack_push(new_id.into());
+                    return Ok(None);
+                }
+
+                if n.is_negative(&self.heap) || n.is_zero(&self.heap) {
+                    let new_id = self.heap.string_id(&"");
+                    self.stack.pop();
+                    self.stack.pop();
+                    self.stack_push(new_id.into());
+                    return Ok(None);
+                }
+
+                let Ok(count) = n.try_to_usize(&self.heap) else {
+                    return self.throw(
+                        ValueError,
+                        "String repetition would overflow the maximum string size.",
+                    );
+                };
+
+                if string
+                    .len()
+                    .checked_mul(count)
+                    .is_none_or(|n| n > isize::MAX as usize)
+                {
+                    return self.throw(
+                        ValueError,
+                        "String repetition would overflow the maximum string size.",
+                    );
+                }
+
+                let repeated = string.repeat(count);
+                let new_id = self.heap.string_id(&repeated);
+                self.stack.pop();
+                self.stack.pop();
+                self.stack_push(new_id.into());
+                Ok(None)
+            }
+            [Value::Instance(instance_id), _]
+                if instance_id
+                    .to_value(&self.heap)
+                    .has_field_or_method(gen_method_id, &self.heap) =>
+            {
+                self.invoke(gen_method_id, 1)
+            }
+            _ => {
+                let message = format!(
+                    "Operands must be two numbers, string * integer, or support `__mul__`. Got: [{}]",
                     self.stack[slice_start..]
                         .iter()
                         .map(|v| v.to_string(&self.heap))

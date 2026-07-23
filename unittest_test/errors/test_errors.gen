@@ -1,5 +1,5 @@
 # ERROR-outcome fixture: a test function that cannot be invoked (it takes
-# parameters) is reported as ERROR and fails the run — the runner also
+# parameters) is reported as ERROR and fails the run - the runner also
 # validates the exit code (1) derived from the summary line.
 # expect: Running tests in unittest_test/errors/test_errors.gen...
 # expect:

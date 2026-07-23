@@ -122,7 +122,7 @@ impl VM {
         self.unwind_region(entry);
         // A fatal error skips handler resolution, so a `try` the test was
         // sitting in leaves its handler behind, pointing into the frames
-        // just unwound — drop it, or a later test's exception could resolve
+        // just unwound - drop it, or a later test's exception could resolve
         // against it.
         self.exception_handlers.truncate(handlers_before);
 

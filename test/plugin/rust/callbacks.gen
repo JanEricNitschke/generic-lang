@@ -2,7 +2,7 @@
 # closure, propagating a generic exception back out through the plugin,
 # honoring __str__, reading a field, invoking a method, mutating dict/set via
 # __hash__/__eq__, and the rooting contract (a rooted value survives a
-# re-entering call — exercised hard under the stress-GC profile).
+# re-entering call - exercised hard under the stress-GC profile).
 #
 # Exports exercised here:
 #   call_with_21_and_double(f)       -- call f(21), double the result

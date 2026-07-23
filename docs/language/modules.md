@@ -40,7 +40,7 @@ module.
 For `import "name";` the interpreter tries, in order:
 
 1. a user file `name.gen` next to the importing script,
-2. a **native plugin** — a shared library `name.<ext>` in that directory (see
+2. a **native plugin** - a shared library `name.<ext>` in that directory (see
    below),
 3. a bundled generic-source stdlib module,
 4. a bundled Rust-native stdlib module.
@@ -75,12 +75,12 @@ foreach (var pair in enumerate(["a", "b"])) { print(pair); }   # (0, a) then (1,
 
 The bundled modules:
 
-- **`math`** — numeric helpers (currently just `math.sqrt(x)`).
-- **`testing`** — assertion helpers for the test runner: `assert_equal`,
+- **`math`** - numeric helpers (currently just `math.sqrt(x)`).
+- **`testing`** - assertion helpers for the test runner: `assert_equal`,
   `assert_not_equal`, `assert_true`, `assert_false`, `assert_nil`,
   `assert_not_nil`, `assert_throws`. Each raises `AssertionError` with a
   descriptive message on failure. See [Testing](testing.md).
-- **`zen`** — a tiny example module.
+- **`zen`** - a tiny example module.
 
 ```generic
 import "testing";

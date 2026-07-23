@@ -4,4 +4,4 @@ print(my_list); # expect: [1, 2, 3]
 my_list.append(4);
 print(my_list); # expect: [1, 2, 3, 4]
 
-3.append(5); # expect runtime error: TypeError: Only instances have methods.
+true.append(5); # expect runtime error: TypeError: Only instances have methods.

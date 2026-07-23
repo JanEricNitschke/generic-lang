@@ -1,4 +1,4 @@
-// Tiny C++ test plugin — proves the plugin ABI is usable from C++ against the
+// Tiny C++ test plugin - proves the plugin ABI is usable from C++ against the
 // same generated `generic.h`. Registers under the module name
 // `cpp_demo_plugin`. Built by the Makefile `plugin-lang-fixture` step when a
 // C++ compiler is present:
@@ -7,7 +7,7 @@
 //       -o test/plugin/lang/cpp_demo_plugin.<ext> plugin-examples/cpp/cpp_demo_plugin.cpp
 //
 // C++11 is the oldest supported standard (`guarded` needs lambdas; the
-// descriptor structs use positional aggregate initialization —
+// descriptor structs use positional aggregate initialization -
 // C-style designated initializers would demand C++20). CI compiles this
 // file at C++11 via `make plugin-std-check`.
 //
@@ -15,7 +15,7 @@
 //   * `generic_plugin_init` stays `extern "C"` (the header guards it).
 //   * a C++ exception must NEVER unwind through an exported function (that is
 //     undefined behavior across the C ABI frame). Every body runs inside
-//     `guarded`, which turns any `std::exception` into a generic Exception —
+//     `guarded`, which turns any `std::exception` into a generic Exception -
 //     the C++ analogue of Rust's `catch_unwind`.
 
 #include <cctype>
@@ -37,7 +37,7 @@ FfiStr as_ffi(const std::string &s) {
 
 // Build an exception instance of the named builtin class and return it under
 // the EXCEPTION status. Each host call can itself fail (EXCEPTION or FATAL);
-// forward any non-OK FfiReturn unchanged, immediately — never relabel or
+// forward any non-OK FfiReturn unchanged, immediately - never relabel or
 // swallow it.
 FfiReturn throw_new(const HostApi *host, const char *class_name, const std::string &msg) {
     FfiStr name{reinterpret_cast<const uint8_t *>(class_name), std::strlen(class_name)};
@@ -67,7 +67,7 @@ FfiReturn guarded(const HostApi *host, Body &&body) {
     }
 }
 
-// add(a, b) — integer addition.
+// add(a, b) - integer addition.
 FfiReturn add(const HostApi *host, const GenericValue *args, size_t) {
     return guarded(host, [&]() -> FfiReturn {
         int64_t a = 0, b = 0;
@@ -78,7 +78,7 @@ FfiReturn add(const HostApi *host, const GenericValue *args, size_t) {
     });
 }
 
-// shout(s) — ASCII-uppercase a string and append '!'.
+// shout(s) - ASCII-uppercase a string and append '!'.
 FfiReturn shout(const HostApi *host, const GenericValue *args, size_t) {
     return guarded(host, [&]() -> FfiReturn {
         FfiStr s{};
@@ -98,7 +98,7 @@ FfiReturn shout(const HostApi *host, const GenericValue *args, size_t) {
     });
 }
 
-// sum(list) — iterate a generic list through the vtable and sum its ints.
+// sum(list) - iterate a generic list through the vtable and sum its ints.
 FfiReturn sum(const HostApi *host, const GenericValue *args, size_t) {
     return guarded(host, [&]() -> FfiReturn {
         size_t len = 0;
@@ -121,7 +121,7 @@ FfiReturn sum(const HostApi *host, const GenericValue *args, size_t) {
     });
 }
 
-// boom() — throw a C++ exception; guarded turns it into a generic Exception
+// boom() - throw a C++ exception; guarded turns it into a generic Exception
 // instead of aborting the process.
 FfiReturn boom(const HostApi *host, const GenericValue *, size_t) {
     return guarded(host, [&]() -> FfiReturn {

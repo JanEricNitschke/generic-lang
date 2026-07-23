@@ -1,5 +1,5 @@
-# The loader caches each plugin's exports — including the interned export
-# name ids — per path, and a re-import rebuilds the module from that cache.
+# The loader caches each plugin's exports - including the interned export
+# name ids - per path, and a re-import rebuilds the module from that cache.
 # A local from-import inside a function drops the module (and every export
 # not literally named in this script) as soon as the function returns, so
 # the cached name ids must be GC roots: without that, a collection between

@@ -70,9 +70,9 @@ fn shout(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginE
     Ok(host.make_str(&loud))
 }
 
-/// Calls a generic closure passed as the argument — plugins can run
+/// Calls a generic closure passed as the argument - plugins can run
 /// generic code, and exceptions flow through in both directions.
-/// (Arguments never need rooting — see the rooting rules below.)
+/// (Arguments never need rooting - see the rooting rules below.)
 fn call_with_21_and_double(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
     let arg = host.make_int(21);
     let result = host.call(args[0], &[arg])?;
@@ -121,7 +121,7 @@ Errors you return are real generic exceptions: `host.type_error(..)` is
 caught by `catch TypeError`, and so on for every builtin exception class
 (the typed constructors on `Host` create the instance on the spot). A
 panicking plugin
-function does **not** abort the interpreter — the `export_module!` glue
+function does **not** abort the interpreter - the `export_module!` glue
 catches it and throws a base `Exception` with the message `panic: <msg>`.
 
 ## Quickstart: C
@@ -137,7 +137,7 @@ symbol:
 #include "generic.h"
 
 /* Each host call can itself fail (EXCEPTION or FATAL); forward any non-OK
- * FfiReturn unchanged, immediately — never relabel or swallow it. */
+ * FfiReturn unchanged, immediately - never relabel or swallow it. */
 static FfiReturn throw_new(const HostApi *host, const char *class_name, const char *msg) {
     FfiStr name = {.ptr = (const uint8_t *)class_name, .len = strlen(class_name)};
     FfiStr message = {.ptr = (const uint8_t *)msg, .len = strlen(msg)};
@@ -182,7 +182,7 @@ cc -shared -fPIC -I <path-to>/generic-lang-api/include -o cdemo.dylib cdemo.c   
 cc -shared -fPIC -I <path-to>/generic-lang-api/include -o cdemo.so cdemo.c     # Linux
 ```
 
-(Windows builds — `cl /LD` or `zig cc -shared` — are expected to work but
+(Windows builds - `cl /LD` or `zig cc -shared` - are expected to work but
 not yet exercised by the test suite.)
 
 The header is generated from the Rust ABI types by cbindgen and CI-checked;
@@ -194,7 +194,7 @@ C++ uses the same header. Two rules matter: keep `generic_plugin_init`
 `extern "C"`, and **never let a C++ exception unwind across an exported
 function** (that is undefined behavior through a C ABI frame). Wrap every
 body in a helper that converts an escaping `std::exception` into a generic
-exception — the C++ analogue of Rust's `catch_unwind`:
+exception - the C++ analogue of Rust's `catch_unwind`:
 
 ```cpp
 static FfiReturn guarded(const HostApi *host, const std::function<FfiReturn()> &body) {
@@ -288,7 +288,7 @@ cp zig-out/lib/libzig_demo_plugin.dylib zig_demo_plugin.dylib   # macOS
 # copy zig-out\bin\zig_demo_plugin.dll zig_demo_plugin.dll      # Windows
 ```
 
-Zig releases break source compatibility routinely — CI tracks the latest
+Zig releases break source compatibility routinely - CI tracks the latest
 release and expects churn (`callconv(.C)` became `callconv(.c)` in 0.14;
 `@cImport` was deprecated in 0.16).
 
@@ -303,7 +303,7 @@ cross-language ones via `make plugin-lang-test`.
 ## The value model
 
 A `GenericValue` is an **opaque 32-byte handle** to an interpreter value.
-Never inspect or fabricate its bytes — everything goes through the host
+Never inspect or fabricate its bytes - everything goes through the host
 vtable (Rust: the `Host` methods; C: the `HostApi` function pointers with
 `host->ctx` as the first argument). Passing a fabricated or byte-modified
 handle is undefined behavior.
@@ -314,7 +314,7 @@ handle is undefined behavior.
 |---|---|
 | `Nil`, `Bool`, `Float` | immediates; `bool_get` / `float_get` |
 | `Int` | fits in `i64`; `int_get` succeeds |
-| `BigInt` | does **not** fit in `i64`; `int_get` returns `false` — fall back to `value_display`/`value_str` |
+| `BigInt` | does **not** fit in `i64`; `int_get` returns `false` - fall back to `value_display`/`value_str` |
 | `Rational` | inspect via display/str |
 | `String` | `string_get` returns borrowed UTF-8 bytes (see lifetime rule below) |
 | `List`, `Tuple` | `list_len`/`list_get`, `tuple_len`/`tuple_get`; lists also `list_push`/`list_set` |
@@ -340,13 +340,13 @@ handle.
 forces an out-parameter:
 
 - A payload the caller must receive as something other than a
-  `GenericValue` — a raw machine scalar (`bool`, `i64`, `f64`, `usize`) or
-  a borrowed `FfiStr` — can't ride in an `FfiReturn` (whose payload is a
-  `GenericValue`), so those callbacks — `bool_get`, `int_get`,
-  `float_get`, the `*_len` family, and `string_get` — take an
+  `GenericValue` - a raw machine scalar (`bool`, `i64`, `f64`, `usize`) or
+  a borrowed `FfiStr` - can't ride in an `FfiReturn` (whose payload is a
+  `GenericValue`), so those callbacks - `bool_get`, `int_get`,
+  `float_get`, the `*_len` family, and `string_get` - take an
   out-parameter and return a plain `bool`: `true` on success, `false` on
   the sole "wrong kind" failure, no exception.
-- Everything else (payload is a `GenericValue`, or there is no payload —
+- Everything else (payload is a `GenericValue`, or there is no payload -
   `list_get`, `builtin_get`, `attr_*`, `list_push`, `list_set`,
   `string_new`, the re-entering group, …) returns `FfiReturn`, carrying a
   real exception instance on failure whose class and message mirror what
@@ -367,30 +367,30 @@ Each returns an `FfiReturn` (Rust: `Result<_, PluginError>`). The status
 is a three-state discriminator (`GENERIC_FFI_STATUS_*` in C, `FfiStatus`
 in Rust), and `value` is always present:
 
-- `OK` — success, `value` is the result.
-- `EXCEPTION` — generic code raised an exception; `value` is the exception
+- `OK` - success, `value` is the result.
+- `EXCEPTION` - generic code raised an exception; `value` is the exception
   **instance itself**. You can **handle it** (check its class with
   `is_instance`, read its message with `value_str`) or **rethrow it**
   (return it under the same status; in Rust, `?` does this). A rethrown
-  exception re-raises with full identity: its exact class — user-defined
-  subclasses included — its fields, and its original stack trace.
-- `FATAL` — a fatal interpreter error passed through your call. **Forward
+  exception re-raises with full identity: its exact class - user-defined
+  subclasses included - its fields, and its original stack trace.
+- `FATAL` - a fatal interpreter error passed through your call. **Forward
   it unchanged, immediately.** Never swallow it, never fabricate it.
   (Rust: `?` forwards it automatically; you will normally never see it.)
   Any other status value is treated as a plugin bug.
 
 Throwing your own exception means returning an instance under the
 `EXCEPTION` status. Exception classes are ordinary values: look one up
-with `builtin_get("TypeError")` (any builtin exception class name — or the
+with `builtin_get("TypeError")` (any builtin exception class name - or the
 base `"Exception"`), create the instance with `exception_new(class,
-message)`, and return it — exactly what the `throw_new` helper in the
+message)`, and return it - exactly what the `throw_new` helper in the
 [C quickstart](#quickstart-c) does.
 
 (`exception_new` sets the message directly, bypassing the class's
-`__init__` — exactly like the interpreter's own throw; call the class via
+`__init__` - exactly like the interpreter's own throw; call the class via
 `call_value` if you need full construction semantics. It also works with
 user-defined exception classes your plugin received.) Rust authors use the
-typed constructors on `Host` — `host.key_error("...")` and friends — which
+typed constructors on `Host` - `host.key_error("...")` and friends - which
 do the lookup and creation in one call; `PluginError` itself is
 `Exception(instance)` or `Fatal`, mirroring the wire statuses exactly.
 
@@ -405,13 +405,13 @@ host->bool_get(host->ctx, is.value, &matches);
 if (matches) { /* handle it */ }
 ```
 
-(`is_instance` returns a bool *value* — subclass-aware, value-type proxy
+(`is_instance` returns a bool *value* - subclass-aware, value-type proxy
 classes included: exactly the `isinstance` builtin.)
 
 ## The rooting contract
 
 This is the one rule set you must internalize. The interpreter's GC can run
-**only** while generic bytecode executes — i.e. only inside the
+**only** while generic bytecode executes - i.e. only inside the
 re-entering callbacks listed above. That gives three rules:
 
 1. **Straight-line code needs no rooting.** If your function only inspects
@@ -421,23 +421,23 @@ re-entering callbacks listed above. That gives three rules:
 2. **Across a re-entering callback, root every value you still hold.**
    Values you created (or extracted from containers) are not otherwise
    reachable by the GC; an unrooted handle used after a re-entering call is
-   a bug (the interpreter detects it as a deterministic panic — memory-safe,
+   a bug (the interpreter detects it as a deterministic panic - memory-safe,
    but fatal). Root with `root(value)` / release with `unroot(n)`; in Rust
    prefer the RAII guard: `let keep = host.rooted(v);`. All roots are
    released automatically when your function returns. Your *arguments* are
-   always safe — the host keeps the originals alive — and values you pass
+   always safe - the host keeps the originals alive - and values you pass
    *into* a re-entering callback are rooted by the host for that call.
 3. **Re-fetch borrowed strings after re-entering.** The `(ptr, len)` from
    `string_get` is valid only until the next re-entering callback. In Rust
    this rule is enforced at compile time: `as_str` borrows the `Host`, and
    the re-entering methods take `&mut self`, so holding the `&str` across a
-   call does not compile — copy it out (`.to_owned()`) first. In C it is on
+   call does not compile - copy it out (`.to_owned()`) first. In C it is on
    you.
 
 ## Arity
 
 `FunctionDesc.arities` (Rust: the `&[u8]` in `export_module!`) lists every
-accepted argument count — `&[2]` for exactly two, `&[0, 1]` for optional,
+accepted argument count - `&[2]` for exactly two, `&[0, 1]` for optional,
 up to 255. The host checks arity *before* calling you; a mismatch is an
 ordinary `TypeError` in generic code and your function never runs.
 
@@ -445,5 +445,5 @@ ordinary `TypeError` in generic code and your function never runs.
 
 `GENERIC_PLUGIN_ABI_VERSION` (currently 1) is checked at load; a mismatch
 is a clean `ImportError` naming both versions. The `generic-lang-api` crate
-is versioned independently of the interpreter to track ABI stability —
+is versioned independently of the interpreter to track ABI stability -
 build against the version matching the interpreter you target.

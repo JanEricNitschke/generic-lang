@@ -1,0 +1,4 @@
+print("  hello  ".strip());  # expect: hello
+print("".strip());  # expect:
+print("
+hi     ".strip());  # expect: hi

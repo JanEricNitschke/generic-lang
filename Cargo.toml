@@ -20,7 +20,7 @@ categories = ["parser-implementations", "compilers"]
 
 [workspace.dependencies]
 # default-features off so dependents (the bin) control the lib's features
-# explicitly — that is what makes `--no-default-features` builds of the
+# explicitly - that is what makes `--no-default-features` builds of the
 # binary actually disable plugins.
 generic-lang-lib = { version = "2.1.0", path = "crates/generic-lang-lib", default-features = false }
 generic-lang-api = { version = "0.1.0", path = "crates/generic-lang-api" }

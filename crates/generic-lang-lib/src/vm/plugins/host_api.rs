@@ -5,18 +5,18 @@
 //! re-enter the interpreter (and allocation never collects, so they can
 //! never trigger a GC); the re-entering group runs bytecode through the
 //! `invoke_and_run_function` contract and may collect. Re-entering
-//! callbacks root every value argument on the VM stack first — plugin
+//! callbacks root every value argument on the VM stack first - plugin
 //! arguments are not otherwise reachable by the GC.
 //!
 //! Error discipline: host-side failures (wrong receiver kind, missing key,
-//! …) are returned as `FfiReturn` codes with an interned message — they do
+//! …) are returned as `FfiReturn` codes with an interned message - they do
 //! NOT create pending exceptions, since the plugin may swallow them. A
 //! pending exception only exists while generic bytecode is unwinding; if
 //! one escapes to a callback it is popped, the VM restored, and the
 //! exception handed to the plugin as an `FfiReturn`. Fatal runtime errors
 //! become [`FfiStatus::Fatal`], which stays uncatchable end to end.
 //!
-//! This file is the FFI boundary itself — nearly every function reads
+//! This file is the FFI boundary itself - nearly every function reads
 //! through the opaque context or raw plugin-provided pointers.
 #![allow(unsafe_code)]
 
@@ -58,7 +58,7 @@ pub(super) fn to_ffi(value: Value) -> GenericValue {
     // SAFETY: same size (asserted above). `GenericValue`'s limbs are
     // `MaybeUninit`, so this copy never asserts that `Value`'s
     // uninitialized bytes (small variants leave most of the 32 unwritten)
-    // are initialized — it is sound, not merely harmless in practice. The
+    // are initialized - it is sound, not merely harmless in practice. The
     // plugin never inspects the bytes and only hands them back to `from_ffi`.
     unsafe { std::mem::transmute::<Value, GenericValue>(value) }
 }
@@ -66,7 +66,7 @@ pub(super) fn to_ffi(value: Value) -> GenericValue {
 /// Reinterpret an opaque FFI blob as the `Value` it was created from.
 ///
 /// Soundness rests on the trust model: plugins receive blobs from `to_ffi`
-/// and must pass them back unmodified — fabricating or modifying one is
+/// and must pass them back unmodified - fabricating or modifying one is
 /// undefined behavior.
 pub(super) fn from_ffi(value: GenericValue) -> Value {
     // SAFETY: `value` is a bit-copy of a real `Value` (see above).
@@ -126,7 +126,7 @@ pub(super) fn build_host_api(vm: &mut VM) -> HostApi {
 /// # Safety
 ///
 /// `ctx` must be the pointer stored by [`build_host_api`], and the borrow
-/// must be properly nested inside the plugin call (host callbacks are —
+/// must be properly nested inside the plugin call (host callbacks are -
 /// `call_plugin` does not touch the VM while the plugin runs).
 unsafe fn vm_from_ctx<'a>(ctx: *mut c_void) -> &'a mut VM {
     // SAFETY: guaranteed by the caller, see above.
@@ -137,7 +137,7 @@ unsafe fn vm_from_ctx<'a>(ctx: *mut c_void) -> &'a mut VM {
 ///
 /// The returned borrow is tied to the caller's `FfiStr` so it cannot be
 /// made to outlive the callback frame that received the string (the bytes
-/// are only guaranteed valid for that call — ABI contract).
+/// are only guaranteed valid for that call - ABI contract).
 fn str_from_ffi(s: &FfiStr) -> Option<&str> {
     if s.ptr.is_null() {
         return None;
@@ -166,7 +166,7 @@ fn ffi_exception(exception: Value) -> FfiReturn {
 }
 
 /// A host-side error as an `FfiReturn`: a real exception instance, created
-/// without raising — the plugin decides whether to throw it.
+/// without raising - the plugin decides whether to throw it.
 fn ffi_error(vm: &mut VM, kind: ExceptionKind, message: &str) -> FfiReturn {
     ffi_exception(vm.create_exception(kind.into(), message))
 }
@@ -213,8 +213,8 @@ fn rooted_dunder<T>(
 }
 
 /// Enter the interpreter for `call_value`/`invoke_method`: push the callee
-/// (or receiver) and arguments, dispatch, and — if the dispatch pushed a
-/// frame instead of executing natively — run that callstack region to
+/// (or receiver) and arguments, dispatch, and - if the dispatch pushed a
+/// frame instead of executing natively - run that callstack region to
 /// completion. Mirrors `invoke_and_run_function`'s exception contract,
 /// except the escaped exception is handed to the plugin instead of staying
 /// pending.
@@ -260,7 +260,7 @@ fn reenter_call(
     }
 }
 
-/// The FFI kind code of a value — one code per behavioral kind, decided by
+/// The FFI kind code of a value - one code per behavioral kind, decided by
 /// the instance backing for native-backed instances. The exhaustive matches
 /// (no wildcard) are the coverage guarantee: a new `Value` variant or
 /// `NativeClass` backing fails to compile until it is mapped here.
@@ -286,7 +286,7 @@ pub(super) fn value_kind_of(heap: &Heap, value: Value) -> u32 {
         Value::Class(_) => ValueKind::Class,
         Value::Module(_) => ValueKind::Module,
         // Bare function objects, unbound native methods, and upvalues are
-        // VM-internal — not callable via `call_value`.
+        // VM-internal - not callable via `call_value`.
         Value::Function(_) | Value::NativeMethod(_) | Value::Upvalue(_) => ValueKind::Other,
         Value::Instance(id) => match &id.to_value(heap).backing {
             None => ValueKind::Instance,
@@ -869,7 +869,7 @@ extern "C" fn cb_value_equals(ctx: *mut c_void, a: GenericValue, b: GenericValue
     // SAFETY: ctx per build_host_api.
     let vm = unsafe { vm_from_ctx(ctx) };
     let (a, b) = (from_ffi(a), from_ffi(b));
-    match rooted_dunder(vm, &[a, b], |vm| vm.compare_values(a, b)) {
+    match rooted_dunder(vm, &[a, b], |vm| vm.compare_values_eq(a, b)) {
         Ok(equal) => ffi_ok(Value::Bool(equal)),
         Err(error) => error,
     }

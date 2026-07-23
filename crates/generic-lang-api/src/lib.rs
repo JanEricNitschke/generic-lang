@@ -4,7 +4,7 @@
 //! defined in [`abi`]. Rust plugin authors use the safe layer in this crate
 //! root; other languages use the generated `include/generic.h`.
 //!
-//! This crate is versioned independently from the interpreter — it tracks ABI
+//! This crate is versioned independently from the interpreter - it tracks ABI
 //! stability for plugin authors. Build against the version matching the
 //! target interpreter ([`GENERIC_PLUGIN_ABI_VERSION`] is checked at load).
 //!
@@ -42,7 +42,7 @@ pub use host::{__invoke_plugin_fn, ArgValue, Host, Rooted, RustPluginFn};
 
 /// Value kinds returned by [`HostApi::value_kind`].
 ///
-/// Over the FFI these travel as plain `u32` — convert with `as u32` /
+/// Over the FFI these travel as plain `u32` - convert with `as u32` /
 /// [`ValueKind::from_u32`]. The host-side mapping (and the coverage test
 /// guarding that every interpreter value maps to one of these) lives in
 /// the feature-gated plugin module in the interpreter crate.
@@ -74,7 +74,7 @@ pub enum ValueKind {
     Set = 10,
     /// A range.
     Range = 11,
-    /// The `StopIteration` sentinel — what `__next__` returns when an
+    /// The `StopIteration` sentinel - what `__next__` returns when an
     /// iterator is exhausted.
     StopIteration = 12,
     /// A plain class instance (fields via `attr_get`/`attr_set`, methods
@@ -83,7 +83,7 @@ pub enum ValueKind {
     /// A class (instantiate via `call_value`).
     Class = 14,
     /// A callable function value (closure, native function, or bound
-    /// method) — use `call_value`.
+    /// method) - use `call_value`.
     Function = 15,
     /// A module.
     Module = 16,
@@ -138,8 +138,8 @@ impl ValueKind {
 /// Failed re-entering host calls hand back
 /// [`PluginError::Exception`] (the raised exception *instance*) or
 /// [`PluginError::Fatal`]; propagating them with `?` re-raises the
-/// exception with full identity — class, fields, and original stack trace
-/// — or forwards the fatal error, respectively. To throw a fresh
+/// exception with full identity - class, fields, and original stack trace
+/// or forwards the fatal error, respectively. To throw a fresh
 /// exception, use the typed constructors on [`Host`]
 /// (`host.type_error("…")`, …), which create the instance eagerly; for
 /// non-builtin classes, build the instance with
@@ -155,8 +155,8 @@ impl ValueKind {
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub enum PluginError {
-    /// An exception instance — freshly created, or caught from a
-    /// re-entering host call — to be (re-)raised.
+    /// An exception instance - freshly created, or caught from a
+    /// re-entering host call - to be (re-)raised.
     Exception(GenericValue),
     /// A fatal host error passing through. Only ever forwarded; plugins
     /// must not fabricate it.

@@ -1,7 +1,7 @@
 # The Generic Language Guide
 
 Generic is a small, dynamically-typed, class-based language with closures,
-generators, operator overloading, exceptions, and a module system — a
+generators, operator overloading, exceptions, and a module system - a
 descendant of [Lox](https://craftinginterpreters.com). Programs run on a
 bytecode VM.
 
@@ -15,19 +15,19 @@ generic --test file.gen # run its test_ functions (see Testing)
 
 ## Contents
 
-1. [Values and expressions](values.md) — variables, the built-in types and
+1. [Values and expressions](values.md) - variables, the built-in types and
    their literals, operators, truthiness.
-2. [Control flow](control-flow.md) — `if`/`unless`, `while`/`until`, `for`,
+2. [Control flow](control-flow.md) - `if`/`unless`, `while`/`until`, `for`,
    `foreach`, `switch`, `break`/`continue`, loop labels, the `?:` operator.
-3. [Functions](functions.md) — declarations, closures, function literals,
+3. [Functions](functions.md) - declarations, closures, function literals,
    decorators, generators.
-4. [Classes](classes.md) — fields, methods, inheritance, `super`, operator
+4. [Classes](classes.md) - fields, methods, inheritance, `super`, operator
    overloading, `isinstance`/`issubclass`.
-5. [Exceptions](exceptions.md) — the class hierarchy, `try`/`catch`/`else`,
+5. [Exceptions](exceptions.md) - the class hierarchy, `try`/`catch`/`else`,
    `throw`, custom exceptions.
-6. [Modules and the standard library](modules.md) — `import`, the builtin
+6. [Modules and the standard library](modules.md) - `import`, the builtin
    functions, the bundled stdlib modules, and native plugins.
-7. [Testing](testing.md) — the built-in `--test` runner and the `testing`
+7. [Testing](testing.md) - the built-in `--test` runner and the `testing`
    module.
 
 ## A quick tour

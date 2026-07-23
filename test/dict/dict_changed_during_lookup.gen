@@ -1,6 +1,6 @@
 # Artificial: a candidate `__eq__` that changes the probed bucket on every
-# outer probe — but not on the nested inserts, so it churns instead of
-# recursing — must hit the re-probe limit and raise, not spin forever.
+# outer probe - but not on the nested inserts, so it churns instead of
+# recursing - must hit the re-probe limit and raise, not spin forever.
 var d = {:};
 
 class Filler {

@@ -217,7 +217,7 @@ pub(super) fn list_contains_native(
     // or reallocate the list.
     while index < receiver.as_list(&vm.heap).items.len() {
         let element = receiver.as_list(&vm.heap).items[index];
-        if vm.compare_values(element, needle)? {
+        if vm.compare_values_eq(element, needle)? {
             return Ok(true.into());
         }
         index += 1;

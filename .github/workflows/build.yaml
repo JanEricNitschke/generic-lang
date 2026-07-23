@@ -38,7 +38,7 @@ jobs:
       uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
       with:
         components: rustfmt,clippy
-        # Leave RUSTFLAGS unset so `.cargo/config.toml` rustflags apply — cargo
+        # Leave RUSTFLAGS unset so `.cargo/config.toml` rustflags apply - cargo
         # ignores config-file rustflags whenever RUSTFLAGS is set in the env,
         # and that file carries the Windows stack-size link-arg. `-D warnings`
         # moves there too so it still applies everywhere.
@@ -73,15 +73,15 @@ jobs:
         # Normal configuration, fail on default warnings (unscoped
         # invocations lint every workspace member, including the bin crate)
         cargo clippy -- -D warnings
-        # Pedantic set — the repo is zero-warnings here too
+        # Pedantic set
         cargo clippy --all-targets -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
     - name: Check generated plugin header
-      # Regenerates the header and fails on drift — the header is purely
+      # Regenerates the header and fails on drift - the header is purely
       # cbindgen's output, nothing else.
       run: make check-plugin-header
     - name: Lint example plugins
       # clang-format + cpplint (C/C++), zig fmt (Zig), rustfmt + clippy
-      # (Rust — workspace-excluded, so the workspace-wide checks miss it).
+      # (Rust - workspace-excluded, so the workspace-wide checks miss it).
       run: make plugin-lint
     - name: Check example plugins at the oldest supported standards
       # C99 / C++11; the fixture builds cover the newest (C23 / C++23).
@@ -134,7 +134,7 @@ jobs:
       # Builds the C/C++/Zig example plugins and runs the plugin-lang suite.
       run: make plugin-lang-test
     - name: Run plugin tests under valgrind
-      # Memory errors across the dlopen/FFI boundary — one of the places miri
+      # Memory errors across the dlopen/FFI boundary - one of the places miri
       # cannot look. Uses the fixtures built by the previous steps.
       # Linux only: valgrind has no Windows port and does not support recent macOS
       if: runner.os == 'Linux'

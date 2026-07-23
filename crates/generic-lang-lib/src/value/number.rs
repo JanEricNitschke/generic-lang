@@ -385,8 +385,22 @@ impl GenericInt {
 
     pub fn is_zero(&self, heap: &Heap) -> bool {
         match self {
-            Self::Small(n) => *n == 0,
+            Self::Small(n) => n.is_zero(),
             Self::Big(n) => n.to_value(heap).is_zero(),
+        }
+    }
+
+    pub fn is_negative(&self, heap: &Heap) -> bool {
+        match self {
+            Self::Small(n) => n.is_negative(),
+            Self::Big(n) => n.to_value(heap).is_negative(),
+        }
+    }
+
+    pub fn is_positive(&self, heap: &Heap) -> bool {
+        match self {
+            Self::Small(n) => n.is_positive(),
+            Self::Big(n) => n.to_value(heap).is_positive(),
         }
     }
 

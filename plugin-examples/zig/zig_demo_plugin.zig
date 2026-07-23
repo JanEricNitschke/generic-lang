@@ -1,4 +1,4 @@
-// Tiny Zig test plugin — proves the plugin ABI is usable from Zig, consuming
+// Tiny Zig test plugin - proves the plugin ABI is usable from Zig, consuming
 // the generated `generic.h` through the build system's translate-c step
 // (see build.zig).
 // Registers under the module name `zig_demo_plugin`. Built by the Makefile
@@ -15,7 +15,7 @@ fn ok(value: c.GenericValue) c.FfiReturn {
 
 // Build an exception instance of the named builtin class and return it under
 // the EXCEPTION status. Each host call can itself fail (EXCEPTION or FATAL);
-// forward any non-OK FfiReturn unchanged, immediately — never relabel or
+// forward any non-OK FfiReturn unchanged, immediately - never relabel or
 // swallow it.
 fn throwNew(host: [*c]const c.HostApi, class_name: [*c]const u8, msg: [*c]const u8) c.FfiReturn {
     const name = c.FfiStr{ .ptr = class_name, .len = std.mem.len(class_name) };
@@ -31,7 +31,7 @@ fn throwNew(host: [*c]const c.HostApi, class_name: [*c]const u8, msg: [*c]const 
     return c.FfiReturn{ .status = c.GENERIC_FFI_STATUS_EXCEPTION, .value = exc.value };
 }
 
-// add(a, b) — integer addition.
+// add(a, b) - integer addition.
 fn add(host: [*c]const c.HostApi, args: [*c]const c.GenericValue, nargs: usize) callconv(.c) c.FfiReturn {
     _ = nargs;
     var a: i64 = 0;
@@ -42,7 +42,7 @@ fn add(host: [*c]const c.HostApi, args: [*c]const c.GenericValue, nargs: usize) 
     return ok(host.*.int_new.?(host.*.ctx, a + b));
 }
 
-// shout(s) — ASCII-uppercase a string and append '!'.
+// shout(s) - ASCII-uppercase a string and append '!'.
 fn shout(host: [*c]const c.HostApi, args: [*c]const c.GenericValue, nargs: usize) callconv(.c) c.FfiReturn {
     _ = nargs;
     var s: c.FfiStr = undefined;
@@ -62,7 +62,7 @@ fn shout(host: [*c]const c.HostApi, args: [*c]const c.GenericValue, nargs: usize
     return host.*.string_new.?(host.*.ctx, out);
 }
 
-// raise(class_name, message) — throw a fresh instance of the named builtin
+// raise(class_name, message) - throw a fresh instance of the named builtin
 // exception class. The string_get bytes are only valid until the next
 // re-entering callback, so copy both out into NUL-terminated buffers.
 fn raise(host: [*c]const c.HostApi, args: [*c]const c.GenericValue, nargs: usize) callconv(.c) c.FfiReturn {

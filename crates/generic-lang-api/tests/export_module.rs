@@ -14,7 +14,7 @@ use generic_lang_api::{
     PluginError, ValueKind,
 };
 
-/// A blob carrying `first` in its first opaque limb (the rest zeroed) — the
+/// A blob carrying `first` in its first opaque limb (the rest zeroed) - the
 /// tests build values this way to check bytes survive the FFI glue.
 fn blob(first: u64) -> GenericValue {
     GenericValue {
@@ -31,7 +31,7 @@ fn blob(first: u64) -> GenericValue {
 ///
 /// # Safety
 ///
-/// The first limb must be initialized — it is for anything from `blob` or a
+/// The first limb must be initialized - it is for anything from `blob` or a
 /// mock echoing such a value.
 unsafe fn limb0(value: GenericValue) -> u64 {
     // SAFETY: guaranteed by the caller.
@@ -438,7 +438,7 @@ fn call_exported(index: usize, args: &[GenericValue]) -> FfiReturn {
 
 #[test]
 fn multi_arity_export_runs_at_each_declared_arity() {
-    // Arity enforcement lives in the host's dispatch, not the glue — this
+    // Arity enforcement lives in the host's dispatch, not the glue - this
     // pins that the wrapper handles whichever declared argument count
     // arrives.
     let ret = call_exported(5, &[blob(40), blob(1), blob(1)]);
@@ -481,7 +481,7 @@ fn typed_error_path() {
 }
 
 /// `string_get` answering success but writing a null pointer (or not
-/// writing at all — the out-param is initialized null): a protocol
+/// writing at all - the out-param is initialized null): a protocol
 /// violation. `Host::as_str` must report "not a string" instead of
 /// building a slice from the null pointer or fabricating an empty string.
 extern "C" fn mock_string_get_null_ptr(
@@ -577,7 +577,7 @@ fn unknown_host_status_is_a_protocol_violation_exception() {
     assert_eq!(last_interned(), "host callback returned unknown status 7");
 }
 
-/// A host answering `builtin_get` with an unknown status too — the very
+/// A host answering `builtin_get` with an unknown status too - the very
 /// callback the protocol-violation path uses to build its exception. Error
 /// construction must bottom out at a nil-carrying exception instead of
 /// recursing through itself until the stack overflows.

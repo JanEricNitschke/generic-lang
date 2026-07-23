@@ -1,4 +1,4 @@
-/* Plugin ABI of the generic programming language. GENERATED — do not edit. */
+/* Plugin ABI of the generic programming language. GENERATED - do not edit. */
 
 #ifndef GENERIC_H
 #define GENERIC_H
@@ -30,7 +30,7 @@ enum GenericFfiStatus
 #endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
   /**
-   * Success — `value` is the call's result.
+   * Success - `value` is the call's result.
    */
   GENERIC_FFI_STATUS_OK = 0,
   /**
@@ -38,7 +38,7 @@ enum GenericFfiStatus
    *
    * From a host callback this is the exception generic code raised,
    * handed over with full identity: returning the same value (the safe
-   * wrapper's `?` does) re-raises exactly that exception — class,
+   * wrapper's `?` does) re-raises exactly that exception - class,
    * fields, and original stack trace intact. To throw a fresh
    * exception, create the instance with [`HostApi::exception_new`] and
    * return it under this status; a caught one can be examined with
@@ -49,7 +49,7 @@ enum GenericFfiStatus
   /**
    * A fatal host runtime error passing through the plugin.
    *
-   * Not an exception — it is uncatchable. A re-entering host
+   * Not an exception - it is uncatchable. A re-entering host
    * callback returns it when the interpreter hit a fatal error; the
    * plugin must forward it unchanged (the safe wrapper's `?` does), and
    * the host re-raises it as a fatal error when the plugin call
@@ -68,7 +68,7 @@ typedef uint32_t GenericFfiStatus;
 /**
  * Value kinds returned by [`HostApi::value_kind`].
  *
- * Over the FFI these travel as plain `u32` — convert with `as u32` /
+ * Over the FFI these travel as plain `u32` - convert with `as u32` /
  * [`ValueKind::from_u32`]. The host-side mapping (and the coverage test
  * guarding that every interpreter value maps to one of these) lives in
  * the feature-gated plugin module in the interpreter crate.
@@ -128,7 +128,7 @@ enum GenericValueKind
    */
   GENERIC_VALUE_KIND_RANGE = 11,
   /**
-   * The `StopIteration` sentinel — what `__next__` returns when an
+   * The `StopIteration` sentinel - what `__next__` returns when an
    * iterator is exhausted.
    */
   GENERIC_VALUE_KIND_STOP_ITERATION = 12,
@@ -143,7 +143,7 @@ enum GenericValueKind
   GENERIC_VALUE_KIND_CLASS = 14,
   /**
    * A callable function value (closure, native function, or bound
-   * method) — use `call_value`.
+   * method) - use `call_value`.
    */
   GENERIC_VALUE_KIND_FUNCTION = 15,
   /**
@@ -179,7 +179,7 @@ typedef uint32_t GenericValueKind;
 /**
  * An opaque generic runtime value.
  *
- * This is the host's 32-byte `Value` bit-copied — discriminant and payload
+ * This is the host's 32-byte `Value` bit-copied - discriminant and payload
  * included. Plugins must never inspect or fabricate its bytes; values are
  * opaque handles to be passed back to host callbacks. Use
  * [`HostApi::value_kind`] to ask what a value holds.
@@ -187,8 +187,8 @@ typedef uint32_t GenericValueKind;
 typedef struct GenericValue {
   /**
    * Opaque storage. The limbs are [`MaybeUninit`] because a host `Value`
-   * does not initialize all 32 bytes — small enum variants leave the
-   * rest unwritten — and bit-copying it in must not assert those bytes
+   * does not initialize all 32 bytes - small enum variants leave the
+   * rest unwritten - and bit-copying it in must not assert those bytes
    * are initialized (that would be undefined behavior). `u64` limbs give
    * the type the host `Value`'s 8-byte alignment; it renders as
    * `uint64_t opaque[4]` in C. Never inspect.
@@ -205,7 +205,7 @@ typedef struct GenericValue {
  */
 typedef struct FfiStr {
   /**
-   * Pointer to the first byte. Must be non-null in both directions — an
+   * Pointer to the first byte. Must be non-null in both directions - an
    * empty string is a non-null pointer with `len == 0` (e.g. C's `""`);
    * a null pointer is not a valid string value.
    */
@@ -239,7 +239,7 @@ typedef struct FfiReturn {
  *
  * `ctx` is an opaque pointer owned by the host; pass it as the first
  * argument to every callback. Callbacks marked **re-entering** run generic
- * bytecode, during which garbage collection may occur — see the rooting
+ * bytecode, during which garbage collection may occur - see the rooting
  * contract: across a re-entering callback, `root` every value still
  * held and re-fetch any [`FfiStr`] afterward. All other callbacks never
  * trigger collection.
@@ -247,14 +247,14 @@ typedef struct FfiReturn {
  * Return conventions, decided solely by whether the payload forces an
  * out-parameter:
  * - A payload the caller must receive as something other than a
- *   [`GenericValue`] — a raw machine scalar (`bool`, `i64`, `f64`,
- *   `usize`) or a borrowed [`FfiStr`] — cannot ride in an [`FfiReturn`]
+ *   [`GenericValue`] - a raw machine scalar (`bool`, `i64`, `f64`,
+ *   `usize`) or a borrowed [`FfiStr`] - cannot ride in an [`FfiReturn`]
  *   (whose payload is a [`GenericValue`]), so it travels through an
- *   out-parameter and the callback returns a plain `bool` — `true` on
+ *   out-parameter and the callback returns a plain `bool` - `true` on
  *   success, `false` on the sole "wrong kind" failure. These carry no
  *   exception.
- * - Everything else — payload is a [`GenericValue`], or there is no
- *   payload — returns [`FfiReturn`], carrying a real exception instance on
+ * - Everything else - payload is a [`GenericValue`], or there is no
+ *   payload - returns [`FfiReturn`], carrying a real exception instance on
  *   failure whose class and message mirror what the equivalent generic
  *   operation would throw.
  * - Infallible callbacks return their value directly.
@@ -279,7 +279,7 @@ typedef struct HostApi {
   bool (*bool_get)(void *ctx, struct GenericValue value, bool *out);
   /**
    * Read an integer into `out`; `false` if the value is not an integer
-   * or does not fit in an `i64` (big integers — fall back to
+   * or does not fit in an `i64` (big integers - fall back to
    * `value_display`).
    */
   bool (*int_get)(void *ctx, struct GenericValue value, int64_t *out);
@@ -327,7 +327,7 @@ typedef struct HostApi {
   struct FfiReturn (*builtin_get)(void *ctx, struct FfiStr name);
   /**
    * Whether `value` is an instance of `of_class` or of a subclass of it
-   * (a bool value on success) — the exact semantics of the `isinstance`
+   * (a bool value on success) - the exact semantics of the `isinstance`
    * builtin, value-type proxy classes included. `TypeError` if
    * `of_class` is not a class.
    */
@@ -394,7 +394,7 @@ typedef struct HostApi {
    * A new exception instance of `of_class` carrying `message`.
    * `TypeError` if `of_class` is not a class deriving from `Exception`
    * or the message is invalid UTF-8. Sets the message directly,
-   * bypassing the class's `__init__` — exactly like the VM's own throw;
+   * bypassing the class's `__init__` - exactly like the VM's own throw;
    * use `call_value` on the class for full construction semantics.
    * Return the instance under [`FfiStatus::Exception`] to throw it.
    */
@@ -491,7 +491,7 @@ typedef struct FunctionDesc {
   size_t arities_len;
   /**
    * The function implementation; a null pointer is rejected at load.
-   * The type is [`PluginFn`] spelled out inline — cbindgen only renders
+   * The type is [`PluginFn`] spelled out inline - cbindgen only renders
    * a nullable C function pointer for an inline `Option<fn>`, not
    * through the alias.
    */

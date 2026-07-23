@@ -72,7 +72,7 @@ pub(super) fn dict_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) ->
         // containers stay rooted through the dispatch site's copies on the
         // VM stack (`execute_native_method_call` truncates them only after
         // this native returns), but a List pair can be mutated by user
-        // `__hash__`/`__eq__` during the add, dropping its references — so
+        // `__hash__`/`__eq__` during the add, dropping its references - so
         // the key and value copies must be rooted separately below. (The `Option`
         // round-trip also ends the heap borrow before `Dict::add` needs the
         // VM mutably.)
