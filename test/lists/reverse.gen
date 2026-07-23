@@ -1,0 +1,15 @@
+var xs = [1, 2, 3];
+xs.reverse();
+print(xs == [3, 2, 1]);  # expect: true
+
+var empty = [];
+empty.reverse();
+print(len(empty) == 0);   # expect: true
+
+var single = [42];
+single.reverse();
+print(single == [42]);   # expect: true
+
+# Returns nil
+var result = [1].reverse();
+print(result);            # expect: nil
