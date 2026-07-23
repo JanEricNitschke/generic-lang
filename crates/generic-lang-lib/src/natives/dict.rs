@@ -237,7 +237,7 @@ pub(super) fn dict_get_method_native(
 ) -> VmResult<Value> {
     match Dict::get(vm, receiver, args[0])? {
         Some(value) => Ok(value),
-        None => Ok(args[1]),
+        None => Ok(args.get(1).copied().unwrap_or(Value::Nil)),
     }
 }
 
@@ -254,7 +254,7 @@ pub(super) fn dict_iter_str_native(
     _args: &[Value],
 ) -> VmResult<Value> {
     let iter = receiver.as_dict_iterator(&vm.heap);
-    let mode = iter.mode.to_string().to_string();
+    let mode = iter.mode.as_str().to_string();
 
     let dict = iter.dict;
     let dict_string = vm.value_to_string(&dict.into())?.to_value(&vm.heap);

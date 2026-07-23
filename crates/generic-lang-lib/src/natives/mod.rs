@@ -218,7 +218,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"Dict", &"keys", &[0], dict_keys_native);
     vm.define_native_method(&"Dict", &"values", &[0], dict_values_native);
     vm.define_native_method(&"Dict", &"items", &[0], dict_items_native);
-    vm.define_native_method(&"Dict", &"get", &[2], dict_get_method_native);
+    vm.define_native_method(&"Dict", &"get", &[1, 2], dict_get_method_native);
     vm.define_native_method(&"Dict", &"clear", &[0], dict_clear_native);
 
     vm.define_native_class(&"DictIterator", false);

@@ -615,9 +615,6 @@ impl VM {
     fn get_proxy_class(&self, value: Value) -> Option<ClassId> {
         match value {
             Value::String(_) => Some(get_native_class_id(&self.heap, "String")),
-            Value::Number(Number::Integer(_)) => Some(get_native_class_id(&self.heap, "Integer")),
-            Value::Number(Number::Float(_)) => Some(get_native_class_id(&self.heap, "Float")),
-            Value::Number(Number::Rational(_)) => Some(get_native_class_id(&self.heap, "Rational")),
             _ => None,
         }
     }

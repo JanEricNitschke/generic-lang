@@ -390,7 +390,7 @@ impl SetIterator {
     pub(crate) fn get_set<'a>(&self, heap: &'a Heap) -> &'a Set {
         match &self.set.to_value(heap).backing {
             Some(NativeClass::Set(set)) => set,
-            _ => unreachable!("Expected a Dict instance, got {:?}", self.set),
+            _ => unreachable!("Expected a Set instance, got {:?}", self.set),
         }
     }
 
@@ -599,7 +599,7 @@ pub enum DictIterMode {
 }
 
 impl DictIterMode {
-    pub fn to_string(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::Items => "items",
             Self::Values => "values",
@@ -635,7 +635,7 @@ impl DictIterator {
 
     #[allow(clippy::option_if_let_else)]
     fn to_string(&self, heap: &Heap) -> String {
-        let mode = self.mode.to_string();
+        let mode = self.mode.as_str();
         format!(
             "<dict_{mode} iterator of {}>",
             self.dict.to_value(heap).to_string(heap)
@@ -645,11 +645,7 @@ impl DictIterator {
 
 impl std::fmt::Display for DictIterator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mode = match self.mode {
-            DictIterMode::Items => "item",
-            DictIterMode::Values => "values",
-            DictIterMode::Keys => "keys",
-        };
+        let mode = self.mode.as_str();
         f.pad(&format!("<dict_{mode} iterator of Value>"))
     }
 }
