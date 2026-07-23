@@ -21,6 +21,7 @@ use crate::{
             string_endswith_native, string_removeprefix_native, string_removesuffix_native,
             string_split_native, string_startswith_native, string_strip_native,
         },
+        tuple::tuple_reversed_native,
     },
     vm::VM,
 };
@@ -160,6 +161,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"Tuple", &"__bool__", &[0], tuple_bool_native);
     vm.define_native_method(&"Tuple", &"contains", &[1], tuple_contains_native);
     vm.define_native_method(&"Tuple", &"__str__", &[0], tuple_str_native);
+    vm.define_native_method(&"Tuple", &"reversed", &[0], tuple_reversed_native);
 
     vm.define_native_class(&"TupleIterator", false);
     vm.define_native_method(&"TupleIterator", &"__next__", &[0], tuple_iter_next_native);
