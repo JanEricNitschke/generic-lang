@@ -1,4 +1,4 @@
-/* Tiny C test plugin — proves the plugin ABI is usable from plain C against
+/* Tiny C test plugin - proves the plugin ABI is usable from plain C against
  * the generated `generic.h`, with no dependency on the Rust API crate.
  *
  * Registers under the module name `c_demo_plugin`. Built by the Makefile
@@ -15,9 +15,9 @@
 #include "generic.h"
 
 /* Build an exception instance of the named builtin class and return it under
- * the EXCEPTION status — the C analogue of `host.type_error(..)` in Rust.
+ * the EXCEPTION status - the C analogue of `host.type_error(..)` in Rust.
  * Each host call can itself fail (EXCEPTION or FATAL); forward any non-OK
- * FfiReturn unchanged, immediately — never relabel or swallow it. */
+ * FfiReturn unchanged, immediately - never relabel or swallow it. */
 static FfiReturn throw_new(const HostApi *host, const char *class_name, const char *msg) {
     FfiStr name = {.ptr = (const uint8_t *)class_name, .len = strlen(class_name)};
     FfiStr message = {.ptr = (const uint8_t *)msg, .len = strlen(msg)};
@@ -38,7 +38,7 @@ static FfiReturn ok(GenericValue value) {
     return ret;
 }
 
-/* add(a, b) — integer addition. */
+/* add(a, b) - integer addition. */
 static FfiReturn add(const HostApi *host, const GenericValue *args, size_t nargs) {
     (void)nargs; /* arity-checked by the host */
     int64_t a = 0, b = 0;
@@ -48,7 +48,7 @@ static FfiReturn add(const HostApi *host, const GenericValue *args, size_t nargs
     return ok(host->int_new(host->ctx, a + b));
 }
 
-/* shout(s) — ASCII-uppercase a string and append '!'. Demonstrates the string
+/* shout(s) - ASCII-uppercase a string and append '!'. Demonstrates the string
  * round-trip: borrow the host bytes, build a new buffer, intern it. */
 static FfiReturn shout(const HostApi *host, const GenericValue *args, size_t nargs) {
     (void)nargs;
@@ -73,7 +73,7 @@ static FfiReturn shout(const HostApi *host, const GenericValue *args, size_t nar
     return ok(result.value);
 }
 
-/* raise(class_name, message) — throw a fresh instance of the named builtin
+/* raise(class_name, message) - throw a fresh instance of the named builtin
  * exception class. Exercises the throw path for any class from generic code. */
 static FfiReturn raise(const HostApi *host, const GenericValue *args, size_t nargs) {
     (void)nargs;
@@ -103,7 +103,7 @@ static FfiReturn raise(const HostApi *host, const GenericValue *args, size_t nar
     return ret;
 }
 
-/* empty_string() — build "" inside the plugin: a valid empty FfiStr is a
+/* empty_string() - build "" inside the plugin: a valid empty FfiStr is a
  * non-null pointer with len 0 (a null pointer is not a valid string). */
 static FfiReturn empty_string(const HostApi *host, const GenericValue *args, size_t nargs) {
     (void)args;

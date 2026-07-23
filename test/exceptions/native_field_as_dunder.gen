@@ -1,6 +1,6 @@
 # Dunder dispatch can land on an instance *field* instead of a class
 # method. A field holding a native callable completes without pushing a
-# frame — the VM must not run the caller's bytecode in its place.
+# frame - the VM must not run the caller's bytecode in its place.
 class Foo {}
 
 var f = Foo();

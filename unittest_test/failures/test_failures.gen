@@ -1,5 +1,5 @@
 # FAIL-outcome fixture: failing tests without any ERROR outcome must still
-# fail the run — the runner validates the exit code (1) derived from the
+# fail the run - the runner validates the exit code (1) derived from the
 # summary line.
 # expect: Running tests in unittest_test/failures/test_failures.gen...
 # expect:

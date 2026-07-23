@@ -14,12 +14,18 @@ mod template;
 mod tuple;
 mod value_constructors;
 
-use crate::vm::VM;
+use crate::{
+    natives::string::{
+        string_endswith_native, string_removeprefix_native, string_removesuffix_native,
+        string_split_native, string_startswith_native, string_strip_native,
+    },
+    vm::VM,
+};
 
 use string::{
     string_bytes_native, string_chars_native, string_clusters_native, string_contains_native,
     string_find_native, string_get_byte_native, string_get_char_native, string_get_cluster_native,
-    string_init_native, string_replace_native,
+    string_init_native, string_join_native, string_replace_native,
 };
 
 use list::{
@@ -244,6 +250,13 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"String", &"get_byte", &[1], string_get_byte_native);
     vm.define_native_method(&"String", &"get_char", &[1], string_get_char_native);
     vm.define_native_method(&"String", &"get_cluster", &[1], string_get_cluster_native);
+    vm.define_native_method(&"String", &"split", &[0, 1], string_split_native);
+    vm.define_native_method(&"String", &"join", &[1], string_join_native);
+    vm.define_native_method(&"String", &"strip", &[0], string_strip_native);
+    vm.define_native_method(&"String", &"startswith", &[1], string_startswith_native);
+    vm.define_native_method(&"String", &"endswith", &[1], string_endswith_native);
+    vm.define_native_method(&"String", &"removeprefix", &[1], string_removeprefix_native);
+    vm.define_native_method(&"String", &"removesuffix", &[1], string_removesuffix_native);
 
     vm.define_native_class(&"Integer", true);
     vm.define_native_method(&"Integer", &"__init__", &[1], integer_init_native);

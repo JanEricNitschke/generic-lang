@@ -89,7 +89,7 @@ for 'outer (var i = 0; i < 3; i = i + 1) {
 ## `switch`
 
 `switch` matches an expression against `case` values. Cases do **not** fall
-through — each runs only its own statements — and an optional `default` must
+through - each runs only its own statements - and an optional `default` must
 come last.
 
 ```text

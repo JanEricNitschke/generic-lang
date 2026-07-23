@@ -1,6 +1,6 @@
 # Closing a generator from inside its own body would only mark the
 # Executing placeholder, which the native wrapper then overwrites when it
-# puts the real generator back — silently undoing the close. It must throw
+# puts the real generator back - silently undoing the close. It must throw
 # a catchable ValueError instead.
 var g = nil;
 

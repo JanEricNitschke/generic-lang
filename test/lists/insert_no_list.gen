@@ -1,1 +1,1 @@
-3.insert(2, 3); # expect runtime error: TypeError: Only instances have methods.
+true.insert(2, 3); # expect runtime error: TypeError: Only instances have methods.

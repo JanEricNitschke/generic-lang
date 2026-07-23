@@ -61,9 +61,8 @@ pub(super) fn exception_stack_trace_native(
 }
 
 /// Get the string representation of the Exception: its message, or an empty
-/// string if it has none — like Python's `BaseException.__str__`. The class
-/// name and stack trace are added by the fatal-error display in `unwind`,
-/// not by `__str__`.
+/// string if it has none. The class name and stack trace are added by
+/// the fatal-error display in `unwind`, not by `__str__`.
 pub(super) fn exception_str_native(
     vm: &mut VM,
     receiver: &Value,

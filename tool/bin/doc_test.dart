@@ -77,7 +77,7 @@ void main(List<String> arguments) {
   }
 
   if (checked == 0) {
-    // Zero samples means the docs moved or the fence extraction broke —
+    // Zero samples means the docs moved or the fence extraction broke -
     // either way the suite verified nothing, which must not look like a pass.
     print("No documentation samples found in ${options['docs']} "
         "(scanned ${files.length} markdown files).");

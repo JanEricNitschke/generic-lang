@@ -4,8 +4,8 @@
 
 ## Declarations
 
-Functions are declared with `fun`. Parameters are fixed-arity — calling with
-the wrong number of arguments is an error — and there are no default
+Functions are declared with `fun`. Parameters are fixed-arity - calling with
+the wrong number of arguments is an error - and there are no default
 parameters or varargs for user functions. `return` without a value returns
 `nil`.
 
@@ -44,7 +44,7 @@ print(add(2, 3));    # 5
 print(square(4));    # 16
 ```
 
-Lambdas are ordinary values — pass them to higher-order functions, store them
+Lambdas are ordinary values - pass them to higher-order functions, store them
 in variables, or use them as decorators.
 
 ## Decorators
@@ -62,7 +62,7 @@ fun double(f) {
 @double
 fun sum(a, b) { return a + b; }
 
-print(sum(3, 4));   # 14  — (3 + 4) * 2
+print(sum(3, 4));   # 14  - (3 + 4) * 2
 ```
 
 ```text
@@ -76,7 +76,7 @@ fun inc_sum(a, b) { return a + b; }
 ## Generators
 
 A generator is declared with `gen` and produces values lazily with `yield`.
-Calling it returns a generator object, which is itself an iterator — drive it
+Calling it returns a generator object, which is itself an iterator - drive it
 with `foreach`, or manually with `next(...)`.
 
 ```generic
@@ -107,6 +107,6 @@ print(g.send(nil));   # 1
 ```
 
 Any class can be made iterable by implementing the iterator protocol
-(`__iter__` / `__next__`) — see [Classes](classes.md#operator-overloading).
+(`__iter__` / `__next__`) - see [Classes](classes.md#operator-overloading).
 
 Next: [Classes →](classes.md)

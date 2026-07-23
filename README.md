@@ -5,9 +5,9 @@ the documentation.
 
 ## Documentation
 
-- **[Language guide](docs/language/README.md)** — syntax, types, classes, exceptions, modules, the standard library, and the built-in unit-test framework, for people writing generic programs.
-- **[Plugin authoring guide](docs/plugin-authors.md)** — write native modules (Rust, C, C++, Zig) loaded with a plain `import`. API reference: [`generic-lang-api` on docs.rs](https://docs.rs/generic-lang-api).
-- **[Architecture](docs/ARCHITECTURE.md)** — internals for contributors: the scanner → compiler → bytecode → VM pipeline, the value/heap/GC model, the exception model, and the load-bearing invariants.
+- **[Language guide](docs/language/README.md)** - syntax, types, classes, exceptions, modules, the standard library, and the built-in unit-test framework, for people writing generic programs.
+- **[Plugin authoring guide](docs/plugin-authors.md)** - write native modules (Rust, C, C++, Zig) loaded with a plain `import`. API reference: [`generic-lang-api` on docs.rs](https://docs.rs/generic-lang-api).
+- **[Architecture](docs/ARCHITECTURE.md)** - internals for contributors: the scanner → compiler → bytecode → VM pipeline, the value/heap/GC model, the exception model, and the load-bearing invariants.
 
 The workspace is three crates: `generic-lang` (the `generic` binary), `generic-lang-lib` (the interpreter as a library), and `generic-lang-api` (the plugin ABI/authoring API).
 
@@ -92,7 +92,7 @@ make test
 
 ## Native plugins
 
-Generic programs can load native modules — shared libraries (`.so`/`.dylib`/`.dll`) — with a normal `import`:
+Generic programs can load native modules - shared libraries (`.so`/`.dylib`/`.dll`) - with a normal `import`:
 
 ```generic
 import "demo";

@@ -141,7 +141,7 @@ impl VM {
     ///
     /// `f` must be stack-neutral: it may push and pop while it runs (any
     /// interpreter re-entry does), but must return with the stack at the
-    /// depth it was called with — the rooted values are addressed by index.
+    /// depth it was called with - the rooted values are addressed by index.
     ///
     /// On error the values are left on the stack below the pending
     /// exception; the eventual handler resolution truncates them.
@@ -164,7 +164,7 @@ impl VM {
     }
 
     /// Compare two values for equality, with support for custom __eq__ methods.
-    pub(crate) fn compare_values(&mut self, left: Value, right: Value) -> VmResult<bool> {
+    pub(crate) fn compare_values_eq(&mut self, left: Value, right: Value) -> VmResult<bool> {
         if let Some(equality_result) = self.invoke_method_by_name(&[left, right], "__eq__")? {
             if let Value::Bool(result) = equality_result {
                 Ok(result)
@@ -184,7 +184,41 @@ impl VM {
         }
     }
 
-    /// Bucket hash for a numeric value — used both when a `Number` is a key
+    /// Compare two values for <, with support for custom __lt__ methods.
+    #[expect(dead_code)]
+    pub(crate) fn compare_values_lt(&mut self, left: Value, right: Value) -> VmResult<bool> {
+        if let Some(lt_result) = self.invoke_method_by_name(&[left, right], "__lt__")? {
+            if let Value::Bool(result) = lt_result {
+                Ok(result)
+            } else {
+                Err(self
+                    .throw(
+                        TypeError,
+                        &format!(
+                            "`__lt__` must return a boolean, got: {}",
+                            lt_result.to_string(&self.heap)
+                        ),
+                    )
+                    .unwrap_err())
+            }
+        } else {
+            match (&left, &right) {
+                (Value::Number(a), Value::Number(b)) => Ok(a.lt(b, &self.heap)),
+                _ => Err(self
+                    .throw(
+                        TypeError,
+                        &format!(
+                            "Operands must be numbers or support `__lt__`. Got: [{}, {}]",
+                            left.to_string(&self.heap),
+                            right.to_string(&self.heap)
+                        ),
+                    )
+                    .unwrap_err()),
+            }
+        }
+    }
+
+    /// Bucket hash for a numeric value - used both when a `Number` is a key
     /// directly and for the integer a user `__hash__` returns, so equal numbers
     /// (`5`, a big-integer-typed `5`, `5.0`, and an instance hashing as `5`)
     /// share a bucket. Integers hash by their `BigInt` value, so the `Small`

@@ -41,7 +41,7 @@ pub struct NativeFunction {
         )]
     pub(crate) fun: NativeFunctionImpl,
 
-    /// The external function this native wraps, if it is a plugin export —
+    /// The external function this native wraps, if it is a plugin export -
     /// `fun` is then the plugin trampoline, which reads this field back off
     /// the callee (see `src/vm/plugins/trampolines.rs`).
     #[cfg(feature = "plugins")]
@@ -292,7 +292,7 @@ impl Set {
     /// call: the probe re-enters the interpreter through
     /// `__hash__`/`__eq__`, which can allocate and collect.
     ///
-    /// GC-safety: see [`Dict::add`] — the set is never taken out of the
+    /// GC-safety: see [`Dict::add`] - the set is never taken out of the
     /// heap, and the table is never borrowed while the interpreter runs.
     pub(crate) fn add(vm: &mut VM, receiver: &Value, item: Value) -> VmResult {
         let hash = vm.compute_hash(item)?;
@@ -399,15 +399,15 @@ impl Dict {
     ///
     /// GC-safety: the dict is never taken out of the heap. `__hash__`/`__eq__`
     /// re-enter the interpreter, which can trigger a GC (which must be able
-    /// to see the dict's contents — they may not be rooted anywhere else) and
+    /// to see the dict's contents - they may not be rooted anywhere else) and
     /// can even mutate this very dict. So all interpreter re-entry happens
     /// while the dict rests in the heap, and the table is only borrowed in
     /// between for phases that cannot re-enter: hash the key, snapshot the
     /// same-hash candidates, probe them with `__eq__`, then mutate with pure
     /// closures only. The matched entry is re-located by identity (`Value`
-    /// equality on the exact stored key, not `__eq__` — a reentrant dunder
+    /// equality on the exact stored key, not `__eq__` - a reentrant dunder
     /// may have mutated the dict in the meantime), and rebucketing re-derives
-    /// hashes from the hash stored in each entry — `__hash__`/`__eq__` never
+    /// hashes from the hash stored in each entry - `__hash__`/`__eq__` never
     /// run while the table is borrowed.
     pub(crate) fn add(vm: &mut VM, receiver: &Value, key: Value, value: Value) -> VmResult {
         let hash = vm.compute_hash(key)?;
@@ -486,11 +486,11 @@ impl Dict {
     }
 }
 
-/// Find the first of `candidates` that compares equal to `needle` — the
+/// Find the first of `candidates` that compares equal to `needle` - the
 /// shared `__eq__` probe loop behind [`Set::probe`] and [`Dict::probe`].
 ///
 /// GC safety: the candidates are a plain `TinyVec` snapshot of a container's
-/// same-hash entries — not a GC root — and `__eq__` re-enters the
+/// same-hash entries - not a GC root - and `__eq__` re-enters the
 /// interpreter: it can remove a sibling candidate from the container, drop
 /// its last external reference, and trigger a GC that sweeps the value while
 /// it still sits in the snapshot. So the snapshot is rooted on the VM stack
@@ -509,7 +509,7 @@ fn probe_candidates(
     let end = vm.stack.len();
     for index in start..end {
         let candidate = vm.stack[index];
-        if vm.compare_values(candidate, needle)? {
+        if vm.compare_values_eq(candidate, needle)? {
             vm.stack.truncate(start);
             return Ok(Some(candidate));
         }
@@ -757,12 +757,12 @@ pub enum GeneratorState {
     Suspended,
     /// Started: currently executing, or parked at a `yield` between resumes.
     /// Note that a generator waiting at a `yield` is `Running`, not
-    /// `Suspended` — `Suspended` strictly means "never started".
+    /// `Suspended` - `Suspended` strictly means "never started".
     Running,
     /// Only ever observed on the placeholder a native wrapper leaves in the
     /// heap slot while the real generator (taken out of the heap) executes.
-    /// Reaching it means a generator is resuming itself — directly or
-    /// through mutual resumption — which throws instead of re-running the
+    /// Reaching it means a generator is resuming itself - directly or
+    /// through mutual resumption - which throws instead of re-running the
     /// placeholder's empty frame.
     Executing,
     /// Finished: returned, threw out, or was closed. Resuming a completed
@@ -829,7 +829,7 @@ impl Generator {
     /// own structures: the saved callframe is rebased to the current stack
     /// top and pushed onto the callstack, the saved value slice is appended
     /// to the VM stack, and the saved exception handlers are spliced onto
-    /// the VM handler stack. `f` then executes bytecode — `VM::run_function`
+    /// the VM handler stack. `f` then executes bytecode - `VM::run_function`
     /// for `send`/`next`, or a closure that first throws for [`Self::raise`].
     ///
     /// `f`'s result is interpreted as:
@@ -838,7 +838,7 @@ impl Generator {
     ///   is the generator's own popped frame and the yielded value is on the
     ///   stack top; `StopIteration` marks the generator `Completed`.
     /// - `Err(..)`: a runtime error, or an exception escaping the generator
-    ///   (including one raised into it and caught outside — see
+    ///   (including one raised into it and caught outside - see
     ///   [`Self::raise`]). The generator is marked `Completed` and the error
     ///   propagates.
     /// - `Ok(None)` is impossible: the run loops only exit a region through
@@ -847,7 +847,7 @@ impl Generator {
     ///
     /// On suspension the inverse move runs: the returned frame, the stack
     /// slice above its base, and all handlers registered above the remaining
-    /// callstack are drained back into the generator for the next resume —
+    /// callstack are drained back into the generator for the next resume -
     /// the handlers rebased to their suspended (generator-relative) form so
     /// they survive being resumed at a different depth.
     ///
@@ -890,7 +890,7 @@ impl Generator {
                 // A pending exception escaped the generator (or a fatal
                 // error occurred). No cleanup happens here: the re-planted
                 // generator frame and the spliced stack values stay on the
-                // VM — still GC-rooted — until the caller's dispatch loop
+                // VM - still GC-rooted - until the caller's dispatch loop
                 // resolves the pending exception and its handler truncation
                 // removes them (or the program aborts). That is sound
                 // because the generator is `Completed` (its saved state is
@@ -944,8 +944,8 @@ impl Generator {
     ///
     /// The instance is built INSIDE the resumed generator context, so both
     /// the exception itself and any error thrown by its `__init__` are
-    /// delivered at the suspension point — the stack trace shows the
-    /// generator frame — and then:
+    /// delivered at the suspension point - the stack trace shows the
+    /// generator frame - and then:
     /// - Caught by a `try` inside the generator: the generator keeps running
     ///   to its next `yield`/`return`, indistinguishable from a normal resume.
     /// - Caught outside (or nowhere): the pending exception escapes; the
@@ -967,7 +967,7 @@ impl Generator {
                     vm.raise_pending_from_stack()
                 }
                 // A throwing `__init__`: the constructor's exception is
-                // already pending on the stack — deliver it at the
+                // already pending on the stack - deliver it at the
                 // suspension point in place of the intended one.
                 err @ Err(VmErrorKind::Exception(_)) => err.map(|_| None),
                 // Fatal.

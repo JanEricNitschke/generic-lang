@@ -19,8 +19,8 @@ other tests; the process exits non-zero if any test failed.
 
 Directory mode recurses through subdirectories and picks up only files
 whose names **start with `test_`** (`test_math.gen` is discovered,
-`math_test.gen` is not). Each file runs as a normal script first — its
-top-level code executes — and then its tests run, with a per-file summary
+`math_test.gen` is not). Each file runs as a normal script first - its
+top-level code executes - and then its tests run, with a per-file summary
 and an overall summary at the end.
 
 ```generic
@@ -34,7 +34,7 @@ fun test_truth() {
     assert(1 + 1 == 2);           # the builtin assert also works
 }
 
-fun helper() { return 1; }        # not a test — name lacks the test_ prefix
+fun helper() { return 1; }        # not a test - name lacks the test_ prefix
 ```
 
 ```text
@@ -54,7 +54,7 @@ All tests passed! ✓
 
 ## Failures and errors
 
-A test that throws — a failed assertion or any other uncaught exception —
+A test that throws - a failed assertion or any other uncaught exception -
 is reported as `FAIL`, and the exception's traceback is printed as it
 occurs, just above the `FAIL` line. `ERROR` means the function could not be
 run as a test at all: **test functions must take no parameters** (a `test_`
@@ -166,7 +166,7 @@ A complete suite exercising every assertion lives at
 
 ### Custom assertions
 
-Assertion helpers are ordinary functions — throw `AssertionError` yourself
+Assertion helpers are ordinary functions - throw `AssertionError` yourself
 for anything the module does not cover:
 
 ```generic

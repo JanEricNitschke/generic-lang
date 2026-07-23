@@ -4,7 +4,7 @@
 //! is [`plugin_trampoline`] and whose `plugin_fn` field holds the real
 //! `extern "C"` pointer. The trampoline recovers that pointer from the
 //! callee itself, which the dispatch site keeps on the VM stack directly
-//! below the copied arguments — so `NativeFunctionImpl`, the dispatch
+//! below the copied arguments - so `NativeFunctionImpl`, the dispatch
 //! sites, and the number of loadable plugin functions are all unconstrained.
 
 use generic_lang_api::{FfiReturn, FfiStatus, GenericValue, PluginFn};
@@ -21,7 +21,7 @@ use crate::vm::errors::{RuntimeErrorKind, VmResult};
 ///
 /// Relies on the dispatch-site layout: `execute_native_function_call`
 /// copies the arguments off the stack and leaves the callee at
-/// `stack[len - argc - 1]` until its post-call truncate — every path that
+/// `stack[len - argc - 1]` until its post-call truncate - every path that
 /// reaches it (`OP_CALL`, both `invoke` arms, the plugin `call_value`
 /// callback) places the callee in that slot first.
 pub(super) fn plugin_trampoline(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
@@ -45,7 +45,7 @@ pub(super) fn plugin_trampoline(vm: &mut VM, args: &[Value]) -> VmResult<Value> 
 /// [`GenericValue`]. The returned [`FfiReturn`] maps to the native calling
 /// convention:
 /// - [`FfiStatus::Ok`] → the value (rooted by the dispatch site's push).
-/// - [`FfiStatus::Exception`] → `value` is the exception *instance* to raise —
+/// - [`FfiStatus::Exception`] → `value` is the exception *instance* to raise -
 ///   either created by the plugin via `exception_new` or one it caught from
 ///   a re-entering callback and rethrows, which preserves its class,
 ///   fields, and original stack trace.
@@ -70,7 +70,7 @@ pub(super) fn call_plugin(
             vm.stack.push(from_ffi(ret.value));
             // Validates the value (anything but an instance of an Exception
             // subclass becomes a TypeError) and attaches a stack trace only
-            // if it has none — a rethrown exception keeps its original one.
+            // if it has none - a rethrown exception keeps its original one.
             Err(vm
                 .raise_pending_from_stack()
                 .expect_err("raising is never a success"))

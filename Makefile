@@ -30,7 +30,7 @@ generate-plugin-header:
 		crates/generic-lang-api
 
 # Regenerate the header and verify the committed copy matches. The header is
-# purely cbindgen's output — nothing else is checked or linted here; whether
+# purely cbindgen's output - nothing else is checked or linted here; whether
 # it compiles is covered by building the example plugins against it.
 .PHONY: check-plugin-header
 check-plugin-header: generate-plugin-header
@@ -58,7 +58,7 @@ docs-test: $(DEBUG_BIN) setup-dart plugin-test-fixture
 
 # C/C++ drivers for the plugin fixtures. make's builtin default for CXX is
 # g++; use the platform driver instead. On Windows there is no `cc`/`c++`
-# driver — Zig (required for the Zig fixture anyway) doubles as the C/C++
+# driver - Zig (required for the Zig fixture anyway) doubles as the C/C++
 # compiler. Override on the command line if needed (make ... CC=... CXX=...).
 # All recipes assume an sh-compatible shell (on Windows: Git Bash / MSYS).
 CXX = c++
@@ -105,7 +105,7 @@ ZIG_OUT_LIB := $(if $(filter Windows_NT,$(OS)),bin/zig_demo_plugin.dll,lib/libzi
 # loader-path fixtures) from plugin-examples/ into test/plugin/lang/, next to
 # their `.gen` tests. Requires the C/C++/Zig toolchains; run via
 # `make plugin-lang-test`, which is separate from the normal suite.
-# The demo plugins build with the full warning set as errors — they are
+# The demo plugins build with the full warning set as errors - they are
 # showcase code. The bad/ fixtures are deliberately wrong (wrong_abi.c uses a
 # zero-length array, a GNU extension) and build without -Werror/-pedantic.
 .PHONY: plugin-lang-fixture
@@ -138,10 +138,10 @@ plugin-bad-fixture:
 plugin-lang-test: $(DEBUG_BIN) plugin-lang-fixture
 	dart tool/bin/test.dart plugin-lang --interpreter ./$(DEBUG_BIN)
 
-# The example plugins must compile at the oldest standards we support — C99
+# The example plugins must compile at the oldest standards we support - C99
 # (designated initializers, // comments, <stdint.h>/<stdbool.h>) and C++11
 # (the lambda-based `guarded` exception wall; the header alone is fine as
-# C++03) — as well as at the newest published ones, which the fixture builds
+# C++03) - as well as at the newest published ones, which the fixture builds
 # above use. The oldest-standard checks drop -pedantic: the header's FATAL
 # status value exceeds `int`, which only became standard C in C23.
 .PHONY: plugin-std-check
@@ -166,14 +166,14 @@ plugin-lint:
 
 # Run every plugin `.gen` test with an AddressSanitizer-instrumented host and
 # Rust plugin, plus sanitized C/C++ plugins (rust nightly for -Zsanitizer;
-# the Zig plugin is loaded uninstrumented — Zig has no ASan link option, and
+# the Zig plugin is loaded uninstrumented - Zig has no ASan link option, and
 # ReleaseSafe carries its own checks). Catches memory errors and UB across
 # the dlopen/FFI boundary that miri cannot see. Leak detection is off: the
 # VM does not tear down its heap at exit.
 #
 # The plugins get ASan only on Linux (C/C++ built with clang): instrumented
 # shared libraries leave the __asan_* symbols undefined and resolve them at
-# dlopen from the host executable's statically-linked runtime — which is
+# dlopen from the host executable's statically-linked runtime - which is
 # only visible if the host is linked with --export-dynamic.
 # macOS ships only a dynamic ASan runtime for dylibs, which cannot be
 # dlopen'ed into a statically-sanitized host ("loaded too late"), so there

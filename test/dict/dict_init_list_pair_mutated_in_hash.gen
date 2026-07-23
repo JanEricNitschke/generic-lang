@@ -2,7 +2,7 @@
 # `Dict(pair)` below builds a one-entry dict from a single List pair. The
 # constructor copies key and value out of the pair before re-entering the
 # interpreter; a List pair (unlike a Tuple) can be mutated by the key's
-# `__hash__`/`__eq__`, dropping the pair's own references — the copies must
+# `__hash__`/`__eq__`, dropping the pair's own references - the copies must
 # be rooted separately or the value is collected mid-init.
 # Relies on stress_gc to collect while the pair no longer holds the value.
 var armed = true;

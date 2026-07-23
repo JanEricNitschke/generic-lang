@@ -1,7 +1,7 @@
 //! Plugin discovery and loading: import fallback arm 2.
 //!
 //! Import resolution tries `<dir>/{<name>,lib<name>}.<dylib-ext>` next to
-//! the resolved import path, directly after the user-file arm — so a plugin
+//! the resolved import path, directly after the user-file arm - so a plugin
 //! deliberately shadows stdlib modules of the same name. A loaded library
 //! lives as long as the VM (its heap `NativeFunction`s hold `extern "C"`
 //! pointers into it), and re-importing the same path rebuilds the module
@@ -22,7 +22,7 @@ use crate::vm::ExceptionKind::ImportError;
 use crate::vm::VM;
 use crate::vm::errors::VmResult;
 
-/// One export of a loaded plugin: name, arity slice (leaked once at load —
+/// One export of a loaded plugin: name, arity slice (leaked once at load -
 /// bounded, plugins never unload), and the `extern "C"` function pointer.
 type PluginExport = (StringId, &'static [u8], PluginFn);
 
@@ -30,7 +30,7 @@ type PluginExport = (StringId, &'static [u8], PluginFn);
 /// lifetime) and the per-path export cache.
 #[derive(Default)]
 pub struct PluginState {
-    /// Never dropped while the VM lives — unloading would dangle the
+    /// Never dropped while the VM lives - unloading would dangle the
     /// `plugin_fn` pointers held by heap natives and the leaked descriptor
     /// memory.
     libraries: Vec<Library>,
@@ -47,7 +47,7 @@ impl VM {
     /// library exists next to the resolved import path.
     ///
     /// Returns `None` if no plugin candidate file exists (the chain falls
-    /// through to the stdlib arms); `Some(result)` if one does — where
+    /// through to the stdlib arms); `Some(result)` if one does - where
     /// loading errors (bad init symbol, ABI mismatch, malformed exports)
     /// are thrown `ImportError`s.
     pub(crate) fn try_import_plugin(
@@ -62,7 +62,7 @@ impl VM {
         // Canonicalize the cache key so different spellings of the same
         // file (relative vs. absolute, `./` prefixes, symlinks) share one
         // entry and one loaded library. The candidate was just found on
-        // disk, so this only fails on races — fall back to the raw path.
+        // disk, so this only fails on races - fall back to the raw path.
         let path = path.canonicalize().unwrap_or(path);
 
         // Failed loads are deliberately not cached.
@@ -106,7 +106,7 @@ impl VM {
                 .map_or_else(|| error.to_string(), |source| format!("{error}: {source}"))
         }
 
-        // SAFETY: loading a shared library runs its initializers — this is
+        // SAFETY: loading a shared library runs its initializers - this is
         // the trust boundary of the plugin system (plugins are trusted
         // native code).
         let library = match unsafe { Library::new(path) } {
@@ -168,7 +168,7 @@ impl VM {
         };
 
         // First pass: validate (and borrow) every export before interning
-        // or leaking anything — a plugin rejected halfway through the table
+        // or leaking anything - a plugin rejected halfway through the table
         // must not leak the per-function arity allocations. Inside the
         // closure `import_error!`'s return produces the `Err` element that
         // short-circuits the collect.
@@ -210,8 +210,8 @@ impl VM {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        // Second pass: the whole table validated — now intern and leak.
-        // Leaked once per function at load time — bounded, since plugins
+        // Second pass: the whole table validated - now intern and leak.
+        // Leaked once per function at load time - bounded, since plugins
         // are cached per canonical path and never unloaded.
         let exports: Vec<PluginExport> = validated
             .into_iter()

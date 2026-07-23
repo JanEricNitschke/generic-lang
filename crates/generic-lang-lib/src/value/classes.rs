@@ -78,7 +78,7 @@ pub fn is_exception_subclass(heap: &Heap, class_id: ClassId) -> bool {
     is_subclass_of(heap, class_id, get_native_class_id(heap, "Exception"))
 }
 
-/// Whether `value` is an instance of `class_id` or of a subclass of it —
+/// Whether `value` is an instance of `class_id` or of a subclass of it -
 /// the semantics of the `isinstance` builtin. Value types match their
 /// proxy classes exactly (`Bool`, `String`, `Integer`, `Float`,
 /// `Rational`); everything else that is not an instance is `false`.

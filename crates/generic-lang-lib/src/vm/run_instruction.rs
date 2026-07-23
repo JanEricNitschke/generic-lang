@@ -151,7 +151,7 @@ macro_rules! run_instruction {
             // Top most is right operand, second is left.
             OpCode::Add => $self.add(),
             OpCode::Subtract => binary_op!($self, sub, "__sub__", false, mut_heap),
-            OpCode::Multiply => binary_op!($self, mul, "__mul__", false, mut_heap),
+            OpCode::Multiply => $self.mul(),
             OpCode::Divide => binary_op!($self, div, "__div__", false, mut_heap),
             OpCode::BitXor => binary_op!($self, bitxor, "__bitxor__", true, mut_heap),
             OpCode::BitAnd => binary_op!($self, bitand, "__bitand__", true, mut_heap),

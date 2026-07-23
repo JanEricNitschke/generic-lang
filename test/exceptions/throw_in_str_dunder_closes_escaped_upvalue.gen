@@ -1,7 +1,7 @@
 # A throw escaping a __str__ invoked by a native (print) crosses the
 # invoke_and_run_function boundary: its Err-arm cleanup truncates the
 # callee's frames and stack, and must close the upvalue over the dunder's
-# local that a closure captured and stored in a global — the closure must
+# local that a closure captured and stored in a global - the closure must
 # keep seeing the captured value after the exception is caught upstream.
 var holder;
 

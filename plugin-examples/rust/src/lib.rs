@@ -1,4 +1,4 @@
-//! Rust test-plugin fixture — the primary end-to-end exercise of the generic
+//! Rust test-plugin fixture - the primary end-to-end exercise of the generic
 //! plugin ABI. Built by the Makefile `plugin-test-fixture` step and copied to
 //! `test/plugin/rust/rust_demo_plugin.<ext>`, where the `.gen` tests import it
 //! as `rust_demo_plugin`.
@@ -21,7 +21,7 @@ use generic_lang_api::{ArgValue, GenericValue, Host, PluginError};
 
 // --- happy paths ---------------------------------------------------------
 
-/// `add(a, b)` — numeric addition over the int/float mixes. Demonstrates
+/// `add(a, b)` - numeric addition over the int/float mixes. Demonstrates
 /// decoding arguments and returning constructed values.
 fn add(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
     match (host.decode(args[0]), host.decode(args[1])) {
@@ -33,7 +33,7 @@ fn add(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginErr
     }
 }
 
-/// `shout(s)` — uppercase a string and append `!`. Demonstrates borrowing a
+/// `shout(s)` - uppercase a string and append `!`. Demonstrates borrowing a
 /// host string and interning a new one.
 fn shout(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
     let Some(s) = host.as_str(args[0]) else {
@@ -43,7 +43,7 @@ fn shout(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginE
     Ok(host.make_str(&loud))
 }
 
-/// `sum(list)` — sum a list of numbers. Straight-line code: `list_get` never
+/// `sum(list)` - sum a list of numbers. Straight-line code: `list_get` never
 /// re-enters, so no rooting is needed even though we allocate the result.
 fn sum(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
     let Some(len) = host.list_len(args[0]) else {
@@ -69,13 +69,13 @@ fn sum(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginErr
     }
 }
 
-/// `identity(v)` — return the argument unchanged. Round-trips every value
+/// `identity(v)` - return the argument unchanged. Round-trips every value
 /// kind through the FFI for the value-integrity tests.
 fn identity(_host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
     Ok(args[0])
 }
 
-/// `kind_name(v)` — the [`ValueKind`](generic_lang_api::ValueKind) of a value
+/// `kind_name(v)` - the [`ValueKind`](generic_lang_api::ValueKind) of a value
 /// as a string. Lets `.gen` tests assert the host's kind classification.
 fn kind_name(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
     let name = format!("{:?}", host.kind(args[0]));
@@ -84,7 +84,7 @@ fn kind_name(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, Plu
 
 // --- error channels ------------------------------------------------------
 
-/// `raise(class_name, message)` — throw a fresh instance of the named builtin
+/// `raise(class_name, message)` - throw a fresh instance of the named builtin
 /// exception class. Exercises every exception kind through one export and the
 /// `builtin_get` + `exception_new` path (works for user classes too).
 fn raise(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
@@ -100,13 +100,13 @@ fn raise(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginE
     ))
 }
 
-/// `throw_type(message)` — typed-constructor form; caught by `catch TypeError`.
+/// `throw_type(message)` - typed-constructor form; caught by `catch TypeError`.
 fn throw_type(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
     let msg = host.as_str(args[0]).unwrap_or("type error").to_owned();
     Err(host.type_error(&msg))
 }
 
-/// `boom()` — panic. The `export_module!` glue catches it and turns it into a
+/// `boom()` - panic. The `export_module!` glue catches it and turns it into a
 /// catchable base `Exception` instead of aborting the interpreter process.
 ///
 /// The default panic hook still prints the panic to stderr *before* the
@@ -122,7 +122,7 @@ fn boom(_host: &mut Host, _args: &[GenericValue]) -> Result<GenericValue, Plugin
 
 // --- re-entering callbacks ----------------------------------------------
 
-/// `call_with_21_and_double(f)` — call a generic callable with `21` and double the result.
+/// `call_with_21_and_double(f)` - call a generic callable with `21` and double the result.
 /// Exceptions raised by `f` propagate through the plugin unchanged (via `?`).
 fn call_with_21_and_double(
     host: &mut Host,
@@ -136,7 +136,7 @@ fn call_with_21_and_double(
     Ok(host.make_int(n * 2))
 }
 
-/// `describe(x)` — string form honoring a user class's `__str__`
+/// `describe(x)` - string form honoring a user class's `__str__`
 /// (re-entering). Prefixes `describe:` so tests can see the plugin ran.
 fn describe(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
     let text = host.to_str(args[0])?; // honors __str__; re-enters
@@ -144,7 +144,7 @@ fn describe(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, Plug
     Ok(host.make_str(&format!("describe:{owned}")))
 }
 
-/// `get_field(instance, name)` — read a field via `attr_get` (never re-enters).
+/// `get_field(instance, name)` - read a field via `attr_get` (never re-enters).
 fn get_field(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
     let name = host
         .as_str(args[1])
@@ -153,7 +153,7 @@ fn get_field(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, Plu
     host.attr_get(args[0], &name)
 }
 
-/// `call_method(instance, name, arg)` — invoke a named method (re-entering).
+/// `call_method(instance, name, arg)` - invoke a named method (re-entering).
 fn call_method(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
     let name = host
         .as_str(args[1])
@@ -162,14 +162,14 @@ fn call_method(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, P
     host.invoke(args[0], &name, &[args[2]])
 }
 
-/// `dict_put(d, k, v)` — insert into a dict (re-entering via `__hash__`/
+/// `dict_put(d, k, v)` - insert into a dict (re-entering via `__hash__`/
 /// `__eq__`) and return the dict. Propagates a throwing `__hash__`.
 fn dict_put(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
     host.dict_set(args[0], args[1], args[2])?;
     Ok(args[0])
 }
 
-/// `set_put(s, item)` — add to a set (re-entering) and return the set.
+/// `set_put(s, item)` - add to a set (re-entering) and return the set.
 fn set_put(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
     host.set_add(args[0], args[1])?;
     Ok(args[0])
@@ -177,7 +177,7 @@ fn set_put(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, Plugi
 
 // --- rooting + GC --------------------------------------------------------
 
-/// `keep_across(f)` — allocate a string, root it, re-enter by calling `f`
+/// `keep_across(f)` - allocate a string, root it, re-enter by calling `f`
 /// (under stress-GC a collection fires here at every instruction), then
 /// return the rooted string. Fails loudly if the rooting contract is broken.
 fn keep_across(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
@@ -187,7 +187,7 @@ fn keep_across(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, P
     Ok(guard.get()) // survives because it was rooted
 }
 
-/// `big_probe(n)` — return `int_get(n)` as an int when it fits, else fall back
+/// `big_probe(n)` - return `int_get(n)` as an int when it fits, else fall back
 /// to the display string for a big integer. Exercises the bigint-overflow path.
 fn big_probe(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
     match host.decode(args[0]) {

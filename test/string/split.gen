@@ -1,0 +1,53 @@
+# Basic split with separator
+var parts = "a,b,c".split(",");
+print(parts == ["a", "b", "c"]);  # expect: true
+
+# Split with empty fields kept
+var empties = "a,,b".split(",");
+print(empties == ["a", "", "b"]);  # expect: true
+
+# No-arg: split on whitespace, drop empty fields
+var ws = "  hello   world  ".split();
+print(ws == ["hello", "world"]);  # expect: true
+
+# Multiline whitespace
+print("a
+b   c".split());  # expect: [a, b, c]
+
+# Separator not found -> single element list
+var single = "hello".split(",");
+print(single == ["hello"]);  # expect: true
+
+# Empty string with separator
+var empty_sep = "".split(",");
+print(empty_sep == [""]);  # expect: true
+
+# Empty string with no arg
+var empty_ws = "".split();
+print(empty_ws == []);  # expect: true
+
+# Multibyte separator
+var mb = "café au lait".split(" ");
+print(mb == ["café", "au", "lait"]);  # expect: true
+
+
+# Normalization
+var s1 = "Å";
+# Decomposed Å (A + combining ring above)
+var s2 = "Å";
+print(f"Apple${s1}Tree".split(s2));  # expect: [Apple, Tree]
+
+
+# Empty separator is an error
+try {
+    "abc".split("");
+} catch ValueError as e {
+    print(e);  # expect: Cannot split on an empty separator.
+}
+
+# Non-string separator is an error
+try {
+    "abc".split(42);
+} catch TypeError as e {
+    print(e);  # expect: Expected a string separator, got `42`.
+}

@@ -9,11 +9,11 @@ use strum_macros::{EnumIter, IntoStaticStr};
 use self::ExceptionKind::TypeError;
 /// The kinds of exceptions the VM can throw. Each variant is named exactly
 /// like the builtin exception class it maps to (the mapping goes through
-/// the name — see `every_exception_kind_has_a_builtin_class`).
+/// the name - see `every_exception_kind_has_a_builtin_class`).
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, IntoStaticStr)]
 pub enum ExceptionKind {
-    /// The base exception class; also what runtime errors throw.
+    /// The base exception class.
     Exception = 1,
     TypeError,
     ValueError,
@@ -25,6 +25,7 @@ pub enum ExceptionKind {
     IoError,
     KeyError,
     IndexError,
+    RuntimeError,
 }
 
 /// A snapshot of the three lengths that define a callstack region: the
@@ -41,8 +42,8 @@ pub struct RegionSnapshot {
 
 /// An exception handler.
 ///
-/// Holds the region to unwind to when the handler catches — absolute
-/// positions in the live VM — and the instruction pointer (chunk-relative)
+/// Holds the region to unwind to when the handler catches - absolute
+/// positions in the live VM - and the instruction pointer (chunk-relative)
 /// where the catch block starts. For the generator-relative form saved
 /// across suspensions see [`SuspendedExceptionHandler`].
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -59,10 +60,10 @@ pub struct ExceptionHandler {
 /// suspension. This form anchors them to the generator frame instead:
 ///
 /// - `frames_above_base`: frames relative to the callstack *below* the
-///   generator frame (always 1 today — the generator frame itself).
+///   generator frame (always 1 today - the generator frame itself).
 /// - `stack_length`: relative to the generator frame's `stack_base`.
 /// - `modules_above_base`: relative to the module count at suspension
-///   (normally 0 — imports cannot yield, so a resume is module-balanced).
+///   (normally 0 - imports cannot yield, so a resume is module-balanced).
 /// - `ip`: chunk-relative, identical in both forms.
 ///
 /// The fields are private: the only way in or out is
@@ -129,7 +130,7 @@ impl SuspendedExceptionHandler {
 }
 
 impl VM {
-    /// The current callstack depth, value-stack height, and module count —
+    /// The current callstack depth, value-stack height, and module count -
     /// the state a later [`VM::unwind_region`] restores.
     pub(crate) fn current_region(&self) -> RegionSnapshot {
         RegionSnapshot {
@@ -141,7 +142,7 @@ impl VM {
 
     /// Cut the value stack, callstack, and module stack back to `region`,
     /// closing upvalues over the removed stack slots exactly like a normal
-    /// return would — a closure that escaped the region must keep seeing
+    /// return would - a closure that escaped the region must keep seeing
     /// the captured values, and a stale open upvalue would index out of
     /// bounds (or read a reused slot) later.
     pub(crate) fn unwind_region(&mut self, region: RegionSnapshot) {
@@ -210,7 +211,7 @@ impl VM {
 
     /// Mark the value on the stack top as a thrown, in-flight exception.
     ///
-    /// Validates it and attaches the stack trace — captured HERE, at the
+    /// Validates it and attaches the stack trace - captured HERE, at the
     /// throw site, while the throwing frames are still intact. No unwinding
     /// happens: the exception stays on the stack (rooted for the GC) until a
     /// dispatch loop resolves it against a handler, or a native along the
@@ -261,7 +262,7 @@ impl VM {
     ///
     /// Returns `false` if the innermost handler (if any) belongs to an outer
     /// region: the pending exception then escapes to whoever entered the
-    /// region — a native caller, which may pop and handle it or propagate.
+    /// region - a native caller, which may pop and handle it or propagate.
     /// Pass `0` for `call_depth` to accept any handler (the top-level loop).
     pub(crate) fn resolve_pending_exception(&mut self, call_depth: usize) -> bool {
         match self.exception_handlers.last() {
@@ -284,7 +285,7 @@ impl VM {
     ///
     /// Composes the display as `ClassName: {str(e)}` (bare class name for
     /// an empty str) plus the stored stack trace. `__str__` returns only the
-    /// message, and user overrides run here too — if str(e) raises, its
+    /// message, and user overrides run here too - if str(e) raises, its
     /// pending exception is discarded and `<exception str() failed>` is
     /// printed instead.
     pub(super) fn report_uncaught_exception(&mut self) -> RuntimeErrorKind {
@@ -469,7 +470,7 @@ impl VM {
     /// running its `__init__` (with no arguments) to completion.
     ///
     /// A throwing `__init__` escapes as a pending exception with its trace
-    /// anchored at the current position — `generator.raise(...)` relies on
+    /// anchored at the current position - `generator.raise(...)` relies on
     /// this to deliver constructor errors at the suspension point.
     pub(crate) fn instantiate_exception(&mut self, class_id: ClassId) -> VmResult<Value> {
         let init_method_id = self.heap.builtin_constants().init_string;
@@ -500,7 +501,7 @@ mod tests {
     /// the class up by the variant's name, and `create_exception` panics
     /// when it is missing (e.g. after a rename in `exceptions.gen` or in
     /// the enum). Pin that for every kind instead of relying on whichever
-    /// `.gen` tests happen to throw it — and check the resolved class
+    /// `.gen` tests happen to throw it - and check the resolved class
     /// actually derives from `Exception`, which the lookup alone does not
     /// guarantee.
     #[test]

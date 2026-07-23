@@ -1,5 +1,5 @@
 # A generator resuming itself finds the Executing placeholder in its heap
-# slot and must get a catchable ValueError — never re-run the placeholder's
+# slot and must get a catchable ValueError - never re-run the placeholder's
 # empty frame.
 var g = nil;
 

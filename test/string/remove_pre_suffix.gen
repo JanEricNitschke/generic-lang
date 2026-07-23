@@ -1,0 +1,29 @@
+# Basic
+print("hello".removeprefix("he"));   # expect: llo
+print("hello".removesuffix("lo"));   # expect: hel
+print("hello".removeprefix("lo"));    # expect: hello
+print("hello".removesuffix("he"));    # expect: hello
+print("hello".removeprefix(""));      # expect: hello
+print("hello".removesuffix(""));      # expect: hello
+print("".removeprefix("hello"));      # expect:
+print("".removesuffix("hello"));      # expect:
+print("".removeprefix(""));           # expect:
+print("".removesuffix(""));           # expect:
+try {
+    "hello".removeprefix(42);
+} catch TypeError as e {
+    print(e);  # expect: Expected a string argument, got `42`.
+}
+try {
+    "hello".removesuffix(42);
+} catch TypeError as e {
+    print(e);  # expect: Expected a string argument, got `42`.
+}
+
+# Normalized
+# Precomposed Å (single code point)
+var s1 = "ÅB";
+# Decomposed Å (A + combining ring above)
+var s2 = "ÅB";
+var string = f"${s1}stuff${s1}";
+print(string.removeprefix(s2).removesuffix(s2)); # expect: stuff

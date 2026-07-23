@@ -53,7 +53,7 @@ pub(super) fn tuple_contains_native(
     let mut index = 0;
     while index < receiver.as_tuple(&vm.heap).items().len() {
         let element = receiver.as_tuple(&vm.heap).items()[index];
-        if vm.compare_values(element, needle)? {
+        if vm.compare_values_eq(element, needle)? {
             return Ok(true.into());
         }
         index += 1;

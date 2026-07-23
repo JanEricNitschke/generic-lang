@@ -15,7 +15,7 @@ pub const GENERIC_PLUGIN_ABI_VERSION: u32 = 1;
 
 /// An opaque generic runtime value.
 ///
-/// This is the host's 32-byte `Value` bit-copied — discriminant and payload
+/// This is the host's 32-byte `Value` bit-copied - discriminant and payload
 /// included. Plugins must never inspect or fabricate its bytes; values are
 /// opaque handles to be passed back to host callbacks. Use
 /// [`HostApi::value_kind`] to ask what a value holds.
@@ -23,8 +23,8 @@ pub const GENERIC_PLUGIN_ABI_VERSION: u32 = 1;
 #[derive(Clone, Copy)]
 pub struct GenericValue {
     /// Opaque storage. The limbs are [`MaybeUninit`] because a host `Value`
-    /// does not initialize all 32 bytes — small enum variants leave the
-    /// rest unwritten — and bit-copying it in must not assert those bytes
+    /// does not initialize all 32 bytes - small enum variants leave the
+    /// rest unwritten - and bit-copying it in must not assert those bytes
     /// are initialized (that would be undefined behavior). `u64` limbs give
     /// the type the host `Value`'s 8-byte alignment; it renders as
     /// `uint64_t opaque[4]` in C. Never inspect.
@@ -33,7 +33,7 @@ pub struct GenericValue {
 
 impl core::fmt::Debug for GenericValue {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        // The bytes are opaque — nothing meaningful to print.
+        // The bytes are opaque - nothing meaningful to print.
         f.debug_struct("GenericValue").finish_non_exhaustive()
     }
 }
@@ -46,7 +46,7 @@ impl core::fmt::Debug for GenericValue {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct FfiStr {
-    /// Pointer to the first byte. Must be non-null in both directions — an
+    /// Pointer to the first byte. Must be non-null in both directions - an
     /// empty string is a non-null pointer with `len == 0` (e.g. C's `""`);
     /// a null pointer is not a valid string value.
     pub ptr: *const u8,
@@ -57,7 +57,7 @@ pub struct FfiStr {
 impl FfiStr {
     /// A null-pointer `FfiStr` for initializing the out-parameter of a
     /// bool-probe callback (`string_get` overwrites it on success). Not a
-    /// valid string value — see [`FfiStr::ptr`].
+    /// valid string value - see [`FfiStr::ptr`].
     #[must_use]
     pub const fn null() -> Self {
         Self {
@@ -75,13 +75,13 @@ impl FfiStr {
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FfiStatus {
-    /// Success — `value` is the call's result.
+    /// Success - `value` is the call's result.
     Ok = 0,
     /// `value` is the exception *instance*.
     ///
     /// From a host callback this is the exception generic code raised,
     /// handed over with full identity: returning the same value (the safe
-    /// wrapper's `?` does) re-raises exactly that exception — class,
+    /// wrapper's `?` does) re-raises exactly that exception - class,
     /// fields, and original stack trace intact. To throw a fresh
     /// exception, create the instance with [`HostApi::exception_new`] and
     /// return it under this status; a caught one can be examined with
@@ -90,7 +90,7 @@ pub enum FfiStatus {
     Exception = 1,
     /// A fatal host runtime error passing through the plugin.
     ///
-    /// Not an exception — it is uncatchable. A re-entering host
+    /// Not an exception - it is uncatchable. A re-entering host
     /// callback returns it when the interpreter hit a fatal error; the
     /// plugin must forward it unchanged (the safe wrapper's `?` does), and
     /// the host re-raises it as a fatal error when the plugin call
@@ -99,7 +99,7 @@ pub enum FfiStatus {
 }
 
 impl FfiStatus {
-    /// Decode a raw status. `None` means the value is not a valid status —
+    /// Decode a raw status. `None` means the value is not a valid status -
     /// a protocol violation the host surfaces as a plugin bug (there is no
     /// safe fallback: `value` must not be interpreted at all).
     #[must_use]
@@ -144,7 +144,7 @@ pub struct FunctionDesc {
     /// Number of entries in `arities`.
     pub arities_len: usize,
     /// The function implementation; a null pointer is rejected at load.
-    /// The type is [`PluginFn`] spelled out inline — cbindgen only renders
+    /// The type is [`PluginFn`] spelled out inline - cbindgen only renders
     /// a nullable C function pointer for an inline `Option<fn>`, not
     /// through the alias.
     pub fun: Option<
@@ -172,12 +172,12 @@ pub struct ModuleDesc {
 // pointer values), which is thread-safe; dereferencing the pointers is
 // `unsafe` and carries the following obligations at each use site:
 // - `functions` must point to `functions_len` contiguous, initialized
-//   `FunctionDesc` entries that are never mutated and outlive every read —
+//   `FunctionDesc` entries that are never mutated and outlive every read -
 //   for descriptors returned by `generic_plugin_init`, that means the
 //   lifetime of the loaded library.
 // - Within each entry, `name` must reference `name.len` bytes of valid
 //   UTF-8, `arities` must reference `arities_len` initialized bytes, and
-//   `fun` must be a function with the documented `PluginFn` ABI — all under
+//   `fun` must be a function with the documented `PluginFn` ABI - all under
 //   the same immutability and lifetime requirements as above.
 // The impl is required so a descriptor can live in a `static` (statics must
 // be `Sync`); `export_module!` discharges all of the above by building the
@@ -188,7 +188,7 @@ unsafe impl Sync for ModuleDesc {}
 ///
 /// `ctx` is an opaque pointer owned by the host; pass it as the first
 /// argument to every callback. Callbacks marked **re-entering** run generic
-/// bytecode, during which garbage collection may occur — see the rooting
+/// bytecode, during which garbage collection may occur - see the rooting
 /// contract: across a re-entering callback, `root` every value still
 /// held and re-fetch any [`FfiStr`] afterward. All other callbacks never
 /// trigger collection.
@@ -196,14 +196,14 @@ unsafe impl Sync for ModuleDesc {}
 /// Return conventions, decided solely by whether the payload forces an
 /// out-parameter:
 /// - A payload the caller must receive as something other than a
-///   [`GenericValue`] — a raw machine scalar (`bool`, `i64`, `f64`,
-///   `usize`) or a borrowed [`FfiStr`] — cannot ride in an [`FfiReturn`]
+///   [`GenericValue`] - a raw machine scalar (`bool`, `i64`, `f64`,
+///   `usize`) or a borrowed [`FfiStr`] - cannot ride in an [`FfiReturn`]
 ///   (whose payload is a [`GenericValue`]), so it travels through an
-///   out-parameter and the callback returns a plain `bool` — `true` on
+///   out-parameter and the callback returns a plain `bool` - `true` on
 ///   success, `false` on the sole "wrong kind" failure. These carry no
 ///   exception.
-/// - Everything else — payload is a [`GenericValue`], or there is no
-///   payload — returns [`FfiReturn`], carrying a real exception instance on
+/// - Everything else - payload is a [`GenericValue`], or there is no
+///   payload - returns [`FfiReturn`], carrying a real exception instance on
 ///   failure whose class and message mirror what the equivalent generic
 ///   operation would throw.
 /// - Infallible callbacks return their value directly.
@@ -221,7 +221,7 @@ pub struct HostApi {
     /// `false` if the value is not a bool.
     pub bool_get: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut bool) -> bool,
     /// Read an integer into `out`; `false` if the value is not an integer
-    /// or does not fit in an `i64` (big integers — fall back to
+    /// or does not fit in an `i64` (big integers - fall back to
     /// `value_display`).
     pub int_get: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut i64) -> bool,
     /// `false` if the value is not a float.
@@ -249,7 +249,7 @@ pub struct HostApi {
     /// absent; `TypeError` if the name is invalid UTF-8.
     pub builtin_get: extern "C" fn(ctx: *mut c_void, name: FfiStr) -> FfiReturn,
     /// Whether `value` is an instance of `of_class` or of a subclass of it
-    /// (a bool value on success) — the exact semantics of the `isinstance`
+    /// (a bool value on success) - the exact semantics of the `isinstance`
     /// builtin, value-type proxy classes included. `TypeError` if
     /// `of_class` is not a class.
     pub is_instance:
@@ -304,7 +304,7 @@ pub struct HostApi {
     /// A new exception instance of `of_class` carrying `message`.
     /// `TypeError` if `of_class` is not a class deriving from `Exception`
     /// or the message is invalid UTF-8. Sets the message directly,
-    /// bypassing the class's `__init__` — exactly like the VM's own throw;
+    /// bypassing the class's `__init__` - exactly like the VM's own throw;
     /// use `call_value` on the class for full construction semantics.
     /// Return the instance under [`FfiStatus::Exception`] to throw it.
     pub exception_new:

@@ -4,7 +4,7 @@ use crate::abi::{FfiReturn, FfiStatus, FfiStr, GenericValue, HostApi};
 use crate::{PluginError, ValueKind};
 
 /// Generates the typed error constructors on [`Host`]: one per builtin
-/// exception class, with the class name spelled exactly once — a plugin
+/// exception class, with the class name spelled exactly once - a plugin
 /// author cannot typo a builtin class name by going through these.
 macro_rules! host_error_constructors {
     ($($(#[$doc:meta])* $name:ident => $class_name:literal),* $(,)?) => {
@@ -22,7 +22,7 @@ macro_rules! host_error_constructors {
 ///
 /// Methods that run generic bytecode (and may therefore trigger garbage
 /// collection) take `&mut self`: the borrow checker then guarantees the
-/// rooting contract's string rule — any [`&str`](str) obtained from
+/// rooting contract's string rule - any [`&str`](str) obtained from
 /// the host borrows `self` and cannot be held across a re-entering call.
 /// Values held across a re-entering call must be rooted, e.g.
 /// via [`Host::rooted`].
@@ -130,7 +130,7 @@ impl<'a> Host<'a> {
     }
 
     /// The value as an `i64`; `None` if it is not an integer or does not
-    /// fit in an `i64` (big integers — fall back to `display`).
+    /// fit in an `i64` (big integers - fall back to `display`).
     #[must_use]
     pub fn as_int(&self, value: GenericValue) -> Option<i64> {
         let mut out = 0i64;
@@ -145,7 +145,7 @@ impl<'a> Host<'a> {
     }
 
     /// The contents of a string value; `None` if the value is not a string
-    /// (or the host answered with malformed string data — a null pointer or
+    /// (or the host answered with malformed string data - a null pointer or
     /// invalid UTF-8, both protocol violations).
     ///
     /// The returned string borrows the host and therefore cannot be held
@@ -171,7 +171,7 @@ impl<'a> Host<'a> {
             return None;
         }
         // A null pointer is not a valid `FfiStr` (see `abi::FfiStr`): a host
-        // that wrote one — or answered `true` without writing at all —
+        // that wrote one - or answered `true` without writing at all -
         // violated the protocol. Report "not a string" rather than fabricate
         // a value from it.
         if out.ptr.is_null() {
@@ -238,7 +238,7 @@ impl<'a> Host<'a> {
         (self.api.set_len)(self.api.ctx, value, &raw mut out).then_some(out)
     }
 
-    /// Look up a builtin global by name — exception classes like
+    /// Look up a builtin global by name - exception classes like
     /// `"TypeError"`, native classes, builtin functions.
     ///
     /// # Errors
@@ -248,7 +248,7 @@ impl<'a> Host<'a> {
         self.ffi_result((self.api.builtin_get)(self.api.ctx, Self::ffi_str(name)))
     }
 
-    /// Whether `value` is an instance of `class` or of a subclass of it —
+    /// Whether `value` is an instance of `class` or of a subclass of it -
     /// the exact semantics of the `isinstance` builtin, value-type proxy
     /// classes included.
     ///
@@ -393,7 +393,7 @@ impl<'a> Host<'a> {
     }
 
     /// A new exception instance of `class` (any class deriving from
-    /// `Exception` — builtin or user-defined), ready to be thrown
+    /// `Exception` - builtin or user-defined), ready to be thrown
     /// (returned inside [`PluginError::Exception`]) or passed to generic
     /// code. Sets the message directly, bypassing `__init__`. Prefer the
     /// typed constructors below for the common builtin-class case.
@@ -416,7 +416,7 @@ impl<'a> Host<'a> {
     /// A [`PluginError`] carrying a fresh instance of the builtin
     /// exception class `class_name`. Unknown names fall back to the base
     /// `Exception` (unreachable through the typed constructors below). A
-    /// fatal host error during construction stays [`PluginError::Fatal`] —
+    /// fatal host error during construction stays [`PluginError::Fatal`] -
     /// it must never be downgraded to something catchable.
     fn error(&self, class_name: &str, message: &str) -> PluginError {
         let result = self
@@ -471,7 +471,7 @@ impl<'a> Host<'a> {
     // --- display ---
 
     /// The raw string representation of any value, as a string value.
-    /// Does NOT honor a user class's `__str__` — see [`Host::to_str`].
+    /// Does NOT honor a user class's `__str__` - see [`Host::to_str`].
     #[must_use]
     pub fn display(&self, value: GenericValue) -> GenericValue {
         (self.api.value_display)(self.api.ctx, value)
@@ -656,7 +656,7 @@ impl<'a> Host<'a> {
 
     /// Root a value for the lifetime of the returned guard.
     ///
-    /// Guards release in LIFO order — drop them in reverse order of
+    /// Guards release in LIFO order - drop them in reverse order of
     /// creation (scopes do this naturally).
     #[must_use]
     pub fn rooted(&self, value: GenericValue) -> Rooted<'a> {
@@ -737,7 +737,7 @@ pub type RustPluginFn = fn(&mut Host, &[GenericValue]) -> Result<GenericValue, P
 /// # Safety
 ///
 /// `host` must point to a valid [`HostApi`] and `args` to `nargs`
-/// contiguous values, both valid for the duration of the call — which is
+/// contiguous values, both valid for the duration of the call - which is
 /// what the interpreter guarantees when calling an exported plugin function.
 #[doc(hidden)]
 pub unsafe fn __invoke_plugin_fn(

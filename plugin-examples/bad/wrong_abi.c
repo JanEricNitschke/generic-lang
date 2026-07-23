@@ -1,6 +1,6 @@
 /* Error-path fixture: a well-formed module that declares an incompatible ABI
  * version. The loader must reject it with an ImportError naming both the
- * expected and the found version — not load it. Registers as `wrongabi`.
+ * expected and the found version - not load it. Registers as `wrongabi`.
  *
  *   cc -shared -fPIC -I crates/generic-lang-api/include \
  *      -o test/plugin/lang/wrongabi.<ext> plugin-examples/bad/wrong_abi.c

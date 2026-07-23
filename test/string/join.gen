@@ -1,0 +1,57 @@
+# Basic join
+print(", ".join(["a", "b", "c"]));  # expect: a, b, c
+
+# Empty separator
+print("".join(["a", "b", "c"]));  # expect: abc
+
+# Empty iterable
+print(", ".join([]));  # expect:
+
+# Single element
+print(", ".join(["solo"]));  # expect: solo
+
+# Join non-string
+try {
+    print("-".join([1, 2, 3]));
+} catch TypeError as e {
+    print(e);  # expect: Can only join strings, got `1`.
+}
+
+
+# Tuple
+print(", ".join(("a", "b", "c")));  # expect: a, b, c
+
+# Generator
+gen strings() {
+    yield "a";
+    yield "b";
+    yield "c";
+}
+print(", ".join(strings()));  # expect: a, b, c
+
+# Custom iterable
+class Iterable {
+    __init__() {
+        this.index = 0;
+    }
+
+    __iter__() {
+        return this;
+    }
+
+    __next__() {
+        if this.index >= 5 {
+            return StopIteration;
+        }
+        this.index += 1;
+        return str(this.index);
+    }
+}
+print(", ".join(Iterable()));  # expect: 1, 2, 3, 4, 5
+
+# Non-iterable argument
+try {
+    ", ".join(42);
+} catch TypeError as e {
+    print(e);  # expect: Expected an iterable, got `42`.
+}

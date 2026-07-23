@@ -74,7 +74,7 @@ impl VM {
             alias,
             local_import,
         ) {
-            // Native plugin next to the resolved import path — deliberately
+            // Native plugin next to the resolved import path - deliberately
             // shadows stdlib modules. The feature gate lives on
             // `try_import_plugin` itself (a `#[cfg]` cannot sit on an
             // `else if` arm): with the `plugins` feature off this calls the

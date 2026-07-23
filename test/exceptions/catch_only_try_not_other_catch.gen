@@ -3,7 +3,7 @@ class Error2 < Exception {}
 
 
 # A throw inside a catch block escapes the whole try; the sibling catches of
-# the same try are not eligible to handle it — it goes to the outer try.
+# the same try are not eligible to handle it - it goes to the outer try.
 try {
     try {
         throw Error1("error1 message");

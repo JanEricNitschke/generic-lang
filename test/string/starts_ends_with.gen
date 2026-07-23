@@ -1,0 +1,30 @@
+# Basic
+print("hello".startswith("he"));   # expect: true
+print("hello".endswith("lo"));   # expect: true
+print("hello".startswith("lo"));    # expect: false
+print("hello".endswith("he"));    # expect: false
+print("hello".startswith(""));      # expect: true
+print("hello".endswith(""));      # expect: true
+print("".startswith("hello"));      # expect: false
+print("".endswith("hello"));      # expect: false
+print("".startswith(""));           # expect: true
+print("".endswith(""));           # expect: true
+try {
+    "hello".startswith(42);
+} catch TypeError as e {
+    print(e);  # expect: Expected a string argument, got `42`.
+}
+try {
+    "hello".endswith(42);
+} catch TypeError as e {
+    print(e);  # expect: Expected a string argument, got `42`.
+}
+
+# Normalized
+# Precomposed Å (single code point)
+var s1 = "Å";
+# Decomposed Å (A + combining ring above)
+var s2 = "Å";
+var string = f"${s1}stuff${s1}";
+print(string.startswith(s2)); # expect: true
+print(string.endswith(s2)); # expect: true
