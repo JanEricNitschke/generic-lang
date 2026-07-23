@@ -1,0 +1,26 @@
+var a = {1, 2, 3};
+var b = {2, 3, 4};
+
+# Union
+var u = a | b;
+print(u);   # expect: {3, 1, 4, 2}
+
+# Intersection
+var i = a & b;
+print(i);  # expect: {3, 2}
+
+# Difference
+var d = a - b;
+print(d);  # expect: {1}
+
+# Symmetric difference
+var sd = a ^ b;
+print(sd);  # expect: {4, 1}
+
+
+# Non-set operand
+try {
+    a | [3, 4];
+} catch TypeError as e {
+    print(e);  # expect: Expected a set, got `[3, 4]`.
+}

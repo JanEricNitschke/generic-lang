@@ -1,5 +1,5 @@
 //! Methods of the native `Set` class.
-use crate::vm::ExceptionKind::RuntimeError;
+use crate::vm::ExceptionKind::{RuntimeError, TypeError};
 use crate::{
     value::{Instance, Number, Set, SetIterator, Value},
     vm::{VM, errors::VmResult},
@@ -145,4 +145,146 @@ pub(super) fn set_iter_str_native(
 
     let string = format!("<set iterator of {set_string}>");
     Ok(vm.heap.string_id(&string).into())
+}
+
+/// Set.__bitor__(other) - union.
+pub(super) fn set_bitor_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    let new_set = create_empty_set_instance(vm);
+    // Root new set on the stack
+    vm.stack.push(new_set);
+
+    let other_items = extract_set_items(vm, &args[0])?;
+    let self_items = receiver.as_set(&vm.heap).items.iter().map(|(v, _h)| *v);
+
+    // Create new set with all elements from both.
+    // Root items on the stack during Set::add calls.
+    let all_items: Vec<Value> = self_items.into_iter().chain(other_items).collect();
+    vm.for_each_rooted(all_items, |vm, item| Set::add(vm, &new_set, item))?;
+
+    // Remove the stored new set
+    vm.stack.pop();
+    Ok(new_set)
+}
+
+/// Set.__bitand__(other) - intersection.
+pub(super) fn set_bitand_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    let new_set = create_empty_set_instance(vm);
+    // Root new set on the stack
+    vm.stack.push(new_set);
+
+    let self_items: Vec<Value> = receiver
+        .as_set(&vm.heap)
+        .items
+        .iter()
+        .map(|(v, _)| *v)
+        .collect();
+
+    vm.for_each_rooted(self_items, |vm, item| {
+        if Set::contains(vm, &args[0], item)? {
+            Set::add(vm, &new_set, item)?;
+        }
+        Ok(None)
+    })?;
+
+    // Remove the stored new set
+    vm.stack.pop();
+    Ok(new_set)
+}
+
+/// Set.__sub__(other) - difference.
+pub(super) fn set_sub_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    let new_set = create_empty_set_instance(vm);
+    // Root new set on the stack
+    vm.stack.push(new_set);
+
+    let self_items: Vec<Value> = receiver
+        .as_set(&vm.heap)
+        .items
+        .iter()
+        .map(|(v, _)| *v)
+        .collect();
+
+    vm.for_each_rooted(self_items, |vm, item| {
+        if !Set::contains(vm, &args[0], item)? {
+            Set::add(vm, &new_set, item)?;
+        }
+        Ok(None)
+    })?;
+
+    // Remove the stored new set
+    vm.stack.pop();
+    Ok(new_set)
+}
+
+/// Set.__bitxor__(other) - symmetric difference.
+pub(super) fn set_bitxor_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    let new_set = create_empty_set_instance(vm);
+    // Root new set on the stack
+    vm.stack.push(new_set);
+
+    let self_items: Vec<Value> = receiver
+        .as_set(&vm.heap)
+        .items
+        .iter()
+        .map(|(v, _)| *v)
+        .collect();
+
+    let other_items = extract_set_items(vm, &args[0])?;
+
+    let before_each_self = vm.stack.len();
+    vm.stack.extend(other_items.clone());
+    // Items in self but not other.
+    vm.for_each_rooted(self_items.clone(), |vm, item| {
+        if !Set::contains(vm, &args[0], item)? {
+            Set::add(vm, &new_set, item)?;
+        }
+        Ok(None)
+    })?;
+    vm.stack.truncate(before_each_self);
+
+    vm.stack.extend(self_items);
+    // Items in other but not self.
+    vm.for_each_rooted(other_items, |vm, item| {
+        if !Set::contains(vm, receiver, item)? {
+            Set::add(vm, &new_set, item)?;
+        }
+        Ok(None)
+    })?;
+    // Everything is stack neutral, so we can reuse the same value
+    vm.stack.truncate(before_each_self);
+
+    // Remove the stored new set
+    vm.stack.pop();
+    Ok(new_set)
+}
+
+/// Helper: extract items from a Set value into a Vec.
+fn extract_set_items(vm: &mut VM, value: &Value) -> VmResult<Vec<Value>> {
+    if let Value::Instance(inst) = value
+        && let Some(crate::value::NativeClass::Set(set)) = &inst.to_value(&vm.heap).backing
+    {
+        Ok(set.items.iter().map(|(v, _h)| *v).collect())
+    } else {
+        Err(vm
+            .throw(
+                TypeError,
+                &format!("Expected a set, got `{}`.", value.to_string(&vm.heap)),
+            )
+            .unwrap_err())
+    }
+}
+
+/// Helper: create a new empty Set instance.
+fn create_empty_set_instance(vm: &mut VM) -> Value {
+    let instance = Instance::new(
+        *vm.heap.native_classes.get("Set").unwrap(),
+        Some(Set::default().into()),
+    );
+    vm.heap.add_instance(instance)
+}
+
+pub(super) fn set_clear_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
+    let set = receiver.as_set_mut(&mut vm.heap);
+    set.items.clear();
+    Ok(Value::Nil)
 }
