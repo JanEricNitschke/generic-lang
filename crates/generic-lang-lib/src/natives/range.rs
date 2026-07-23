@@ -68,6 +68,15 @@ pub(super) fn range_iter_next_native(
     result
 }
 
+/// Iterators are their own iterators.
+pub(super) fn range_iter_iter_native(
+    _vm: &mut VM,
+    receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    Ok(*receiver)
+}
+
 pub(super) fn range_len_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
     let my_range = *receiver.as_range(&vm.heap);
     let length = my_range.len(&mut vm.heap);

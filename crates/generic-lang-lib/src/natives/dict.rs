@@ -1,8 +1,8 @@
 //! Methods of the native `Dict` class.
 
-use crate::vm::ExceptionKind::{KeyError, TypeError};
+use crate::vm::ExceptionKind::{KeyError, RuntimeError, TypeError};
 use crate::{
-    value::{Dict, NativeClass, Number, Value},
+    value::{Dict, DictIterMode, DictIterator, Instance, NativeClass, Number, Tuple, Value},
     vm::{VM, errors::VmResult},
 };
 
@@ -143,5 +143,127 @@ pub(super) fn dict_str_native(vm: &mut VM, receiver: &Value, _args: &[Value]) ->
     string.push('}');
 
     vm.stack.truncate(start);
+    Ok(vm.heap.string_id(&string).into())
+}
+
+/// Shared helper to create a `DictIterator` instance with a given mode.
+fn dict_make_iterator(vm: &mut VM, receiver: &Value, mode: DictIterMode) -> Value {
+    let dict_instance = receiver.as_instance();
+    let size = receiver.as_dict(&vm.heap).items.len();
+    let target_class = vm.heap.native_classes.get("DictIterator").unwrap();
+    let iterator = DictIterator {
+        dict: *dict_instance,
+        index: 0,
+        mode,
+        size,
+    };
+    let instance = Instance::new(*target_class, Some(iterator.into()));
+    vm.heap.add_instance(instance)
+}
+
+/// Iterators are their own iterators.
+pub(super) fn dict_iter_iter_native(
+    _vm: &mut VM,
+    receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    Ok(*receiver)
+}
+
+/// Produce an iterator over the dict's keys. `dict.__iter__()`.
+pub(super) fn dict_iter_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
+    Ok(dict_make_iterator(vm, receiver, DictIterMode::Keys))
+}
+
+/// `Dict.keys()` - return a lazy iterator over keys.
+pub(super) fn dict_keys_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
+    Ok(dict_make_iterator(vm, receiver, DictIterMode::Keys))
+}
+
+/// `Dict.values()` - return a lazy iterator over values.
+pub(super) fn dict_values_native(
+    vm: &mut VM,
+    receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    Ok(dict_make_iterator(vm, receiver, DictIterMode::Values))
+}
+
+/// `Dict.items()` - return a lazy iterator over (key, value) tuples.
+pub(super) fn dict_items_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
+    Ok(dict_make_iterator(vm, receiver, DictIterMode::Items))
+}
+
+/// Get the next element from a dict iterator (`__next__()`).
+pub(super) fn dict_iter_next_native(
+    vm: &mut VM,
+    receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    // GC-safety: mem::take pattern, same as list/tuple/range iterators.
+    let mut iter = std::mem::take(receiver.as_dict_iterator_mut(&mut vm.heap));
+    let dict = iter.get_dict(&vm.heap);
+
+    // Check if the dict's size changed since the iterator was created.
+    if dict.items.len() != iter.size {
+        *receiver.as_dict_iterator_mut(&mut vm.heap) = iter;
+        return Err(vm
+            .throw(RuntimeError, "dict changed size during iteration")
+            .unwrap_err());
+    }
+
+    let result = if let Some((key, value, _hash)) = dict.items.iter().nth(iter.index) {
+        iter.index += 1;
+        match iter.mode {
+            DictIterMode::Keys => Ok(*key),
+            DictIterMode::Values => Ok(*value),
+            DictIterMode::Items => {
+                let tuple = Tuple::new(vec![*key, *value]);
+                let instance = Instance::new(
+                    *vm.heap.native_classes.get("Tuple").unwrap(),
+                    Some(tuple.into()),
+                );
+                Ok(vm.heap.add_instance(instance))
+            }
+        }
+    } else {
+        Ok(Value::StopIteration)
+    };
+
+    *receiver.as_dict_iterator_mut(&mut vm.heap) = iter;
+    result
+}
+
+/// `Dict.get(key, default)` - return value for key, or default if absent.
+pub(super) fn dict_get_method_native(
+    vm: &mut VM,
+    receiver: &Value,
+    args: &[Value],
+) -> VmResult<Value> {
+    match Dict::get(vm, receiver, args[0])? {
+        Some(value) => Ok(value),
+        None => Ok(args[1]),
+    }
+}
+
+/// Remove all entries from the dict. `dict.clear()`.
+pub(super) fn dict_clear_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
+    let dict = receiver.as_dict_mut(&mut vm.heap);
+    dict.items.clear();
+    Ok(Value::Nil)
+}
+
+pub(super) fn dict_iter_str_native(
+    vm: &mut VM,
+    receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    let iter = receiver.as_dict_iterator(&vm.heap);
+    let mode = iter.mode.to_string().to_string();
+
+    let dict = iter.dict;
+    let dict_string = vm.value_to_string(&dict.into())?.to_value(&vm.heap);
+
+    let string = format!("<dict_{mode} iterator of {dict_string}>");
     Ok(vm.heap.string_id(&string).into())
 }

@@ -571,6 +571,9 @@ impl Heap {
                         gray_value!(self, value);
                     }
                 }
+                NativeClass::DictIterator(dict_iter) => {
+                    self.instances.gray.push(dict_iter.dict);
+                }
                 NativeClass::Range(range) => {
                     gray_value!(self, &range.start().into());
                     gray_value!(self, &range.end().into());

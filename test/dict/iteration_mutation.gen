@@ -1,0 +1,20 @@
+var my_dict = {1: "Apple", 2: "Banana", 3: "Pear"};
+foreach (var item in my_dict.items()) {
+    print(item);  # expect: (2, Banana)
+                 # expect: (3, Pear)
+                 # expect: (1, Apple)
+}
+
+var items_iter = my_dict.items();
+print(next(items_iter));  # expect: (2, Banana)
+# We can not detect mutations that do not affect the size
+# but it can have unpredictable effects on iteration order
+my_dict[3] = "Avocado";
+print(next(items_iter));  # expect: (1, Apple)
+
+my_dict[4] = "BAD!";
+try {
+    print(next(items_iter));
+} catch RuntimeError as e {
+    print(e);  # expect: dict changed size during iteration
+}

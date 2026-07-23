@@ -301,7 +301,8 @@ pub(super) fn value_kind_of(heap: &Heap, value: Value) -> u32 {
                 NativeClass::ListIterator(_)
                 | NativeClass::TupleIterator(_)
                 | NativeClass::RangeIterator(_)
-                | NativeClass::TemplateIterator(_),
+                | NativeClass::TemplateIterator(_)
+                | NativeClass::DictIterator(_),
             ) => ValueKind::Iterator,
             Some(
                 NativeClass::Template(_)

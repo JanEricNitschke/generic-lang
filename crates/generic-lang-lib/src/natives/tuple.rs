@@ -71,6 +71,15 @@ pub(super) fn tuple_iter_native(vm: &mut VM, receiver: &Value, _args: &[Value]) 
     Ok(vm.heap.add_instance(my_instance))
 }
 
+/// Iterators are their own iterators.
+pub(super) fn tuple_iter_iter_native(
+    _vm: &mut VM,
+    receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    Ok(*receiver)
+}
+
 /// Get the next element from a tupleiterator `var next = tupleiter.__next__()`.
 /// Powers `foreach (var a in tuple)`
 #[allow(clippy::option_if_let_else)]
@@ -95,6 +104,18 @@ pub(super) fn tuple_iter_next_native(
 
     *receiver.as_tuple_iterator_mut(&mut vm.heap) = my_iter;
     result
+}
+
+pub(super) fn tuple_iter_str_native(
+    vm: &mut VM,
+    receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    let tuple = receiver.as_tuple_iterator(&vm.heap).tuple();
+    let tuple_string = vm.value_to_string(&tuple.into())?.to_value(&vm.heap);
+
+    let string = format!("<tuple iterator of {tuple_string}>");
+    Ok(vm.heap.string_id(&string).into())
 }
 
 pub(super) fn tuple_add_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {

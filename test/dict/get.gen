@@ -1,0 +1,8 @@
+var d = {"a": 1, "b": 2};
+print(d.get("a", 0));   # expect: 1
+print(d.get("c", 0));   # expect: 0
+print(d.get("c", nil));  # expect: nil
+
+# Key with falsy value is still found
+var d2 = {"a": 0};
+print(d2.get("a", -1));  # expect: 0
