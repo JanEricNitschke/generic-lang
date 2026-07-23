@@ -20,6 +20,7 @@ print(iter((a,)));  # expect: <tuple iterator of (Custom(Apple),)>
 
 # Set
 print({a}); # expect: {Custom(Apple)}
+print(iter({a}));  # expect: <set iterator of {Custom(Apple)}>
 
 # Dict
 print({a: b}); # expect: {Custom(Apple): Custom(Banana)}

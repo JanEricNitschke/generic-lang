@@ -1,0 +1,15 @@
+var my_set = {1, 2, 3};
+var set_iter = iter(my_set);
+print(next(set_iter));  # expect: 2
+# We can not detect mutations that do not affect the size
+# but it can have unpredictable effects on iteration order
+my_set.remove(3);
+my_set.insert(4);
+print(next(set_iter));  # expect: 4
+
+my_set.insert(3);
+try {
+    print(next(set_iter));
+} catch RuntimeError as e {
+    print(e);  # expect: set changed size during iteration
+}

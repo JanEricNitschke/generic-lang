@@ -565,6 +565,9 @@ impl Heap {
                         gray_value!(self, item);
                     }
                 }
+                NativeClass::SetIterator(set_iter) => {
+                    self.instances.gray.push(set_iter.set);
+                }
                 NativeClass::Dict(dict) => {
                     for (key, value, _hash) in &dict.items {
                         gray_value!(self, key);

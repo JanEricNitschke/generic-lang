@@ -111,6 +111,7 @@ pub enum NativeClass {
     List(List),
     ListIterator(ListIterator),
     Set(Set),
+    SetIterator(SetIterator),
     Dict(Dict),
     DictIterator(DictIterator),
     Range(Range),
@@ -154,6 +155,7 @@ impl NativeClass {
             Self::List(list) => list.to_string(heap),
             Self::ListIterator(list_iter) => list_iter.to_string(heap),
             Self::Set(set) => set.to_string(heap),
+            Self::SetIterator(set_iter) => set_iter.to_string(heap),
             Self::Dict(dict) => dict.to_string(heap),
             Self::DictIterator(dict_iter) => dict_iter.to_string(heap),
             Self::Range(range) => range.to_string(heap),
@@ -198,6 +200,7 @@ impl_from_for_native_class!(
     Tuple,
     TupleIterator,
     Set,
+    SetIterator,
     Dict,
     DictIterator,
     Range,
@@ -365,6 +368,50 @@ impl std::fmt::Display for Set {
 impl PartialEq for Set {
     fn eq(&self, other: &Self) -> bool {
         hash_table_equal(&self.items, &other.items)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SetIterator {
+    pub(crate) set: InstanceId,
+    pub(crate) index: usize,
+    pub(crate) size: usize,
+}
+
+impl SetIterator {
+    pub(crate) const fn new(set: InstanceId, size: usize) -> Self {
+        Self {
+            set,
+            index: 0,
+            size,
+        }
+    }
+
+    pub(crate) fn get_set<'a>(&self, heap: &'a Heap) -> &'a Set {
+        match &self.set.to_value(heap).backing {
+            Some(NativeClass::Set(set)) => set,
+            _ => unreachable!("Expected a Dict instance, got {:?}", self.set),
+        }
+    }
+
+    #[allow(clippy::option_if_let_else)]
+    fn to_string(&self, heap: &Heap) -> String {
+        format!(
+            "<set iterator of {}>",
+            self.set.to_value(heap).to_string(heap)
+        )
+    }
+}
+
+impl std::fmt::Display for SetIterator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad("<set iterator of Value>")
+    }
+}
+
+impl PartialEq for SetIterator {
+    fn eq(&self, other: &Self) -> bool {
+        self.set == other.set && self.index == other.index
     }
 }
 
@@ -565,11 +612,20 @@ impl DictIterMode {
 pub struct DictIterator {
     pub(crate) dict: InstanceId,
     pub(crate) index: usize,
-    pub(crate) mode: DictIterMode,
     pub(crate) size: usize,
+    pub(crate) mode: DictIterMode,
 }
 
 impl DictIterator {
+    pub(crate) const fn new(dict: InstanceId, size: usize, mode: DictIterMode) -> Self {
+        Self {
+            dict,
+            index: 0,
+            size,
+            mode,
+        }
+    }
+
     pub(crate) fn get_dict<'a>(&self, heap: &'a Heap) -> &'a Dict {
         match &self.dict.to_value(heap).backing {
             Some(NativeClass::Dict(dict)) => dict,
