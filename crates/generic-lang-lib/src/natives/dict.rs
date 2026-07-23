@@ -151,12 +151,7 @@ fn dict_make_iterator(vm: &mut VM, receiver: &Value, mode: DictIterMode) -> Valu
     let dict_instance = receiver.as_instance();
     let size = receiver.as_dict(&vm.heap).items.len();
     let target_class = vm.heap.native_classes.get("DictIterator").unwrap();
-    let iterator = DictIterator {
-        dict: *dict_instance,
-        index: 0,
-        mode,
-        size,
-    };
+    let iterator = DictIterator::new(*dict_instance, size, mode);
     let instance = Instance::new(*target_class, Some(iterator.into()));
     vm.heap.add_instance(instance)
 }

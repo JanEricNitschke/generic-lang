@@ -18,7 +18,8 @@ pub use functions::{Closure, Function, Module, Upvalue};
 pub use natives::{
     Dict, DictIterMode, DictIterator, Exception, Generator, GeneratorState, Interpolation, List,
     ListIterator, ModuleContents, NativeClass, NativeFunction, NativeFunctionImpl, NativeMethod,
-    NativeMethodImpl, Range, RangeIterator, Set, Template, TemplateIterator, Tuple, TupleIterator,
+    NativeMethodImpl, Range, RangeIterator, Set, SetIterator, Template, TemplateIterator, Tuple,
+    TupleIterator,
 };
 pub use number::{GenericInt, GenericRational, Number};
 
@@ -333,6 +334,7 @@ impl Value {
         TupleIterator,
         Range,
         Set,
+        SetIterator,
         Dict,
         DictIterator,
         Exception,
@@ -350,6 +352,7 @@ impl Value {
         Range,
         RangeIterator,
         Set,
+        SetIterator,
         Dict,
         DictIterator,
         Exception,
