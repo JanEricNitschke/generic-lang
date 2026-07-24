@@ -130,16 +130,21 @@ pub(super) fn set_iter_next_native(
             .unwrap_err());
     }
 
-    let result = if let Some((value, _hash)) = set.items.iter().nth(iter.index) {
-        iter.index += 1;
-
-        Ok(*value)
-    } else {
-        Ok(Value::StopIteration)
-    };
+    // `bucket` is a physical slot cursor: resume scanning from it and advance
+    // past the slot we return, so a full iteration visits each bucket once.
+    let num_buckets = set.items.num_buckets();
+    let mut result = Value::StopIteration;
+    while iter.bucket < num_buckets {
+        let bucket = iter.bucket;
+        iter.bucket += 1;
+        if let Some((value, _hash)) = set.items.get_bucket(bucket) {
+            result = *value;
+            break;
+        }
+    }
 
     *receiver.as_set_iterator_mut(&mut vm.heap) = iter;
-    result
+    Ok(result)
 }
 
 pub(super) fn set_iter_str_native(
