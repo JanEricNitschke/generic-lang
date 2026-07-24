@@ -100,7 +100,7 @@ code cannot trigger a sweep, and only code that re-enters the interpreter
 The model is **pending-on-the-stack**; there is no "currently handling"
 state on the VM.
 
-- `ExceptionKind` (`src/vm/exception_handling.rs:17`): `#[repr(u32)]`, 11
+- `ExceptionKind` (`src/vm/exception_handling.rs:17`): `#[repr(u32)]`, 12
   variants named exactly like the builtin exception classes (strum
   `IntoStaticStr` derives the class name; pinned by
   `every_exception_kind_has_a_builtin_class` at the bottom of the same

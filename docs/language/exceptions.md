@@ -18,7 +18,8 @@ Exception
 ├── AssertionError
 ├── IoError
 ├── KeyError
-└── IndexError
+├── IndexError
+└── RuntimeError
 ```
 
 Runtime errors raised by the interpreter (a bad index, a missing name, a

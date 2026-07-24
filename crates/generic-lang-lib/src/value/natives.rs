@@ -374,7 +374,8 @@ impl PartialEq for Set {
 #[derive(Debug, Clone, Default)]
 pub struct SetIterator {
     pub(crate) set: InstanceId,
-    pub(crate) index: usize,
+    /// The next physical slot the scan should examine in the backing table.
+    pub(crate) bucket: usize,
     pub(crate) size: usize,
 }
 
@@ -382,7 +383,7 @@ impl SetIterator {
     pub(crate) const fn new(set: InstanceId, size: usize) -> Self {
         Self {
             set,
-            index: 0,
+            bucket: 0,
             size,
         }
     }
@@ -411,7 +412,7 @@ impl std::fmt::Display for SetIterator {
 
 impl PartialEq for SetIterator {
     fn eq(&self, other: &Self) -> bool {
-        self.set == other.set && self.index == other.index
+        self.set == other.set && self.bucket == other.bucket
     }
 }
 
@@ -611,7 +612,8 @@ impl DictIterMode {
 #[derive(Debug, Clone, Default)]
 pub struct DictIterator {
     pub(crate) dict: InstanceId,
-    pub(crate) index: usize,
+    /// The next physical slot the scan should examine in the backing table.
+    pub(crate) bucket: usize,
     pub(crate) size: usize,
     pub(crate) mode: DictIterMode,
 }
@@ -620,7 +622,7 @@ impl DictIterator {
     pub(crate) const fn new(dict: InstanceId, size: usize, mode: DictIterMode) -> Self {
         Self {
             dict,
-            index: 0,
+            bucket: 0,
             size,
             mode,
         }
@@ -652,7 +654,7 @@ impl std::fmt::Display for DictIterator {
 
 impl PartialEq for DictIterator {
     fn eq(&self, other: &Self) -> bool {
-        self.dict == other.dict && self.index == other.index
+        self.dict == other.dict && self.bucket == other.bucket
     }
 }
 

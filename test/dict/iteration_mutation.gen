@@ -7,10 +7,10 @@ foreach (var item in my_dict.items()) {
 
 var items_iter = my_dict.items();
 print(next(items_iter));  # expect: (2, Banana)
-# We can not detect mutations that do not affect the size
-# but it can have unpredictable effects on iteration order
+# Same-size mutations are undetectable. Updating an existing key rewrites its
+# slot in place, so an in-flight iterator reads the new value on reaching it.
 my_dict[3] = "Avocado";
-print(next(items_iter));  # expect: (1, Apple)
+print(next(items_iter));  # expect: (3, Avocado)
 
 my_dict[4] = "BAD!";
 try {

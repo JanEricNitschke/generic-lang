@@ -214,22 +214,33 @@ pub(super) fn dict_iter_next_native(
             .unwrap_err());
     }
 
-    let result = if let Some((key, value, _hash)) = dict.items.iter().nth(iter.index) {
-        iter.index += 1;
-        match iter.mode {
-            DictIterMode::Keys => Ok(*key),
-            DictIterMode::Values => Ok(*value),
+    // `bucket` is a physical slot cursor: resume scanning from it and advance
+    // past the slot we return, so a full iteration visits each bucket once.
+    let num_buckets = dict.items.num_buckets();
+    let mut entry = None;
+    while iter.bucket < num_buckets {
+        let bucket = iter.bucket;
+        iter.bucket += 1;
+        if let Some((key, value, _hash)) = dict.items.get_bucket(bucket) {
+            entry = Some((*key, *value));
+            break;
+        }
+    }
+
+    let result = match entry {
+        Some((key, value)) => match iter.mode {
+            DictIterMode::Keys => Ok(key),
+            DictIterMode::Values => Ok(value),
             DictIterMode::Items => {
-                let tuple = Tuple::new(vec![*key, *value]);
+                let tuple = Tuple::new(vec![key, value]);
                 let instance = Instance::new(
                     *vm.heap.native_classes.get("Tuple").unwrap(),
                     Some(tuple.into()),
                 );
                 Ok(vm.heap.add_instance(instance))
             }
-        }
-    } else {
-        Ok(Value::StopIteration)
+        },
+        None => Ok(Value::StopIteration),
     };
 
     *receiver.as_dict_iterator_mut(&mut vm.heap) = iter;
