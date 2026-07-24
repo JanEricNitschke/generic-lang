@@ -443,7 +443,7 @@ pub(super) fn string_removeprefix_native(
     }
 }
 
-/// `String.removesuffix(suffix)` - remove suffix from the string if it starts with it.
+/// `String.removesuffix(suffix)` - remove suffix from the string if it ends with it.
 pub(super) fn string_removesuffix_native(
     vm: &mut VM,
     receiver: &Value,
