@@ -184,6 +184,13 @@ keys mapping to equal values, and two sets when they hold the same elements,
 regardless of order. There is no ordering (`<`, `<=`, `>`, `>=`) on dicts or
 sets.
 
+A value that contains itself, directly or through a chain, prints the repeated
+occurrence as an ellipsis rather than looping forever: `[...]` for a list,
+`(...)` for a tuple, `{...}` for a set or dict, and `...` for any other
+instance. A structure that is merely nested too deeply (rather than cyclic)
+raises a [`RecursionError`](exceptions.md#the-exception-hierarchy) when it is
+stringified or compared.
+
 ### Ranges
 
 `a..<b` is exclusive of `b`; `a..=b` is inclusive. A range is iterable,

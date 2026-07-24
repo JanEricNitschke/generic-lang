@@ -19,7 +19,7 @@ class PopsOther {
 var shrink_other = [10, 20, 30];
 var shrink_this = [PopsOther(shrink_other), 20, 30];
 print(shrink_this == shrink_other); # expect: false
-print(shrink_other);  # expect: [20, 30]
+print(shrink_other);  # expect: [10, 20]
 
 # The mutator (at index 1) changes an element that was already compared
 # (index 0). Earlier elements are not revisited, so equality still holds.

@@ -150,17 +150,17 @@ impl NativeClass {
         }
     }
 
-    pub(crate) fn to_string(&self, heap: &Heap) -> String {
+    pub(crate) fn to_string(&self, heap: &Heap, depth: usize) -> String {
         match self {
-            Self::List(list) => list.to_string(heap),
+            Self::List(list) => list.to_string(heap, depth),
             Self::ListIterator(list_iter) => list_iter.to_string(heap),
-            Self::Set(set) => set.to_string(heap),
+            Self::Set(set) => set.to_string(heap, depth),
             Self::SetIterator(set_iter) => set_iter.to_string(heap),
-            Self::Dict(dict) => dict.to_string(heap),
+            Self::Dict(dict) => dict.to_string(heap, depth),
             Self::DictIterator(dict_iter) => dict_iter.to_string(heap),
             Self::Range(range) => range.to_string(heap),
             Self::RangeIterator(range_iter) => range_iter.to_string(heap),
-            Self::Tuple(tuple) => tuple.to_string(heap),
+            Self::Tuple(tuple) => tuple.to_string(heap, depth),
             Self::TupleIterator(tuple_iter) => tuple_iter.to_string(heap),
             // Needs the instance's class name; handled in `Instance::to_string`.
             Self::Exception(_) => unreachable!("Exceptions are stringified via their instance"),
@@ -223,12 +223,12 @@ impl List {
         Self { items }
     }
 
-    fn to_string(&self, heap: &Heap) -> String {
+    fn to_string(&self, heap: &Heap, depth: usize) -> String {
         format!(
             "[{}]",
             self.items
                 .iter()
-                .map(|item| item.to_string(heap))
+                .map(|item| item.to_string_capped(heap, depth + 1))
                 .collect::<Vec<_>>()
                 .join(", ")
         )
@@ -280,12 +280,12 @@ pub struct Set {
 }
 
 impl Set {
-    fn to_string(&self, heap: &Heap) -> String {
+    fn to_string(&self, heap: &Heap, depth: usize) -> String {
         format!(
             "{{{}}}",
             self.items
                 .iter()
-                .map(|(item, _hash)| item.to_string(heap))
+                .map(|(item, _hash)| item.to_string_capped(heap, depth + 1))
                 .collect::<Vec<_>>()
                 .join(", ")
         )
@@ -423,7 +423,7 @@ pub struct Dict {
 
 impl Dict {
     #[allow(clippy::literal_string_with_formatting_args)]
-    fn to_string(&self, heap: &Heap) -> String {
+    fn to_string(&self, heap: &Heap, depth: usize) -> String {
         if self.items.is_empty() {
             return "{:}".to_string();
         }
@@ -433,8 +433,8 @@ impl Dict {
                 .iter()
                 .map(|(key, value, _hash)| format!(
                     "{}: {}",
-                    key.to_string(heap),
-                    value.to_string(heap)
+                    key.to_string_capped(heap, depth + 1),
+                    value.to_string_capped(heap, depth + 1)
                 ))
                 .collect::<Vec<_>>()
                 .join(", ")
@@ -779,15 +779,15 @@ impl Tuple {
         &self.items
     }
 
-    fn to_string(&self, heap: &Heap) -> String {
+    fn to_string(&self, heap: &Heap, depth: usize) -> String {
         if self.items.len() == 1 {
-            return format!("({},)", self.items[0].to_string(heap));
+            return format!("({},)", self.items[0].to_string_capped(heap, depth + 1));
         }
         format!(
             "({})",
             self.items
                 .iter()
-                .map(|item| item.to_string(heap))
+                .map(|item| item.to_string_capped(heap, depth + 1))
                 .collect::<Vec<_>>()
                 .join(", ")
         )

@@ -1,0 +1,26 @@
+# Comparing two distinct cyclic
+# structures raises a catchable RecursionError.
+
+var a = [1];
+a.append(a);
+var b = [1];
+b.append(b);
+
+try {
+    print(a == b);
+    print("did not raise");
+} catch RecursionError as e {
+    print(str(e)); # expect: maximum recursion depth exceeded
+}
+
+try {
+    print(a < b);
+    print("did not raise");
+} catch RecursionError as e {
+    print(str(e)); # expect: maximum recursion depth exceeded
+}
+
+# Comparing an object to itself short-circuits on identity, so it stays cheap
+# and never recurses.
+print(a == a); # expect: true
+print(a != a); # expect: false

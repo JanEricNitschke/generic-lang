@@ -1,0 +1,13 @@
+# Formatting a cyclic value inside an error message must not overflow the host
+# stack: the depth-bounded formatter elides the deep part, so the TypeError is
+# raised and catchable as normal.
+
+var cyclic = [1];
+cyclic.append(cyclic);
+
+try {
+    cyclic - 5;
+    print("did not raise");
+} catch TypeError as e {
+    print("caught TypeError"); # expect: caught TypeError
+}

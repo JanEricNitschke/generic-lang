@@ -1,0 +1,35 @@
+# Nesting that is deep but not cyclic has no repeated occurrence to elide, so
+# it is bounded by the re-entry depth guard: stringifying or comparing it
+# raises a catchable RecursionError rather than overflowing the host stack.
+
+fun nest(depth) {
+    var value = [0];
+    for (var i = 0; i < depth; i = i + 1) {
+        value = [value];
+    }
+    return value;
+}
+
+var deep = nest(2000);
+
+try {
+    print(deep);
+    print("did not raise");
+} catch RecursionError as e {
+    print(str(e)); # expect: maximum recursion depth exceeded
+}
+
+var other = nest(2000);
+try {
+    print(deep == other);
+    print("did not raise");
+} catch RecursionError as e {
+    print(str(e)); # expect: maximum recursion depth exceeded
+}
+
+try {
+    print(deep < other);
+    print("did not raise");
+} catch RecursionError as e {
+    print(str(e)); # expect: maximum recursion depth exceeded
+}

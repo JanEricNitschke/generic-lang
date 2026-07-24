@@ -39,7 +39,7 @@ pub use exception_handling::{ExceptionHandler, ExceptionKind, SuspendedException
 #[cfg(feature = "plugins")]
 use plugins::PluginState;
 
-use rustc_hash::FxHashMap as HashMap;
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 
@@ -50,7 +50,7 @@ use crate::vm::errors::VmResult;
 use crate::{
     chunk::{CodeOffset, OpCode},
     compiler::Compiler,
-    heap::{Heap, ModuleId, StringId, UpvalueId},
+    heap::{Heap, InstanceId, ModuleId, StringId, UpvalueId},
     scanner::Scanner,
     stdlib,
     types::{Comparison, EqualityMode, JumpCondition, NumberEncoding, RangeType},
@@ -118,6 +118,13 @@ pub struct VM {
     // Could also keep a cache of the last module or its globals for performance
     modules: Vec<ModuleId>,
     builtins: HashMap<StringId, Global>,
+    /// Depth of nested native dunder re-entry, bounded by
+    /// [`crate::config::REENTRY_MAX`]. Balanced by `invoke_and_run_function`.
+    reentry_depth: usize,
+    /// Instances currently being stringified, so a cycle renders as an
+    /// ellipsis instead of recursing forever (see `value_to_string`). Contains
+    /// only ancestors of the in-progress render, all rooted on the VM stack.
+    repr_in_progress: HashSet<InstanceId>,
     stdlib: HashMap<StringId, ModuleContents>,
     #[cfg(feature = "plugins")]
     plugins: PluginState,
@@ -139,6 +146,8 @@ impl VM {
             open_upvalues: VecDeque::new(),
             modules: Vec::new(),
             builtins: HashMap::default(),
+            reentry_depth: 0,
+            repr_in_progress: HashSet::default(),
             stdlib: HashMap::default(),
             #[cfg(feature = "plugins")]
             plugins: PluginState::default(),
