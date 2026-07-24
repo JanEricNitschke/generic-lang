@@ -1,10 +1,19 @@
 //! Methods of the native `List` class.
 
+use crate::heap::Heap;
+use crate::types::Comparison;
 use crate::vm::ExceptionKind::{IndexError, TypeError, ValueError};
 use crate::{
     value::{Instance, List, ListIterator, NativeClass, Number, Value},
     vm::{VM, errors::VmResult},
 };
+use std::cmp::Ordering;
+
+/// Whether `value` is (backed by) a `List`.
+fn is_list(value: Value, heap: &Heap) -> bool {
+    matches!(value, Value::Instance(instance)
+        if matches!(&instance.to_value(heap).backing, Some(NativeClass::List(_))))
+}
 
 /// Append an item to the end of the list.
 /// `list.append(a)`.
@@ -402,4 +411,103 @@ pub(super) fn list_copy_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -
         Some(new_list.into()),
     );
     Ok(vm.heap.add_instance(instance))
+}
+
+/// `list == other`: element-wise equality, respecting each element's `__eq__`.
+/// Only equal to another list; any other type is unequal (never an error).
+pub(super) fn list_eq_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    let other = args[0];
+    // Same object is trivially equal, and short-circuits self-referential lists.
+    if receiver.is(&other) {
+        return Ok(true.into());
+    }
+    if !is_list(other, &vm.heap) {
+        return Ok(false.into());
+    }
+    if receiver.as_list(&vm.heap).items.len() != other.as_list(&vm.heap).items.len() {
+        return Ok(false.into());
+    }
+    // Re-fetch by index each step: `compare_values_eq` re-enters and may mutate
+    // or reallocate either list.
+    let mut index = 0;
+    while index < receiver.as_list(&vm.heap).items.len()
+        && index < other.as_list(&vm.heap).items.len()
+    {
+        let element = receiver.as_list(&vm.heap).items[index];
+        let other_element = other.as_list(&vm.heap).items[index];
+        if !vm.compare_values_eq(element, other_element)? {
+            return Ok(false.into());
+        }
+        index += 1;
+    }
+    // A reentrant element `__eq__` may have resized either list mid-comparison;
+    // recheck the lengths agree so a shrunk list is not reported equal.
+    if receiver.as_list(&vm.heap).items.len() != other.as_list(&vm.heap).items.len() {
+        return Ok(false.into());
+    }
+    Ok(true.into())
+}
+
+/// Lexicographic ordering of `receiver` against `other`, or `None` when `other`
+/// is not a list (the caller raises `TypeError`).
+fn list_ordering(vm: &mut VM, receiver: &Value, other: Value) -> VmResult<Option<Ordering>> {
+    if !is_list(other, &vm.heap) {
+        return Ok(None);
+    }
+    if receiver.is(&other) {
+        return Ok(Some(Ordering::Equal));
+    }
+    // Re-fetch by index each step: comparing elements re-enters the interpreter
+    // and may mutate or reallocate either list.
+    let mut index = 0;
+    loop {
+        let self_len = receiver.as_list(&vm.heap).items.len();
+        let other_len = other.as_list(&vm.heap).items.len();
+        if index >= self_len || index >= other_len {
+            return Ok(Some(self_len.cmp(&other_len)));
+        }
+        let element = receiver.as_list(&vm.heap).items[index];
+        let other_element = other.as_list(&vm.heap).items[index];
+        if !vm.compare_values_eq(element, other_element)? {
+            let ordering = if vm.compare_values_lt(element, other_element)? {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            };
+            return Ok(Some(ordering));
+        }
+        index += 1;
+    }
+}
+
+/// Shared body of the four list ordering dunders.
+fn list_compare(vm: &mut VM, receiver: &Value, other: Value, kind: Comparison) -> VmResult<Value> {
+    match list_ordering(vm, receiver, other)? {
+        Some(ordering) => Ok(kind.holds_for(ordering).into()),
+        None => Err(vm
+            .throw(
+                TypeError,
+                &format!(
+                    "Can only compare a list to another list, got `{}`.",
+                    other.to_string(&vm.heap)
+                ),
+            )
+            .unwrap_err()),
+    }
+}
+
+pub(super) fn list_lt_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    list_compare(vm, receiver, args[0], Comparison::Less)
+}
+
+pub(super) fn list_le_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    list_compare(vm, receiver, args[0], Comparison::LessEqual)
+}
+
+pub(super) fn list_gt_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    list_compare(vm, receiver, args[0], Comparison::Greater)
+}
+
+pub(super) fn list_ge_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    list_compare(vm, receiver, args[0], Comparison::GreaterEqual)
 }

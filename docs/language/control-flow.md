@@ -56,10 +56,10 @@ foreach (var item in [10, 20, 30]) {
 foreach (var i in 1..<5) { print(i); }   # ranges are iterables
 ```
 
-Iterables are lists, tuples, ranges, generators,
-[templates](values.md#strings), and any class implementing the
-[iterator protocol](functions.md#generators). Sets, dicts, and strings
-are *not* iterable.
+Iterables are lists, tuples, ranges, sets, dicts (iterating their keys),
+generators, [templates](values.md#strings), and any class implementing the
+[iterator protocol](functions.md#generators). Strings are not iterable
+directly; iterate their `.chars()`, `.bytes()`, or `.clusters()` instead.
 
 ## `break` and `continue`
 

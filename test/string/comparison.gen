@@ -1,0 +1,24 @@
+# Strings order lexicographically by NFC-normalized code points.
+
+print("a" < "b");   # expect: true
+print("b" < "a");   # expect: false
+print("a" < "a");   # expect: false
+print("a" <= "a");  # expect: true
+print("b" >= "a");  # expect: true
+print("a" > "b");   # expect: false
+
+# Shorter is smaller when it is a prefix.
+print("ab" < "abc"); # expect: true
+print("abc" > "ab"); # expect: true
+print("" < "a");     # expect: true
+print("" <= "");     # expect: true
+
+# Ordering is by code point, so uppercase sorts before lowercase.
+print("Z" < "a"); # expect: true
+
+# Ordering is consistent with NFC-normalized equality: the precomposed "é"
+# and the "e" + combining acute accent are equal, so neither is less.
+print("café" == "café"); # expect: true
+print("café" < "café");  # expect: false
+print("café" <= "café"); # expect: true
+print("café" >= "café"); # expect: true

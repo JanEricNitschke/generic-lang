@@ -1,0 +1,133 @@
+# Container equality re-enters user code through element `__eq__`, which may
+# mutate the container being compared. These tests pin the behaviour: elements
+# are re-fetched by index each step and a final size check guards the result,
+# so a mid-comparison resize can never report equality.
+
+# --- Lists (ordered, so "before"/"after" the mutator are well defined) ---
+
+# The mutator shrinks the other list: the final length check reports inequality.
+class PopsOther {
+    __init__(other) {
+        this.other = other;
+    }
+
+    __eq__(ignored) {
+        this.other.pop();
+        return true;
+    }
+}
+var shrink_other = [10, 20, 30];
+var shrink_this = [PopsOther(shrink_other), 20, 30];
+print(shrink_this == shrink_other); # expect: false
+print(shrink_other);  # expect: [20, 30]
+
+# The mutator (at index 1) changes an element that was already compared
+# (index 0). Earlier elements are not revisited, so equality still holds.
+class SetsEarlier {
+    __init__(other) {
+        this.other = other;
+    }
+
+    __eq__(ignored) {
+        this.other[0] = 999;
+        return true;
+    }
+}
+var earlier_other = [0, 0, 0];
+var earlier_this = [0, SetsEarlier(earlier_other), 0];
+print(earlier_this == earlier_other); # expect: true
+print(earlier_other[0]);              # expect: 999
+
+# The mutator (at index 0) changes an element not yet compared (index 2). The
+# later comparison observes the change and reports inequality.
+class SetsLater {
+    __init__(other) {
+        this.other = other;
+    }
+
+    __eq__(ignored) {
+        this.other[2] = 999;
+        return true;
+    }
+}
+var later_other = [0, 0, 0];
+var later_this = [SetsLater(later_other), 0, 0];
+print(later_this == later_other); # expect: false
+
+# --- Dicts ---
+# Dicts iterate their entries in a fixed (hash-dependent) order. For the keys
+# 1, 2, 3 that order is 2, 3, 1, so a value's `__eq__` can be aimed at a key
+# that is compared before or after it.
+
+class ChangesValue {
+    __init__(other, key) {
+        this.other = other;
+        this.key = key;
+    }
+
+    __eq__(ignored) {
+        this.other[this.key] = 999;
+        return true;
+    }
+}
+
+# The mutator is the value at key 1 (compared last); it rewrites key 2's value
+# (compared first, already matched). The change is not revisited, and the size
+# is unchanged, so equality holds.
+var dbefore_other = {1: 0, 2: 0, 3: 0};
+var dbefore_self = {1: ChangesValue(dbefore_other, 2), 2: 0, 3: 0};
+print(dbefore_self == dbefore_other); # expect: true
+print(dbefore_other[2]);              # expect: 999
+
+# The mutator is the value at key 2 (compared first); it rewrites key 1's value
+# (compared last, not yet matched). The later comparison sees the change.
+var dafter_other = {1: 0, 2: 0, 3: 0};
+var dafter_self = {1: 0, 2: ChangesValue(dafter_other, 1), 3: 0};
+print(dafter_self == dafter_other); # expect: false
+
+# A value's `__eq__` that pops a key changes the size; the final size check
+# catches it regardless of ordering.
+class PopsFromDict {
+    __init__(other) {
+        this.other = other;
+    }
+
+    __eq__(ignored) {
+        this.other.pop(2);
+        return true;
+    }
+}
+var dict_other = {1: 0, 2: 0};
+var dict_self = {1: PopsFromDict(dict_other), 2: 0};
+print(dict_self == dict_other); # expect: false
+print(len(dict_other));         # expect: 1
+
+# --- Sets ---
+# A set has no in-place element to rewrite, so every mutation is an insert or
+# remove, i.e. a size change. "Before"/"after" therefore collapse: the final
+# size check reports inequality whatever the iteration order.
+class RemovesFromSet {
+    __init__(value) {
+        this.value = value;
+        this.target = nil;
+    }
+
+    __hash__() {
+        return this.value;
+    }
+
+    __eq__(other) {
+        if (this.target != nil) {
+            this.target.remove(2);
+        }
+        return this.value == other.value;
+    }
+}
+var mutator = RemovesFromSet(1);
+var set_other = {2, 3};
+set_other.insert(mutator);
+mutator.target = set_other;
+# `set_self` shares the plain ints and a fresh hash-1 element that probes
+# against `mutator`, firing its `__eq__` (which removes 2 from `set_other`).
+var set_self = {2, 3, RemovesFromSet(1)};
+print(set_self == set_other); # expect: false

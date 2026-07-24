@@ -1,10 +1,17 @@
 //! Methods of the native `Dict` class.
 
+use crate::heap::Heap;
 use crate::vm::ExceptionKind::{KeyError, RuntimeError, TypeError};
 use crate::{
     value::{Dict, DictIterMode, DictIterator, Instance, NativeClass, Number, Tuple, Value},
     vm::{VM, errors::VmResult},
 };
+
+/// Whether `value` is (backed by) a `Dict`.
+fn is_dict(value: Value, heap: &Heap) -> bool {
+    matches!(value, Value::Instance(instance)
+        if matches!(&instance.to_value(heap).backing, Some(NativeClass::Dict(_))))
+}
 
 /// Get an item via `dict[a]`, where `a` is a hashable value type.
 /// Supports all value types that implement hashable functionality.
@@ -27,8 +34,8 @@ pub(super) fn dict_set_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> 
     Ok(Value::Nil)
 }
 
-/// Remove a key via `dict.pop(a)` and return its value, like Python's
-/// `dict.pop`. Throws `KeyError` if the key is not present.
+/// Remove a key via `dict.pop(a)` and return its value. Throws `KeyError` if
+/// the key is not present.
 pub(super) fn dict_pop_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
     match Dict::remove(vm, receiver, args[0])? {
         Some(value) => Ok(value),
@@ -261,4 +268,51 @@ pub(super) fn dict_iter_str_native(
 
     let string = format!("<dict_{mode} iterator of {dict_string}>");
     Ok(vm.heap.string_id(&string).into())
+}
+
+/// `dict == other`: equal iff both are dicts of the same size with the same
+/// keys mapping to equal values (keys match via `__hash__`/`__eq__`, values via
+/// `__eq__`). Any other type is unequal (never an error).
+pub(super) fn dict_eq_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    let other = args[0];
+    if receiver.is(&other) {
+        return Ok(true.into());
+    }
+    if !is_dict(other, &vm.heap) {
+        return Ok(false.into());
+    }
+    if receiver.as_dict(&vm.heap).items.len() != other.as_dict(&vm.heap).items.len() {
+        return Ok(false.into());
+    }
+
+    // Same size + every self key present in `other` with an equal value implies
+    // dict equality. Looking up and comparing re-enters the interpreter, so root
+    // the keys and values on the VM stack (as `for_each_rooted` does).
+    let start = vm.stack.len();
+    for (key, value, _hash) in &receiver.as_dict(&vm.heap).items {
+        vm.stack.push(*key);
+        vm.stack.push(*value);
+    }
+    let end = vm.stack.len();
+
+    for index in (start..end).step_by(2) {
+        let key = vm.stack[index];
+        let value = vm.stack[index + 1];
+        let equal = match Dict::get(vm, &other, key)? {
+            Some(other_value) => vm.compare_values_eq(value, other_value)?,
+            None => false,
+        };
+        if !equal {
+            vm.stack.truncate(start);
+            return Ok(false.into());
+        }
+    }
+
+    vm.stack.truncate(start);
+    // A reentrant `__hash__`/`__eq__` may have resized either dict mid-lookup;
+    // recheck the sizes agree so a shrunk dict is not reported equal.
+    if receiver.as_dict(&vm.heap).items.len() != other.as_dict(&vm.heap).items.len() {
+        return Ok(false.into());
+    }
+    Ok(true.into())
 }
