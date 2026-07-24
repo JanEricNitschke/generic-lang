@@ -1,7 +1,7 @@
 use crate::heap::ClassId;
 use crate::value::NativeClass;
 use crate::vm::ExceptionKind::{
-    AttributeError, ConstReassignmentError, Exception, NameError, TypeError, ValueError,
+    AttributeError, ConstReassignmentError, NameError, RecursionError, TypeError, ValueError,
 };
 use crate::vm::arithmetics::IntoResultValue;
 use crate::vm::errors::{Return, VmErrorKind, VmResult};
@@ -53,18 +53,30 @@ impl VM {
             ..self.current_region()
         };
 
-        // Whether the callee needs its bytecode run cannot be decided from
-        // the looked-up method: `invoke` may dispatch to an instance *field*
-        // instead (e.g. a native function stored under `__str__`, or a
-        // field-held closure), so trust the callstack - run exactly when
-        // `invoke` pushed a frame. Anything that completed natively already
-        // left its result on the stack.
-        let frames_before = self.callstack.len();
-        let result = match self.invoke(method_name, arg_count) {
-            Ok(_) if self.callstack.len() > frames_before => self.run_function(),
-            Ok(_) => Ok(None),
-            err => err,
+        // Bound the host stack: native dunder recursion (`__str__` on nested
+        // containers, `__eq__`/`__lt__`, `__hash__`) re-enters here without
+        // pushing a bytecode frame, so `FRAMES_MAX` cannot see it. The counter
+        // is decremented unconditionally below (no `?` between), and the
+        // over-limit throw is cleaned up by the same `Err` arm as a real
+        // escaping exception, so the pushed receiver and arguments are unwound.
+        self.reentry_depth += 1;
+        let result = if self.reentry_depth > crate::config::REENTRY_MAX {
+            self.throw(RecursionError, "maximum recursion depth exceeded")
+        } else {
+            // Whether the callee needs its bytecode run cannot be decided from
+            // the looked-up method: `invoke` may dispatch to an instance *field*
+            // instead (e.g. a native function stored under `__str__`, or a
+            // field-held closure), so trust the callstack - run exactly when
+            // `invoke` pushed a frame. Anything that completed natively already
+            // left its result on the stack.
+            let frames_before = self.callstack.len();
+            match self.invoke(method_name, arg_count) {
+                Ok(_) if self.callstack.len() > frames_before => self.run_function(),
+                Ok(_) => Ok(None),
+                err => err,
+            }
         };
+        self.reentry_depth -= 1;
 
         match result {
             Err(VmErrorKind::Exception(kind)) => {
@@ -332,7 +344,7 @@ impl VM {
         }
 
         if self.callstack.len() == crate::config::FRAMES_MAX {
-            return self.throw(Exception, "Stack overflow.");
+            return self.throw(RecursionError, "maximum recursion depth exceeded");
         }
 
         self.callstack.push(

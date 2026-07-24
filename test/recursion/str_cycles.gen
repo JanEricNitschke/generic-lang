@@ -1,0 +1,56 @@
+# A value that contains itself renders the repeated occurrence as an ellipsis
+# instead of recursing forever: `[...]` for a list, `(...)` for a tuple,
+# `{...}` for a set or dict, and `...` for any other instance.
+
+var list = [1];
+list.append(list);
+print(list); # expect: [1, [...]]
+
+var dict = {:};
+dict[1] = dict;
+print(dict); # expect: {1: {...}}
+
+# A dict that contains itself as a key.
+var key_cycle = {:};
+key_cycle[key_cycle] = 1;
+print(key_cycle); # expect: {{...}: 1}
+
+# A set that contains itself.
+var set = {1};
+set.insert(set);
+print(set); # expect: {{...}, 1}
+
+# Mutual references between two lists.
+var a = [1];
+var b = [a];
+a.append(b);
+print(a); # expect: [1, [[...]]]
+
+# User instances are tracked too, so a self-referential object renders with an
+# ellipsis rather than overflowing.
+class Node {
+    __init__() {
+        this.child = nil;
+    }
+
+    __str__() {
+        return f"Node(${this.child})";
+    }
+}
+var node = Node();
+node.child = node;
+print(node); # expect: Node(...)
+
+# A user cycle that runs through a container: the container elides the repeat.
+class Box {
+    __init__() {
+        this.items = [];
+    }
+
+    __str__() {
+        return f"Box(${this.items})";
+    }
+}
+var box = Box();
+box.items.append(box);
+print(box); # expect: Box([...])

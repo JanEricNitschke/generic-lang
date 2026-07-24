@@ -19,5 +19,5 @@ try {
     d[Bad()] = "b";
     print("did not terminate");
 } catch Exception as e {
-    print(str(e)); # expect: Stack overflow.
+    print(str(e)); # expect: maximum recursion depth exceeded
 }

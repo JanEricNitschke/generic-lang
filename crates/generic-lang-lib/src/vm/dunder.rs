@@ -1,14 +1,25 @@
 use super::VM;
 use crate::vm::ExceptionKind::{AttributeError, TypeError};
 use crate::{
-    heap::StringId,
-    value::{GenericInt, Number, Value},
+    heap::{Heap, InstanceId, StringId},
+    value::{GenericInt, NativeClass, Number, Value},
     vm::errors::VmResult,
 };
 use num_bigint::BigInt;
 use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 use unicode_normalization::UnicodeNormalization;
+
+/// The placeholder shown for an instance that appears inside its own string
+/// representation, matching the delimiters of the backing container.
+fn instance_ellipsis(instance: InstanceId, heap: &Heap) -> &'static str {
+    match &instance.to_value(heap).backing {
+        Some(NativeClass::List(_)) => "[...]",
+        Some(NativeClass::Tuple(_)) => "(...)",
+        Some(NativeClass::Set(_) | NativeClass::Dict(_)) => "{...}",
+        _ => "...",
+    }
+}
 
 impl VM {
     /// Invoke `method_name` on `values[0]` with the remaining values as
@@ -62,7 +73,29 @@ impl VM {
 
     /// Convert a value to string, handling instances with `__str__` methods.
     /// This function is shared between value constructors, `to_string_native`, and `print_native`.
+    ///
+    /// Instances are tracked while their `__str__` runs so a value that
+    /// contains itself (directly or through a chain) renders the repeated
+    /// occurrence as an ellipsis instead of recursing forever: `[...]` for a
+    /// list, `(...)` for a tuple, `{...}` for a set or dict, and `...` for any
+    /// other instance. Non-cyclic but very deep nesting is bounded separately
+    /// by the re-entry depth guard in `invoke_and_run_function`.
     pub fn value_to_string(&mut self, value: &Value) -> VmResult<StringId> {
+        let Value::Instance(instance) = value else {
+            return self.value_to_string_inner(value);
+        };
+        if self.repr_in_progress.contains(instance) {
+            return Ok(self
+                .heap
+                .string_id(&instance_ellipsis(*instance, &self.heap)));
+        }
+        self.repr_in_progress.insert(*instance);
+        let result = self.value_to_string_inner(value);
+        self.repr_in_progress.remove(instance);
+        result
+    }
+
+    fn value_to_string_inner(&mut self, value: &Value) -> VmResult<StringId> {
         if let Some(string_value) = self.invoke_method_by_name(&[*value], "__str__")? {
             if let Value::String(string_id) = string_value {
                 Ok(string_id)

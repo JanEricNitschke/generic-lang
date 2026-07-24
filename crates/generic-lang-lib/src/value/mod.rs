@@ -134,6 +134,19 @@ impl Value {
     }
 
     pub fn to_string(&self, heap: &Heap) -> String {
+        self.to_string_capped(heap, 0)
+    }
+
+    /// Infallible, host-recursive formatter used for error messages and debug
+    /// output. It descends into containers by calling itself on each element,
+    /// so a cyclic or very deep value would overflow the host stack; `depth`
+    /// bounds that, eliding the rest as `...` past [`crate::config::REPR_MAX_DEPTH`].
+    /// (User-facing `str`/`print` go through the VM's `value_to_string`, which
+    /// does proper per-cycle ellipsis.)
+    pub(crate) fn to_string_capped(&self, heap: &Heap, depth: usize) -> String {
+        if depth > crate::config::REPR_MAX_DEPTH {
+            return "...".to_string();
+        }
         match self {
             Self::Bool(bool) => format!("{bool}"),
             Self::Number(num) => num.to_string(heap),
@@ -146,7 +159,7 @@ impl Value {
             Self::NativeFunction(ref_id) => ref_id.to_value(heap).to_string(heap),
             Self::NativeMethod(ref_id) => ref_id.to_value(heap).to_string(heap),
             Self::Class(ref_id) => ref_id.to_value(heap).to_string(heap),
-            Self::Instance(ref_id) => ref_id.to_value(heap).to_string(heap),
+            Self::Instance(ref_id) => ref_id.to_value(heap).to_string_capped(heap, depth),
             Self::BoundMethod(ref_id) => ref_id.to_value(heap).to_string(heap),
             Self::Upvalue(ref_id) => format!("{}", ref_id.to_value(heap)),
             Self::Module(ref_id) => ref_id.to_value(heap).to_string(heap),

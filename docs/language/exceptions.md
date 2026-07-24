@@ -20,11 +20,17 @@ Exception
 ├── KeyError
 ├── IndexError
 └── RuntimeError
+    └── RecursionError
 ```
 
 Runtime errors raised by the interpreter (a bad index, a missing name, a
 failed `assert`, …) are instances of the matching class, so they can be
 caught like any other exception.
+
+`RecursionError` is raised when recursion goes too deep: a runaway chain of
+function calls, or a structure so deeply nested that comparing or stringifying
+it would exhaust the stack. It derives from `RuntimeError`, so
+`catch RuntimeError` (or `catch Exception`) catches it too.
 
 ## Raising: `throw`
 

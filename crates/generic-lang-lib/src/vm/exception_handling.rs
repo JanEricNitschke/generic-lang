@@ -26,6 +26,7 @@ pub enum ExceptionKind {
     KeyError,
     IndexError,
     RuntimeError,
+    RecursionError,
 }
 
 /// A snapshot of the three lengths that define a callstack region: the

@@ -131,10 +131,17 @@ impl Instance {
 
     #[allow(clippy::option_if_let_else)]
     pub(crate) fn to_string(&self, heap: &Heap) -> String {
+        self.to_string_capped(heap, 0)
+    }
+
+    /// Depth-bounded variant used by the recursive `Value::to_string_capped`;
+    /// `depth` is threaded into the backing container so a nested or cyclic
+    /// value cannot overflow the host stack while being formatted.
+    pub(crate) fn to_string_capped(&self, heap: &Heap, depth: usize) -> String {
         match &self.backing {
-            // Exceptions render repr-style like Python: `ClassName('message')`.
-            // The class name lives on the instance, not the backing, so this
-            // is handled here rather than in `NativeClass::to_string`.
+            // Exceptions render repr-style as `ClassName('message')`. The class
+            // name lives on the instance, not the backing, so this is handled
+            // here rather than in `NativeClass::to_string`.
             Some(NativeClass::Exception(exception)) => {
                 let class_name = self.class.to_value(heap).name.to_value(heap);
                 match exception.message() {
@@ -142,7 +149,7 @@ impl Instance {
                     None => format!("{class_name}()"),
                 }
             }
-            Some(native_class) => native_class.to_string(heap),
+            Some(native_class) => native_class.to_string(heap, depth),
             None => format!(
                 "<{} instance>",
                 self.class.to_value(heap).name.to_value(heap)

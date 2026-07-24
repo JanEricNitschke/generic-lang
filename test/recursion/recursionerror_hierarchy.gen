@@ -1,0 +1,24 @@
+# RecursionError derives from RuntimeError (which derives from Exception), so a
+# recursion overflow can be caught at any level of the hierarchy.
+
+fun forever() {
+    return forever();
+}
+
+try {
+    forever();
+} catch RecursionError as e {
+    print("caught RecursionError"); # expect: caught RecursionError
+}
+
+try {
+    forever();
+} catch RuntimeError as e {
+    print("caught RuntimeError"); # expect: caught RuntimeError
+}
+
+try {
+    forever();
+} catch Exception as e {
+    print("caught Exception"); # expect: caught Exception
+}
