@@ -3,6 +3,7 @@
 // Should probably move all of the other Shrinkwrapped types in here as well.
 
 use shrinkwraprs::Shrinkwrap;
+use std::cmp::Ordering;
 
 #[derive(Shrinkwrap, PartialEq, Eq, Clone, Copy, Debug, PartialOrd)]
 #[shrinkwrap(mutable)]
@@ -161,6 +162,37 @@ pub enum CollectionType {
 pub enum EqualityMode {
     Equal,
     NotEqual,
+}
+
+/// Enum for the ordering comparison operators (`<`, `<=`, `>`, `>=`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Comparison {
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+}
+
+impl Comparison {
+    pub(crate) const fn method_name(self) -> &'static str {
+        match self {
+            Self::Less => "__lt__",
+            Self::LessEqual => "__le__",
+            Self::Greater => "__gt__",
+            Self::GreaterEqual => "__ge__",
+        }
+    }
+
+    /// Whether `ordering` (of the left operand relative to the right) satisfies
+    /// this operator.
+    pub(crate) const fn holds_for(self, ordering: Ordering) -> bool {
+        match self {
+            Self::Less => matches!(ordering, Ordering::Less),
+            Self::LessEqual => matches!(ordering, Ordering::Less | Ordering::Equal),
+            Self::Greater => matches!(ordering, Ordering::Greater),
+            Self::GreaterEqual => matches!(ordering, Ordering::Greater | Ordering::Equal),
+        }
+    }
 }
 
 /// Enum for range boundary types

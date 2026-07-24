@@ -9,7 +9,7 @@ use crate::vm::exception_handling::RegionSnapshot;
 use crate::{
     chunk::OpCode,
     heap::{NativeFunctionId, NativeMethodId, StringId, UpvalueId},
-    types::{EqualityMode, JumpCondition, NumberEncoding, RangeType},
+    types::{Comparison, EqualityMode, JumpCondition, NumberEncoding, RangeType},
     value::{Class, Closure, Instance, Number, Upvalue, Value, get_native_class_id},
 };
 

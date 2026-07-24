@@ -1,0 +1,52 @@
+# Containers delegate equality to each element's `__eq__`.
+
+class Eq {
+    __init__(value) {
+        this.value = value;
+    }
+
+    __eq__(other) {
+        return this.value == other.value;
+    }
+}
+
+# Elements are compared with their custom `__eq__`, so equal-by-value but
+# distinct instances count as equal.
+print([Eq(1), Eq(2)] == [Eq(1), Eq(2)]); # expect: true
+print([Eq(1), Eq(2)] == [Eq(1), Eq(3)]); # expect: false
+print([Eq(1)] != [Eq(1)]);               # expect: false
+
+# The delegation recurses through nesting.
+print([[Eq(1)], [Eq(2)]] == [[Eq(1)], [Eq(2)]]); # expect: true
+print([[Eq(1)]] == [[Eq(2)]]);                   # expect: false
+
+# Tuples delegate the same way.
+print((Eq(1), Eq(2)) == (Eq(1), Eq(2))); # expect: true
+
+# Dict values are compared with their `__eq__`.
+print({1: Eq(1)} == {1: Eq(1)}); # expect: true
+print({1: Eq(1)} == {1: Eq(2)}); # expect: false
+
+# Dict keys are matched through their `__hash__` and `__eq__`, so equal-by-value
+# but distinct key instances are treated as the same key.
+class Key {
+    __init__(value) {
+        this.value = value;
+    }
+
+    __hash__() {
+        return this.value;
+    }
+
+    __eq__(other) {
+        return this.value == other.value;
+    }
+}
+
+print({Key(1): "x", Key(2): "y"} == {Key(2): "y", Key(1): "x"}); # expect: true
+print({Key(1): "x", Key(2): "y"} == {Key(1): "x", Key(2): "z"}); # expect: false
+print({Key(1): "x", Key(2): "y"} == {Key(1): "x", Key(3): "y"}); # expect: false
+
+# Sets match their elements the same way.
+print({Key(1), Key(2)} == {Key(2), Key(1)}); # expect: true
+print({Key(1), Key(2)} == {Key(1), Key(3)}); # expect: false

@@ -84,8 +84,30 @@ string. A `Template` exposes its literal `.strings()` and its
 rendering.
 
 String methods include `replace(a, b)`, `find(sub)`, `contains(sub)`,
-`bytes()`, `chars()`, `clusters()`, and the indexed `get_byte`/`get_char`/
-`get_cluster`.
+`split([sep])`, `join(parts)`, `strip()`, `startswith(prefix)`,
+`endswith(suffix)`, `removeprefix(prefix)`, `removesuffix(suffix)`, `bytes()`,
+`chars()`, `clusters()`, and the indexed `get_byte`/`get_char`/`get_cluster`.
+
+```generic
+print("a,b,c".split(","));      # [a, b, c]
+print("  a  b  ".split());      # [a, b]   (no argument: split on whitespace runs)
+print("-".join(["x", "y"]));    # x-y
+print("  hi  ".strip());        # hi
+print("filename.gen".removesuffix(".gen"));  # filename
+```
+
+`split()` with no argument splits on runs of whitespace and drops empty
+fields; given a separator it keeps them. `join(parts)` requires every element
+to be a string. A string can also be repeated with `*`: `"ab" * 3` is
+`"ababab"`, and a count `<= 0` yields `""`.
+
+Strings order with `<`, `<=`, `>`, `>=` lexicographically by NFC-normalized
+code point, matching how `==` already normalizes:
+
+```generic
+print("apple" < "banana");   # true
+print("Zebra" < "apple");    # true  (uppercase code points sort first)
+```
 
 ### Lists, tuples
 
@@ -99,8 +121,23 @@ var t = (1, 2, 3);          # tuples: immutable
 print(t + (4, 5));          # (1, 2, 3, 4, 5)
 ```
 
-List methods: `append(x)`, `pop([i])`, `insert(i, x)`, `contains(x)`, plus
-`[]`, `+`, `len`, and iteration.
+List methods: `append(x)`, `pop([i])`, `insert(i, x)`, `contains(x)`,
+`reverse()`, `extend(iterable)`, `clear()`, `copy()`, plus `[]`, `+`, `len`,
+and iteration. Tuples, being immutable, offer only the non-mutating ones:
+`contains(x)`, `reversed()` (returns a new tuple), `[]`, `+`, `len`, and
+iteration.
+
+Lists and tuples compare structurally. `==` and `!=` check the elements
+pairwise (using each element's own `__eq__`), and `<`, `<=`, `>`, `>=` order
+them lexicographically. A shorter sequence that is a prefix of a longer one
+sorts first. Comparing a list to a tuple, or ordering elements that are not
+mutually comparable, raises a `TypeError`.
+
+```generic
+print([1, 2, 3] == [1, 2, 3]);   # true
+print([1, 2] < [1, 2, 3]);       # true  (prefix sorts first)
+print((1, 3) > (1, 2));          # true
+```
 
 ### Dicts and sets
 
@@ -117,10 +154,35 @@ var empty_set = {};
 print(2 in s);                            # true
 ```
 
-Dict methods: `contains(k)`, `pop(k)`, `[]`/`[]=`, `len`. Set methods:
-`insert(x)`, `remove(x)`, `contains(x)`, `len`. Dicts and sets are unordered
-(display order follows the hash, not insertion) and do not implement the
-iterator protocol, so they cannot be traversed with `foreach`.
+Dict methods: `contains(k)`, `pop(k)`, `get(k, default)`, `keys()`,
+`values()`, `items()`, `clear()`, `[]`/`[]=`, `len`. Set methods: `insert(x)`,
+`remove(x)`, `contains(x)`, `clear()`, `len`, plus the set-algebra operators
+`|` (union), `&` (intersection), `-` (difference), and `^` (symmetric
+difference).
+
+Dicts and sets are unordered: iteration and display order follow the hash,
+not insertion. Both are iterable. A `foreach` over a dict walks its keys, and
+`keys()`, `values()`, and `items()` return iterators over the keys, the
+values, and `(key, value)` tuples:
+
+```generic
+var d = { "a": 1, "b": 2 };
+foreach (var k in d) { print(k); }              # keys, in hash order
+foreach (var pair in d.items()) { print(pair); }
+print(d.get("a", 0));                            # 1
+print(d.get("z", 0));                            # 0  (default when absent)
+
+var a = { 1, 2, 3 };
+var b = { 2, 3, 4 };
+print(a & b);   # intersection
+print(a | b);   # union
+print(a - b);   # difference
+```
+
+Dicts and sets compare by contents: two dicts are `==` when they hold the same
+keys mapping to equal values, and two sets when they hold the same elements,
+regardless of order. There is no ordering (`<`, `<=`, `>`, `>=`) on dicts or
+sets.
 
 ### Ranges
 

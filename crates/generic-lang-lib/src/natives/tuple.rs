@@ -1,10 +1,19 @@
 //! Methods of the native `Tuple` class.
 
+use crate::heap::Heap;
+use crate::types::Comparison;
 use crate::vm::ExceptionKind::{IndexError, TypeError, ValueError};
 use crate::{
     value::{Instance, NativeClass, Number, Tuple, TupleIterator, Value},
     vm::{VM, errors::VmResult},
 };
+use std::cmp::Ordering;
+
+/// Whether `value` is (backed by) a `Tuple`.
+fn is_tuple(value: Value, heap: &Heap) -> bool {
+    matches!(value, Value::Instance(instance)
+        if matches!(&instance.to_value(heap).backing, Some(NativeClass::Tuple(_))))
+}
 
 /// Get an item at a specified index `tuple[a]`.
 pub(super) fn tuple_get_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
@@ -214,4 +223,93 @@ pub(super) fn tuple_reversed_native(
         Some(new_tuple.into()),
     );
     Ok(vm.heap.add_instance(instance))
+}
+
+/// `tuple == other`: element-wise equality, respecting each element's `__eq__`.
+/// Only equal to another tuple; any other type is unequal (never an error).
+pub(super) fn tuple_eq_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    let other = args[0];
+    if receiver.is(&other) {
+        return Ok(true.into());
+    }
+    if !is_tuple(other, &vm.heap) {
+        return Ok(false.into());
+    }
+    if receiver.as_tuple(&vm.heap).items().len() != other.as_tuple(&vm.heap).items().len() {
+        return Ok(false.into());
+    }
+    let mut index = 0;
+    while index < receiver.as_tuple(&vm.heap).items().len()
+        && index < other.as_tuple(&vm.heap).items().len()
+    {
+        let element = receiver.as_tuple(&vm.heap).items()[index];
+        let other_element = other.as_tuple(&vm.heap).items()[index];
+        if !vm.compare_values_eq(element, other_element)? {
+            return Ok(false.into());
+        }
+        index += 1;
+    }
+    Ok(true.into())
+}
+
+/// Lexicographic ordering of `receiver` against `other`, or `None` when `other`
+/// is not a tuple (the caller raises `TypeError`).
+fn tuple_ordering(vm: &mut VM, receiver: &Value, other: Value) -> VmResult<Option<Ordering>> {
+    if !is_tuple(other, &vm.heap) {
+        return Ok(None);
+    }
+    if receiver.is(&other) {
+        return Ok(Some(Ordering::Equal));
+    }
+    let mut index = 0;
+    loop {
+        let self_len = receiver.as_tuple(&vm.heap).items().len();
+        let other_len = other.as_tuple(&vm.heap).items().len();
+        if index >= self_len || index >= other_len {
+            return Ok(Some(self_len.cmp(&other_len)));
+        }
+        let element = receiver.as_tuple(&vm.heap).items()[index];
+        let other_element = other.as_tuple(&vm.heap).items()[index];
+        if !vm.compare_values_eq(element, other_element)? {
+            let ordering = if vm.compare_values_lt(element, other_element)? {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            };
+            return Ok(Some(ordering));
+        }
+        index += 1;
+    }
+}
+
+/// Shared body of the four tuple ordering dunders.
+fn tuple_compare(vm: &mut VM, receiver: &Value, other: Value, kind: Comparison) -> VmResult<Value> {
+    match tuple_ordering(vm, receiver, other)? {
+        Some(ordering) => Ok(kind.holds_for(ordering).into()),
+        None => Err(vm
+            .throw(
+                TypeError,
+                &format!(
+                    "Can only compare a tuple to another tuple, got `{}`.",
+                    other.to_string(&vm.heap)
+                ),
+            )
+            .unwrap_err()),
+    }
+}
+
+pub(super) fn tuple_lt_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    tuple_compare(vm, receiver, args[0], Comparison::Less)
+}
+
+pub(super) fn tuple_le_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    tuple_compare(vm, receiver, args[0], Comparison::LessEqual)
+}
+
+pub(super) fn tuple_gt_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    tuple_compare(vm, receiver, args[0], Comparison::Greater)
+}
+
+pub(super) fn tuple_ge_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    tuple_compare(vm, receiver, args[0], Comparison::GreaterEqual)
 }

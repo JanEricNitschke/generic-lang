@@ -185,7 +185,6 @@ impl VM {
     }
 
     /// Compare two values for <, with support for custom __lt__ methods.
-    #[expect(dead_code)]
     pub(crate) fn compare_values_lt(&mut self, left: Value, right: Value) -> VmResult<bool> {
         if let Some(lt_result) = self.invoke_method_by_name(&[left, right], "__lt__")? {
             if let Value::Bool(result) = lt_result {
@@ -204,11 +203,16 @@ impl VM {
         } else {
             match (&left, &right) {
                 (Value::Number(a), Value::Number(b)) => Ok(a.lt(b, &self.heap)),
+                (Value::String(a), Value::String(b)) => Ok(a
+                    .to_value(&self.heap)
+                    .nfc()
+                    .cmp(b.to_value(&self.heap).nfc())
+                    == std::cmp::Ordering::Less),
                 _ => Err(self
                     .throw(
                         TypeError,
                         &format!(
-                            "Operands must be numbers or support `__lt__`. Got: [{}, {}]",
+                            "Operands must be numbers, strings or support `__lt__`. Got: [{}, {}]",
                             left.to_string(&self.heap),
                             right.to_string(&self.heap)
                         ),

@@ -53,7 +53,7 @@ use crate::{
     heap::{Heap, ModuleId, StringId, UpvalueId},
     scanner::Scanner,
     stdlib,
-    types::{EqualityMode, JumpCondition, NumberEncoding, RangeType},
+    types::{Comparison, EqualityMode, JumpCondition, NumberEncoding, RangeType},
     value::{Class, Closure, Function, ModuleContents, Number, Upvalue, Value},
 };
 use std::fmt::Write;

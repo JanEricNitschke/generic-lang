@@ -48,9 +48,10 @@ use string::{
 };
 
 use list::{
-    list_add_native, list_append_native, list_bool_native, list_contains_native, list_get_native,
-    list_init_native, list_insert_native, list_iter_native, list_iter_next_native,
-    list_iter_str_native, list_len_native, list_pop_native, list_set_native, list_str_native,
+    list_add_native, list_append_native, list_bool_native, list_contains_native, list_eq_native,
+    list_ge_native, list_get_native, list_gt_native, list_init_native, list_insert_native,
+    list_iter_native, list_iter_next_native, list_iter_str_native, list_le_native, list_len_native,
+    list_lt_native, list_pop_native, list_set_native, list_str_native,
 };
 
 use range::{
@@ -59,19 +60,20 @@ use range::{
 };
 
 use set::{
-    set_bool_native, set_contains_native, set_init_native, set_insert_native, set_len_native,
-    set_remove_native, set_str_native,
+    set_bool_native, set_contains_native, set_eq_native, set_init_native, set_insert_native,
+    set_len_native, set_remove_native, set_str_native,
 };
 
 use tuple::{
-    tuple_add_native, tuple_bool_native, tuple_contains_native, tuple_get_native,
-    tuple_init_native, tuple_iter_native, tuple_iter_next_native, tuple_iter_str_native,
-    tuple_len_native, tuple_str_native,
+    tuple_add_native, tuple_bool_native, tuple_contains_native, tuple_eq_native, tuple_ge_native,
+    tuple_get_native, tuple_gt_native, tuple_init_native, tuple_iter_native,
+    tuple_iter_next_native, tuple_iter_str_native, tuple_le_native, tuple_len_native,
+    tuple_lt_native, tuple_str_native,
 };
 
 use dict::{
-    dict_bool_native, dict_contains_native, dict_get_native, dict_init_native, dict_len_native,
-    dict_pop_native, dict_set_native, dict_str_native,
+    dict_bool_native, dict_contains_native, dict_eq_native, dict_get_native, dict_init_native,
+    dict_len_native, dict_pop_native, dict_set_native, dict_str_native,
 };
 
 use exception::{
@@ -159,6 +161,11 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"List", &"__len__", &[0], list_len_native);
     vm.define_native_method(&"List", &"__bool__", &[0], list_bool_native);
     vm.define_native_method(&"List", &"__str__", &[0], list_str_native);
+    vm.define_native_method(&"List", &"__eq__", &[1], list_eq_native);
+    vm.define_native_method(&"List", &"__lt__", &[1], list_lt_native);
+    vm.define_native_method(&"List", &"__le__", &[1], list_le_native);
+    vm.define_native_method(&"List", &"__gt__", &[1], list_gt_native);
+    vm.define_native_method(&"List", &"__ge__", &[1], list_ge_native);
     vm.define_native_method(&"List", &"reverse", &[0], list_reverse_native);
     vm.define_native_method(&"List", &"extend", &[1], list_extend_native);
     vm.define_native_method(&"List", &"clear", &[0], list_clear_native);
@@ -178,6 +185,11 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"Tuple", &"__bool__", &[0], tuple_bool_native);
     vm.define_native_method(&"Tuple", &"contains", &[1], tuple_contains_native);
     vm.define_native_method(&"Tuple", &"__str__", &[0], tuple_str_native);
+    vm.define_native_method(&"Tuple", &"__eq__", &[1], tuple_eq_native);
+    vm.define_native_method(&"Tuple", &"__lt__", &[1], tuple_lt_native);
+    vm.define_native_method(&"Tuple", &"__le__", &[1], tuple_le_native);
+    vm.define_native_method(&"Tuple", &"__gt__", &[1], tuple_gt_native);
+    vm.define_native_method(&"Tuple", &"__ge__", &[1], tuple_ge_native);
     vm.define_native_method(&"Tuple", &"reversed", &[0], tuple_reversed_native);
 
     vm.define_native_class(&"TupleIterator", false);
@@ -193,6 +205,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"Set", &"__len__", &[0], set_len_native);
     vm.define_native_method(&"Set", &"__bool__", &[0], set_bool_native);
     vm.define_native_method(&"Set", &"__str__", &[0], set_str_native);
+    vm.define_native_method(&"Set", &"__eq__", &[1], set_eq_native);
     vm.define_native_method(&"Set", &"__iter__", &[0], set_iter_native);
     vm.define_native_method(&"Set", &"__bitor__", &[1], set_bitor_native);
     vm.define_native_method(&"Set", &"__bitand__", &[1], set_bitand_native);
@@ -214,6 +227,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"Dict", &"__len__", &[0], dict_len_native);
     vm.define_native_method(&"Dict", &"__bool__", &[0], dict_bool_native);
     vm.define_native_method(&"Dict", &"__str__", &[0], dict_str_native);
+    vm.define_native_method(&"Dict", &"__eq__", &[1], dict_eq_native);
     vm.define_native_method(&"Dict", &"__iter__", &[0], dict_iter_native);
     vm.define_native_method(&"Dict", &"keys", &[0], dict_keys_native);
     vm.define_native_method(&"Dict", &"values", &[0], dict_values_native);

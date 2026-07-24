@@ -1,9 +1,11 @@
 use super::VM;
+use crate::types::Comparison;
 use crate::vm::ExceptionKind::{TypeError, ValueError};
 use crate::{
     value::{GenericRational, Number, Value},
     vm::errors::VmResult,
 };
+use unicode_normalization::UnicodeNormalization;
 
 pub(super) trait IntoResultValue {
     fn into_result_value(self) -> Result<Value, String>;
@@ -195,6 +197,59 @@ impl VM {
             _ => {
                 let message = format!(
                     "Operands must be two numbers, string * integer, or support `__mul__`. Got: [{}]",
+                    self.stack[slice_start..]
+                        .iter()
+                        .map(|v| v.to_string(&self.heap))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                self.throw(TypeError, &message)
+            }
+        }
+    }
+
+    /// Handle the ordering operators `<`, `<=`, `>`, `>=` on the top two stack
+    /// values. Numbers and strings compare directly (strings by NFC-normalized
+    /// code points, consistent with string equality); instances dispatch to the
+    /// matching dunder; anything else is a `TypeError`.
+    pub(super) fn compare(&mut self, kind: Comparison) -> VmResult {
+        let slice_start = self.stack.len() - 2;
+        let method = kind.method_name();
+        let gen_method_id = self.heap.string_id(&method);
+        match &self.stack[slice_start..] {
+            [Value::Number(a), Value::Number(b)] => {
+                let result = match kind {
+                    Comparison::Less => a.lt(b, &self.heap),
+                    Comparison::LessEqual => a.le(b, &self.heap),
+                    Comparison::Greater => a.gt(b, &self.heap),
+                    Comparison::GreaterEqual => a.ge(b, &self.heap),
+                };
+                self.stack.pop();
+                self.stack.pop();
+                self.stack_push(result.into());
+                Ok(None)
+            }
+            [Value::String(a), Value::String(b)] => {
+                let ordering = a
+                    .to_value(&self.heap)
+                    .nfc()
+                    .cmp(b.to_value(&self.heap).nfc());
+                let result = kind.holds_for(ordering);
+                self.stack.pop();
+                self.stack.pop();
+                self.stack_push(result.into());
+                Ok(None)
+            }
+            [Value::Instance(instance_id), _]
+                if instance_id
+                    .to_value(&self.heap)
+                    .has_field_or_method(gen_method_id, &self.heap) =>
+            {
+                self.invoke(gen_method_id, 1)
+            }
+            _ => {
+                let message = format!(
+                    "Operands must be numbers, strings or support `{method}`. Got: [{}]",
                     self.stack[slice_start..]
                         .iter()
                         .map(|v| v.to_string(&self.heap))

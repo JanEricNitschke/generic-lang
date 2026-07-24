@@ -1,0 +1,38 @@
+# Equality of containers holding plain values.
+
+# Lists compare element-wise; length matters.
+print([1, 2, 3] == [1, 2, 3]); # expect: true
+print([1, 2, 3] == [1, 2, 4]); # expect: false
+print([1, 2] == [1, 2, 3]);    # expect: false
+print([1, 2] != [1, 3]);       # expect: true
+
+# Nested containers compare structurally.
+print([[1, 2], [3]] == [[1, 2], [3]]); # expect: true
+print([[1, 2], [3]] == [[1, 2], [4]]); # expect: false
+
+# Tuples behave the same.
+print((1, 2) == (1, 2)); # expect: true
+print((1, 2) == (1, 3)); # expect: false
+
+# Sets are equal when they hold the same elements, order-independent.
+print({1, 2, 3} == {3, 2, 1}); # expect: true
+print({1, 2} == {1, 2, 3});    # expect: false
+
+# Dicts are equal with the same keys mapping to equal values.
+print({1: "a", 2: "b"} == {2: "b", 1: "a"}); # expect: true
+print({1: "a"} == {1: "b"});                 # expect: false
+print({1: "a"} == {2: "a"});                 # expect: false
+
+# Containers of different kinds are never equal.
+print([1, 2] == (1, 2)); # expect: false
+print([1] == 1);         # expect: false
+print({1} == {1: 1});    # expect: false
+
+# A container is equal to itself, including self-referential lists that would
+# otherwise recurse forever: the identity short-circuit returns early.
+var l = [1, 2];
+print(l == l); # expect: true
+var cyclic = [1];
+cyclic.append(cyclic);
+print(cyclic == cyclic);     # expect: true
+print([cyclic] == [cyclic]); # expect: true

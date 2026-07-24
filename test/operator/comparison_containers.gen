@@ -1,0 +1,36 @@
+# Lexicographic ordering for lists and tuples.
+
+# Element-by-element until the first difference decides.
+print([1, 2, 3] < [1, 2, 4]); # expect: true
+print([1, 2, 4] < [1, 2, 3]); # expect: false
+print([1, 2, 3] > [1, 2, 4]); # expect: false
+
+# A prefix is smaller than the longer sequence.
+print([1, 2] < [1, 2, 3]);  # expect: true
+print([1, 2, 3] > [1, 2]);  # expect: true
+print([1, 2] <= [1, 2]);    # expect: true
+print([1, 2] >= [1, 2]);    # expect: true
+print([1, 2] < [1, 2]);     # expect: false
+
+# The empty list is the smallest.
+print([] < [1]);   # expect: true
+print([] <= []);   # expect: true
+
+# Nested lists compare recursively.
+print([[1, 2], [3]] < [[1, 2], [4]]); # expect: true
+print([[1, 3]] < [[1, 2]]);           # expect: false
+
+# Tuples order the same way.
+print((1, 2) < (1, 3));    # expect: true
+print((1,) < (1, 0));      # expect: true
+print((2,) > (1, 9, 9));   # expect: true
+print((1, 2) <= (1, 2));   # expect: true
+print((1, 2) >= (1, 3));   # expect: false
+
+# Mixed numeric element types still compare by value.
+print([1] < [1.5]);        # expect: true
+print([2] < [1.5]);        # expect: false
+
+# String elements order lexicographically inside containers.
+print(["a", "b"] < ["a", "c"]); # expect: true
+print(("b",) > ("a", "z"));     # expect: true

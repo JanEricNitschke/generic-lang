@@ -1,9 +1,16 @@
 //! Methods of the native `Set` class.
+use crate::heap::Heap;
 use crate::vm::ExceptionKind::{RuntimeError, TypeError};
 use crate::{
-    value::{Instance, Number, Set, SetIterator, Value},
+    value::{Instance, NativeClass, Number, Set, SetIterator, Value},
     vm::{VM, errors::VmResult},
 };
+
+/// Whether `value` is (backed by) a `Set`.
+fn is_set(value: Value, heap: &Heap) -> bool {
+    matches!(value, Value::Instance(instance)
+        if matches!(&instance.to_value(heap).backing, Some(NativeClass::Set(_))))
+}
 
 /// Insert an item into the set `set.insert(item)`.
 /// Supports all value types that implement hashable functionality.
@@ -287,4 +294,47 @@ pub(super) fn set_clear_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -
     let set = receiver.as_set_mut(&mut vm.heap);
     set.items.clear();
     Ok(Value::Nil)
+}
+
+/// `set == other`: equal iff both are sets of the same size and every element
+/// of one is in the other (membership respects each element's `__eq__`). Any
+/// other type is unequal (never an error).
+pub(super) fn set_eq_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
+    let other = args[0];
+    if receiver.is(&other) {
+        return Ok(true.into());
+    }
+    if !is_set(other, &vm.heap) {
+        return Ok(false.into());
+    }
+    if receiver.as_set(&vm.heap).items.len() != other.as_set(&vm.heap).items.len() {
+        return Ok(false.into());
+    }
+
+    // Same size + every element present in `other` implies set equality.
+    // Membership re-enters the interpreter through `__hash__`/`__eq__`, so keep
+    // the elements rooted on the VM stack while probing.
+    let start = vm.stack.len();
+    vm.stack.extend(
+        receiver
+            .as_set(&vm.heap)
+            .items
+            .iter()
+            .map(|(item, _hash)| *item),
+    );
+    let end = vm.stack.len();
+    for index in start..end {
+        let item = vm.stack[index];
+        if !Set::contains(vm, &other, item)? {
+            vm.stack.truncate(start);
+            return Ok(false.into());
+        }
+    }
+    vm.stack.truncate(start);
+    // A reentrant `__hash__`/`__eq__` may have resized either set mid-probe;
+    // recheck the sizes agree so a shrunk set is not reported equal.
+    if receiver.as_set(&vm.heap).items.len() != other.as_set(&vm.heap).items.len() {
+        return Ok(false.into());
+    }
+    Ok(true.into())
 }

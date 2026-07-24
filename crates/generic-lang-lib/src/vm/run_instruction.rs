@@ -159,10 +159,10 @@ macro_rules! run_instruction {
             OpCode::Exp => binary_op!($self, pow, "__pow__", false, mut_heap),
             OpCode::Mod => binary_op!($self, rem, "__mod__", false, mut_heap),
             OpCode::FloorDiv => binary_op!($self, floor_div, "__floor_div__", false, mut_heap),
-            OpCode::Greater => binary_op!($self, gt, "__gt__", false, non_mut_heap),
-            OpCode::Less => binary_op!($self, lt, "__lt__", false, non_mut_heap),
-            OpCode::GreaterEqual => binary_op!($self, ge, "__ge__", false, non_mut_heap),
-            OpCode::LessEqual => binary_op!($self, le, "__le__", false, non_mut_heap),
+            OpCode::Greater => $self.compare(Comparison::Greater),
+            OpCode::Less => $self.compare(Comparison::Less),
+            OpCode::GreaterEqual => $self.compare(Comparison::GreaterEqual),
+            OpCode::LessEqual => $self.compare(Comparison::LessEqual),
             OpCode::Jump => {
                 let offset = $self.read_16bit_number();
                 $self.callstack.current_mut().ip += offset;
