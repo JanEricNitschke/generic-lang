@@ -1,0 +1,124 @@
+# Plugin-defined classes: the `Counter` class exported by the Rust example
+# plugin (plugin-examples/rust), built and copied to
+# test/plugin/rust/rust_demo_plugin.<ext> by the Makefile `plugin-test-fixture`
+# step. This file runs under the normal suite AND under stress-GC (GC at every
+# instruction), which is what exercises the `traverse` and `drop` callbacks.
+#
+# `Counter` holds state three ways:
+#   - hidden native data (count)   -- reachable only via value()/increment()
+#   - a managed GenericValue (label) -- kept alive by the GC traverse callback
+#   - a generic-side attribute (note/origin) -- an ordinary instance field set
+#     from native code via attr_set and visible to generic code directly
+import "rust_demo_plugin";
+
+# --- instantiation, hidden native data ---
+var c = rust_demo_plugin.Counter("greeting");
+print(c.value());     # expect: 0
+print(c.increment()); # expect: 1
+print(c.increment()); # expect: 2
+print(c.value());     # expect: 2
+
+# --- the managed GenericValue, returned via a method ---
+print(c.label());     # expect: greeting
+
+# --- a generic-side attribute set from native code in __init__ ---
+print(c.origin);      # expect: counter
+
+# --- attr_set / attr_get from native code, cross-checked against the field ---
+c.set_note("hello");
+print(c.get_note());  # expect: hello
+print(c.note);        # expect: hello
+
+# get_note before any note is set raises AttributeError, like `this.note` would.
+var fresh = rust_demo_plugin.Counter("x");
+try {
+    fresh.get_note();
+} catch AttributeError as e {
+    print(e); # expect: Undefined property 'note'.
+}
+
+# --- isinstance ---
+print(isinstance(c, rust_demo_plugin.Counter)); # expect: true
+print(isinstance(c, Exception));                # expect: false
+
+# --- independent per-instance state ---
+var c2 = rust_demo_plugin.Counter("world");
+print(c2.value()); # expect: 0
+print(c.value());  # expect: 2
+print(c2.label()); # expect: world
+
+# --- a dunder (__add__) implemented by the plugin class; it returns a new
+# Counter (constructed from native code via the receiver's own class), so the
+# result is a Counter whose count is the sum. c.count == 2, c2.count == 0.
+print((c + c2).value());  # expect: 2
+print(isinstance(c + c2, rust_demo_plugin.Counter)); # expect: true
+c2.increment();
+c2.increment();
+c2.increment();
+print((c + c2).value()); # expect: 5
+
+# __add__ type-checks the other operand: a non-Counter is a clean TypeError,
+# never a type confusion on its opaque state.
+try {
+    c + 5;
+} catch TypeError as e {
+    print(e); # expect: Counter.__add__ expects another Counter
+}
+# ...including another plugin class (a different opaque type).
+try {
+    c + rust_demo_plugin.Ticket();
+} catch TypeError as e {
+    print(e); # expect: Counter.__add__ expects another Counter
+}
+
+# --- an __init__ that fails: the exception propagates and leaves no instance ---
+try {
+    rust_demo_plugin.Counter(nil);
+} catch TypeError as e {
+    print(e); # expect: Counter label must not be nil
+}
+
+# --- a user subclass inherits the plugin backing (the superclass clause needs
+# a bare name, so alias the module-qualified class first) ---
+var Counter = rust_demo_plugin.Counter;
+class Loud < Counter {
+    __init__(label) {
+        super.__init__(label);
+    }
+    double() {
+        return this.value() * 2;
+    }
+}
+var l = Loud("sub");
+print(l.value());  # expect: 0
+l.increment();
+print(l.double()); # expect: 2
+print(l.label());  # expect: sub
+print(l.origin);   # expect: counter
+print(isinstance(l, rust_demo_plugin.Counter)); # expect: true
+
+# The subclass inherits the plugin backing, its methods, and its dunders. A
+# subclass instance is accepted as the other operand (it is an instance of the
+# receiver's class); c.count == 2, l.count == 1.
+print((c + l).value()); # expect: 3
+l.set_note("sub-note");
+print(l.get_note()); # expect: sub-note
+print(l.note);       # expect: sub-note
+
+# A subclass whose __init__ does not call super never installs the opaque
+# state, so ptr stays null and methods raise (rather than crashing).
+class Bare < Counter {
+    __init__(x) {}
+}
+var bare = Bare(1);
+try {
+    bare.value();
+} catch TypeError as e {
+    print(e); # expect: Counter method called on an uninitialized instance
+}
+
+# --- the held label survives collections (traverse) ---
+var keeper = rust_demo_plugin.Counter("survivor");
+print(keeper.label()); # expect: survivor
+var listed = rust_demo_plugin.Counter([1, 2, 3]);
+print(listed.label()); # expect: [1, 2, 3]

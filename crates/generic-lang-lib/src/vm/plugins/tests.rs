@@ -28,8 +28,9 @@ use generic_lang_api::{FfiReturn, FfiStatus, FfiStr, GenericValue, HostApi, Plug
 use num_bigint::BigInt;
 
 use crate::value::{
-    Class, Closure, Function, Generator, GenericInt, GenericRational, Instance, ListIterator,
-    Module, NativeClass, Number, Range, Tuple, Value, get_native_class_id,
+    Class, ClassKind, Closure, Function, Generator, GenericInt, GenericRational, Instance,
+    ListIterator, Module, NativeClass, Number, PluginClassInfo, PluginInstance, Range, Tuple,
+    Value, get_native_class_id,
 };
 use crate::vm::VM;
 use crate::vm::callstack::CallFrame;
@@ -61,7 +62,7 @@ fn new_list(vm: &mut VM) -> Value {
 
 fn plain_instance(vm: &mut VM) -> Value {
     let name_id = vm.heap.string_id(&"Plain");
-    let class = vm.heap.add_class(Class::new(name_id, false));
+    let class = vm.heap.add_class(Class::new(name_id, ClassKind::User));
     vm.heap.add_instance(Instance::new(*class.as_class(), None))
 }
 
@@ -916,7 +917,9 @@ fn rethrown_exceptions_keep_their_identity() {
 
     // A user-defined subclass of TypeError.
     let my_error_name_id = vm.heap.string_id(&"MyError");
-    let my_error_class = vm.heap.add_class(Class::new(my_error_name_id, false));
+    let my_error_class = vm
+        .heap
+        .add_class(Class::new(my_error_name_id, ClassKind::User));
     let my_error_class_id = *my_error_class.as_class();
     my_error_class_id.to_value_mut(&mut vm.heap).superclass = Some(type_error);
     let my_error_exception = vm.create_exception_with_class(my_error_class_id, Some(message_id));
@@ -1043,4 +1046,167 @@ fn corrupt_dylib_is_an_import_error_not_a_crash() {
     assert_eq!(pop_pending_exception_class(&mut vm), "ImportError");
 
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+// --- plugin classes: opaque state, drop, and traverse -----------------------
+
+use core::ffi::c_void;
+
+/// A drop callback that records the call by writing `true` through its pointer
+/// (which the test points at a stack `bool`).
+extern "C" fn record_drop(ptr: *mut c_void) {
+    // SAFETY: the test installs a pointer to a live `bool`.
+    unsafe { *ptr.cast::<bool>() = true };
+}
+
+/// A no-op drop; the opaque pointer here is a sentinel, never dereferenced.
+extern "C" fn noop_drop(_ptr: *mut c_void) {}
+
+/// Free a `Box<GenericValue>` opaque state (used with `report_held`).
+extern "C" fn free_held(ptr: *mut c_void) {
+    if !ptr.is_null() {
+        // SAFETY: `ptr` came from `Box::into_raw(Box::<GenericValue>::new(..))`.
+        drop(unsafe { Box::from_raw(ptr.cast::<GenericValue>()) });
+    }
+}
+
+/// A traverse callback reporting the single `GenericValue` in the opaque box.
+extern "C" fn report_held(
+    ptr: *mut c_void,
+    visit: generic_lang_api::PluginVisitFn,
+    visit_ctx: *mut c_void,
+) -> i32 {
+    if !ptr.is_null() {
+        // SAFETY: `ptr` points at a live `GenericValue` installed by the test.
+        let held = unsafe { *ptr.cast::<GenericValue>() };
+        visit(visit_ctx, held);
+    }
+    0
+}
+
+fn add_plugin_class(vm: &mut VM, name: &str, info: PluginClassInfo) -> Value {
+    let name_id = vm.heap.string_id(&name);
+    vm.heap
+        .add_class(Class::new(name_id, ClassKind::Plugin(info)))
+}
+
+#[test]
+fn instance_set_get_opaque_roundtrip_and_errors() {
+    let mut vm = VM::new();
+    let class = add_plugin_class(
+        &mut vm,
+        "Widget",
+        PluginClassInfo {
+            drop: Some(noop_drop),
+            traverse: None,
+        },
+    );
+    let widget = vm.heap.add_instance(Instance::new(
+        *class.as_class(),
+        Some(NativeClass::Plugin(PluginInstance::empty())),
+    ));
+    // Keep the class alive so teardown can resolve its (no-op) drop.
+    vm.stack.push(class);
+
+    // A plain (non-plugin) instance for the error path.
+    let plain = plain_instance(&mut vm);
+
+    let api = build_host_api(&mut vm);
+
+    // A sentinel pointer: only stored and compared, never dereferenced.
+    let sentinel = std::ptr::without_provenance_mut::<c_void>(0xABCD);
+
+    // get before set -> null.
+    assert!((api.instance_get_opaque)(api.ctx, to_ffi(widget)).is_null());
+
+    // set then get -> the same pointer.
+    let set = (api.instance_set_opaque)(api.ctx, to_ffi(widget), sentinel);
+    assert_eq!(set.status, 0);
+    assert_eq!((api.instance_get_opaque)(api.ctx, to_ffi(widget)), sentinel);
+
+    // set on a non-plugin instance -> TypeError.
+    assert_error(
+        &api,
+        (api.instance_set_opaque)(api.ctx, to_ffi(plain), sentinel),
+        "TypeError",
+    );
+
+    // set on a non-instance -> TypeError; get on a non-instance -> null.
+    let non_instance = to_ffi(Value::Nil);
+    assert_error(
+        &api,
+        (api.instance_set_opaque)(api.ctx, non_instance, sentinel),
+        "TypeError",
+    );
+    assert!((api.instance_get_opaque)(api.ctx, non_instance).is_null());
+}
+
+#[test]
+fn plugin_drop_runs_when_instance_is_collected() {
+    let mut vm = VM::new();
+    let class = add_plugin_class(
+        &mut vm,
+        "Widget",
+        PluginClassInfo {
+            drop: Some(record_drop),
+            traverse: None,
+        },
+    );
+    let class_id = *class.as_class();
+    vm.stack.push(class); // keep the class alive across the collection
+
+    let mut dropped = false;
+    let flag: *mut c_void = std::ptr::from_mut(&mut dropped).cast::<c_void>();
+    // Not rooted anywhere -> unreachable -> swept on the next collection.
+    vm.heap.add_instance(Instance::new(
+        class_id,
+        Some(NativeClass::Plugin(PluginInstance { ptr: flag })),
+    ));
+
+    vm.heap.force_next_gc();
+    vm.collect_garbage();
+    assert!(dropped, "plugin drop must run when the instance is swept");
+
+    vm.stack.pop();
+}
+
+#[test]
+fn plugin_traverse_keeps_held_value_alive_across_gc() {
+    let mut vm = VM::new();
+    let class = add_plugin_class(
+        &mut vm,
+        "Holder",
+        PluginClassInfo {
+            drop: Some(free_held),
+            traverse: Some(report_held),
+        },
+    );
+    let class_id = *class.as_class();
+
+    // A held string, interned but rooted nowhere except inside the opaque
+    // state - so it survives GC only if `traverse` reports it.
+    let held_id = vm.heap.string_id(&"held-unique-xyz");
+    let boxed = Box::into_raw(Box::new(to_ffi(Value::String(held_id)))).cast::<c_void>();
+    let instance = vm.heap.add_instance(Instance::new(
+        class_id,
+        Some(NativeClass::Plugin(PluginInstance { ptr: boxed })),
+    ));
+
+    // Root the class and the instance; the held string is reachable only
+    // through the instance's opaque state via `traverse`.
+    vm.stack.push(class);
+    vm.stack.push(instance);
+    vm.heap.force_next_gc();
+    vm.collect_garbage();
+
+    // The interned string survived iff interning the same text yields the same
+    // id (a swept string would be re-interned under a fresh id).
+    assert_eq!(
+        vm.heap.string_id(&"held-unique-xyz"),
+        held_id,
+        "traverse must keep the held value alive across GC"
+    );
+
+    vm.stack.pop();
+    vm.stack.pop();
 }

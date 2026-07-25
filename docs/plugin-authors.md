@@ -441,6 +441,144 @@ accepted argument count - `&[2]` for exactly two, `&[0, 1]` for optional,
 up to 255. The host checks arity *before* calling you; a mismatch is an
 ordinary `TypeError` in generic code and your function never runs.
 
+## Defining classes
+
+A plugin can export classes, not just functions. A class carries methods,
+per-instance native state hidden from generic code, and GC integration. In
+Rust it is declared in `export_module!` with a `class("Name") { ... }` block;
+in C/C++/Zig it is a `ClassDesc` (with a `MethodDesc` table) added to
+`ModuleDesc.classes`, exactly as functions are added to `ModuleDesc.functions`.
+
+```rust
+use generic_lang_api::{GenericValue, Host, PluginError, PluginVisitFn};
+use core::ffi::c_void;
+
+struct CounterState {
+    count: i64,          // hidden native data
+    label: GenericValue, // a held value the GC must be told about
+}
+
+extern "C" fn counter_drop(ptr: *mut c_void) {
+    if !ptr.is_null() {
+        // SAFETY: ptr came from Box::into_raw in __init__.
+        drop(unsafe { Box::from_raw(ptr.cast::<CounterState>()) });
+    }
+}
+
+extern "C" fn counter_traverse(ptr: *mut c_void, visit: PluginVisitFn, visit_ctx: *mut c_void)
+    -> i32 {
+    if !ptr.is_null() {
+        let state = unsafe { &*ptr.cast::<CounterState>() };
+        visit(visit_ctx, state.label); // report every held GenericValue
+    }
+    0
+}
+
+// Recover the typed state once, so the one `unsafe` (asserting the opaque type)
+// lives in a single place.
+fn state<'h>(host: &'h Host, this: GenericValue) -> Result<&'h mut CounterState, PluginError> {
+    unsafe { host.opaque_ref::<CounterState>(this) }
+        .ok_or_else(|| host.type_error("uninitialized Counter"))
+}
+
+// Methods take the receiver as a separate parameter; `args` are the remaining
+// arguments only.
+fn counter_init(host: &mut Host, this: GenericValue, args: &[GenericValue])
+    -> Result<GenericValue, PluginError> {
+    let state = Box::new(CounterState { count: 0, label: args[0] });
+    host.set_opaque(this, Box::into_raw(state).cast())?;
+    Ok(this) // __init__ returns the receiver (see below)
+}
+
+fn counter_value(host: &mut Host, this: GenericValue, _args: &[GenericValue])
+    -> Result<GenericValue, PluginError> {
+    Ok(host.make_int(state(host, this)?.count))
+}
+
+generic_lang_api::export_module![
+    class("Counter") {
+        ("__init__", &[1], counter_init), // arities exclude the receiver: one arg (the label)
+        ("value", &[0], counter_value),   // no args beyond the receiver
+        drop: counter_drop,
+        traverse: counter_traverse,
+    },
+];
+```
+
+### The `self` convention and `__init__`
+
+A plugin method receives the receiver (`self`) as a **separate first
+parameter** (Rust: `fn(&mut Host, GenericValue, &[GenericValue])`; C/C++/Zig:
+`fn(host, receiver, args, nargs)`); `args` are the remaining arguments only.
+Arity declarations **exclude the receiver**: a method called as `obj.foo(a, b)`
+declares `&[2]`, and a receiver-only method declares `&[0]`. Like every
+`__init__`, a plugin `__init__` must **return the receiver** - its return value
+becomes the result of the construction expression.
+
+### Per-instance native state: `set_opaque` / `get_opaque`
+
+Each instance carries one opaque `*mut c_void` you own. Install it (typically
+in `__init__`) with `host.set_opaque(receiver, ptr)` and recover it in any
+method with `host.get_opaque(receiver)` (or the typed `unsafe`
+`host.opaque_ref::<T>(receiver)`, as `state` above). The host never inspects
+it. The `drop` callback on the class is called with this pointer when the
+instance is garbage-collected (and for any still-live instances at interpreter
+shutdown); use it to free the allocation. `drop` may be null if there is
+nothing to free.
+
+Install the pointer once. Calling `set_opaque` again overwrites the previous
+pointer without freeing it - the host cannot `drop` it for you because it has
+no way to know whether you still hold a copy of it somewhere else, and freeing a
+pointer you are still using would be a use-after-free. To replace state, recover
+the old pointer with `get_opaque` and free it yourself before installing the
+new one.
+
+The opaque pointer is untyped: only ever cast it to `T` for an instance you
+know is your class. The receiver of a method always is (dispatch guarantees
+it), but **another** instance passed as an argument may not be - type-check it
+with `host.is_instance(other, host.class_of(receiver)?)?` before reading its
+opaque state, or reading a foreign instance's pointer as your `T` is undefined
+behavior. `host.class_of(instance)` returns the instance's class (the analogue
+of `type(self)`); it is also how you construct another instance of your own
+class from native code: `host.call(host.class_of(this)?, &[..])`.
+
+### GC integration: the `traverse` callback
+
+If your native state holds any `GenericValue`s, you **must** report each one to
+the GC through `traverse`, or the collector will sweep it while your instance is
+still alive (a use-after-free). The collector is mark-and-sweep, so `traverse`
+is what keeps held values reachable - not just a cycle-breaker. Call
+`visit(visit_ctx, value)` for every held `GenericValue`. If your state holds
+only primitives, set `traverse` to null.
+
+### Generic-side attributes
+
+Alongside hidden native state, a plugin instance is still an ordinary instance:
+`host.attr_set(receiver, name, value)` / `host.attr_get(receiver, name)` write
+and read normal fields, visible to generic code as `this.name`. Use native
+state for data that should stay hidden, and attributes for data generic code
+should see directly.
+
+### Dunders, inheritance, and `isinstance`
+
+A plugin class can implement dunders (`__add__`, `__eq__`, …) as methods, so
+operators work on its instances. `isinstance(obj, PluginClass)` works, and a
+user class may inherit from a plugin class - the subclass instance gets the
+plugin backing and inherits its methods and dunders, and its `__init__` should
+call `super.__init__(...)` to install the state. The superclass clause needs a
+bare name, so alias a module-qualified class first:
+
+```generic
+import "demo";
+var Counter = demo.Counter;
+class Loud < Counter {
+    __init__(label) { super.__init__(label); }
+}
+```
+
+Plugin classes cannot inherit from interpreter-native classes (`List`,
+`Exception`, …); create plugin exceptions with `exception_new` instead.
+
 ## ABI stability
 
 `GENERIC_PLUGIN_ABI_VERSION` (currently 1) is checked at load; a mismatch

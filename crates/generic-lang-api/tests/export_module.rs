@@ -2,8 +2,9 @@
 //! the panic/error mapping of the generated wrappers, driven through a mock
 //! host vtable.
 
-// The mock callbacks must match the ABI's fn-pointer types exactly.
-#![allow(clippy::missing_const_for_fn)]
+// The mock callbacks must match the ABI's fn-pointer types exactly, and the
+// exported plugin fns keep the `Result` wrapper even when they never fail.
+#![allow(clippy::missing_const_for_fn, clippy::unnecessary_wraps)]
 
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
@@ -73,6 +74,26 @@ fn sum_any(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, Plugi
     Ok(host.make_int(sum))
 }
 
+/// A method body used by the `Widget` class in the export test. Methods take
+/// the receiver as a separate parameter.
+fn widget_method(
+    host: &mut Host,
+    _this: GenericValue,
+    _args: &[GenericValue],
+) -> Result<GenericValue, PluginError> {
+    Ok(host.make_nil())
+}
+
+extern "C" fn widget_drop(_ptr: *mut c_void) {}
+
+extern "C" fn widget_traverse(
+    _ptr: *mut c_void,
+    _visit: generic_lang_api::PluginVisitFn,
+    _visit_ctx: *mut c_void,
+) -> i32 {
+    0
+}
+
 generic_lang_api::export_module![
     ("add", &[2], add),
     ("fail", &[0], fail),
@@ -80,6 +101,15 @@ generic_lang_api::export_module![
     ("forward_fatal", &[0], forward_fatal),
     ("explode_any", &[0], explode_any),
     ("sum_any", &[1, 3], sum_any),
+    class("Widget") {
+        ("__init__", &[0], widget_method),
+        ("poke", &[0, 1], widget_method),
+        drop: widget_drop,
+        traverse: widget_traverse,
+    },
+    class("Plain") {
+        ("ping", &[0], widget_method),
+    },
 ];
 
 // --- mock host ---
@@ -340,6 +370,7 @@ fn mock_host_api() -> HostApi {
         set_len: mock_container_len,
         builtin_get: mock_builtin_get,
         is_instance: mock_is_instance,
+        class_of: mock_value_unary,
         attr_get: mock_attr_get,
         attr_set: mock_attr_set,
         attr_has: mock_attr_has,
@@ -366,7 +397,23 @@ fn mock_host_api() -> HostApi {
         value_hash: mock_value_unary,
         root: mock_root,
         unroot: mock_unroot,
+        instance_set_opaque: mock_instance_set_opaque,
+        instance_get_opaque: mock_instance_get_opaque,
     }
+}
+
+extern "C" fn mock_instance_set_opaque(
+    _ctx: *mut c_void,
+    _receiver: GenericValue,
+    _ptr: *mut c_void,
+) -> FfiReturn {
+    FfiReturn {
+        status: 0,
+        value: blob(0),
+    }
+}
+extern "C" fn mock_instance_get_opaque(_ctx: *mut c_void, _receiver: GenericValue) -> *mut c_void {
+    core::ptr::null_mut()
 }
 
 fn last_interned() -> String {
@@ -422,6 +469,48 @@ fn descriptor_contents() {
 
     // The macro always emits a non-null function pointer.
     assert!(functions.iter().all(|f| f.fun.is_some()));
+}
+
+/// # Safety
+///
+/// `s` must reference `s.len` bytes of valid UTF-8, valid for the read.
+unsafe fn ffi_str(s: FfiStr) -> &'static str {
+    // SAFETY: guaranteed by the caller; names are leaked static strings.
+    unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(s.ptr, s.len)) }
+}
+
+#[test]
+fn class_descriptor_contents() {
+    // SAFETY: generic_plugin_init returns a valid, leaked descriptor.
+    let desc = unsafe { &*generic_plugin_init() };
+    assert_eq!(desc.classes_len, 2);
+
+    // SAFETY: the descriptor references a leaked slice of classes_len entries.
+    let classes = unsafe { core::slice::from_raw_parts(desc.classes, desc.classes_len) };
+
+    // First class: methods, drop, and traverse all present.
+    let widget = &classes[0];
+    assert_eq!(unsafe { ffi_str(widget.name) }, "Widget");
+    assert_eq!(widget.methods_len, 2);
+    assert!(widget.drop.is_some());
+    assert!(widget.traverse.is_some());
+
+    // SAFETY: leaked slice of methods_len entries.
+    let methods = unsafe { core::slice::from_raw_parts(widget.methods, widget.methods_len) };
+    let method_names: Vec<&str> = methods.iter().map(|m| unsafe { ffi_str(m.name) }).collect();
+    assert_eq!(method_names, ["__init__", "poke"]);
+    // Method arities survive, including the multi-arity `poke` (self + 0/1).
+    let poke_arities =
+        unsafe { core::slice::from_raw_parts(methods[1].arities, methods[1].arities_len) };
+    assert_eq!(poke_arities, &[0, 1]);
+    assert!(methods.iter().all(|m| m.fun.is_some()));
+
+    // Second class: no drop/traverse (the optional fields default to None).
+    let plain = &classes[1];
+    assert_eq!(unsafe { ffi_str(plain.name) }, "Plain");
+    assert_eq!(plain.methods_len, 1);
+    assert!(plain.drop.is_none());
+    assert!(plain.traverse.is_none());
 }
 
 fn call_exported(index: usize, args: &[GenericValue]) -> FfiReturn {

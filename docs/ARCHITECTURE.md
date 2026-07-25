@@ -192,7 +192,20 @@ bit-copies of `Value`; plugins operate on them exclusively through a
 `invoke_and_run_function` contract and root their arguments first; plugin
 functions are ordinary heap `NativeFunction`s whose `fun` is one shared
 trampoline and whose `plugin_fn` field holds the real `extern "C"`
-pointer; exceptions cross as instances with full identity (created from /
+pointer; plugin classes are `Class`es of `ClassKind::Plugin(PluginClassInfo)`
+(the info carries the `drop`/`traverse` fns) whose instances carry a
+`NativeClass::Plugin(PluginInstance)` backing holding only an opaque
+`*mut c_void` - drop/traverse are reached from the class via `instance.class`,
+never copied per instance; plugin methods are `NativeMethod`s with a
+`plugin_fn`, dispatched from `execute_native_method_call` (which branches on
+`plugin_fn` since a method's descriptor is not stack-recoverable) via
+`call_plugin_method` with the receiver passed as a separate value (not in
+`args`); a plugin reaches its own class through the `class_of` callback (to
+construct another instance or type-check an argument before reading its opaque
+state); the GC calls `traverse`
+during the mark phase to reach held `GenericValue`s and runs the class's `drop`
+for unmarked plugin instances at the top of sweep (and for survivors at heap
+teardown); exceptions cross as instances with full identity (created from /
 checked against class values via `builtin_get`/`exception_new`/
 `is_instance`), fatal errors as `FfiStatus::Fatal`, which stays
 uncatchable.
@@ -218,6 +231,18 @@ unloaded. Code: `src/vm/plugins/` (mod/host_api/loader/trampolines/tests).
 9. Exception class names ↔ `ExceptionKind` variant names stay in sync
    (pinned by `every_exception_kind_has_a_builtin_class`); the FFI carries
    no exception vocabulary to drift.
+10. Plugin instances hold only an opaque `ptr`; the `drop`/`traverse` fns live
+    on the class (`ClassKind::Plugin`), reached via `instance.class` (walking to
+    the plugin ancestor for a user subclass). The backing has no `Drop`
+    (that would double-free, since `NativeClass` is `Clone`): the plugin `drop`
+    runs from the sweep pass - before the class arena is swept - and from
+    `Drop for Heap` at teardown.
+11. The GC `traverse` callback must report every `GenericValue` a plugin
+    instance holds; failure is a use-after-free (mark-and-sweep, so `traverse`
+    is load-bearing for all liveness of held values, not just cycles).
+12. The plugin export cache (`plugins.loaded`) interns function, class, and
+    method names as `StringId`s that a cache-hit re-import feeds into module
+    setup; `collect_garbage` marks all three categories as roots.
 
 ## Testing and CI
 

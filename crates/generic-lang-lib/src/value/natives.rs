@@ -79,6 +79,18 @@ pub struct NativeMethod {
             PartialOrd = "ignore"
         )]
     pub(crate) fun: NativeMethodImpl,
+
+    /// The external function this method wraps, if it is a plugin export.
+    /// `fun` is then the `plugin_method_sentinel` (which `unreachable!`s);
+    /// `execute_native_method_call` checks this field first and delegates to
+    /// `call_plugin_method`. See `src/vm/plugins/`.
+    #[cfg(feature = "plugins")]
+    #[derivative(
+        Debug = "ignore",
+        PartialEq(compare_with = "always_equals"),
+        PartialOrd = "ignore"
+    )]
+    pub(crate) plugin_fn: Option<generic_lang_api::PluginMethodFn>,
 }
 
 const fn always_equals<T>(_: &T, _: &T) -> bool {
@@ -129,6 +141,57 @@ pub enum NativeClass {
     IntegerProxy,
     FloatProxy,
     RationalProxy,
+    NilProxy,
+    StopIterationProxy,
+    /// A plugin-defined class's per-instance opaque state.
+    ///
+    /// Carries only the opaque `ptr` (installed via `instance_set_opaque`); the
+    /// `drop` and `traverse` callbacks live on the `Class` (`ClassKind::Plugin`)
+    /// and are reached through the instance's `class` during the GC mark and
+    /// sweep phases.
+    #[cfg(feature = "plugins")]
+    Plugin(PluginInstance),
+}
+
+/// Per-instance opaque state for a plugin-defined class.
+///
+/// `ptr` is the plugin's own allocation (set via `instance_set_opaque`), null
+/// until `__init__` installs it. Freeing is the class's `drop` callback's job,
+/// invoked from the GC sweep/teardown passes, not from this type's `Drop`:
+/// giving the backing a `Drop` that frees `ptr` would double-free, since
+/// `NativeClass` is `Clone` (and is cloned during marking under `log_gc`).
+#[cfg(feature = "plugins")]
+#[derive(Debug, Clone, Copy)]
+pub struct PluginInstance {
+    pub(crate) ptr: *mut core::ffi::c_void,
+}
+
+#[cfg(feature = "plugins")]
+impl PluginInstance {
+    /// A freshly constructed, uninitialized backing (`ptr` null). `__init__`
+    /// installs the real pointer via `instance_set_opaque`.
+    #[must_use]
+    pub(crate) const fn empty() -> Self {
+        Self {
+            ptr: core::ptr::null_mut(),
+        }
+    }
+}
+
+// The interpreter is single-threaded; the plugin vouches for the pointer's
+// safety. Required because `*mut c_void` is not `Send` by default and `Value`
+// must stay `Send`.
+#[cfg(feature = "plugins")]
+#[allow(unsafe_code)]
+unsafe impl Send for PluginInstance {}
+
+#[cfg(feature = "plugins")]
+impl PartialEq for PluginInstance {
+    fn eq(&self, other: &Self) -> bool {
+        // Pointer identity: two plugin backings are equal iff they point to the
+        // same allocation (mirrors `Instance`'s backing comparison).
+        self.ptr == other.ptr
+    }
 }
 
 impl NativeClass {
@@ -146,6 +209,8 @@ impl NativeClass {
             "Integer" => Self::IntegerProxy,
             "Float" => Self::FloatProxy,
             "Rational" => Self::RationalProxy,
+            "NilType" => Self::NilProxy,
+            "StopIterationType" => Self::StopIterationProxy,
             _ => unreachable!("Unknown native class `{}`.", kind),
         }
     }
@@ -176,6 +241,13 @@ impl NativeClass {
             Self::RationalProxy => {
                 unreachable!("RationalProxy should never be converted to string")
             }
+            Self::NilProxy => unreachable!("NilProxy should never be converted to string"),
+            Self::StopIterationProxy => {
+                unreachable!("StopIterationProxy should never be converted to string")
+            }
+            // Needs the instance's class name; handled in `Instance::to_string_capped`.
+            #[cfg(feature = "plugins")]
+            Self::Plugin(_) => unreachable!("Plugin instances are stringified via their instance"),
         }
     }
 }
@@ -211,6 +283,13 @@ impl_from_for_native_class!(
     TemplateIterator,
     Interpolation,
 );
+
+#[cfg(feature = "plugins")]
+impl From<PluginInstance> for NativeClass {
+    fn from(value: PluginInstance) -> Self {
+        Self::Plugin(value)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct List {

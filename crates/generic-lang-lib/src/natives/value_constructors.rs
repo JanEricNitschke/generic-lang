@@ -13,6 +13,20 @@ pub(super) fn bool_init_native(vm: &mut VM, _receiver: &Value, args: &[Value]) -
     Ok(Value::Bool(!is_falsey))
 }
 
+/// `NilType`.__init__() - the sole `nil` value.
+pub(super) fn nil_init_native(_vm: &mut VM, _receiver: &Value, _args: &[Value]) -> VmResult<Value> {
+    Ok(Value::Nil)
+}
+
+/// `StopIterationType`.__init__() - the sole `StopIteration` value.
+pub(super) fn stop_iteration_init_native(
+    _vm: &mut VM,
+    _receiver: &Value,
+    _args: &[Value],
+) -> VmResult<Value> {
+    Ok(Value::StopIteration)
+}
+
 /// Integer.__init__(value) - Convert string or number to integer
 pub(super) fn integer_init_native(
     vm: &mut VM,

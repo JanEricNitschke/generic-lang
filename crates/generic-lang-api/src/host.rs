@@ -264,6 +264,18 @@ impl<'a> Host<'a> {
         Ok(self.as_bool(result).unwrap_or_default())
     }
 
+    /// The class of an instance, as a class value (the analogue of
+    /// `type(self)`). Call it to construct another instance of the same class,
+    /// or pass it to [`Host::is_instance`] to type-check another argument
+    /// before reading its opaque state.
+    ///
+    /// # Errors
+    ///
+    /// `TypeError` if `value` is not an instance.
+    pub fn class_of(&self, value: GenericValue) -> Result<GenericValue, PluginError> {
+        self.ffi_result((self.api.class_of)(self.api.ctx, value))
+    }
+
     // --- attributes (plain field access; never re-enters) ---
 
     /// A field of an instance.
@@ -667,6 +679,58 @@ impl<'a> Host<'a> {
         }
     }
 
+    // --- plugin instance state ---
+
+    /// Install the plugin's opaque pointer on a plugin-backed instance.
+    ///
+    /// Typically called from `__init__` with `args[0]` (the receiver) and a
+    /// `Box::into_raw(state)` pointer. The class's `drop` callback is called
+    /// with this pointer when the instance is garbage-collected.
+    ///
+    /// Overwriting an already-installed pointer leaks the previous one: the
+    /// host does not run `drop` on it, since it cannot know whether the plugin
+    /// still holds a copy elsewhere. If a plugin means to replace state, it must
+    /// [`Host::get_opaque`] and free the old pointer itself first.
+    ///
+    /// # Errors
+    ///
+    /// `TypeError` if `receiver` is not a plugin-backed instance.
+    pub fn set_opaque(
+        &self,
+        receiver: GenericValue,
+        ptr: *mut core::ffi::c_void,
+    ) -> Result<(), PluginError> {
+        self.ffi_result((self.api.instance_set_opaque)(self.api.ctx, receiver, ptr))
+            .map(|_| ())
+    }
+
+    /// Recover the pointer installed by [`Host::set_opaque`], or null if none
+    /// was installed (e.g. before `__init__` ran) or `receiver` is not a
+    /// plugin-backed instance. Never raises.
+    #[must_use]
+    pub fn get_opaque(&self, receiver: GenericValue) -> *mut core::ffi::c_void {
+        (self.api.instance_get_opaque)(self.api.ctx, receiver)
+    }
+
+    /// Typed mutable view of the opaque pointer, or `None` if it is null or
+    /// `receiver` is not a plugin-backed instance.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure `T` is the correct type for this instance's
+    /// opaque state. The reference is valid while the instance is alive (the
+    /// GC will not collect it while the plugin holds the instance value).
+    // The `&mut T` derives from the opaque `*mut` the plugin installed, not
+    // from `&self`; the shared borrow only scopes the call, so the plugin can
+    // mutate its own per-instance state through a `&Host`.
+    #[allow(clippy::mut_from_ref)]
+    #[must_use]
+    pub unsafe fn opaque_ref<T>(&self, receiver: GenericValue) -> Option<&mut T> {
+        let ptr = self.get_opaque(receiver).cast::<T>();
+        // SAFETY: guaranteed by the caller (see the `# Safety` section).
+        unsafe { ptr.as_mut() }
+    }
+
     const fn ffi_str(s: &str) -> FfiStr {
         FfiStr {
             ptr: s.as_ptr(),
@@ -760,6 +824,52 @@ pub unsafe fn __invoke_plugin_fn(
         fun(&mut host, args)
     }));
 
+    finish_plugin_invoke(api, result)
+}
+
+/// Signature of a Rust plugin method used with `export_module!`. The receiver
+/// (`self`) is a separate parameter; `args` are the remaining arguments only.
+pub type RustPluginMethodFn =
+    fn(&mut Host, GenericValue, &[GenericValue]) -> Result<GenericValue, PluginError>;
+
+/// Implementation detail of `export_module!`: the method counterpart of
+/// [`__invoke_plugin_fn`], threading the receiver through as a separate value.
+///
+/// # Safety
+///
+/// As [`__invoke_plugin_fn`]: `host` and `args`/`nargs` must be valid for the
+/// call. `receiver` is a bit-copy of the receiver value.
+#[doc(hidden)]
+pub unsafe fn __invoke_plugin_method_fn(
+    fun: RustPluginMethodFn,
+    host: *const HostApi,
+    receiver: GenericValue,
+    args: *const GenericValue,
+    nargs: usize,
+) -> FfiReturn {
+    // SAFETY: guaranteed by the caller, see above.
+    let api = unsafe { &*host };
+    let args: &[GenericValue] = if nargs == 0 {
+        &[]
+    } else {
+        // SAFETY: guaranteed by the caller, see above.
+        unsafe { core::slice::from_raw_parts(args, nargs) }
+    };
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut host = Host::new(api);
+        fun(&mut host, receiver, args)
+    }));
+
+    finish_plugin_invoke(api, result)
+}
+
+/// Map a caught plugin invocation outcome to an [`FfiReturn`], turning a panic
+/// into a catchable base `Exception` so nothing unwinds across the C ABI.
+fn finish_plugin_invoke(
+    api: &HostApi,
+    result: std::thread::Result<Result<GenericValue, PluginError>>,
+) -> FfiReturn {
     let host = Host::new(api);
     match result {
         Ok(Ok(value)) => FfiReturn {

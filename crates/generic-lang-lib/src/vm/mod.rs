@@ -23,7 +23,7 @@ mod exception_handling;
 mod functions;
 mod native_containers;
 #[cfg(feature = "plugins")]
-mod plugins;
+pub mod plugins;
 mod state;
 mod testing;
 mod variables;
@@ -126,6 +126,10 @@ pub struct VM {
     /// only ancestors of the in-progress render, all rooted on the VM stack.
     repr_in_progress: HashSet<InstanceId>,
     stdlib: HashMap<StringId, ModuleContents>,
+    /// Must stay declared after `heap`: `Drop` for `Heap` runs plugin `drop`
+    /// callbacks whose fn pointers live in the dylibs held here, and Rust drops
+    /// fields in declaration order, so the heap must finalize before these
+    /// libraries unload.
     #[cfg(feature = "plugins")]
     plugins: PluginState,
 }

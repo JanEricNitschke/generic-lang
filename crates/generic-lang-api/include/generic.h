@@ -333,6 +333,14 @@ typedef struct HostApi {
    */
   struct FfiReturn (*is_instance)(void *ctx, struct GenericValue value, struct GenericValue of_class);
   /**
+   * The class of an instance, as a class value (callable to construct
+   * another instance of it - the analogue of `type(self)`). `TypeError` if
+   * `value` is not an instance. Lets a plugin method reach its own class
+   * from the receiver: e.g. to construct a result of the same class, or to
+   * `is_instance`-check another argument before reading its opaque state.
+   */
+  struct FfiReturn (*class_of)(void *ctx, struct GenericValue value);
+  /**
    * A field of an instance; `AttributeError` if absent, `TypeError` if
    * the receiver is not an instance.
    */
@@ -471,6 +479,24 @@ typedef struct HostApi {
    * than were pushed corrupts interpreter state.
    */
   void (*unroot)(void *ctx, size_t n);
+  /**
+   * Install the plugin's opaque pointer on a plugin-backed instance
+   * (typically from `__init__`, with the receiver as `self`). The class's
+   * `drop`/`traverse` were declared on its [`ClassDesc`]; this only sets the
+   * pointer. `TypeError` if `receiver` is not a plugin-backed instance.
+   *
+   * Overwriting an already-installed pointer leaks the previous one:
+   * the host does not run `drop` on it, since it cannot know whether the plugin
+   * still holds a copy elsewhere. To replace state, recover the old pointer
+   * with `instance_get_opaque` and free it yourself first.
+   */
+  struct FfiReturn (*instance_set_opaque)(void *ctx, struct GenericValue receiver, void *ptr);
+  /**
+   * Recover the pointer installed by [`HostApi::instance_set_opaque`], or
+   * null if none was installed (e.g. before `__init__` ran) or `receiver`
+   * is not a plugin-backed instance. Never raises.
+   */
+  void *(*instance_get_opaque)(void *ctx, struct GenericValue receiver);
 } HostApi;
 
 /**
@@ -499,6 +525,78 @@ typedef struct FunctionDesc {
 } FunctionDesc;
 
 /**
+ * Description of one method of a plugin-defined class.
+ */
+typedef struct MethodDesc {
+  /**
+   * Method name as seen from generic code (e.g. `"__init__"`, `"value"`).
+   */
+  struct FfiStr name;
+  /**
+   * Accepted argument counts, **excluding** the receiver (the host checks
+   * arity before calling). A method called as `obj.foo(a, b)` declares
+   * `&[2]`; a receiver-only method declares `&[0]`.
+   */
+  const uint8_t *arities;
+  /**
+   * Number of entries in `arities`.
+   */
+  size_t arities_len;
+  /**
+   * The method implementation; a null pointer is rejected at load. This is
+   * [`PluginMethodFn`] spelled out inline - cbindgen only renders a nullable
+   * C function pointer for an inline `Option<fn>`, not through the alias.
+   */
+  struct FfiReturn (*fun)(const struct HostApi *host,
+                          struct GenericValue receiver,
+                          const struct GenericValue *args,
+                          size_t nargs);
+} MethodDesc;
+
+/**
+ * Reports a held [`GenericValue`] to the host's mark phase during GC.
+ *
+ * The host grays `value`; `ctx` is the `visit_ctx` passed to the enclosing
+ * [`PluginTraverseFn`]. Called only from within a [`PluginTraverseFn`], never
+ * directly.
+ */
+typedef void (*PluginVisitFn)(void *ctx, struct GenericValue value);
+
+/**
+ * Description of a plugin-defined class; one entry per class in
+ * [`ModuleDesc::classes`].
+ */
+typedef struct ClassDesc {
+  /**
+   * Class name as seen from generic code (e.g. `"Counter"`).
+   */
+  struct FfiStr name;
+  /**
+   * Pointer to `methods_len` contiguous [`MethodDesc`] entries.
+   */
+  const struct MethodDesc *methods;
+  /**
+   * Number of entries in `methods`.
+   */
+  size_t methods_len;
+  /**
+   * Destructor for the plugin's opaque per-instance state, called by the
+   * host with the `*mut c_void` installed via `instance_set_opaque` when a
+   * plugin-backed instance is garbage-collected. May be null if the plugin
+   * manages the lifetime itself (rare).
+   */
+  void (*drop)(void *opaque_ptr);
+  /**
+   * GC traversal callback, called during the mark phase for each live
+   * plugin-backed instance. May be null if the opaque struct holds no
+   * [`GenericValue`]s. This is [`PluginTraverseFn`] spelled out inline -
+   * cbindgen only renders a nullable C function pointer for an inline
+   * `Option<fn>`, not through the alias.
+   */
+  int32_t (*traverse)(void *opaque_ptr, PluginVisitFn visit, void *visit_ctx);
+} ClassDesc;
+
+/**
  * Description of a plugin module; returned by `generic_plugin_init`, the
  * one symbol every plugin must export:
  *
@@ -519,6 +617,14 @@ typedef struct ModuleDesc {
    * Number of entries in `functions`.
    */
   size_t functions_len;
+  /**
+   * Pointer to `classes_len` contiguous [`ClassDesc`] entries.
+   */
+  const struct ClassDesc *classes;
+  /**
+   * Number of entries in `classes`. May be 0 (function-only plugins).
+   */
+  size_t classes_len;
 } ModuleDesc;
 
 /**

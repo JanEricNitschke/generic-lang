@@ -26,3 +26,36 @@ try {
 } catch TypeError as e {
     print("type: " + str(e)); # expect: type: cpp_demo_plugin.sum expects a list of ints
 }
+
+# --- the Counter plugin class (same shape as the Rust example) ---
+var c = cpp_demo_plugin.Counter("hello");
+print(c.value());       # expect: 0
+print(c.increment());   # expect: 1
+print(c.increment());   # expect: 2
+print(c.label());       # expect: hello
+print(c.origin);        # expect: counter
+c.set_note("note!");
+print(c.get_note());    # expect: note!
+print(c.note);          # expect: note!
+print(isinstance(c, cpp_demo_plugin.Counter)); # expect: true
+
+# a dunder implemented by the plugin class
+var d = cpp_demo_plugin.Counter("x");
+d.increment();
+print((c + d).value());  # expect: 3
+
+# a user subclass inherits the plugin backing, methods, and dunders
+var Counter = cpp_demo_plugin.Counter;
+class Sub < Counter {
+    __init__(label) { super.__init__(label); }
+}
+var s = Sub("sub");
+s.increment();
+print(s.value());       # expect: 1
+print(s.label());       # expect: sub
+print((c + s).value());  # expect: 3
+print(isinstance(s, cpp_demo_plugin.Counter)); # expect: true
+
+# --- the held label survives collections (traverse) ---
+var listed = cpp_demo_plugin.Counter([1, 2, 3]);
+print(listed.label());  # expect: [1, 2, 3]

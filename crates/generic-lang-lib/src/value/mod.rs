@@ -10,11 +10,15 @@ use crate::heap::{
     BigIntId, BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ModuleId,
     NativeFunctionId, NativeMethodId, StringId, UpvalueId,
 };
+#[cfg(feature = "plugins")]
+pub use classes::PluginClassInfo;
 pub use classes::{
-    BoundMethod, Class, Instance, get_native_class_id, is_exception_subclass, is_subclass_of,
-    value_isinstance,
+    BoundMethod, Class, ClassKind, Instance, class_of_value, get_native_class_id,
+    is_exception_subclass, is_subclass_of, value_isinstance,
 };
 pub use functions::{Closure, Function, Module, Upvalue};
+#[cfg(feature = "plugins")]
+pub use natives::PluginInstance;
 pub use natives::{
     Dict, DictIterMode, DictIterator, Exception, Generator, GeneratorState, Interpolation, List,
     ListIterator, ModuleContents, NativeClass, NativeFunction, NativeFunctionImpl, NativeMethod,

@@ -5,6 +5,27 @@ use rustc_hash::FxHashMap as HashMap;
 
 use super::{NativeClass, Number, Value};
 
+/// Plugin-specific class metadata, declared on the C ABI `ClassDesc` and stored
+/// on the class at load time. Reached through an instance's `class` during the
+/// GC mark and sweep phases.
+#[cfg(feature = "plugins")]
+#[derive(Debug, Clone, Copy)]
+pub struct PluginClassInfo {
+    pub(crate) drop: Option<extern "C" fn(*mut core::ffi::c_void)>,
+    pub(crate) traverse: Option<generic_lang_api::PluginTraverseFn>,
+}
+
+/// What a class is backed by. `User` is an ordinary generic class; `Native` is
+/// an interpreter builtin (`List`, `Exception`, the value-type proxies, …);
+/// `Plugin` is defined by a native extension and carries its drop/traverse.
+#[derive(Debug, Clone, Copy)]
+pub enum ClassKind {
+    User,
+    Native,
+    #[cfg(feature = "plugins")]
+    Plugin(PluginClassInfo),
+}
+
 #[derive(Debug, Clone, Derivative)]
 #[derivative(PartialOrd)]
 pub struct Class {
@@ -13,20 +34,27 @@ pub struct Class {
     // Have to be general Value because it can be a nativemethod(how?) or a closure
     // Should probably also be String and not StringId?
     pub(crate) methods: HashMap<StringId, Value>,
-    pub(crate) is_native: bool,
+    #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
+    pub(crate) kind: ClassKind,
     #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
     pub(crate) superclass: Option<ClassId>,
 }
 
 impl Class {
     #[must_use]
-    pub(crate) fn new(name: StringId, is_native: bool) -> Self {
+    pub(crate) fn new(name: StringId, kind: ClassKind) -> Self {
         Self {
             name,
             methods: HashMap::default(),
-            is_native,
+            kind,
             superclass: None,
         }
+    }
+
+    /// Whether this class stops the native-superclass walk. Both `Native` and
+    /// `Plugin` do; only `User` continues up the chain.
+    pub(crate) fn is_native(&self) -> bool {
+        !matches!(self.kind, ClassKind::User)
     }
 
     pub(crate) fn to_string(&self, heap: &Heap) -> String {
@@ -34,13 +62,13 @@ impl Class {
     }
 
     pub(crate) fn get_native_superclass(&self, heap: &Heap, class_id: ClassId) -> Option<ClassId> {
-        if self.is_native {
+        if self.is_native() {
             return Some(class_id); // We are the native class
         }
 
         if let Some(superclass_id) = self.superclass {
             let superclass = superclass_id.to_value(heap);
-            if superclass.is_native {
+            if superclass.is_native() {
                 return Some(superclass_id);
             }
             return superclass.get_native_superclass(heap, superclass_id);
@@ -78,6 +106,24 @@ pub fn is_exception_subclass(heap: &Heap, class_id: ClassId) -> bool {
     is_subclass_of(heap, class_id, get_native_class_id(heap, "Exception"))
 }
 
+/// The class of a value, if it has one: instances carry their class, and the
+/// value types map to their proxy classes (`Bool`, `String`, `Integer`,
+/// `Float`, `Rational`). Everything else (nil, functions, classes, modules, …)
+/// has no class and yields `None`.
+pub fn class_of_value(heap: &Heap, value: Value) -> Option<ClassId> {
+    match value {
+        Value::Instance(instance) => Some(instance.to_value(heap).class),
+        Value::Bool(_) => Some(get_native_class_id(heap, "Bool")),
+        Value::String(_) => Some(get_native_class_id(heap, "String")),
+        Value::Number(Number::Integer(_)) => Some(get_native_class_id(heap, "Integer")),
+        Value::Number(Number::Float(_)) => Some(get_native_class_id(heap, "Float")),
+        Value::Number(Number::Rational(_)) => Some(get_native_class_id(heap, "Rational")),
+        Value::Nil => Some(get_native_class_id(heap, "NilType")),
+        Value::StopIteration => Some(get_native_class_id(heap, "StopIterationType")),
+        _ => None,
+    }
+}
+
 /// Whether `value` is an instance of `class_id` or of a subclass of it -
 /// the semantics of the `isinstance` builtin. Value types match their
 /// proxy classes exactly (`Bool`, `String`, `Integer`, `Float`,
@@ -90,6 +136,8 @@ pub fn value_isinstance(heap: &Heap, value: Value, class_id: ClassId) -> bool {
         Value::Number(Number::Integer(_)) => class_id == get_native_class_id(heap, "Integer"),
         Value::Number(Number::Float(_)) => class_id == get_native_class_id(heap, "Float"),
         Value::Number(Number::Rational(_)) => class_id == get_native_class_id(heap, "Rational"),
+        Value::Nil => class_id == get_native_class_id(heap, "NilType"),
+        Value::StopIteration => class_id == get_native_class_id(heap, "StopIterationType"),
         _ => false,
     }
 }
@@ -149,6 +197,14 @@ impl Instance {
                     None => format!("{class_name}()"),
                 }
             }
+            // Plugin instances render like user instances: by class name. The
+            // class name lives on the instance, so this is handled here rather
+            // than in `NativeClass::to_string`.
+            #[cfg(feature = "plugins")]
+            Some(NativeClass::Plugin(_)) => format!(
+                "<{} instance>",
+                self.class.to_value(heap).name.to_value(heap)
+            ),
             Some(native_class) => native_class.to_string(heap, depth),
             None => format!(
                 "<{} instance>",

@@ -2,7 +2,7 @@
 
 use crate::vm::ExceptionKind::{AssertionError, AttributeError, IoError, TypeError, ValueError};
 use crate::{
-    value::{GenericInt, Number, Value, is_subclass_of, value_isinstance},
+    value::{GenericInt, Number, Value, class_of_value, is_subclass_of, value_isinstance},
     vm::{VM, errors::VmResult},
 };
 use rand::RngExt;
@@ -208,8 +208,26 @@ pub(super) fn to_string_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     Ok(Value::String(vm.value_to_string(&args[0])?))
 }
 
-/// Return the type of the value as a string.
+/// Return the class of the value: instances carry their class, and the value
+/// types map to their proxy classes (`Bool`, `String`, `Integer`, `Float`,
+/// `Rational`). Raises a `TypeError` for values that have no class (nil,
+/// functions, classes, modules, …); use `typename` for a string over any value.
 pub(super) fn type_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
+    if let Some(class_id) = class_of_value(&vm.heap, args[0]) {
+        Ok(class_id.into())
+    } else {
+        // `typename_native` always returns a string.
+        let name = typename_native(vm, args)?;
+        let message = format!(
+            "type() is not defined for {}",
+            name.as_string().to_value(&vm.heap)
+        );
+        Err(vm.throw(TypeError, &message).unwrap_err())
+    }
+}
+
+/// Return the type of the value as a string (defined for every value).
+pub(super) fn typename_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     let string = match &args[0] {
         Value::Bool(_) => Value::String(vm.heap.string_id(&"<type bool>")),
         Value::BoundMethod(_) => Value::String(vm.heap.string_id(&"<type bound method>")),

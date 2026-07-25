@@ -152,6 +152,93 @@ pub struct FunctionDesc {
     >,
 }
 
+/// Reports a held [`GenericValue`] to the host's mark phase during GC.
+///
+/// The host grays `value`; `ctx` is the `visit_ctx` passed to the enclosing
+/// [`PluginTraverseFn`]. Called only from within a [`PluginTraverseFn`], never
+/// directly.
+pub type PluginVisitFn = extern "C" fn(ctx: *mut c_void, value: GenericValue);
+
+/// Per-class GC traversal callback, declared on [`ClassDesc::traverse`].
+///
+/// Called by the host's GC during the mark phase, once per live plugin-backed
+/// instance. The plugin must call `visit(visit_ctx, v)` for every
+/// [`GenericValue`] its opaque struct references; failure to report a held
+/// value is a use-after-free bug (the collector is mark-and-sweep, so a value
+/// that is never reported is swept even though it is still reachable).
+///
+/// Returns `0` on success; a non-zero return is reserved and currently ignored.
+///
+/// # Safety
+///
+/// `opaque_ptr` is the pointer installed via `instance_set_opaque`, or null if
+/// `__init__` has not run yet - the plugin must handle null gracefully. The
+/// host already traces the instance's generic fields, so the plugin reports
+/// only the values held in its own opaque state. `visit` and `visit_ctx` are
+/// the host-provided marking function and its context; pass them through to
+/// `visit` unchanged.
+pub type PluginTraverseFn =
+    extern "C" fn(opaque_ptr: *mut c_void, visit: PluginVisitFn, visit_ctx: *mut c_void) -> i32;
+
+/// The signature of a plugin method: like [`PluginFn`], but the receiver
+/// (`self`) arrives as a separate first value, not in `args`. `args`/`nargs`
+/// are the remaining arguments only.
+pub type PluginMethodFn = extern "C" fn(
+    host: *const HostApi,
+    receiver: GenericValue,
+    args: *const GenericValue,
+    nargs: usize,
+) -> FfiReturn;
+
+/// Description of one method of a plugin-defined class.
+#[repr(C)]
+pub struct MethodDesc {
+    /// Method name as seen from generic code (e.g. `"__init__"`, `"value"`).
+    pub name: FfiStr,
+    /// Accepted argument counts, **excluding** the receiver (the host checks
+    /// arity before calling). A method called as `obj.foo(a, b)` declares
+    /// `&[2]`; a receiver-only method declares `&[0]`.
+    pub arities: *const u8,
+    /// Number of entries in `arities`.
+    pub arities_len: usize,
+    /// The method implementation; a null pointer is rejected at load. This is
+    /// [`PluginMethodFn`] spelled out inline - cbindgen only renders a nullable
+    /// C function pointer for an inline `Option<fn>`, not through the alias.
+    pub fun: Option<
+        extern "C" fn(
+            host: *const HostApi,
+            receiver: GenericValue,
+            args: *const GenericValue,
+            nargs: usize,
+        ) -> FfiReturn,
+    >,
+}
+
+/// Description of a plugin-defined class; one entry per class in
+/// [`ModuleDesc::classes`].
+#[repr(C)]
+pub struct ClassDesc {
+    /// Class name as seen from generic code (e.g. `"Counter"`).
+    pub name: FfiStr,
+    /// Pointer to `methods_len` contiguous [`MethodDesc`] entries.
+    pub methods: *const MethodDesc,
+    /// Number of entries in `methods`.
+    pub methods_len: usize,
+    /// Destructor for the plugin's opaque per-instance state, called by the
+    /// host with the `*mut c_void` installed via `instance_set_opaque` when a
+    /// plugin-backed instance is garbage-collected. May be null if the plugin
+    /// manages the lifetime itself (rare).
+    pub drop: Option<extern "C" fn(opaque_ptr: *mut c_void)>,
+    /// GC traversal callback, called during the mark phase for each live
+    /// plugin-backed instance. May be null if the opaque struct holds no
+    /// [`GenericValue`]s. This is [`PluginTraverseFn`] spelled out inline -
+    /// cbindgen only renders a nullable C function pointer for an inline
+    /// `Option<fn>`, not through the alias.
+    pub traverse: Option<
+        extern "C" fn(opaque_ptr: *mut c_void, visit: PluginVisitFn, visit_ctx: *mut c_void) -> i32,
+    >,
+}
+
 /// Description of a plugin module; returned by `generic_plugin_init`, the
 /// one symbol every plugin must export:
 ///
@@ -166,19 +253,27 @@ pub struct ModuleDesc {
     pub functions: *const FunctionDesc,
     /// Number of entries in `functions`.
     pub functions_len: usize,
+    /// Pointer to `classes_len` contiguous [`ClassDesc`] entries.
+    pub classes: *const ClassDesc,
+    /// Number of entries in `classes`. May be 0 (function-only plugins).
+    pub classes_len: usize,
 }
 
 // SAFETY: sharing a descriptor only permits reading its fields (copying
 // pointer values), which is thread-safe; dereferencing the pointers is
 // `unsafe` and carries the following obligations at each use site:
 // - `functions` must point to `functions_len` contiguous, initialized
-//   `FunctionDesc` entries that are never mutated and outlive every read -
-//   for descriptors returned by `generic_plugin_init`, that means the
+//   `FunctionDesc` entries, and `classes` to `classes_len` contiguous,
+//   initialized `ClassDesc` entries - all never mutated and outliving every
+//   read; for descriptors returned by `generic_plugin_init`, that means the
 //   lifetime of the loaded library.
-// - Within each entry, `name` must reference `name.len` bytes of valid
-//   UTF-8, `arities` must reference `arities_len` initialized bytes, and
-//   `fun` must be a function with the documented `PluginFn` ABI - all under
-//   the same immutability and lifetime requirements as above.
+// - Within each `FunctionDesc`/`MethodDesc`, `name` must reference `name.len`
+//   bytes of valid UTF-8, `arities` must reference `arities_len` initialized
+//   bytes, and `fun` must be a function with the documented `PluginFn` ABI.
+//   Within each `ClassDesc`, `name` is as above and `methods` points to
+//   `methods_len` contiguous `MethodDesc` entries; `drop`/`traverse` are
+//   either null or valid `extern "C"` functions - all under the same
+//   immutability and lifetime requirements as above.
 // The impl is required so a descriptor can live in a `static` (statics must
 // be `Sync`); `export_module!` discharges all of the above by building the
 // tables from `const` data.
@@ -254,6 +349,12 @@ pub struct HostApi {
     /// `of_class` is not a class.
     pub is_instance:
         extern "C" fn(ctx: *mut c_void, value: GenericValue, of_class: GenericValue) -> FfiReturn,
+    /// The class of an instance, as a class value (callable to construct
+    /// another instance of it - the analogue of `type(self)`). `TypeError` if
+    /// `value` is not an instance. Lets a plugin method reach its own class
+    /// from the receiver: e.g. to construct a result of the same class, or to
+    /// `is_instance`-check another argument before reading its opaque state.
+    pub class_of: extern "C" fn(ctx: *mut c_void, value: GenericValue) -> FfiReturn,
 
     // --- attributes (never re-enter; generic fields are plain map entries) ---
     /// A field of an instance; `AttributeError` if absent, `TypeError` if
@@ -370,4 +471,21 @@ pub struct HostApi {
     /// Release the `n` most recently rooted values. Releasing more roots
     /// than were pushed corrupts interpreter state.
     pub unroot: extern "C" fn(ctx: *mut c_void, n: usize),
+
+    // --- plugin instance state (never re-enter) ---
+    /// Install the plugin's opaque pointer on a plugin-backed instance
+    /// (typically from `__init__`, with the receiver as `self`). The class's
+    /// `drop`/`traverse` were declared on its [`ClassDesc`]; this only sets the
+    /// pointer. `TypeError` if `receiver` is not a plugin-backed instance.
+    ///
+    /// Overwriting an already-installed pointer leaks the previous one:
+    /// the host does not run `drop` on it, since it cannot know whether the plugin
+    /// still holds a copy elsewhere. To replace state, recover the old pointer
+    /// with `instance_get_opaque` and free it yourself first.
+    pub instance_set_opaque:
+        extern "C" fn(ctx: *mut c_void, receiver: GenericValue, ptr: *mut c_void) -> FfiReturn,
+    /// Recover the pointer installed by [`HostApi::instance_set_opaque`], or
+    /// null if none was installed (e.g. before `__init__` ran) or `receiver`
+    /// is not a plugin-backed instance. Never raises.
+    pub instance_get_opaque: extern "C" fn(ctx: *mut c_void, receiver: GenericValue) -> *mut c_void,
 }

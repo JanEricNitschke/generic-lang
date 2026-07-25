@@ -16,9 +16,9 @@
 //! one function in `loader` (dlopen + descriptor reads). `trampolines`
 //! contains no unsafe at all.
 
-mod host_api;
+pub mod host_api;
 mod loader;
-mod trampolines;
+pub mod trampolines;
 
 #[cfg(test)]
 mod tests;

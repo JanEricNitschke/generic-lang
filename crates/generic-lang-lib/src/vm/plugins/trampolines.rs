@@ -7,9 +7,9 @@
 //! below the copied arguments - so `NativeFunctionImpl`, the dispatch
 //! sites, and the number of loadable plugin functions are all unconstrained.
 
-use generic_lang_api::{FfiReturn, FfiStatus, GenericValue, PluginFn};
+use generic_lang_api::{FfiReturn, FfiStatus, GenericValue, PluginFn, PluginMethodFn};
 
-use super::host_api::{build_host_api, from_ffi};
+use super::host_api::{build_host_api, from_ffi, to_ffi};
 use crate::heap::StringId;
 use crate::value::Value;
 use crate::vm::ExceptionKind::Exception;
@@ -41,17 +41,7 @@ pub(super) fn plugin_trampoline(vm: &mut VM, args: &[Value]) -> VmResult<Value> 
 ///
 /// The `&[Value]` buffer lives in the dispatch frame (see
 /// `execute_native_function_call`) and outlives the call, so its pointer is
-/// handed to the plugin directly, cast to the layout-asserted
-/// [`GenericValue`]. The returned [`FfiReturn`] maps to the native calling
-/// convention:
-/// - [`FfiStatus::Ok`] → the value (rooted by the dispatch site's push).
-/// - [`FfiStatus::Exception`] → `value` is the exception *instance* to raise -
-///   either created by the plugin via `exception_new` or one it caught from
-///   a re-entering callback and rethrows, which preserves its class,
-///   fields, and original stack trace.
-/// - [`FfiStatus::Fatal`] → a fatal runtime error (uncatchable, forwarded from
-///   a re-entering host callback).
-/// - anything else is a plugin bug and becomes a base `Exception`.
+/// handed to the plugin directly, cast to the layout-asserted [`GenericValue`].
 pub(super) fn call_plugin(
     vm: &mut VM,
     fun: PluginFn,
@@ -64,6 +54,42 @@ pub(super) fn call_plugin(
         args.as_ptr().cast::<GenericValue>(),
         args.len(),
     );
+    map_plugin_return(vm, ret, name)
+}
+
+/// Call a plugin method: the receiver is passed as a separate value (the C ABI
+/// method convention), and `args` are the remaining arguments only.
+///
+/// GC rooting is via the VM stack - `execute_native_method_call` keeps the
+/// receiver and args there for the whole call and truncates only afterward.
+pub fn call_plugin_method(
+    vm: &mut VM,
+    fun: PluginMethodFn,
+    receiver: Value,
+    args: &[Value],
+    name: StringId,
+) -> VmResult<Value> {
+    let host = build_host_api(vm);
+    let ret: FfiReturn = fun(
+        &raw const host,
+        to_ffi(receiver),
+        args.as_ptr().cast::<GenericValue>(),
+        args.len(),
+    );
+    map_plugin_return(vm, ret, name)
+}
+
+/// Map a plugin's [`FfiReturn`] to the native calling convention (shared by
+/// [`call_plugin`] and [`call_plugin_method`]):
+/// - [`FfiStatus::Ok`] → the value (rooted by the dispatch site's push).
+/// - [`FfiStatus::Exception`] → `value` is the exception *instance* to raise -
+///   either created by the plugin via `exception_new` or one it caught from
+///   a re-entering callback and rethrows, which preserves its class,
+///   fields, and original stack trace.
+/// - [`FfiStatus::Fatal`] → a fatal runtime error (uncatchable, forwarded from
+///   a re-entering host callback).
+/// - anything else is a plugin bug and becomes a base `Exception`.
+fn map_plugin_return(vm: &mut VM, ret: FfiReturn, name: StringId) -> VmResult<Value> {
     match FfiStatus::from_u32(ret.status) {
         Some(FfiStatus::Ok) => Ok(from_ffi(ret.value)),
         Some(FfiStatus::Exception) => {

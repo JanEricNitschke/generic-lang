@@ -112,9 +112,267 @@ static FfiReturn empty_string(const HostApi *host, const GenericValue *args, siz
     return host->string_new(host->ctx, out);
 }
 
+/* --- a plugin class -----------------------------------------------------
+ *
+ * `Counter` mirrors the Rust example: hidden native data (count), a managed
+ * GenericValue (label) reported to the GC via counter_traverse, and a
+ * generic-side attribute (note/origin) set via attr_set. Methods take the
+ * receiver as a separate parameter; `args`/`nargs` are the remaining args, and
+ * arities exclude the receiver. */
+
+typedef struct {
+    int64_t count;
+    GenericValue label;
+} CounterState;
+
+/* Free the opaque state when a Counter (or subclass) is garbage-collected. */
+static void counter_drop(void *opaque) { free(opaque); /* free(NULL) is a no-op */ }
+
+/* Report the held label so the GC does not sweep it while the Counter lives. */
+static int32_t counter_traverse(void *opaque, PluginVisitFn visit, void *visit_ctx) {
+    if (opaque == NULL) {
+        return 0;
+    }
+    CounterState *s = (CounterState *)opaque;
+    visit(visit_ctx, s->label);
+    return 0;
+}
+
+static CounterState *counter_state(const HostApi *host, GenericValue receiver) {
+    return (CounterState *)host->instance_get_opaque(host->ctx, receiver);
+}
+
+/* Counter.__init__(label) - validate, allocate hidden state, set the `origin`
+ * attribute, and (like every __init__) return the receiver. */
+static FfiReturn counter_init(
+    const HostApi *host,
+    GenericValue receiver,
+    const GenericValue *args,
+    size_t nargs
+) {
+    (void)nargs;
+    if (host->value_kind(host->ctx, args[0]) == GENERIC_VALUE_KIND_NIL) {
+        return throw_new(host, "TypeError", "Counter label must not be nil");
+    }
+    CounterState *s = (CounterState *)malloc(sizeof *s);
+    if (s == NULL) {
+        return throw_new(host, "Exception", "Counter.__init__ out of memory");
+    }
+    s->count = 0;
+    s->label = args[0];
+    FfiReturn set = host->instance_set_opaque(host->ctx, receiver, s);
+    if (set.status != GENERIC_FFI_STATUS_OK) {
+        free(s);
+        return set;
+    }
+    FfiStr origin_name = {.ptr = (const uint8_t *)"origin", .len = 6};
+    FfiStr origin_val = {.ptr = (const uint8_t *)"counter", .len = 7};
+    FfiReturn origin = host->string_new(host->ctx, origin_val);
+    if (origin.status != GENERIC_FFI_STATUS_OK) {
+        return origin;
+    }
+    FfiReturn aset = host->attr_set(host->ctx, receiver, origin_name, origin.value);
+    if (aset.status != GENERIC_FFI_STATUS_OK) {
+        return aset;
+    }
+    return ok(receiver);
+}
+
+static FfiReturn counter_increment(
+    const HostApi *host,
+    GenericValue receiver,
+    const GenericValue *args,
+    size_t nargs
+) {
+    (void)args;
+    (void)nargs;
+    CounterState *s = counter_state(host, receiver);
+    if (s == NULL) {
+        return throw_new(host, "TypeError", "Counter method on an uninitialized instance");
+    }
+    s->count += 1;
+    return ok(host->int_new(host->ctx, s->count));
+}
+
+static FfiReturn counter_value(
+    const HostApi *host,
+    GenericValue receiver,
+    const GenericValue *args,
+    size_t nargs
+) {
+    (void)args;
+    (void)nargs;
+    CounterState *s = counter_state(host, receiver);
+    if (s == NULL) {
+        return throw_new(host, "TypeError", "Counter method on an uninitialized instance");
+    }
+    return ok(host->int_new(host->ctx, s->count));
+}
+
+static FfiReturn counter_label(
+    const HostApi *host,
+    GenericValue receiver,
+    const GenericValue *args,
+    size_t nargs
+) {
+    (void)args;
+    (void)nargs;
+    CounterState *s = counter_state(host, receiver);
+    if (s == NULL) {
+        return throw_new(host, "TypeError", "Counter method on an uninitialized instance");
+    }
+    return ok(s->label);
+}
+
+static FfiReturn counter_set_note(
+    const HostApi *host,
+    GenericValue receiver,
+    const GenericValue *args,
+    size_t nargs
+) {
+    (void)nargs;
+    FfiStr note = {.ptr = (const uint8_t *)"note", .len = 4};
+    FfiReturn set = host->attr_set(host->ctx, receiver, note, args[0]);
+    if (set.status != GENERIC_FFI_STATUS_OK) {
+        return set;
+    }
+    return ok(host->nil_new(host->ctx));
+}
+
+static FfiReturn counter_get_note(
+    const HostApi *host,
+    GenericValue receiver,
+    const GenericValue *args,
+    size_t nargs
+) {
+    (void)args;
+    (void)nargs;
+    FfiStr note = {.ptr = (const uint8_t *)"note", .len = 4};
+    return host->attr_get(host->ctx, receiver, note);
+}
+
+/* Counter.__add__(other) - a dunder returning a new Counter holding the sum.
+ * `other` is type-checked against the receiver's class before its opaque state
+ * is read, so a foreign instance can never be misread as a CounterState. */
+static FfiReturn counter_add(
+    const HostApi *host,
+    GenericValue receiver,
+    const GenericValue *args,
+    size_t nargs
+) {
+    (void)nargs;
+    GenericValue other = args[0];
+    FfiReturn cls = host->class_of(host->ctx, receiver);
+    if (cls.status != GENERIC_FFI_STATUS_OK) {
+        return cls;
+    }
+    FfiReturn is = host->is_instance(host->ctx, other, cls.value);
+    if (is.status != GENERIC_FFI_STATUS_OK) {
+        return is;
+    }
+    bool is_counter = false;
+    if (!host->bool_get(host->ctx, is.value, &is_counter) || !is_counter) {
+        return throw_new(host, "TypeError", "Counter.__add__ expects another Counter");
+    }
+    CounterState *a = counter_state(host, receiver);
+    CounterState *b = counter_state(host, other);
+    if (a == NULL || b == NULL) {
+        return throw_new(host, "TypeError", "Counter method on an uninitialized instance");
+    }
+    int64_t sum = a->count + b->count;
+    GenericValue label = a->label; /* read before re-entering call_value */
+    FfiReturn made = host->call_value(host->ctx, cls.value, &label, 1);
+    if (made.status != GENERIC_FFI_STATUS_OK) {
+        return made;
+    }
+    CounterState *n = counter_state(host, made.value);
+    if (n == NULL) {
+        return throw_new(host, "Exception", "Counter.__add__ construction failed");
+    }
+    n->count = sum;
+    return ok(made.value);
+}
+
+/* A second plugin class with a distinct opaque type, so tests can check that
+ * `counter + ticket` is a clean TypeError rather than a type confusion. */
+static void ticket_drop(void *opaque) { free(opaque); }
+
+static FfiReturn ticket_init(
+    const HostApi *host,
+    GenericValue receiver,
+    const GenericValue *args,
+    size_t nargs
+) {
+    (void)args;
+    (void)nargs;
+    int64_t *id = (int64_t *)malloc(sizeof *id);
+    if (id == NULL) {
+        return throw_new(host, "Exception", "Ticket.__init__ out of memory");
+    }
+    *id = 0;
+    FfiReturn set = host->instance_set_opaque(host->ctx, receiver, id);
+    if (set.status != GENERIC_FFI_STATUS_OK) {
+        free(id);
+        return set;
+    }
+    return ok(receiver);
+}
+
 static const uint8_t ARITY_0[] = {0};
 static const uint8_t ARITY_1[] = {1};
 static const uint8_t ARITY_2[] = {2};
+
+static const MethodDesc COUNTER_METHODS[] = {
+    {.name = {.ptr = (const uint8_t *)"__init__", .len = 8},
+     .arities = ARITY_1,
+     .arities_len = 1,
+     .fun = counter_init},
+    {.name = {.ptr = (const uint8_t *)"increment", .len = 9},
+     .arities = ARITY_0,
+     .arities_len = 1,
+     .fun = counter_increment},
+    {.name = {.ptr = (const uint8_t *)"value", .len = 5},
+     .arities = ARITY_0,
+     .arities_len = 1,
+     .fun = counter_value},
+    {.name = {.ptr = (const uint8_t *)"label", .len = 5},
+     .arities = ARITY_0,
+     .arities_len = 1,
+     .fun = counter_label},
+    {.name = {.ptr = (const uint8_t *)"set_note", .len = 8},
+     .arities = ARITY_1,
+     .arities_len = 1,
+     .fun = counter_set_note},
+    {.name = {.ptr = (const uint8_t *)"get_note", .len = 8},
+     .arities = ARITY_0,
+     .arities_len = 1,
+     .fun = counter_get_note},
+    {.name = {.ptr = (const uint8_t *)"__add__", .len = 7},
+     .arities = ARITY_1,
+     .arities_len = 1,
+     .fun = counter_add},
+};
+
+static const MethodDesc TICKET_METHODS[] = {
+    {.name = {.ptr = (const uint8_t *)"__init__", .len = 8},
+     .arities = ARITY_0,
+     .arities_len = 1,
+     .fun = ticket_init},
+};
+
+static const ClassDesc CLASSES[] = {
+    {.name = {.ptr = (const uint8_t *)"Counter", .len = 7},
+     .methods = COUNTER_METHODS,
+     .methods_len = sizeof COUNTER_METHODS / sizeof COUNTER_METHODS[0],
+     .drop = counter_drop,
+     .traverse = counter_traverse},
+    {.name = {.ptr = (const uint8_t *)"Ticket", .len = 6},
+     .methods = TICKET_METHODS,
+     .methods_len = sizeof TICKET_METHODS / sizeof TICKET_METHODS[0],
+     .drop = ticket_drop,
+     .traverse = NULL},
+};
+
 static const FunctionDesc FUNCTIONS[] = {
     {.name = {.ptr = (const uint8_t *)"add", .len = 3},
      .arities = ARITY_2,
@@ -137,6 +395,8 @@ static const ModuleDesc DESC = {
     .abi_version = GENERIC_PLUGIN_ABI_VERSION,
     .functions = FUNCTIONS,
     .functions_len = sizeof FUNCTIONS / sizeof FUNCTIONS[0],
+    .classes = CLASSES,
+    .classes_len = sizeof CLASSES / sizeof CLASSES[0],
 };
 
 const ModuleDesc *generic_plugin_init(void) { return &DESC; }

@@ -1,0 +1,27 @@
+# `typename(x)` returns a string type-name, defined for every value.
+print(typename(5)); # expect: <type int>
+print(typename(3.2)); # expect: <type float>
+print(typename("Test")); # expect: <type string>
+
+fun fib(n) {
+  if (n < 2) {
+    return n;
+  }
+  return fib(n - 2) + fib(n - 1);
+}
+
+print(typename(fib)); # expect: <type closure>
+print(typename(clock)); # expect: <type native function>
+print(typename(true)); # expect: <type bool>
+print(typename(false)); # expect: <type bool>
+print(typename(nil)); # expect: <type nil>
+
+class Tree {
+  stuff() {}
+}
+
+print(typename(Tree)); # expect: <type class>
+print(typename(Tree())); # expect: <type Tree>
+print(typename(Tree().stuff)); # expect: <type bound method>
+
+print(typename([1, 2, 3])); # expect: <type List>

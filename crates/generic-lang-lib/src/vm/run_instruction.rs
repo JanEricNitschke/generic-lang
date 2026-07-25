@@ -250,7 +250,9 @@ macro_rules! run_instruction {
             // Classname is the operand, create a new class and push it onto the stack
             OpCode::Class => {
                 let class_name = $self.read_string("OP_CLASS");
-                let class = $self.heap.add_class(Class::new(class_name, false));
+                let class = $self
+                    .heap
+                    .add_class(Class::new(class_name, crate::value::ClassKind::User));
                 $self.stack_push(class);
                 Ok(None)
             }
