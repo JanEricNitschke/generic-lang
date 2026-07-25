@@ -1,11 +1,15 @@
 use crate::heap::ClassId;
 use crate::value::NativeClass;
+#[cfg(feature = "plugins")]
+use crate::value::{ClassKind, PluginInstance};
 use crate::vm::ExceptionKind::{
     AttributeError, ConstReassignmentError, NameError, RecursionError, TypeError, ValueError,
 };
 use crate::vm::arithmetics::IntoResultValue;
 use crate::vm::errors::{Return, VmErrorKind, VmResult};
 use crate::vm::exception_handling::RegionSnapshot;
+#[cfg(feature = "plugins")]
+use crate::vm::plugins::trampolines::call_plugin_method;
 use crate::{
     chunk::OpCode,
     heap::{NativeFunctionId, NativeMethodId, StringId, UpvalueId},
@@ -275,6 +279,12 @@ impl VM {
                 let backing = class_data.get_native_superclass(&self.heap, class).map(
                     |native_superclass_id| {
                         let native_superclass = native_superclass_id.to_value(&self.heap);
+                        // Plugin class: a Plugin backing with a null opaque ptr;
+                        // `__init__` installs the real pointer via set_opaque.
+                        #[cfg(feature = "plugins")]
+                        if matches!(native_superclass.kind, ClassKind::Plugin(_)) {
+                            return NativeClass::Plugin(PluginInstance::empty());
+                        }
                         NativeClass::new(native_superclass.name.to_value(&self.heap))
                     },
                 );
@@ -428,9 +438,27 @@ impl VM {
             return self.throw(TypeError, &message);
         }
         let fun = f.fun;
+        // Copied out of the heap `NativeMethod` borrow before re-entering
+        // `&mut self` below (both `Copy`); mirrors `let fun = f.fun`.
+        #[cfg(feature = "plugins")]
+        let (plugin_fn, name) = (f.plugin_fn, f.name);
         let start_index = self.stack.len() - usize::from(arg_count);
         let args: TinyVec<[Value; INLINE_NATIVE_ARGS]> = self.stack[start_index..].into();
+
+        // Plugin methods delegate to `call_plugin_method` (receiver passed
+        // separately, `args` unchanged); both paths return a `VmResult<Value>`
+        // and then apply the same stack discipline below. The receiver and args
+        // stay on the stack for the whole call (truncation is afterward), so
+        // they are GC-rooted while a plugin re-enters.
+        #[cfg(feature = "plugins")]
+        let value = if let Some(plugin_fn) = plugin_fn {
+            call_plugin_method(self, plugin_fn, *receiver, &args, name)?
+        } else {
+            fun(self, receiver, &args)?
+        };
+        #[cfg(not(feature = "plugins"))]
         let value = fun(self, receiver, &args)?;
+
         self.stack
             .truncate(self.stack.len() - usize::from(arg_count) - 1);
         self.stack_push(value);

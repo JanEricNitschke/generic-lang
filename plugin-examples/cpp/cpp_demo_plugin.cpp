@@ -52,6 +52,12 @@ FfiReturn throw_new(const HostApi *host, const char *class_name, const std::stri
     return FfiReturn{GENERIC_FFI_STATUS_EXCEPTION, exc.value};
 }
 
+// A typed error `guarded` translates back into a specific generic exception.
+struct PluginThrow {
+    const char *class_name;
+    std::string message;
+};
+
 // Run a plugin body, converting any escaping C++ exception into a generic one
 // so nothing unwinds across the C ABI boundary. `body` is taken by forwarding
 // reference and invoked in place: constructing a std::function here could
@@ -60,6 +66,8 @@ template <typename Body>
 FfiReturn guarded(const HostApi *host, Body &&body) {
     try {
         return body();
+    } catch (const PluginThrow &e) {
+        return throw_new(host, e.class_name, e.message);
     } catch (const std::exception &e) {
         return throw_new(host, "Exception", std::string("cpp_demo_plugin: ") + e.what());
     } catch (...) {
@@ -129,9 +137,206 @@ FfiReturn boom(const HostApi *host, const GenericValue *, size_t) {
     });
 }
 
+// --- a plugin class ------------------------------------------------------
+//
+// `Counter` mirrors the Rust and C examples: hidden native data (count), a
+// managed GenericValue (label) reported to the GC via counter_traverse, and a
+// generic-side attribute (note/origin) set via attr_set.
+
+// Methods take the receiver as a separate parameter; `args` are the remaining
+// arguments only, and arities exclude the receiver.
+
+struct CounterState {
+    int64_t count;
+    GenericValue label;
+};
+
+// drop/traverse are called directly by the host (not via `guarded`); they must
+// never let a C++ exception escape. Neither does anything that can throw.
+void counter_drop(void *opaque) { delete static_cast<CounterState *>(opaque); }
+
+int32_t counter_traverse(void *opaque, PluginVisitFn visit, void *visit_ctx) {
+    if (opaque != nullptr) {
+        visit(visit_ctx, static_cast<CounterState *>(opaque)->label);
+    }
+    return 0;
+}
+
+// Validate and return the hidden state as a reference; throws (caught by
+// `guarded`) if the instance was never initialized, so callers never null-check.
+CounterState &counter_state(const HostApi *host, GenericValue receiver) {
+    auto *s = static_cast<CounterState *>(host->instance_get_opaque(host->ctx, receiver));
+    if (s == nullptr) {
+        throw PluginThrow{"TypeError", "Counter method on uninitialized instance"};
+    }
+    return *s;
+}
+
+FfiReturn counter_init(
+    const HostApi *host,
+    GenericValue receiver,
+    const GenericValue *args,
+    size_t
+) {
+    return guarded(host, [&]() -> FfiReturn {
+        if (host->value_kind(host->ctx, args[0]) == GENERIC_VALUE_KIND_NIL) {
+            return throw_new(host, "TypeError", "Counter label must not be nil");
+        }
+        auto *s = new CounterState{0, args[0]};
+        FfiReturn set = host->instance_set_opaque(host->ctx, receiver, s);
+        if (set.status != GENERIC_FFI_STATUS_OK) {
+            delete s;
+            return set;
+        }
+        FfiReturn origin = host->string_new(host->ctx, as_ffi(std::string("counter")));
+        if (origin.status != GENERIC_FFI_STATUS_OK) {
+            return origin;
+        }
+        FfiStr name{reinterpret_cast<const uint8_t *>("origin"), 6};
+        FfiReturn aset = host->attr_set(host->ctx, receiver, name, origin.value);
+        if (aset.status != GENERIC_FFI_STATUS_OK) {
+            return aset;
+        }
+        return ok(receiver);  // like every __init__, return the receiver
+    });
+}
+
+FfiReturn counter_increment(
+    const HostApi *host,
+    GenericValue receiver,
+    const GenericValue *,
+    size_t
+) {
+    return guarded(host, [&]() -> FfiReturn {
+        CounterState &s = counter_state(host, receiver);
+        s.count += 1;
+        return ok(host->int_new(host->ctx, s.count));
+    });
+}
+
+FfiReturn counter_value(const HostApi *host, GenericValue receiver, const GenericValue *, size_t) {
+    return guarded(host, [&]() -> FfiReturn {
+        CounterState &s = counter_state(host, receiver);
+        return ok(host->int_new(host->ctx, s.count));
+    });
+}
+
+FfiReturn counter_label(const HostApi *host, GenericValue receiver, const GenericValue *, size_t) {
+    return guarded(host, [&]() -> FfiReturn {
+        CounterState &s = counter_state(host, receiver);
+        return ok(s.label);
+    });
+}
+
+FfiReturn counter_set_note(
+    const HostApi *host,
+    GenericValue receiver,
+    const GenericValue *args,
+    size_t
+) {
+    return guarded(host, [&]() -> FfiReturn {
+        FfiStr name{reinterpret_cast<const uint8_t *>("note"), 4};
+        FfiReturn set = host->attr_set(host->ctx, receiver, name, args[0]);
+        if (set.status != GENERIC_FFI_STATUS_OK) {
+            return set;
+        }
+        return ok(host->nil_new(host->ctx));
+    });
+}
+
+FfiReturn counter_get_note(
+    const HostApi *host,
+    GenericValue receiver,
+    const GenericValue *,
+    size_t
+) {
+    return guarded(host, [&]() -> FfiReturn {
+        FfiStr name{reinterpret_cast<const uint8_t *>("note"), 4};
+        return host->attr_get(host->ctx, receiver, name);
+    });
+}
+
+// Returns a new Counter holding the sum; `other` is type-checked against the
+// receiver's class before its opaque state is read (no type confusion).
+FfiReturn counter_add(
+    const HostApi *host,
+    GenericValue receiver,
+    const GenericValue *args,
+    size_t
+) {
+    return guarded(host, [&]() -> FfiReturn {
+        GenericValue other = args[0];
+        FfiReturn cls = host->class_of(host->ctx, receiver);
+        if (cls.status != GENERIC_FFI_STATUS_OK) {
+            return cls;
+        }
+        FfiReturn is = host->is_instance(host->ctx, other, cls.value);
+        if (is.status != GENERIC_FFI_STATUS_OK) {
+            return is;
+        }
+        bool is_counter = false;
+        if (!host->bool_get(host->ctx, is.value, &is_counter) || !is_counter) {
+            return throw_new(host, "TypeError", "Counter.__add__ expects another Counter");
+        }
+        CounterState &a = counter_state(host, receiver);
+        CounterState &b = counter_state(host, other);
+        int64_t sum = a.count + b.count;
+        GenericValue label = a.label;  // read before re-entering call_value
+        FfiReturn made = host->call_value(host->ctx, cls.value, &label, 1);
+        if (made.status != GENERIC_FFI_STATUS_OK) {
+            return made;
+        }
+        counter_state(host, made.value).count = sum;
+        return ok(made.value);
+    });
+}
+
+// A second plugin class with a distinct opaque type, for the cross-class test.
+void ticket_drop(void *opaque) { delete static_cast<int64_t *>(opaque); }
+
+FfiReturn ticket_init(const HostApi *host, GenericValue receiver, const GenericValue *, size_t) {
+    return guarded(host, [&]() -> FfiReturn {
+        auto *id = new int64_t(0);
+        FfiReturn set = host->instance_set_opaque(host->ctx, receiver, id);
+        if (set.status != GENERIC_FFI_STATUS_OK) {
+            delete id;
+            return set;
+        }
+        return ok(receiver);
+    });
+}
+
 const uint8_t ARITY_1[] = {1};
 const uint8_t ARITY_2[] = {2};
 const uint8_t ARITY_0[] = {0};
+
+const MethodDesc COUNTER_METHODS[] = {
+    {FfiStr{reinterpret_cast<const uint8_t *>("__init__"), 8}, ARITY_1, 1, counter_init},
+    {FfiStr{reinterpret_cast<const uint8_t *>("increment"), 9}, ARITY_0, 1, counter_increment},
+    {FfiStr{reinterpret_cast<const uint8_t *>("value"), 5}, ARITY_0, 1, counter_value},
+    {FfiStr{reinterpret_cast<const uint8_t *>("label"), 5}, ARITY_0, 1, counter_label},
+    {FfiStr{reinterpret_cast<const uint8_t *>("set_note"), 8}, ARITY_1, 1, counter_set_note},
+    {FfiStr{reinterpret_cast<const uint8_t *>("get_note"), 8}, ARITY_0, 1, counter_get_note},
+    {FfiStr{reinterpret_cast<const uint8_t *>("__add__"), 7}, ARITY_1, 1, counter_add},
+};
+
+const MethodDesc TICKET_METHODS[] = {
+    {FfiStr{reinterpret_cast<const uint8_t *>("__init__"), 8}, ARITY_0, 1, ticket_init},
+};
+
+const ClassDesc CLASSES[] = {
+    {FfiStr{reinterpret_cast<const uint8_t *>("Counter"), 7},
+     COUNTER_METHODS,
+     sizeof COUNTER_METHODS / sizeof COUNTER_METHODS[0],
+     counter_drop,
+     counter_traverse},
+    {FfiStr{reinterpret_cast<const uint8_t *>("Ticket"), 6},
+     TICKET_METHODS,
+     sizeof TICKET_METHODS / sizeof TICKET_METHODS[0],
+     ticket_drop,
+     nullptr},
+};
+
 const FunctionDesc FUNCTIONS[] = {
     {FfiStr{reinterpret_cast<const uint8_t *>("add"), 3}, ARITY_2, 1, add},
     {FfiStr{reinterpret_cast<const uint8_t *>("shout"), 5}, ARITY_1, 1, shout},
@@ -142,6 +347,8 @@ const ModuleDesc DESC = {
     GENERIC_PLUGIN_ABI_VERSION,
     FUNCTIONS,
     sizeof FUNCTIONS / sizeof FUNCTIONS[0],
+    CLASSES,
+    sizeof CLASSES / sizeof CLASSES[0],
 };
 
 }  // namespace

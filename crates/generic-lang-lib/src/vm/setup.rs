@@ -71,7 +71,9 @@ impl VM {
     /// Define a native class by adding it to the heap and optionally the VM builtins.
     pub(crate) fn define_native_class<T: ToString>(&mut self, name: &T, add_to_builtins: bool) {
         let name_id = self.heap.string_id(name);
-        let value = self.heap.add_class(Class::new(name_id, true));
+        let value = self
+            .heap
+            .add_class(Class::new(name_id, crate::value::ClassKind::Native));
         if add_to_builtins {
             self.builtins.insert(
                 name_id,
@@ -101,6 +103,8 @@ impl VM {
             name: name_id,
             arity,
             fun,
+            #[cfg(feature = "plugins")]
+            plugin_fn: None,
         });
         let target_class = self
             .heap

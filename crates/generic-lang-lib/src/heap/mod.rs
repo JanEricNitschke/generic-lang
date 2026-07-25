@@ -24,6 +24,10 @@ use crate::value::{
     BoundMethod, Class, Closure, Function, GenericInt, Instance, Module, NativeClass,
     NativeFunction, NativeMethod, Number, Upvalue, Value,
 };
+#[cfg(feature = "plugins")]
+use crate::value::{ClassKind, PluginClassInfo};
+#[cfg(feature = "plugins")]
+use crate::vm::plugins::host_api::from_ffi;
 
 /// Collection of all builtin constants that are needed in different parts
 /// of the heap or VM.
@@ -625,12 +629,119 @@ impl Heap {
                 | NativeClass::StringProxy
                 | NativeClass::IntegerProxy
                 | NativeClass::FloatProxy
-                | NativeClass::RationalProxy => {}
+                | NativeClass::RationalProxy
+                | NativeClass::NilProxy
+                | NativeClass::StopIterationProxy => {}
+                // Traced below via the class's `traverse` (needs the class
+                // arena, so it runs after the `instance` borrow ends).
+                #[cfg(feature = "plugins")]
+                NativeClass::Plugin(_) => {}
             }
         }
         #[cfg(feature = "log_gc")]
         {
             eprintln!("Instance/{:?} blacken {} end", index, item.item);
+        }
+
+        // Plugin instances trace the `GenericValue`s inside their opaque state
+        // via the class's `traverse` callback. Resolved through the class arena
+        // (the callback lives on the plugin class, possibly a superclass of a
+        // user subclass), so it runs here, after every borrow of `instance`.
+        #[cfg(feature = "plugins")]
+        {
+            let plugin = match &self.instances[index].backing {
+                Some(NativeClass::Plugin(pi)) => Some((pi.ptr, self.instances[index].class)),
+                _ => None,
+            };
+            if let Some((ptr, class_id)) = plugin
+                && let Some(info) = self.plugin_class_info(class_id)
+                && let Some(traverse) = info.traverse
+            {
+                self.blacken_plugin_instance(ptr, traverse);
+            }
+        }
+    }
+
+    /// Resolve the [`PluginClassInfo`] governing an instance of `class_id`, by
+    /// walking to the nearest native superclass (the plugin class itself for a
+    /// plugin class, or the plugin ancestor of a user subclass). `None` if that
+    /// native class is an interpreter builtin rather than a plugin class.
+    #[cfg(feature = "plugins")]
+    fn plugin_class_info(&self, class_id: ClassId) -> Option<PluginClassInfo> {
+        let native_id = self.classes[class_id].get_native_superclass(self, class_id)?;
+        match self.classes[native_id].kind {
+            ClassKind::Plugin(info) => Some(info),
+            _ => None,
+        }
+    }
+
+    /// Invoke a plugin instance's `traverse` callback so the collector reaches
+    /// every `GenericValue` held in its opaque state.
+    #[cfg(feature = "plugins")]
+    #[allow(unsafe_code)]
+    fn blacken_plugin_instance(
+        &mut self,
+        ptr: *mut core::ffi::c_void,
+        traverse: generic_lang_api::PluginTraverseFn,
+    ) {
+        extern "C" fn cb_gray_value(
+            ctx: *mut core::ffi::c_void,
+            value: generic_lang_api::GenericValue,
+        ) {
+            // SAFETY: `ctx` is the `&mut Heap` handed to `traverse` below,
+            // reborrowed only for this call. No other borrow into the heap is
+            // live during the `traverse` call (`ptr` was copied out of the
+            // instance borrow first), and GC marking never re-enters bytecode,
+            // so this is the sole heap access in flight.
+            let heap = unsafe { &mut *(ctx.cast::<Heap>()) };
+            let value = from_ffi(value);
+            gray_value!(heap, &value);
+        }
+
+        // Nothing installed yet (`__init__` hasn't run): nothing to trace.
+        if ptr.is_null() {
+            return;
+        }
+
+        // Calling a safe `extern "C" fn` pointer is not `unsafe` (the trust
+        // boundary is dlopen at load). Contract: `traverse` is the plugin's own
+        // callback, `ptr` is the state it installed, and the host holds no live
+        // borrow into itself across this call, so the `cb_gray_value` reborrow
+        // of `self` through `ctx` is sound.
+        traverse(
+            ptr,
+            cb_gray_value,
+            std::ptr::from_mut(self).cast::<core::ffi::c_void>(),
+        );
+    }
+
+    /// Run the plugin `drop` callback for plugin instances.
+    ///
+    /// With `only_unmarked`, finalizes just the instances that will not survive
+    /// the current collection (used by sweep); otherwise finalizes every live
+    /// plugin instance (used at teardown). Each instance is finalized once: a
+    /// swept instance is removed immediately after, and teardown runs once.
+    #[cfg(feature = "plugins")]
+    fn run_plugin_drops(&self, only_unmarked: bool) {
+        for (_id, item) in &self.instances.data {
+            if only_unmarked && item.marked == self.black_value {
+                continue; // survives this collection
+            }
+            let Some(NativeClass::Plugin(pi)) = &item.item.backing else {
+                continue;
+            };
+            if pi.ptr.is_null() {
+                continue; // `__init__` never installed state
+            }
+            if let Some(info) = self.plugin_class_info(item.item.class)
+                && let Some(drop) = info.drop
+            {
+                // Calling a safe `extern "C" fn` pointer is not `unsafe`.
+                // `drop` is the plugin's own destructor for `ptr`, called once
+                // per instance: just before its slot is freed (sweep) or at
+                // heap teardown.
+                drop(pi.ptr);
+            }
         }
     }
 
@@ -728,6 +839,13 @@ impl Heap {
         #[cfg(feature = "log_gc")]
         let before = self.bytes_allocated();
 
+        // Finalize plugin instances that will not survive this collection,
+        // before any arena is swept: a dead plugin instance's class may be
+        // reaped this same cycle (classes are swept before instances), so its
+        // `drop` fn must be read while the class arena is still intact.
+        #[cfg(feature = "plugins")]
+        self.run_plugin_drops(true);
+
         // Need to sweep closures before functions as
         // the former prints the latter on `log_gc`.
         // Also have to sweep strings last as modules and
@@ -758,6 +876,13 @@ impl Heap {
                 humansize::format_size(self.next_gc, humansize::BINARY),
             );
         }
+    }
+
+    /// Force the next `collect_garbage` to actually collect, regardless of the
+    /// growth threshold. Test-only, for deterministically exercising GC.
+    #[cfg(all(test, feature = "plugins"))]
+    pub(super) fn force_next_gc(&mut self) {
+        self.next_gc = 0;
     }
 }
 
@@ -852,4 +977,20 @@ impl Heap {
             id_ty: ModuleId
         },
     );
+}
+
+// Finalize any plugin instances still live at interpreter teardown so their
+// native state (and side-effecting `drop`s) are released. Sweep only handles
+// unreachable instances; this covers the survivors.
+//
+// The `drop` fn pointers live in the plugin dylibs held by `VM::plugins`. This
+// runs those pointers, so the libraries must still be loaded: `VM` declares
+// `heap` before `plugins`, and Rust drops fields in declaration order, so the
+// heap finalizes here while the dylibs are alive. Reordering those two fields
+// would call into an unloaded library.
+#[cfg(feature = "plugins")]
+impl Drop for Heap {
+    fn drop(&mut self) {
+        self.run_plugin_drops(false);
+    }
 }

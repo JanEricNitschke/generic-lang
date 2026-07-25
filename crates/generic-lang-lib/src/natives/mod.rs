@@ -96,11 +96,12 @@ use native_functions::{
     assert_native, clock_native, delattr_native, getattr_native, hasattr_native, input_native,
     is_int_native, isinstance_native, issubclass_native, iter_native, len_native, next_native,
     print_native, rng_native, setattr_native, sleep_native, to_float_native, to_int_native,
-    to_string_native, type_native,
+    to_string_native, type_native, typename_native,
 };
 
 use value_constructors::{
-    bool_init_native, float_init_native, integer_init_native, rational_init_native,
+    bool_init_native, float_init_native, integer_init_native, nil_init_native,
+    rational_init_native, stop_iteration_init_native,
 };
 
 /// Static arity arrays for common variadic argument patterns.
@@ -132,6 +133,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_function(&"is_int", &[1], is_int_native);
     vm.define_native_function(&"str", &[1], to_string_native);
     vm.define_native_function(&"type", &[1], type_native);
+    vm.define_native_function(&"typename", &[1], typename_native);
     vm.define_native_function(&"print", &[1, 2], print_native);
     vm.define_native_function(&"getattr", &[2], getattr_native);
     vm.define_native_function(&"setattr", &[3], setattr_native);
@@ -343,4 +345,15 @@ pub fn define(vm: &mut VM) {
 
     vm.define_native_class(&"Rational", true);
     vm.define_native_method(&"Rational", &"__init__", &[2], rational_init_native);
+
+    vm.define_native_class(&"NilType", true);
+    vm.define_native_method(&"NilType", &"__init__", &[0], nil_init_native);
+
+    vm.define_native_class(&"StopIterationType", true);
+    vm.define_native_method(
+        &"StopIterationType",
+        &"__init__",
+        &[0],
+        stop_iteration_init_native,
+    );
 }

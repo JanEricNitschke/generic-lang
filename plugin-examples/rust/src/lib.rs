@@ -17,7 +17,9 @@
     clippy::cast_possible_truncation
 )]
 
-use generic_lang_api::{ArgValue, GenericValue, Host, PluginError};
+use core::ffi::c_void;
+
+use generic_lang_api::{ArgValue, GenericValue, Host, PluginError, PluginVisitFn};
 
 // --- happy paths ---------------------------------------------------------
 
@@ -197,6 +199,198 @@ fn big_probe(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, Plu
     }
 }
 
+// --- a plugin class ------------------------------------------------------
+//
+// `Counter` demonstrates the three ways a plugin class can hold state:
+//   1. Hidden native data (`count`) - a plain Rust field, reachable from
+//      generic code only through the `value`/`increment` methods.
+//   2. A managed `GenericValue` (`label`) - stored in native memory and
+//      reported to the collector by `counter_traverse`, so the GC keeps it
+//      alive for as long as the instance lives.
+//   3. A generic-side attribute (`note`) - an ordinary instance field, set
+//      and read from native code via `attr_set`/`attr_get` and equally
+//      visible to generic code as `self.note`.
+
+// Methods take the receiver (`self`) as a separate parameter; `args` are the
+// remaining arguments only, and arities in `export_module!` exclude the receiver.
+
+/// Per-instance native state, fully hidden from generic code. Allocated on the
+/// heap in `counter_init` and freed by `counter_drop`.
+struct CounterState {
+    /// Pure native data: only observable through `value`/`increment`.
+    count: i64,
+    /// A held `GenericValue` the GC must be told about (see `counter_traverse`).
+    label: GenericValue,
+}
+
+/// Destructor for the opaque state; the host calls it when a `Counter` (or a
+/// user subclass of it) is garbage-collected.
+extern "C" fn counter_drop(ptr: *mut c_void) {
+    if ptr.is_null() {
+        return;
+    }
+    // SAFETY: `ptr` was produced by `Box::into_raw` in `counter_init`.
+    drop(unsafe { Box::from_raw(ptr.cast::<CounterState>()) });
+}
+
+/// GC traversal: report the held `label` so it is not swept while the instance
+/// is alive. A struct holding no `GenericValue`s would set `traverse: None`.
+extern "C" fn counter_traverse(
+    ptr: *mut c_void,
+    visit: PluginVisitFn,
+    visit_ctx: *mut c_void,
+) -> i32 {
+    if ptr.is_null() {
+        return 0;
+    }
+    // SAFETY: `ptr` points at a live `CounterState` installed by counter_init.
+    let state = unsafe { &*ptr.cast::<CounterState>() };
+    visit(visit_ctx, state.label);
+    0
+}
+
+/// Recover the hidden native state, or a `TypeError` if `__init__` never ran.
+/// The `unsafe` (asserting the opaque type) lives here once instead of in every
+/// method; the receiver is guaranteed to be a `Counter`, so the type holds.
+// The `&mut` derives from the opaque pointer, not from `&Host` (interior
+// mutability), so a shared borrow only scopes the call.
+#[allow(clippy::mut_from_ref)]
+fn counter_state<'h>(
+    host: &'h Host,
+    receiver: GenericValue,
+) -> Result<&'h mut CounterState, PluginError> {
+    // SAFETY: every `Counter` (and subclass) instance's opaque state is a
+    // `CounterState` installed by `counter_init`.
+    unsafe { host.opaque_ref::<CounterState>(receiver) }
+        .ok_or_else(|| host.type_error("Counter method called on an uninitialized instance"))
+}
+
+/// `Counter.__init__(label)` - validate, allocate the hidden state (holding
+/// `label`), and record a generic-side `origin` attribute. `this` is the
+/// receiver; the label is `args[0]`.
+fn counter_init(
+    host: &mut Host,
+    this: GenericValue,
+    args: &[GenericValue],
+) -> Result<GenericValue, PluginError> {
+    // Validate before allocating, so a rejected construction leaves nothing
+    // behind (and demonstrates an `__init__` that can fail).
+    if matches!(host.decode(args[0]), ArgValue::Nil) {
+        return Err(host.type_error("Counter label must not be nil"));
+    }
+    let state = Box::new(CounterState {
+        count: 0,
+        label: args[0],
+    });
+    host.set_opaque(this, Box::into_raw(state).cast::<c_void>())?;
+    // A generic-side attribute set from native code; readable as `this.origin`.
+    let origin = host.make_str("counter");
+    host.attr_set(this, "origin", origin)?;
+    // Like every `__init__`, return the receiver: its return value becomes the
+    // result of the construction expression.
+    Ok(this)
+}
+
+/// `Counter.increment()` - bump and return the hidden counter.
+fn counter_increment(
+    host: &mut Host,
+    this: GenericValue,
+    _args: &[GenericValue],
+) -> Result<GenericValue, PluginError> {
+    let state = counter_state(host, this)?;
+    state.count += 1;
+    Ok(host.make_int(state.count))
+}
+
+/// `Counter.value()` - read the hidden counter (native data, no generic field).
+fn counter_value(
+    host: &mut Host,
+    this: GenericValue,
+    _args: &[GenericValue],
+) -> Result<GenericValue, PluginError> {
+    Ok(host.make_int(counter_state(host, this)?.count))
+}
+
+/// `Counter.label()` - return the GC-managed held value. If `counter_traverse`
+/// failed to report it, stress-GC would have swept it and this would be garbage.
+fn counter_label(
+    host: &mut Host,
+    this: GenericValue,
+    _args: &[GenericValue],
+) -> Result<GenericValue, PluginError> {
+    Ok(counter_state(host, this)?.label)
+}
+
+/// `Counter.set_note(note)` - store a generic-side attribute via `attr_set`.
+fn counter_set_note(
+    host: &mut Host,
+    this: GenericValue,
+    args: &[GenericValue],
+) -> Result<GenericValue, PluginError> {
+    host.attr_set(this, "note", args[0])?;
+    Ok(host.make_nil())
+}
+
+/// `Counter.get_note()` - read the generic-side attribute via `attr_get`
+/// (`AttributeError` if unset), mirroring generic code reading `this.note`.
+fn counter_get_note(
+    host: &mut Host,
+    this: GenericValue,
+    _args: &[GenericValue],
+) -> Result<GenericValue, PluginError> {
+    host.attr_get(this, "note")
+}
+
+/// `Counter.__add__(other)` - a dunder implemented by a plugin class, so
+/// `a + b` on two counters works and returns a new `Counter` holding the sum.
+/// `other` is type-checked against this instance's class before its opaque
+/// state is read: `is_instance` first, so reading a foreign instance's opaque
+/// pointer as a `CounterState` (a type confusion) can never happen.
+fn counter_add(
+    host: &mut Host,
+    this: GenericValue,
+    args: &[GenericValue],
+) -> Result<GenericValue, PluginError> {
+    let other = args[0];
+    let class = host.class_of(this)?;
+    if !host.is_instance(other, class)? {
+        return Err(host.type_error("Counter.__add__ expects another Counter"));
+    }
+    let a = counter_state(host, this)?.count;
+    let b = counter_state(host, other)?.count;
+    let label = counter_state(host, this)?.label;
+    // Construct a new instance of our own class (the analogue of
+    // `type(self)(...)`), then set its hidden count.
+    let new = host.call(class, &[label])?;
+    counter_state(host, new)?.count = a + b;
+    Ok(new)
+}
+
+// A second plugin class with its own opaque type, so the tests can check that
+// `counter + ticket` is a clean `TypeError` (not a type confusion) rather than
+// reading a `TicketState` as a `CounterState`.
+
+struct TicketState;
+
+extern "C" fn ticket_drop(ptr: *mut c_void) {
+    if ptr.is_null() {
+        return;
+    }
+    // SAFETY: `ptr` was produced by `Box::into_raw` in `ticket_init`.
+    drop(unsafe { Box::from_raw(ptr.cast::<TicketState>()) });
+}
+
+/// `Ticket.__init__()` - a minimal plugin class (distinct opaque type, no held
+/// values so no `traverse`).
+fn ticket_init(
+    host: &mut Host,
+    this: GenericValue,
+    _args: &[GenericValue],
+) -> Result<GenericValue, PluginError> {
+    host.set_opaque(this, Box::into_raw(Box::new(TicketState)).cast::<c_void>())?;
+    Ok(this)
+}
+
 generic_lang_api::export_module![
     ("add", &[2], add),
     ("shout", &[1], shout),
@@ -214,4 +408,21 @@ generic_lang_api::export_module![
     ("set_put", &[2], set_put),
     ("keep_across", &[1], keep_across),
     ("big_probe", &[1], big_probe),
+    // Method arities exclude the receiver: `__init__` takes one arg (the label),
+    // the readers take none, `__add__` takes one (the other operand).
+    class("Counter") {
+        ("__init__", &[1], counter_init),
+        ("increment", &[0], counter_increment),
+        ("value", &[0], counter_value),
+        ("label", &[0], counter_label),
+        ("set_note", &[1], counter_set_note),
+        ("get_note", &[0], counter_get_note),
+        ("__add__", &[1], counter_add),
+        drop: counter_drop,
+        traverse: counter_traverse,
+    },
+    class("Ticket") {
+        ("__init__", &[0], ticket_init),
+        drop: ticket_drop,
+    },
 ];

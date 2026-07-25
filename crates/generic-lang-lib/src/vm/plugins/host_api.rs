@@ -1,4 +1,4 @@
-//! The host vtable handed to plugins: value bridging and the 32 callbacks.
+//! The host vtable handed to plugins: value bridging and the 35 callbacks.
 //!
 //! Callbacks are grouped exactly like the `HostApi` declaration in
 //! `generic-lang-api`: inspect / attributes / construct / display never
@@ -28,8 +28,8 @@ use generic_lang_api::{
 
 use crate::heap::Heap;
 use crate::value::{
-    Dict, GenericInt, Instance, List, NativeClass, Number, Set, Value, get_native_class_id,
-    is_exception_subclass, value_isinstance,
+    Dict, GenericInt, Instance, List, NativeClass, Number, Set, Value, class_of_value,
+    get_native_class_id, is_exception_subclass, value_isinstance,
 };
 use crate::vm::errors::{VmErrorKind, VmResult};
 use crate::vm::{ExceptionKind, VM};
@@ -54,7 +54,7 @@ const _: () = {
 };
 
 /// Bit-copy a `Value` into the opaque FFI blob.
-pub(super) fn to_ffi(value: Value) -> GenericValue {
+pub fn to_ffi(value: Value) -> GenericValue {
     // SAFETY: same size (asserted above). `GenericValue`'s limbs are
     // `MaybeUninit`, so this copy never asserts that `Value`'s
     // uninitialized bytes (small variants leave most of the 32 unwritten)
@@ -68,7 +68,7 @@ pub(super) fn to_ffi(value: Value) -> GenericValue {
 /// Soundness rests on the trust model: plugins receive blobs from `to_ffi`
 /// and must pass them back unmodified - fabricating or modifying one is
 /// undefined behavior.
-pub(super) fn from_ffi(value: GenericValue) -> Value {
+pub fn from_ffi(value: GenericValue) -> Value {
     // SAFETY: `value` is a bit-copy of a real `Value` (see above).
     unsafe { std::mem::transmute::<GenericValue, Value>(value) }
 }
@@ -92,6 +92,7 @@ pub(super) fn build_host_api(vm: &mut VM) -> HostApi {
         set_len: cb_set_len,
         builtin_get: cb_builtin_get,
         is_instance: cb_is_instance,
+        class_of: cb_class_of,
         attr_get: cb_attr_get,
         attr_set: cb_attr_set,
         attr_has: cb_attr_has,
@@ -118,6 +119,8 @@ pub(super) fn build_host_api(vm: &mut VM) -> HostApi {
         value_hash: cb_value_hash,
         root: cb_root,
         unroot: cb_unroot,
+        instance_set_opaque: cb_instance_set_opaque,
+        instance_get_opaque: cb_instance_get_opaque,
     }
 }
 
@@ -289,7 +292,10 @@ pub(super) fn value_kind_of(heap: &Heap, value: Value) -> u32 {
         // VM-internal - not callable via `call_value`.
         Value::Function(_) | Value::NativeMethod(_) | Value::Upvalue(_) => ValueKind::Other,
         Value::Instance(id) => match &id.to_value(heap).backing {
+            // A plain instance or a plugin-backed one is an instance to the plugin.
             None => ValueKind::Instance,
+            #[cfg(feature = "plugins")]
+            Some(NativeClass::Plugin(_)) => ValueKind::Instance,
             Some(NativeClass::List(_)) => ValueKind::List,
             Some(NativeClass::Tuple(_)) => ValueKind::Tuple,
             Some(NativeClass::Dict(_)) => ValueKind::Dict,
@@ -312,7 +318,9 @@ pub(super) fn value_kind_of(heap: &Heap, value: Value) -> u32 {
                 | NativeClass::StringProxy
                 | NativeClass::IntegerProxy
                 | NativeClass::FloatProxy
-                | NativeClass::RationalProxy,
+                | NativeClass::RationalProxy
+                | NativeClass::NilProxy
+                | NativeClass::StopIterationProxy,
             ) => ValueKind::Other,
         },
     };
@@ -491,6 +499,15 @@ extern "C" fn cb_is_instance(
         from_ffi(value),
         class_id,
     )))
+}
+
+extern "C" fn cb_class_of(ctx: *mut c_void, value: GenericValue) -> FfiReturn {
+    // SAFETY: ctx per build_host_api.
+    let vm = unsafe { vm_from_ctx(ctx) };
+    match class_of_value(&vm.heap, from_ffi(value)) {
+        Some(class_id) => ffi_ok(class_id.into()),
+        None => ffi_error(vm, ExceptionKind::TypeError, "value has no class."),
+    }
 }
 
 extern "C" fn cb_set_len(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool {
@@ -901,4 +918,38 @@ extern "C" fn cb_unroot(ctx: *mut c_void, n: usize) {
     let vm = unsafe { vm_from_ctx(ctx) };
     let len = vm.stack.len().saturating_sub(n);
     vm.stack.truncate(len);
+}
+
+// --- plugin instance state (never re-enter) ---
+
+extern "C" fn cb_instance_set_opaque(
+    ctx: *mut c_void,
+    receiver: GenericValue,
+    ptr: *mut c_void,
+) -> FfiReturn {
+    // SAFETY: ctx per build_host_api.
+    let vm = unsafe { vm_from_ctx(ctx) };
+    let Value::Instance(id) = from_ffi(receiver) else {
+        return ffi_error(vm, ExceptionKind::TypeError, "Receiver is not an instance.");
+    };
+    if let Some(NativeClass::Plugin(pi)) = &mut id.to_value_mut(&mut vm.heap).backing {
+        pi.ptr = ptr;
+        return ffi_ok(Value::Nil);
+    }
+    ffi_error(
+        vm,
+        ExceptionKind::TypeError,
+        "Receiver is not a plugin-backed instance.",
+    )
+}
+
+extern "C" fn cb_instance_get_opaque(ctx: *mut c_void, receiver: GenericValue) -> *mut c_void {
+    // SAFETY: ctx per build_host_api.
+    let vm = unsafe { vm_from_ctx(ctx) };
+    if let Value::Instance(id) = from_ffi(receiver)
+        && let Some(NativeClass::Plugin(pi)) = &id.to_value(&vm.heap).backing
+    {
+        return pi.ptr;
+    }
+    core::ptr::null_mut()
 }

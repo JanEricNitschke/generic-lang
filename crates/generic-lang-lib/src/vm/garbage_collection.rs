@@ -73,8 +73,16 @@ impl VM {
         {
             #[cfg(feature = "log_gc")]
             eprintln!("Marking plugin export names.");
-            for (name_id, _, _) in self.plugins.loaded.values().flatten() {
-                self.heap.mark_value(&crate::value::Value::String(*name_id));
+            for exports in self.plugins.loaded.values() {
+                for (name_id, _, _) in &exports.functions {
+                    self.heap.mark_value(&(*name_id).into());
+                }
+                for (class_name_id, _drop, _traverse, methods) in &exports.classes {
+                    self.heap.mark_value(&(*class_name_id).into());
+                    for (method_name_id, _arities, _fun) in methods {
+                        self.heap.mark_value(&(*method_name_id).into());
+                    }
+                }
             }
         }
 
