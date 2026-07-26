@@ -1,0 +1,55 @@
+# sorted() returns a new sorted list from any iterable, leaving it untouched.
+var xs = [3, 1, 2];
+var ys = sorted(xs);
+print(ys); # expect: [1, 2, 3]
+print(xs); # expect: [3, 1, 2]
+
+# The optional ordering arguments behave like list.sort's.
+print(sorted(xs, true)); # expect: [3, 2, 1]
+fun negate(x) {
+  return -x;
+}
+print(sorted(xs, negate)); # expect: [3, 2, 1]
+print(sorted(xs, true, negate)); # expect: [1, 2, 3]
+
+# Any iterable works.
+print(sorted((2, 3, 1))); # expect: [1, 2, 3]
+print(sorted(Set(3, 1, 2))); # expect: [1, 2, 3]
+print(sorted([])); # expect: []
+
+# Stability: equal keys keep encounter order.
+class Pair {
+  __init__(key, tag) {
+    this.key = key;
+    this.tag = tag;
+  }
+  __str__() {
+    return f"Pair(key=${this.key}, tag=${this.tag})";
+  }
+}
+fun by_key(p) {
+  return p.key;
+}
+print(sorted([Pair(1, "a"), Pair(0, "b"), Pair(1, "c")], by_key)); # expect: [Pair(key=0, tag=b), Pair(key=1, tag=a), Pair(key=1, tag=c)]
+
+# sorted() works on a snapshot: mutating the source list from a comparator does
+# not raise, and the result holds exactly the snapshot's elements.
+var source = [];
+class Mut {
+  __init__(v) {
+    this.v = v;
+  }
+  __lt__(other) {
+    source.append(0);
+    return this.v < other.v;
+  }
+  __str__() {
+    return f"Mut(v=${this.v})";
+  }
+}
+source.append(Mut(2));
+source.append(Mut(1));
+source.append(Mut(3));
+var out = sorted(source);
+print(out); # expect: [Mut(v=1), Mut(v=2), Mut(v=3)]
+print(len(source) > 3); # expect: true

@@ -1,0 +1,225 @@
+# A failing comparison or key function must propagate the exception and always
+# leave the list a valid permutation of its original elements (nothing lost or
+# duplicated), regardless of where in the sort the failure lands. Each case
+# trips the failure at a different point and checks that the length and the
+# element checksum are preserved afterwards. The loops verify the caught
+# message instead of printing it, since one print per trip point cannot be
+# expressed as expectations.
+
+class SortError < Exception {}
+
+var trip = 0; # comparison index to throw on (0 = never)
+var compares = 0;
+
+class Tripwire {
+  __init__(value) {
+    this.value = value;
+  }
+  __lt__(other) {
+    compares = compares + 1;
+    if (compares == trip) {
+      throw SortError("tripped");
+    }
+    return this.value < other.value;
+  }
+}
+
+fun checksum(xs) {
+  var total = 0;
+  for (var i = 0; i < len(xs); i = i + 1) {
+    total = total + xs[i].value;
+  }
+  return total;
+}
+
+# Small list: trip every comparison of the insertion phase.
+fun fresh_small() {
+  return [Tripwire(8), Tripwire(3), Tripwire(1), Tripwire(7),
+          Tripwire(2), Tripwire(6), Tripwire(4), Tripwire(5)];
+}
+var small_sum = checksum(fresh_small());
+
+var small_ok = true;
+for (var t = 1; t <= 80; t = t + 1) {
+  trip = t;
+  compares = 0;
+  var xs = fresh_small();
+  try {
+    xs.sort();
+  } catch SortError as e {
+    if (str(e) != "tripped") {
+      small_ok = false;
+    }
+  }
+  if (len(xs) != 8) {
+    small_ok = false;
+  }
+  if (checksum(xs) != small_sum) {
+    small_ok = false;
+  }
+}
+print(small_ok); # expect: true
+
+# Same, reversed: exercises the reverse-sort-reverse path on failure.
+var rev_ok = true;
+for (var t = 1; t <= 80; t = t + 1) {
+  trip = t;
+  compares = 0;
+  var xs = fresh_small();
+  try {
+    xs.sort(true);
+  } catch SortError as e {
+    if (str(e) != "tripped") {
+      rev_ok = false;
+    }
+  }
+  if (len(xs) != 8) {
+    rev_ok = false;
+  }
+  if (checksum(xs) != small_sum) {
+    rev_ok = false;
+  }
+}
+print(rev_ok); # expect: true
+
+# Larger list (multiple runs): trip across the merge phase as well.
+fun fresh_big() {
+  var xs = [];
+  var v = 7;
+  for (var i = 0; i < 64; i = i + 1) {
+    v = (v * 1103515245 + 12345) % 1000;
+    xs.append(Tripwire(v));
+  }
+  return xs;
+}
+var big_sum = checksum(fresh_big());
+
+var big_ok = true;
+for (var t = 1; t <= 420; t = t + 17) {
+  trip = t;
+  compares = 0;
+  var xs = fresh_big();
+  try {
+    xs.sort();
+  } catch SortError as e {
+    if (str(e) != "tripped") {
+      big_ok = false;
+    }
+  }
+  if (len(xs) != 64) {
+    big_ok = false;
+  }
+  if (checksum(xs) != big_sum) {
+    big_ok = false;
+  }
+}
+print(big_ok); # expect: true
+
+# Key function that throws on the key_trip-th call (decoration phase).
+var key_trip = 0;
+var key_calls = 0;
+fun tripping_key(item) {
+  key_calls = key_calls + 1;
+  if (key_calls == key_trip) {
+    throw SortError("tripped");
+  }
+  return item.value;
+}
+
+var key_ok = true;
+for (var t = 1; t <= 10; t = t + 1) {
+  key_trip = t;
+  key_calls = 0;
+  var xs = fresh_small();
+  try {
+    xs.sort(tripping_key);
+  } catch SortError as e {
+    if (str(e) != "tripped") {
+      key_ok = false;
+    }
+  }
+  if (len(xs) != 8) {
+    key_ok = false;
+  }
+  if (checksum(xs) != small_sum) {
+    key_ok = false;
+  }
+}
+print(key_ok); # expect: true
+
+# Structured runs that enter galloping mode; trip the comparator across the
+# whole merge and check the permutation stays valid.
+# One run holding 0..19 and 60..79, then a run holding 20..59: after trimming,
+# the shorter left side merges upward (merge_lo) with long galloped stretches.
+fun fresh_gallop_lo() {
+  var xs = [];
+  for (var i = 0; i < 20; i = i + 1) {
+    xs.append(Tripwire(i));
+  }
+  for (var i = 60; i < 80; i = i + 1) {
+    xs.append(Tripwire(i));
+  }
+  for (var i = 20; i < 60; i = i + 1) {
+    xs.append(Tripwire(i));
+  }
+  return xs;
+}
+trip = 0;
+compares = 0;
+var gallop_lo_sum = checksum(fresh_gallop_lo());
+var lo_trip_ok = true;
+for (var t = 1; t <= 150; t = t + 7) {
+  trip = t;
+  compares = 0;
+  var xs = fresh_gallop_lo();
+  try {
+    xs.sort();
+  } catch SortError as e {
+    if (str(e) != "tripped") {
+      lo_trip_ok = false;
+    }
+  }
+  if (len(xs) != 80) {
+    lo_trip_ok = false;
+  }
+  if (checksum(xs) != gallop_lo_sum) {
+    lo_trip_ok = false;
+  }
+}
+print(lo_trip_ok); # expect: true
+
+# A long run holding 20..79, then a short run holding 0..19: the longer left
+# side merges downward (merge_hi) with long galloped stretches.
+fun fresh_gallop_hi() {
+  var xs = [];
+  for (var i = 20; i < 80; i = i + 1) {
+    xs.append(Tripwire(i));
+  }
+  for (var i = 0; i < 20; i = i + 1) {
+    xs.append(Tripwire(i));
+  }
+  return xs;
+}
+trip = 0;
+compares = 0;
+var gallop_hi_sum = checksum(fresh_gallop_hi());
+var hi_trip_ok = true;
+for (var t = 1; t <= 150; t = t + 7) {
+  trip = t;
+  compares = 0;
+  var xs = fresh_gallop_hi();
+  try {
+    xs.sort();
+  } catch SortError as e {
+    if (str(e) != "tripped") {
+      hi_trip_ok = false;
+    }
+  }
+  if (len(xs) != 80) {
+    hi_trip_ok = false;
+  }
+  if (checksum(xs) != gallop_hi_sum) {
+    hi_trip_ok = false;
+  }
+}
+print(hi_trip_ok); # expect: true

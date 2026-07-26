@@ -1,0 +1,236 @@
+# Sort numbers in place.
+var xs = [3, 1, 2];
+xs.sort();
+print(xs); # expect: [1, 2, 3]
+
+# Returns nil.
+var result = [1].sort();
+print(result); # expect: nil
+
+# Empty and single-element lists.
+var empty = [];
+empty.sort();
+print(empty); # expect: []
+
+var single = [42];
+single.sort();
+print(single); # expect: [42]
+
+# Already sorted and reverse sorted (natural runs and run reversal).
+var asc = [1, 2, 3, 4, 5];
+asc.sort();
+print(asc); # expect: [1, 2, 3, 4, 5]
+
+var desc = [5, 4, 3, 2, 1];
+desc.sort();
+print(desc); # expect: [1, 2, 3, 4, 5]
+
+# Duplicates.
+var dups = [3, 1, 2, 1, 3, 2, 1];
+dups.sort();
+print(dups); # expect: [1, 1, 1, 2, 2, 3, 3]
+
+# Strings sort lexicographically.
+var words = ["pear", "apple", "orange", "apple", "banana"];
+words.sort();
+print(words); # expect: [apple, apple, banana, orange, pear]
+
+# User-defined ordering via __lt__.
+class Boxed {
+  __init__(value) {
+    this.value = value;
+  }
+  __lt__(other) {
+    return this.value < other.value;
+  }
+  __str__() {
+    return f"Boxed(value=${this.value})";
+  }
+}
+var boxes = [Boxed(3), Boxed(1), Boxed(2)];
+boxes.sort();
+print(boxes); # expect: [Boxed(value=1), Boxed(value=2), Boxed(value=3)]
+
+# Stability: elements comparing equal keep their original order.
+class Pair {
+  __init__(key, tag) {
+    this.key = key;
+    this.tag = tag;
+  }
+  __lt__(other) {
+    return this.key < other.key;
+  }
+  __str__() {
+    return f"Pair(key=${this.key}, tag=${this.tag})";
+  }
+}
+var pairs = [Pair(1, "a"), Pair(1, "b"), Pair(0, "c"), Pair(1, "d"), Pair(0, "e")];
+pairs.sort();
+print(pairs); # expect: [Pair(key=0, tag=c), Pair(key=0, tag=e), Pair(key=1, tag=a), Pair(key=1, tag=b), Pair(key=1, tag=d)]
+
+# Large scrambled list exercises the powersort merge path (n well past minrun).
+var big = [];
+var seed = 7;
+for (var i = 0; i < 300; i = i + 1) {
+  seed = (seed * 1103515245 + 12345) % 1000;
+  big.append(seed);
+}
+big.sort();
+var ordered = true;
+for (var i = 1; i < len(big); i = i + 1) {
+  if (big[i] < big[i - 1]) {
+    ordered = false;
+  }
+}
+print(ordered); # expect: true
+print(len(big)); # expect: 300
+
+# reverse: a single bool argument sorts descending.
+var rev = [3, 1, 2];
+rev.sort(true);
+print(rev); # expect: [3, 2, 1]
+
+# reverse is stable: equal keys keep original order even descending.
+var rp = [Pair(1, "a"), Pair(0, "b"), Pair(1, "c"), Pair(0, "d")];
+rp.sort(true);
+print(rp); # expect: [Pair(key=1, tag=a), Pair(key=1, tag=c), Pair(key=0, tag=b), Pair(key=0, tag=d)]
+
+# key: a single callable argument sorts by key(element).
+fun negate(x) {
+  return -x;
+}
+var keyed = [1, 3, 2];
+keyed.sort(negate);
+print(keyed); # expect: [3, 2, 1]
+
+# A key makes elements sortable that define no __lt__ themselves.
+class Wrapped {
+  __init__(value) {
+    this.value = value;
+  }
+  __str__() {
+    return f"Wrapped(value=${this.value})";
+  }
+}
+fun get_value(w) {
+  return w.value;
+}
+var wrapped = [Wrapped(3), Wrapped(1), Wrapped(2)];
+wrapped.sort(get_value);
+print(wrapped); # expect: [Wrapped(value=1), Wrapped(value=2), Wrapped(value=3)]
+
+# Every callable kind works as a key: a lambda, ...
+var by_lambda = [1, 3, 2];
+by_lambda.sort(->(x) -x);
+print(by_lambda); # expect: [3, 2, 1]
+
+# ... a native function, ...
+var nested = [[1, 2, 3], [1], [1, 2]];
+nested.sort(len);
+print(nested); # expect: [[1], [1, 2], [1, 2, 3]]
+
+# ... a class whose constructor builds a comparable key, ...
+class NegKey {
+  __init__(x) {
+    this.value = -x;
+  }
+  __lt__(other) {
+    return this.value < other.value;
+  }
+}
+var by_class = [1, 3, 2];
+by_class.sort(NegKey);
+print(by_class); # expect: [3, 2, 1]
+
+# ... an instance with __call__, ...
+class Negator {
+  __call__(x) {
+    return -x;
+  }
+}
+var by_instance = [1, 3, 2];
+by_instance.sort(Negator());
+print(by_instance); # expect: [3, 2, 1]
+
+# ... and a bound method.
+class Scale {
+  __init__(factor) {
+    this.factor = factor;
+  }
+  apply(x) {
+    return this.factor * x;
+  }
+}
+var by_bound = [1, 3, 2];
+by_bound.sort(Scale(-1).apply);
+print(by_bound); # expect: [3, 2, 1]
+
+# reverse and key together, passed as (reverse, key).
+var both = [1, 3, 2];
+both.sort(true, negate);
+print(both); # expect: [1, 2, 3]
+
+# Two long adjacent runs where one wins repeatedly exercise galloping.
+# Equal-length runs merge via the low side (merge_lo).
+var lo_gallop = [];
+for (var i = 500; i < 1000; i = i + 1) {
+  lo_gallop.append(i);
+}
+for (var i = 0; i < 500; i = i + 1) {
+  lo_gallop.append(i);
+}
+lo_gallop.sort();
+var lo_ok = true;
+for (var i = 0; i < len(lo_gallop); i = i + 1) {
+  if (lo_gallop[i] != i) {
+    lo_ok = false;
+  }
+}
+print(lo_ok); # expect: true
+
+# A longer left run merges via the high side (merge_hi).
+var hi_gallop = [];
+for (var i = 300; i < 1000; i = i + 1) {
+  hi_gallop.append(i);
+}
+for (var i = 0; i < 300; i = i + 1) {
+  hi_gallop.append(i);
+}
+hi_gallop.sort();
+var hi_ok = true;
+for (var i = 0; i < len(hi_gallop); i = i + 1) {
+  if (hi_gallop[i] != i) {
+    hi_ok = false;
+  }
+}
+print(hi_ok); # expect: true
+
+# A throwing comparator propagates, and leaves the list a valid permutation of
+# its original elements. The order is unspecified, so the length and the
+# element checksum are asserted before and after instead.
+fun checksum(xs) {
+  var total = 0;
+  for (var i = 0; i < len(xs); i = i + 1) {
+    total = total + xs[i].value;
+  }
+  return total;
+}
+class SortError < Exception {}
+class Bomb {
+  __init__(value) {
+    this.value = value;
+  }
+  __lt__(other) {
+    throw SortError("comparison failed");
+  }
+}
+var bombs = [Bomb(3), Bomb(1), Bomb(2)];
+print(checksum(bombs)); # expect: 6
+try {
+  bombs.sort();
+  print("no error");
+} catch SortError as e {
+  print(e); # expect: comparison failed
+}
+print(len(bombs)); # expect: 3
+print(checksum(bombs)); # expect: 6

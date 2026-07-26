@@ -1,0 +1,3 @@
+# A nil key is rejected; omit the key instead of passing nil.
+var xs = [3, 1, 2];
+xs.sort(true, nil); # expect runtime error: TypeError: A nil key can not be used to sort; omit the key instead.

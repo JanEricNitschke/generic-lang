@@ -1,0 +1,2 @@
+# sorted() requires an iterable.
+sorted(5); # expect runtime error: TypeError: Expected an iterable, got `5`.

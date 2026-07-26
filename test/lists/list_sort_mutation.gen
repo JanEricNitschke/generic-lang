@@ -1,0 +1,55 @@
+# A comparator or key function that mutates the list being sorted raises
+# ValueError once the sort finishes. The mutation is discarded: the list ends
+# up holding exactly its original elements, sorted.
+var target = [];
+class Sneaky {
+  __init__(value) {
+    this.value = value;
+  }
+  __lt__(other) {
+    target.append(999);
+    return this.value < other.value;
+  }
+  __str__() {
+    return f"Sneaky(value=${this.value})";
+  }
+}
+target.append(Sneaky(2));
+target.append(Sneaky(1));
+target.append(Sneaky(3));
+try {
+  target.sort();
+  print("no error");
+} catch ValueError as e {
+  print(e); # expect: List was modified during sorting.
+}
+print(target); # expect: [Sneaky(value=1), Sneaky(value=2), Sneaky(value=3)]
+
+# Same through a mutating key function.
+var keyed = [3, 1, 2];
+fun sneaky_key(x) {
+  keyed.append(999);
+  return x;
+}
+try {
+  keyed.sort(sneaky_key);
+  print("no error");
+} catch ValueError as e {
+  print(e); # expect: List was modified during sorting.
+}
+print(keyed); # expect: [1, 2, 3]
+
+# Uncaught, for the message.
+var target2 = [];
+class Sneaky2 {
+  __init__(value) {
+    this.value = value;
+  }
+  __lt__(other) {
+    target2.append(999);
+    return this.value < other.value;
+  }
+}
+target2.append(Sneaky2(2));
+target2.append(Sneaky2(1));
+target2.sort(); # expect runtime error: ValueError: List was modified during sorting.

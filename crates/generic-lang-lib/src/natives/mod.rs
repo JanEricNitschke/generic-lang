@@ -9,71 +9,20 @@ mod list;
 mod native_functions;
 mod range;
 mod set;
+mod sort;
 mod string;
 mod template;
 mod tuple;
 mod value_constructors;
 
-use crate::{
-    natives::{
-        dict::{
-            dict_clear_native, dict_get_method_native, dict_items_native, dict_iter_iter_native,
-            dict_iter_native, dict_iter_next_native, dict_iter_str_native, dict_keys_native,
-            dict_values_native,
-        },
-        list::{
-            list_clear_native, list_copy_native, list_extend_native, list_iter_iter_native,
-            list_reverse_native,
-        },
-        range::range_iter_iter_native,
-        set::{
-            set_bitand_native, set_bitor_native, set_bitxor_native, set_clear_native,
-            set_iter_iter_native, set_iter_native, set_iter_next_native, set_iter_str_native,
-            set_sub_native,
-        },
-        string::{
-            string_endswith_native, string_removeprefix_native, string_removesuffix_native,
-            string_split_native, string_startswith_native, string_strip_native,
-        },
-        template::{template_iter_iter_native, template_iter_str_native},
-        tuple::{tuple_iter_iter_native, tuple_reversed_native},
-    },
-    vm::VM,
-};
-
-use string::{
-    string_bytes_native, string_chars_native, string_clusters_native, string_contains_native,
-    string_find_native, string_get_byte_native, string_get_char_native, string_get_cluster_native,
-    string_init_native, string_join_native, string_replace_native,
-};
-
-use list::{
-    list_add_native, list_append_native, list_bool_native, list_contains_native, list_eq_native,
-    list_ge_native, list_get_native, list_gt_native, list_init_native, list_insert_native,
-    list_iter_native, list_iter_next_native, list_iter_str_native, list_le_native, list_len_native,
-    list_lt_native, list_pop_native, list_set_native, list_str_native,
-};
-
-use range::{
-    range_bool_native, range_contains_native, range_init_native, range_iter_native,
-    range_iter_next_native, range_len_native,
-};
-
-use set::{
-    set_bool_native, set_contains_native, set_eq_native, set_init_native, set_insert_native,
-    set_len_native, set_remove_native, set_str_native,
-};
-
-use tuple::{
-    tuple_add_native, tuple_bool_native, tuple_contains_native, tuple_eq_native, tuple_ge_native,
-    tuple_get_native, tuple_gt_native, tuple_init_native, tuple_iter_native,
-    tuple_iter_next_native, tuple_iter_str_native, tuple_le_native, tuple_len_native,
-    tuple_lt_native, tuple_str_native,
-};
+use crate::vm::VM;
 
 use dict::{
-    dict_bool_native, dict_contains_native, dict_eq_native, dict_get_native, dict_init_native,
-    dict_len_native, dict_pop_native, dict_set_native, dict_str_native,
+    dict_bool_native, dict_clear_native, dict_contains_native, dict_eq_native,
+    dict_get_method_native, dict_get_native, dict_init_native, dict_items_native,
+    dict_iter_iter_native, dict_iter_native, dict_iter_next_native, dict_iter_str_native,
+    dict_keys_native, dict_len_native, dict_pop_native, dict_set_native, dict_str_native,
+    dict_values_native,
 };
 
 use exception::{
@@ -86,10 +35,12 @@ use generator::{
     generator_send_native,
 };
 
-use template::{
-    interpolation_expression_native, interpolation_str_native, interpolation_value_native,
-    template_interpolations_native, template_iter_native, template_iter_next_native,
-    template_str_native, template_strings_native,
+use list::{
+    list_add_native, list_append_native, list_bool_native, list_clear_native, list_contains_native,
+    list_copy_native, list_eq_native, list_extend_native, list_ge_native, list_get_native,
+    list_gt_native, list_init_native, list_insert_native, list_iter_iter_native, list_iter_native,
+    list_iter_next_native, list_iter_str_native, list_le_native, list_len_native, list_lt_native,
+    list_pop_native, list_reverse_native, list_set_native, list_str_native,
 };
 
 use native_functions::{
@@ -97,6 +48,42 @@ use native_functions::{
     is_int_native, isinstance_native, issubclass_native, iter_native, len_native, next_native,
     print_native, rng_native, setattr_native, sleep_native, to_float_native, to_int_native,
     to_string_native, type_native, typename_native,
+};
+
+use range::{
+    range_bool_native, range_contains_native, range_init_native, range_iter_iter_native,
+    range_iter_native, range_iter_next_native, range_len_native,
+};
+
+use set::{
+    set_bitand_native, set_bitor_native, set_bitxor_native, set_bool_native, set_clear_native,
+    set_contains_native, set_eq_native, set_init_native, set_insert_native, set_iter_iter_native,
+    set_iter_native, set_iter_next_native, set_iter_str_native, set_len_native, set_remove_native,
+    set_str_native, set_sub_native,
+};
+
+use sort::{list_sort_native, sorted_native};
+
+use string::{
+    string_bytes_native, string_chars_native, string_clusters_native, string_contains_native,
+    string_endswith_native, string_find_native, string_get_byte_native, string_get_char_native,
+    string_get_cluster_native, string_init_native, string_join_native, string_removeprefix_native,
+    string_removesuffix_native, string_replace_native, string_split_native,
+    string_startswith_native, string_strip_native,
+};
+
+use template::{
+    interpolation_expression_native, interpolation_str_native, interpolation_value_native,
+    template_interpolations_native, template_iter_iter_native, template_iter_native,
+    template_iter_next_native, template_iter_str_native, template_str_native,
+    template_strings_native,
+};
+
+use tuple::{
+    tuple_add_native, tuple_bool_native, tuple_contains_native, tuple_eq_native, tuple_ge_native,
+    tuple_get_native, tuple_gt_native, tuple_init_native, tuple_iter_iter_native,
+    tuple_iter_native, tuple_iter_next_native, tuple_iter_str_native, tuple_le_native,
+    tuple_len_native, tuple_lt_native, tuple_reversed_native, tuple_str_native,
 };
 
 use value_constructors::{
@@ -145,6 +132,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_function(&"issubclass", &[2], issubclass_native);
     vm.define_native_function(&"next", &[1], next_native);
     vm.define_native_function(&"iter", &[1], iter_native);
+    vm.define_native_function(&"sorted", &[1, 2, 3], sorted_native);
 
     // The add to builtins is a bit of a workaround for how native instances
     // are instantiated. Currently we either need a way to instantiate them
@@ -172,6 +160,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"List", &"extend", &[1], list_extend_native);
     vm.define_native_method(&"List", &"clear", &[0], list_clear_native);
     vm.define_native_method(&"List", &"copy", &[0], list_copy_native);
+    vm.define_native_method(&"List", &"sort", &[0, 1, 2], list_sort_native);
 
     vm.define_native_class(&"ListIterator", false);
     vm.define_native_method(&"ListIterator", &"__next__", &[0], list_iter_next_native);

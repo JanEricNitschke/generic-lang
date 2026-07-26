@@ -1,0 +1,75 @@
+# A __lt__ that violates a consistent total order must not crash the sort. The
+# resulting order is unspecified, but because the sort only ever permutes
+# elements, the list must remain a valid permutation of its originals (length
+# and element checksum preserved).
+
+fun checksum(xs) {
+  var total = 0;
+  for (var i = 0; i < len(xs); i = i + 1) {
+    total = total + xs[i].value;
+  }
+  return total;
+}
+
+# `mode` selects a different broken comparison rule.
+var mode = 0;
+var counter = 0;
+var seed = 12345;
+class Weird {
+  __init__(value) {
+    this.value = value;
+  }
+  __lt__(other) {
+    # everything < everything
+    if (mode == 0) {
+      return true;
+    }
+    # nothing < anything
+    if (mode == 1) {
+      return false;
+    }
+    # alternating
+    if (mode == 2) {
+      counter = counter + 1;
+      return (counter % 2) == 0;
+    }
+    # pseudo-random
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return (seed % 2) == 0;
+  }
+}
+
+fun fresh() {
+  var xs = [];
+  var v = 3;
+  for (var i = 0; i < 80; i = i + 1) {
+    v = (v * 48271 + 7) % 1000;
+    xs.append(Weird(v));
+  }
+  return xs;
+}
+var expected = checksum(fresh());
+
+var ok = true;
+for (var m = 0; m < 4; m = m + 1) {
+  mode = m;
+  var xs = fresh();
+  xs.sort(); # must not crash
+  if (len(xs) != 80) {
+    ok = false;
+  }
+  if (checksum(xs) != expected) {
+    ok = false;
+  }
+
+  mode = m;
+  var ys = fresh();
+  ys.sort(true); # reverse; must not crash
+  if (len(ys) != 80) {
+    ok = false;
+  }
+  if (checksum(ys) != expected) {
+    ok = false;
+  }
+}
+print(ok); # expect: true

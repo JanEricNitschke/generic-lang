@@ -1,0 +1,3 @@
+# A non-callable key is rejected when it is first invoked.
+var xs = [3, 1, 2];
+xs.sort(5); # expect runtime error: TypeError: Can only call functions, classes and instances with a `__call__` method.
