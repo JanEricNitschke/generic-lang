@@ -1,0 +1,6 @@
+# The two-argument form takes the reverse flag first, then the key.
+fun identity(x) {
+  return x;
+}
+var xs = [3, 1, 2];
+xs.sort(identity, true); # expect runtime error: TypeError: `sort` expects a boolean reverse flag, got `<fn identity>`.

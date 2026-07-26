@@ -52,8 +52,31 @@ impl VM {
         arg_count: u8,
     ) -> VmResult {
         // The region starts below the callee and its arguments.
+        let entry_stack = self.stack.len() - usize::from(arg_count) - 1;
+        self.run_reentrant_call(entry_stack, |vm| vm.invoke(method_name, arg_count))
+    }
+
+    /// Call an arbitrary callable already on the stack with its `arg_count`
+    /// arguments above it, running its bytecode to completion. The
+    /// value-addressed twin of [`Self::invoke_and_run_function`] (which looks
+    /// the callee up by method name); same exception contract.
+    pub(crate) fn call_value_and_run(&mut self, arg_count: u8) -> VmResult {
+        let entry_stack = self.stack.len() - usize::from(arg_count) - 1;
+        let callee = self.stack[entry_stack];
+        self.run_reentrant_call(entry_stack, |vm| vm.call_value(callee, arg_count))
+    }
+
+    /// Shared engine behind [`Self::invoke_and_run_function`] and
+    /// [`Self::call_value_and_run`]. `entry_stack` is the callee's slot (its
+    /// arguments sit above it); `dispatch` performs the actual call and reports
+    /// through the callstack whether it pushed a bytecode frame. Runs that frame
+    /// to completion and enforces the shared exception contract.
+    fn run_reentrant_call<F>(&mut self, entry_stack: usize, dispatch: F) -> VmResult
+    where
+        F: FnOnce(&mut Self) -> VmResult,
+    {
         let entry = RegionSnapshot {
-            stack: self.stack.len() - usize::from(arg_count) - 1,
+            stack: entry_stack,
             ..self.current_region()
         };
 
@@ -68,13 +91,13 @@ impl VM {
             self.throw(RecursionError, "maximum recursion depth exceeded")
         } else {
             // Whether the callee needs its bytecode run cannot be decided from
-            // the looked-up method: `invoke` may dispatch to an instance *field*
-            // instead (e.g. a native function stored under `__str__`, or a
-            // field-held closure), so trust the callstack - run exactly when
-            // `invoke` pushed a frame. Anything that completed natively already
-            // left its result on the stack.
+            // the dispatch itself: it may bind to an instance *field* instead
+            // (e.g. a native function stored under `__str__`, or a field-held
+            // closure), so trust the callstack - run exactly when a frame was
+            // pushed. Anything that completed natively already left its result
+            // on the stack.
             let frames_before = self.callstack.len();
-            match self.invoke(method_name, arg_count) {
+            match dispatch(self) {
                 Ok(_) if self.callstack.len() > frames_before => self.run_function(),
                 Ok(_) => Ok(None),
                 err => err,
