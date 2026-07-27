@@ -771,10 +771,14 @@ impl Compiler<'_, '_> {
         );
 
         self.emit_bytes(OpCode::SetLocal, loop_var, location);
+        // Exhaustion is a sentinel IDENTITY test: `Is` never dispatches to
+        // a user `__eq__`, so iterating instances whose `__eq__` assumes
+        // its own operand type works, and an always-true `__eq__` cannot
+        // truncate the loop.
         self.emit_byte(OpCode::StopIteration, location);
-        self.emit_byte(OpCode::NotEqual, location);
+        self.emit_byte(OpCode::Is, location);
 
-        let exit_jump = self.emit_jump(OpCode::PopJumpIfFalse, iterable_location);
+        let exit_jump = self.emit_jump(OpCode::PopJumpIfTrue, iterable_location);
 
         // Alias loop variable for this iteration of the loop
         self.begin_scope();

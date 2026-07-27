@@ -1,0 +1,31 @@
+# The loop's exhaustion test is an identity check against the
+# StopIteration sentinel, not an `==` dispatch: a user `__eq__` cannot
+# crash iteration by assuming its own operand type, and an always-true
+# `__eq__` cannot truncate the loop.
+class Typed {
+    __init__(value) {
+        this.value = value;
+    }
+
+    __eq__(other) {
+        return this.value == other.value;
+    }
+}
+
+foreach (var t in [Typed(1), Typed(2)]) {
+    print(t.value);
+}
+# expect: 1
+# expect: 2
+
+class AlwaysEqual {
+    __eq__(other) {
+        return true;
+    }
+}
+
+var count = 0;
+foreach (var a in [AlwaysEqual(), AlwaysEqual(), AlwaysEqual()]) {
+    count = count + 1;
+}
+print(count); # expect: 3
