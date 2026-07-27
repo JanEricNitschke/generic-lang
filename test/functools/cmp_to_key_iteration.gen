@@ -1,0 +1,13 @@
+# Key wrappers can be iterated: the foreach exhaustion test is an
+# identity check against StopIteration, so it never routes through
+# Key.__eq__ (which assumes a Key operand).
+from "functools" import cmp_to_key;
+
+var Key = cmp_to_key(->(a, b) a - b);
+
+foreach (var k in [Key(3), Key(1), Key(2)]) {
+    print(k.value);
+}
+# expect: 3
+# expect: 1
+# expect: 2

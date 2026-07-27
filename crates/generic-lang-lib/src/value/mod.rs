@@ -21,9 +21,9 @@ pub use functions::{Closure, Function, Module, Upvalue};
 pub use natives::PluginInstance;
 pub use natives::{
     Dict, DictIterMode, DictIterator, Exception, Generator, GeneratorState, Interpolation, List,
-    ListIterator, ModuleContents, NativeClass, NativeFunction, NativeFunctionImpl, NativeMethod,
-    NativeMethodImpl, Range, RangeIterator, Set, SetIterator, Template, TemplateIterator, Tuple,
-    TupleIterator,
+    ListIterator, ModuleContents, ModuleExport, NativeClass, NativeFunction, NativeFunctionImpl,
+    NativeMethod, NativeMethodImpl, Partial, Range, RangeIterator, Set, SetIterator, Template,
+    TemplateIterator, Tuple, TupleIterator,
 };
 pub use number::{GenericInt, GenericRational, Number};
 
@@ -359,6 +359,7 @@ impl Value {
         Template,
         TemplateIterator,
         Interpolation,
+        Partial,
     );
 
     impl_as_native_class_mut!(
@@ -375,6 +376,7 @@ impl Value {
         Exception,
         Generator,
         TemplateIterator,
+        Partial,
     );
 }
 

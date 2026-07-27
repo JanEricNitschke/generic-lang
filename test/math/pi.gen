@@ -1,0 +1,8 @@
+import "math";
+
+print(math.pi); # expect: 3.141592653589793
+print(math.sqrt(math.pi) * math.sqrt(math.pi) - math.pi < 0.0000001); # expect: true
+
+from "math" import pi;
+
+print(pi); # expect: 3.141592653589793

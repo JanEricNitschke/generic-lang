@@ -1,6 +1,6 @@
 //! Example module exporting math functionality.
 
-use crate::value::{ModuleContents, Number, Value};
+use crate::value::{ModuleContents, ModuleExport, Number, Value};
 use crate::vm::ExceptionKind::TypeError;
 use crate::vm::VM;
 use crate::vm::errors::VmResult;
@@ -22,9 +22,19 @@ fn sqrt_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     }
 }
 
-/// Export all the function of the module with the
-/// name they are to be called with from generic as well as
-/// their supported arities.
+/// Export all the contents of the module with the
+/// name they are to be accessed with from generic; functions
+/// additionally carry their supported arities.
 pub(super) fn module() -> ModuleContents {
-    vec![("sqrt", &[1], sqrt_native)]
+    vec![
+        ModuleExport::Function {
+            name: "sqrt",
+            arity: &[1],
+            fun: sqrt_native,
+        },
+        ModuleExport::Value {
+            name: "pi",
+            create: |_vm| std::f64::consts::PI.into(),
+        },
+    ]
 }

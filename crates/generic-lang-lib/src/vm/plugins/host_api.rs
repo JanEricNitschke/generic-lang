@@ -292,10 +292,13 @@ pub(super) fn value_kind_of(heap: &Heap, value: Value) -> u32 {
         // VM-internal - not callable via `call_value`.
         Value::Function(_) | Value::NativeMethod(_) | Value::Upvalue(_) => ValueKind::Other,
         Value::Instance(id) => match &id.to_value(heap).backing {
-            // A plain instance or a plugin-backed one is an instance to the plugin.
+            // A plain instance or a plugin-backed one is an instance to the
+            // plugin, and so is a callable `partial` (callability flows
+            // through `call_value` like any instance with `__call__`).
             None => ValueKind::Instance,
             #[cfg(feature = "plugins")]
             Some(NativeClass::Plugin(_)) => ValueKind::Instance,
+            Some(NativeClass::Partial(_)) => ValueKind::Instance,
             Some(NativeClass::List(_)) => ValueKind::List,
             Some(NativeClass::Tuple(_)) => ValueKind::Tuple,
             Some(NativeClass::Dict(_)) => ValueKind::Dict,
