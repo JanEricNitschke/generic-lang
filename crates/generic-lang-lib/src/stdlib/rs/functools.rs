@@ -116,11 +116,24 @@ fn partial_call_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResul
     Ok(vm.stack.pop().expect("call left no result on the stack"))
 }
 
-/// `str(partial_instance)`: the wrapped callable and the bound arguments.
-#[allow(clippy::unnecessary_wraps)]
+/// `str(partial_instance)`: the wrapped callable and the bound arguments,
+/// each rendered the way `str` renders them (honoring `__str__`).
 fn partial_str_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
-    let rendered = receiver.as_partial(&vm.heap).to_string(&vm.heap, 0);
-    Ok(Value::String(vm.heap.string_id(&rendered)))
+    let mut string = String::from("partial(");
+    let function = receiver.as_partial(&vm.heap).func;
+    string.push_str(vm.value_to_string(&function)?.to_value(&vm.heap));
+
+    // Re-fetch by index each step: `value_to_string` may re-enter.
+    let mut index = 0;
+    while index < receiver.as_partial(&vm.heap).args.len() {
+        string.push_str(", ");
+        let argument = receiver.as_partial(&vm.heap).args[index];
+        string.push_str(vm.value_to_string(&argument)?.to_value(&vm.heap));
+        index += 1;
+    }
+
+    string.push(')');
+    Ok(vm.heap.string_id(&string).into())
 }
 
 /// Define the `partial` native class and register the `_functools`
