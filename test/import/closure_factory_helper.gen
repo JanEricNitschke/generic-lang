@@ -1,0 +1,5 @@
+var MESSAGE = "helper greeting";
+
+fun make_greeter() {
+    return ->() MESSAGE;
+}

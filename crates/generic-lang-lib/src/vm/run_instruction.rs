@@ -179,8 +179,12 @@ macro_rules! run_instruction {
             OpCode::Closure => {
                 let value = $self.read_constant(NumberEncoding::Short);
                 let function = value.as_function();
+                // The new closure inherits the *defining* module, not the
+                // dynamically current one: a closure created while a
+                // function of module A runs on behalf of a caller in module
+                // B must resolve globals in A.
                 let mut closure =
-                    Closure::new(*function, false, $self.modules.last().copied(), &$self.heap);
+                    Closure::new(*function, false, Some($self.defining_module()), &$self.heap);
 
                 for _ in 0..closure.upvalue_count {
                     let is_local = $self.read_byte();

@@ -1,0 +1,12 @@
+# A closure created at runtime inside an imported module's function must
+# resolve globals in the defining module, not in the caller's module.
+import "closure_factory_helper.gen";
+
+var greet = closure_factory_helper.make_greeter();
+print(greet()); # expect: helper greeting
+
+# The caller's module has its own global of the same name; the closure
+# must not see it.
+var MESSAGE = "main greeting";
+var greet_again = closure_factory_helper.make_greeter();
+print(greet_again()); # expect: helper greeting
