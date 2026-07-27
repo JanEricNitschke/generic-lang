@@ -26,12 +26,12 @@ impl VM {
     /// - The callstack
     /// - The open upvalues
     /// - The modules
-    /// - The builtins
+    /// - The builtins (names and values)
     /// - The stdlib registry's interned module names
     /// - The plugin export cache's interned names (`plugins` feature)
     ///
     /// Trace all the references from the roots.
-    /// Remove all the unmarked strings from the globals, builtins and heap strings.
+    /// Remove all the unmarked strings from the globals and heap strings.
     /// Lastly, delete all the unmarked values from the heap.
     pub(super) fn collect_garbage(&mut self) {
         #[cfg(not(feature = "stress_gc"))]
@@ -62,9 +62,13 @@ impl VM {
         for module in &self.modules {
             self.heap.mark_module(*module);
         }
+        // Builtin names must not rely on their values carrying the same
+        // interned string (native functions, classes, and closures happen
+        // to; a plain constant or an aliased binding would not).
         #[cfg(feature = "log_gc")]
         eprintln!("Marking builtins.");
-        for builtin in self.builtins.values() {
+        for (name_id, builtin) in &self.builtins {
+            self.heap.mark_value(&(*name_id).into());
             self.heap.mark_value(&builtin.value);
         }
         // The stdlib registry is keyed by interned module names. A module
@@ -107,8 +111,6 @@ impl VM {
             clear_garbage!(&mut globals, &self.heap, "module globals");
             module_id.to_value_mut(&mut self.heap).globals = globals;
         }
-
-        clear_garbage!(&mut self.builtins, &self.heap, "builtins");
 
         let mut strings_by_name = std::mem::take(&mut self.heap.strings_by_name);
         strings_by_name.retain(|_, string_id| {
