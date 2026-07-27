@@ -31,3 +31,6 @@ fun apply(f) {
 }
 
 print(apply(partial(add3, 7))); # expect: 117
+
+print(bind_two.__str__()); # expect: partial(<fn add3>, 1, 2)
+print(str(bind_one)); # expect: partial(<fn add3>, 1)

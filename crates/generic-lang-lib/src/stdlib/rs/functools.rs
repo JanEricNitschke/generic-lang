@@ -116,6 +116,13 @@ fn partial_call_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResul
     Ok(vm.stack.pop().expect("call left no result on the stack"))
 }
 
+/// `str(partial_instance)`: the wrapped callable and the bound arguments.
+#[allow(clippy::unnecessary_wraps)]
+fn partial_str_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
+    let rendered = receiver.as_partial(&vm.heap).to_string(&vm.heap, 0);
+    Ok(Value::String(vm.heap.string_id(&rendered)))
+}
+
 /// Define the `partial` native class and register the `_functools`
 /// module. The class is not added to the builtins; it is only reachable
 /// through the module (and its `functools.gen` re-export).
@@ -133,6 +140,7 @@ pub(super) fn register(vm: &mut VM) {
         &VARIADIC_0_PLUS,
         partial_call_native,
     );
+    vm.define_native_method(&"partial", &"__str__", &[0], partial_str_native);
     vm.register_stdlib_module(&"_functools", module());
 }
 

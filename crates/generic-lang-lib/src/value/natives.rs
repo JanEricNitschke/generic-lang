@@ -324,7 +324,7 @@ pub struct Partial {
 }
 
 impl Partial {
-    fn to_string(&self, heap: &Heap, depth: usize) -> String {
+    pub(crate) fn to_string(&self, heap: &Heap, depth: usize) -> String {
         let mut parts = vec![self.func.to_string_capped(heap, depth + 1)];
         parts.extend(
             self.args
