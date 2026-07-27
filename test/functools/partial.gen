@@ -34,3 +34,23 @@ print(apply(partial(add3, 7))); # expect: 117
 
 print(bind_two.__str__()); # expect: partial(<fn add3>, 1, 2)
 print(str(bind_one)); # expect: partial(<fn add3>, 1)
+
+# Bound arguments render through their own __str__.
+class Point {
+    __init__(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    __str__() {
+        return f"Point(${this.x}, ${this.y})";
+    }
+}
+
+fun label(prefix, point) {
+    return f"${prefix}: ${point}";
+}
+
+var describe = partial(label, "origin", Point(0, 0));
+print(describe); # expect: partial(<fn label>, origin, Point(0, 0))
+print(describe()); # expect: origin: Point(0, 0)
