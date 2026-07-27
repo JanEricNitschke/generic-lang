@@ -4,35 +4,35 @@
 
 from "_functools" import reduce, partial;
 
-class _CmpToKeyWrapper {
-    __init__(cmp, value) {
-        this.cmp = cmp;
-        this.value = value;
-    }
-
-    __lt__(other) {
-        return this.cmp(this.value, other.value) < 0;
-    }
-
-    __le__(other) {
-        return this.cmp(this.value, other.value) <= 0;
-    }
-
-    __gt__(other) {
-        return this.cmp(this.value, other.value) > 0;
-    }
-
-    __ge__(other) {
-        return this.cmp(this.value, other.value) >= 0;
-    }
-
-    __eq__(other) {
-        return this.cmp(this.value, other.value) == 0;
-    }
-}
-
 # Turn a two-argument comparator (negative, zero, or positive result)
-# into a key function usable with `sorted` and `list.sort`.
+# into a key function usable with `sorted` and `list.sort`: the returned
+# class wraps each element in an object whose comparisons consult the
+# captured comparator.
 fun cmp_to_key(cmp) {
-    return ->(value) _CmpToKeyWrapper(cmp, value);
+    class Key {
+        __init__(value) {
+            this.value = value;
+        }
+
+        __lt__(other) {
+            return cmp(this.value, other.value) < 0;
+        }
+
+        __le__(other) {
+            return cmp(this.value, other.value) <= 0;
+        }
+
+        __gt__(other) {
+            return cmp(this.value, other.value) > 0;
+        }
+
+        __ge__(other) {
+            return cmp(this.value, other.value) >= 0;
+        }
+
+        __eq__(other) {
+            return cmp(this.value, other.value) == 0;
+        }
+    }
+    return Key;
 }

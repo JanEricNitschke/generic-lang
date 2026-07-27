@@ -22,10 +22,15 @@ fn sqrt_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     }
 }
 
+/// Register the `math` module.
+pub(super) fn register(vm: &mut VM) {
+    vm.register_stdlib_module(&"math", module());
+}
+
 /// Export all the contents of the module with the
 /// name they are to be accessed with from generic; functions
 /// additionally carry their supported arities.
-pub(super) fn module() -> ModuleContents {
+fn module() -> ModuleContents {
     vec![
         ModuleExport::Function {
             name: "sqrt",
