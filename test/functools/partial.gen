@@ -1,0 +1,33 @@
+import "functools";
+from "functools" import partial;
+
+fun add3(a, b, c) {
+    return a + b + c;
+}
+
+var bind_one = partial(add3, 1);
+print(bind_one(2, 3)); # expect: 6
+
+var bind_two = partial(add3, 1, 2);
+print(bind_two(3)); # expect: 6
+
+var bind_all = partial(add3, 1, 2, 3);
+print(bind_all()); # expect: 6
+
+var nested = partial(partial(add3, 1), 2);
+print(nested(3)); # expect: 6
+
+print(bind_two); # expect: partial(<fn add3>, 1, 2)
+
+print(isinstance(bind_one, partial)); # expect: true
+print(isinstance(bind_one, functools.partial)); # expect: true
+print(isinstance(add3, partial)); # expect: false
+
+var bound_native = partial(str, 5);
+print(bound_native()); # expect: 5
+
+fun apply(f) {
+    return f(10, 100);
+}
+
+print(apply(partial(add3, 7))); # expect: 117

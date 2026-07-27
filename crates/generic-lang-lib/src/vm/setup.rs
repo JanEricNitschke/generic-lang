@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use crate::{
     heap::StringId,
     value::{
-        Class, Closure, Module, NativeFunction, NativeFunctionImpl, NativeMethod, NativeMethodImpl,
+        Class, Closure, Module, ModuleContents, NativeFunction, NativeFunctionImpl, NativeMethod,
+        NativeMethodImpl,
     },
 };
 
@@ -116,16 +117,16 @@ impl VM {
         target_class.methods.insert(name_id, value_id);
     }
 
-    /// Register a rust native stdlib module by its name and exported functions.
+    /// Register a rust native stdlib module by its name and exports.
     ///
-    /// Add the name of the module to the heap and add the exported functions
+    /// Add the name of the module to the heap and add the exports
     /// to the stdlib map so that they can be loaded into the globals when the module is imported.
     pub(crate) fn register_stdlib_module<T: ToString>(
         &mut self,
         name: &T,
-        functions: Vec<(&'static str, &'static [u8], NativeFunctionImpl)>,
+        exports: ModuleContents,
     ) {
         let name_id = self.heap.string_id(name);
-        self.stdlib.insert(name_id, functions);
+        self.stdlib.insert(name_id, exports);
     }
 }

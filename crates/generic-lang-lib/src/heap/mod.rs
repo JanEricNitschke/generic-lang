@@ -624,6 +624,12 @@ impl Heap {
                     self.strings.gray.push(interpolation.expression());
                     gray_value!(self, &interpolation.value());
                 }
+                NativeClass::Partial(partial) => {
+                    gray_value!(self, &partial.func);
+                    for item in &partial.args {
+                        gray_value!(self, item);
+                    }
+                }
                 // Proxy classes don't contain any references to gray
                 NativeClass::BoolProxy
                 | NativeClass::StringProxy

@@ -75,7 +75,12 @@ foreach (var pair in enumerate(["a", "b"])) { print(pair); }   # (0, a) then (1,
 
 The bundled modules:
 
-- **`math`** - numeric helpers (currently just `math.sqrt(x)`).
+- **`math`** - numeric helpers (`math.sqrt(x)`, `math.pi`).
+- **`functools`** - tools for callables: `reduce(f, iterable)` /
+  `reduce(f, iterable, initial)` folds an iterable with `f(acc, item)`;
+  `partial(f, args...)` returns a callable with the leading arguments
+  bound; `cmp_to_key(cmp)` turns a two-argument comparator into a key
+  function for `sorted` / `list.sort`.
 - **`testing`** - assertion helpers for the test runner: `assert_equal`,
   `assert_not_equal`, `assert_true`, `assert_false`, `assert_nil`,
   `assert_not_nil`, `assert_throws`. Each raises `AssertionError` with a

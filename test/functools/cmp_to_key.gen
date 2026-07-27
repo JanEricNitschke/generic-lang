@@ -1,0 +1,24 @@
+from "functools" import cmp_to_key;
+
+fun descending(a, b) {
+    return b - a;
+}
+
+print(sorted([3, 1, 4, 1, 5, 9, 2, 6], cmp_to_key(descending))); # expect: [9, 6, 5, 4, 3, 2, 1, 1]
+
+var numbers = [5, 2, 8, 1];
+numbers.sort(cmp_to_key(descending));
+print(numbers); # expect: [8, 5, 2, 1]
+
+# Order by the second character only.
+fun by_second_char(a, b) {
+    if (a.get_char(1) < b.get_char(1)) {
+        return -1;
+    }
+    if (a.get_char(1) > b.get_char(1)) {
+        return 1;
+    }
+    return 0;
+}
+
+print(sorted(["bd", "ac", "ab", "ca"], cmp_to_key(by_second_char))); # expect: [ca, ab, ac, bd]

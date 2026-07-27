@@ -77,9 +77,9 @@ can only run at instruction boundaries, which means: straight-line native
 code cannot trigger a sweep, and only code that re-enters the interpreter
 (runs bytecode) must think about rooting.
 
-- Root set (`garbage_collection.rs:44-79`): VM stack, callstack, open
-  upvalues, modules, builtins, and (with `plugins`) the loader's cached
-  export-name strings.
+- Root set (`garbage_collection.rs:44-90`): VM stack, callstack, open
+  upvalues, modules, builtins, the stdlib registry's module names, and
+  (with `plugins`) the loader's cached export-name strings.
 - The rooting discipline for mid-call temporaries in natives: push onto the
   VM stack (it is a root), rely on the dispatch site's post-call truncate
   for cleanup. `VM::for_each_rooted` (`src/vm/dunder.rs:149`) is the
@@ -179,9 +179,13 @@ state on the VM.
 
 Generic modules compile to a closure that executes to completion; its
 globals become the module object. Rust-stdlib and plugin modules build a
-`Module` directly, one heap `NativeFunction` per export
-(`import_rust_stdlib` / `import_plugin_module`). `from`-imports move
-individual globals instead of registering the module.
+`Module` directly (`import_rust_stdlib` / `import_plugin_module`). A
+rust-stdlib export (`ModuleExport`, `src/value/natives.rs`) is a
+function (one heap `NativeFunction`), a native class (resolved through
+`heap.native_classes`, whose entries are permanent GC roots), or a value
+built at import time (which must not execute bytecode). Plugin exports
+are always functions. `from`-imports move individual globals instead of
+registering the module.
 
 ## Plugin host
 

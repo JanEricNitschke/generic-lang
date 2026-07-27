@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use crate::{
     config::GENERIC_STDLIB_DIR,
     heap::StringId,
-    value::{Closure, Module, ModuleContents, NativeFunction, Value},
+    value::{Closure, Module, ModuleContents, ModuleExport, NativeFunction, Value},
     vm::errors::VmResult,
 };
 
@@ -178,32 +178,55 @@ impl VM {
         string_id: StringId,
         file_path: PathBuf,
         alias: Option<StringId>,
-        stdlib_functions: &ModuleContents,
+        stdlib_exports: &ModuleContents,
         names_to_import: Option<&[StringId]>,
         local_import: bool,
     ) -> VmResult {
-        let exports = stdlib_functions
-            .iter()
-            .map(|(name, arity, fun)| {
-                let name_id = self.heap.string_id(name);
-                let value = self.heap.add_native_function(NativeFunction {
-                    name: name_id,
-                    arity,
-                    fun: *fun,
-                    #[cfg(feature = "plugins")]
-                    plugin_fn: None,
-                });
-                (name_id, value)
-            })
-            .collect();
-        self.install_native_module(
+        // A value creator may re-enter the VM and collect, so every export
+        // built before it is rooted on the VM stack while the remaining
+        // ones run; the batch is unrooted once the module took ownership.
+        let exports_base = self.stack.len();
+        let mut exports: Vec<(StringId, Value)> = Vec::with_capacity(stdlib_exports.len());
+        for export in stdlib_exports {
+            let entry = match *export {
+                ModuleExport::Function { name, arity, fun } => {
+                    let name_id = self.heap.string_id(&name);
+                    let value = self.heap.add_native_function(NativeFunction {
+                        name: name_id,
+                        arity,
+                        fun,
+                        #[cfg(feature = "plugins")]
+                        plugin_fn: None,
+                    });
+                    (name_id, value)
+                }
+                ModuleExport::Class { name } => {
+                    let class_id = *self.heap.native_classes.get(name).unwrap_or_else(|| {
+                        unreachable!("Stdlib module exports unregistered native class `{name}`.")
+                    });
+                    (self.heap.string_id(&name), class_id.into())
+                }
+                ModuleExport::Value { name, create } => {
+                    let name_id = self.heap.string_id(&name);
+                    (name_id, create(self))
+                }
+            };
+            self.stack.push(entry.1);
+            exports.push(entry);
+        }
+        let result = self.install_native_module(
             string_id,
             file_path,
             alias,
             exports,
             names_to_import,
             local_import,
-        )
+        );
+        // Drop the rooted batch from under whatever `install_native_module`
+        // left on top (locally imported values, or a pending exception).
+        self.stack
+            .drain(exports_base..exports_base + stdlib_exports.len());
+        result
     }
 
     /// Import a generic module.
@@ -291,5 +314,55 @@ impl VM {
         _local_import: bool,
     ) -> Option<VmResult> {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::value::{GenericInt, ModuleExport, Number, Value};
+    use crate::vm::{InterpretResult, VM};
+    use std::path::PathBuf;
+
+    #[allow(clippy::unnecessary_wraps)]
+    fn answer_native(_vm: &mut VM, _args: &[Value]) -> crate::vm::errors::VmResult<Value> {
+        Ok(Value::Number(Number::Integer(GenericInt::Small(42))))
+    }
+
+    /// Every `ModuleExport` kind reaches generic code through an import:
+    /// a native function, a native class (instantiable and usable), and a
+    /// value built at import time.
+    #[test]
+    fn stdlib_module_exports_every_kind() {
+        let mut vm = VM::new();
+        vm.register_stdlib_module(
+            &"export_kinds",
+            vec![
+                ModuleExport::Function {
+                    name: "answer",
+                    arity: &[0],
+                    fun: answer_native,
+                },
+                ModuleExport::Class { name: "Range" },
+                ModuleExport::Value {
+                    name: "greeting",
+                    create: |vm| Value::String(vm.heap.string_id(&"hello")),
+                },
+            ],
+        );
+        let source = r#"
+import "export_kinds";
+assert(export_kinds.answer() == 42);
+assert(export_kinds.greeting == "hello");
+var range = export_kinds.Range(1, 4);
+assert(range.contains(2));
+assert(!range.contains(4));
+from "export_kinds" import answer, greeting;
+assert(answer() == 42);
+assert(greeting == "hello");
+"#;
+        assert_eq!(
+            vm.interpret(source, PathBuf::from("export_kinds_test")),
+            InterpretResult::Ok
+        );
     }
 }

@@ -115,7 +115,33 @@ impl std::fmt::Display for NativeMethod {
 
 pub type NativeFunctionImpl = fn(&mut VM, &[Value]) -> VmResult<Value>;
 pub type NativeMethodImpl = fn(&mut VM, &Value, &[Value]) -> VmResult<Value>;
-pub type ModuleContents = Vec<(&'static str, &'static [u8], NativeFunctionImpl)>;
+
+/// One export of a rust native stdlib module, resolved to a `Value` at
+/// import time by `VM::import_rust_stdlib`.
+#[derive(Debug, Clone, Copy)]
+pub enum ModuleExport {
+    /// A native function, allocated on the heap at import time.
+    Function {
+        name: &'static str,
+        arity: &'static [u8],
+        fun: NativeFunctionImpl,
+    },
+    /// A native class, defined at startup via `define_native_class`
+    /// (usually without adding it to the builtins) and looked up in
+    /// `heap.native_classes` at import time. The entries of
+    /// `heap.native_classes` are permanent GC roots, so the export can
+    /// never dangle.
+    Class { name: &'static str },
+    /// An arbitrary value, built by `create` at import time. `create`
+    /// must not execute bytecode: imports run between instructions and
+    /// rely on allocation never collecting.
+    Value {
+        name: &'static str,
+        create: fn(&mut VM) -> Value,
+    },
+}
+
+pub type ModuleContents = Vec<ModuleExport>;
 
 // Actual Natives
 #[derive(Debug, Clone, PartialEq)]
@@ -135,6 +161,7 @@ pub enum NativeClass {
     Template(Template),
     TemplateIterator(TemplateIterator),
     Interpolation(Interpolation),
+    Partial(Partial),
     // Proxy classes for value type constructors
     BoolProxy,
     StringProxy,
@@ -203,6 +230,7 @@ impl NativeClass {
             "Range" => Self::Range(Range::default()),
             "Tuple" => Self::Tuple(Tuple::default()),
             "Exception" => Self::Exception(Exception::default()),
+            "partial" => Self::Partial(Partial::default()),
             // Proxy classes for value type constructors
             "Bool" => Self::BoolProxy,
             "String" => Self::StringProxy,
@@ -233,6 +261,7 @@ impl NativeClass {
             Self::Template(template) => template.to_string(heap),
             Self::TemplateIterator(template_iter) => template_iter.to_string(heap),
             Self::Interpolation(interpolation) => interpolation.to_string(heap),
+            Self::Partial(partial) => partial.to_string(heap, depth),
             // Proxy classes should never be accessed for string conversion
             Self::BoolProxy => unreachable!("BoolProxy should never be converted to string"),
             Self::StringProxy => unreachable!("StringProxy should never be converted to string"),
@@ -282,7 +311,35 @@ impl_from_for_native_class!(
     Template,
     TemplateIterator,
     Interpolation,
+    Partial,
 );
+
+/// Backing of the `partial` class of the `functools` stdlib module: the
+/// wrapped callable and the bound leading arguments. Calling the instance
+/// calls `func` with the bound arguments followed by the call's own.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Partial {
+    pub(crate) func: Value,
+    pub(crate) args: Vec<Value>,
+}
+
+impl Partial {
+    fn to_string(&self, heap: &Heap, depth: usize) -> String {
+        let mut parts = vec![self.func.to_string_capped(heap, depth + 1)];
+        parts.extend(
+            self.args
+                .iter()
+                .map(|arg| arg.to_string_capped(heap, depth + 1)),
+        );
+        format!("partial({})", parts.join(", "))
+    }
+}
+
+impl std::fmt::Display for Partial {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad("<partial Value>")
+    }
+}
 
 #[cfg(feature = "plugins")]
 impl From<PluginInstance> for NativeClass {

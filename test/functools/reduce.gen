@@ -1,0 +1,14 @@
+from "functools" import reduce;
+
+fun add(a, b) {
+    return a + b;
+}
+
+print(reduce(add, [1, 2, 3, 4])); # expect: 10
+print(reduce(add, [1, 2, 3, 4], 100)); # expect: 110
+print(reduce(add, [5])); # expect: 5
+print(reduce(add, [], 42)); # expect: 42
+print(reduce((->(a, b) a * b), [1, 2, 3, 4], 1)); # expect: 24
+print(reduce(add, ["gen", "er", "ic"])); # expect: generic
+print(reduce(add, (1, 2, 3))); # expect: 6
+print(reduce((->(a, b) a + b * b), 1..<5, 0)); # expect: 30

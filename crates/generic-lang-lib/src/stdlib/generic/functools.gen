@@ -1,0 +1,38 @@
+# Tools for working with functions and callables.
+# `reduce` and `partial` come from the native half of the module and are
+# re-exported here.
+
+from "_functools" import reduce, partial;
+
+class _CmpToKeyWrapper {
+    __init__(cmp, value) {
+        this.cmp = cmp;
+        this.value = value;
+    }
+
+    __lt__(other) {
+        return this.cmp(this.value, other.value) < 0;
+    }
+
+    __le__(other) {
+        return this.cmp(this.value, other.value) <= 0;
+    }
+
+    __gt__(other) {
+        return this.cmp(this.value, other.value) > 0;
+    }
+
+    __ge__(other) {
+        return this.cmp(this.value, other.value) >= 0;
+    }
+
+    __eq__(other) {
+        return this.cmp(this.value, other.value) == 0;
+    }
+}
+
+# Turn a two-argument comparator (negative, zero, or positive result)
+# into a key function usable with `sorted` and `list.sort`.
+fun cmp_to_key(cmp) {
+    return ->(value) _CmpToKeyWrapper(cmp, value);
+}

@@ -1,0 +1,3 @@
+from "functools" import partial;
+
+partial(); # expect runtime error: TypeError: 'partial' expected a callable to bind.
