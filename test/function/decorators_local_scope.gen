@@ -1,0 +1,83 @@
+# Decorated declarations inside functions: the decorator temporaries
+# live as scoped locals and the binding works like at top level.
+fun doubled(f) {
+    return ->(n) f(n) * 2;
+}
+
+fun make_scaled() {
+    @doubled
+    fun scaled(n) {
+        return n + 1;
+    }
+    return scaled;
+}
+
+print(make_scaled()(5)); # expect: 12
+
+# Stacking with decorator factories capturing upvalues.
+fun add_suffix(suffix) {
+    return ->(f) ->(x) f(x) + suffix;
+}
+
+fun build() {
+    @add_suffix("!")
+    @add_suffix("?")
+    fun shout(x) {
+        return x;
+    }
+    return shout;
+}
+
+print(build()("hey")); # expect: hey?!
+
+# Recursion resolves through the decorated binding: every level of the
+# recursion passes through the wrapper.
+fun logging(f) {
+    fun wrapper(n) {
+        print(f"call ${n}");
+        return f(n);
+    }
+    return wrapper;
+}
+
+fun make_countdown() {
+    @logging
+    fun countdown(n) {
+        if (n <= 0) {
+            return 0;
+        }
+        return countdown(n - 1);
+    }
+    return countdown;
+}
+
+make_countdown()(2);
+# expect: call 2
+# expect: call 1
+# expect: call 0
+
+# The decorator itself declared in the same local scope; recursion still
+# passes through the wrapper.
+fun make_local_countdown() {
+    fun local_logging(f) {
+        fun wrapper(n) {
+            print(f"local call ${n}");
+            return f(n);
+        }
+        return wrapper;
+    }
+
+    @local_logging
+    fun countdown(n) {
+        if (n <= 0) {
+            return 0;
+        }
+        return countdown(n - 1);
+    }
+    return countdown;
+}
+
+make_local_countdown()(2);
+# expect: local call 2
+# expect: local call 1
+# expect: local call 0

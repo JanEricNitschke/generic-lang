@@ -8,4 +8,4 @@ fun plus_three(func) {
 
 
 @plus_three
-# Error at end: Expect function declaration or another decorator call after a decorator call.
+# Error at end: Expect function or class declaration or another decorator call after a decorator call.

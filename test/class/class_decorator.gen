@@ -1,0 +1,66 @@
+# The decorator's return value replaces the class binding.
+fun replace_with(replacement) {
+    return ->(cls) replacement;
+}
+
+@replace_with("not a class anymore")
+class Replaced {}
+
+print(Replaced); # expect: not a class anymore
+
+# A decorator can wrap the class in a factory callable.
+fun doubling(cls) {
+    return ->(x) cls(x * 2);
+}
+
+@doubling
+class Doubled {
+    __init__(x) {
+        this.x = x;
+    }
+}
+
+print(Doubled(4).x); # expect: 8
+
+# An identity decorator leaves the class fully usable.
+fun identity(cls) {
+    return cls;
+}
+
+@identity
+class Plain {
+    kind() {
+        return "plain";
+    }
+}
+
+print(Plain().kind()); # expect: plain
+print(isinstance(Plain(), Plain)); # expect: true
+
+# Decorators stack like function decorators: the closest one runs first.
+var order = [];
+
+fun first(cls) {
+    order.append("first");
+    return cls;
+}
+
+fun second(cls) {
+    order.append("second");
+    return cls;
+}
+
+@first
+@second
+class Ordered {}
+
+print(order); # expect: [second, first]
+
+# Decorated classes work at local scope too.
+fun make_local() {
+    @replace_with("local class")
+    class Local {}
+    return Local;
+}
+
+print(make_local()); # expect: local class
