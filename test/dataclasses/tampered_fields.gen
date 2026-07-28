@@ -1,0 +1,47 @@
+# `__dataclass_fields__` is an ordinary class variable, so user code can
+# overwrite it; the generated methods and the decorator must reject any
+# shape other than a tuple of field-name strings with a TypeError.
+from "dataclasses" import dataclass;
+
+@dataclass
+class Point {
+    var x;
+    var y;
+}
+
+var p = Point(1, 2);
+print(p); # expect: Point(x=1, y=2)
+
+# Overwriting the snapshot with a non-tuple breaks the generated methods
+# loudly, not with a crash.
+setattr(Point, "__dataclass_fields__", 42);
+try {
+    Point(1, 2);
+} catch TypeError as e {
+    print(e.message()); # expect: '__dataclass_fields__' of 'Point' must be a tuple of field-name strings.
+}
+try {
+    print(p);
+} catch TypeError as e {
+    print(e.message()); # expect: '__dataclass_fields__' of 'Point' must be a tuple of field-name strings.
+}
+
+# A tuple of non-strings is rejected the same way.
+setattr(Point, "__dataclass_fields__", (1, 2));
+try {
+    Point(1, 2);
+} catch TypeError as e {
+    print(e.message()); # expect: '__dataclass_fields__' of 'Point' must be a tuple of field-name strings.
+}
+
+# Decorating a class whose (inherited or declared) snapshot is malformed
+# fails at decoration time.
+class Evil {
+    var __dataclass_fields__ = 5;
+}
+
+try {
+    dataclass(Evil);
+} catch TypeError as e {
+    print(e.message()); # expect: '__dataclass_fields__' of 'Evil' must be a tuple of field-name strings.
+}

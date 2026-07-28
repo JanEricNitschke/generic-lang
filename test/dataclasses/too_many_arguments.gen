@@ -1,0 +1,9 @@
+from "dataclasses" import dataclass;
+
+@dataclass
+class Point {
+    var x;
+    var y;
+}
+
+Point(1, 2, 3); # expect runtime error: TypeError: 'Point' takes at most 2 arguments, got 3.

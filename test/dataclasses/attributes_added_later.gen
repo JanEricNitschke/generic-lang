@@ -1,0 +1,14 @@
+from "dataclasses" import dataclass;
+
+# The field list is frozen at decoration time: a class variable added
+# to a dataclass afterwards stays an ordinary class variable.
+@dataclass
+class Point {
+    var x;
+}
+
+setattr(Point, "y", 0);
+print(Point(1)); # expect: Point(x=1)
+print(Point(1).y); # expect: 0
+print(Point(1) == Point(1)); # expect: true
+Point(1, 2); # expect runtime error: TypeError: 'Point' takes at most 1 arguments, got 2.

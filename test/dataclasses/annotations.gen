@@ -1,0 +1,11 @@
+from "dataclasses" import dataclass;
+
+# Annotations are allowed on dataclass fields.
+@dataclass
+class Typed {
+    var count: Integer = 0;
+    var label: String = "none";
+}
+
+print(Typed(7)); # expect: Typed(count=7, label=none)
+print(Typed(7, "seven")); # expect: Typed(count=7, label=seven)

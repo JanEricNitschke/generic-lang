@@ -641,6 +641,9 @@ impl Heap {
                         gray_value!(self, item);
                     }
                 }
+                NativeClass::Field(field) => {
+                    gray_value!(self, &field.factory);
+                }
                 // Proxy classes don't contain any references to gray
                 NativeClass::BoolProxy
                 | NativeClass::StringProxy

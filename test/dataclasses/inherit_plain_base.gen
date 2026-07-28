@@ -1,0 +1,15 @@
+from "dataclasses" import dataclass;
+
+# A dataclass inheriting from a plain class: the base's class variables
+# copy down and become constructor fields of the dataclass.
+class PlainBase {
+    var origin = "base";
+}
+
+@dataclass
+class Derived < PlainBase {
+    var extra = 1;
+}
+
+print(Derived()); # expect: Derived(origin=base, extra=1)
+print(Derived("changed", 2)); # expect: Derived(origin=changed, extra=2)

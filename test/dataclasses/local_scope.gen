@@ -1,0 +1,16 @@
+from "dataclasses" import dataclass;
+
+# Dataclasses declared inside functions work like top-level ones.
+fun make_point() {
+    @dataclass
+    class LocalPoint {
+        var x;
+        var y = 0;
+    }
+    return LocalPoint;
+}
+
+var point_class = make_point();
+print(point_class(1, 2)); # expect: LocalPoint(x=1, y=2)
+print(point_class(5)); # expect: LocalPoint(x=5, y=0)
+print(point_class(1) == point_class(1)); # expect: true

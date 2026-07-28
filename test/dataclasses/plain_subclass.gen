@@ -1,0 +1,20 @@
+from "dataclasses" import dataclass;
+
+# A plain class inheriting from a dataclass: the generated methods and
+# the frozen field list copy down, so the subclass's own class
+# variables stay ordinary class variables instead of joining the
+# constructor.
+@dataclass
+class Base {
+    var a = 1;
+}
+
+class PlainSub < Base {
+    var b = 2;
+}
+
+print(PlainSub()); # expect: PlainSub(a=1)
+print(PlainSub(10)); # expect: PlainSub(a=10)
+print(PlainSub().b); # expect: 2
+print(PlainSub(5) == PlainSub(5)); # expect: true
+print(PlainSub(5) == Base(5)); # expect: false
