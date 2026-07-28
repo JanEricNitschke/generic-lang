@@ -208,13 +208,49 @@ impl VM {
                     self.stack[new_stack_base] = *value;
                     self.call_value(*value, arg_count)
                 }
-                // Method of the class. Attributes on the instance overwrite methods on the class.
-                else {
+                // Method of the class.
+                else if instance
+                    .to_value(&self.heap)
+                    .class
+                    .to_value(&self.heap)
+                    .methods
+                    .contains_key(&method_name)
+                {
                     self.invoke_from_class(
                         instance.to_value(&self.heap).class,
                         method_name,
                         arg_count,
                     )
+                }
+                // Callable class variable, read through the instance.
+                else if let Some(value) = instance
+                    .to_value(&self.heap)
+                    .class
+                    .to_value(&self.heap)
+                    .class_variable_value(method_name)
+                {
+                    let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;
+                    self.stack[new_stack_base] = value;
+                    self.call_value(value, arg_count)
+                }
+                // Nothing found.
+                else {
+                    let message =
+                        format!("Undefined property '{}'.", self.heap.strings[method_name]);
+                    self.throw(AttributeError, &message)
+                }
+            }
+            // Calling through the class object resolves class variables
+            // only, mirroring class property access.
+            Value::Class(class) => {
+                if let Some(value) = class.to_value(&self.heap).class_variable_value(method_name) {
+                    let new_stack_base = self.stack.len() - usize::from(arg_count) - 1;
+                    self.stack[new_stack_base] = value;
+                    self.call_value(value, arg_count)
+                } else {
+                    let message =
+                        format!("Undefined property '{}'.", self.heap.strings[method_name]);
+                    self.throw(AttributeError, &message)
                 }
             }
             Value::Module(module) => {
@@ -573,6 +609,29 @@ impl VM {
             .methods
             .insert(method_name, method);
         self.stack.pop();
+    }
+
+    /// Record a class variable on the class being defined. The stack holds
+    /// `(class, annotation, default)`; the two values are popped, the class
+    /// stays for the rest of the body.
+    pub(super) fn define_class_variable(&mut self, variable_name: StringId, has_default: bool) {
+        let default = self
+            .stack
+            .pop()
+            .expect("Stack underflow in OP_CLASS_VARIABLE");
+        let annotation = self
+            .stack
+            .pop()
+            .expect("Stack underflow in OP_CLASS_VARIABLE");
+        let class = *self
+            .peek_mut(0)
+            .expect("Stack underflow in OP_CLASS_VARIABLE")
+            .as_class_mut();
+        class.to_value_mut(&mut self.heap).add_class_variable(
+            variable_name,
+            annotation,
+            has_default.then_some(default),
+        );
     }
 }
 

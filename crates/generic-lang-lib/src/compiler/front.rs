@@ -272,7 +272,11 @@ impl Compiler<'_, '_> {
         self.named_variable(&class_name, true, class_name_location);
         self.consume(TK::LeftBrace, "Expect '{' before class body.");
         while !self.check(TK::RightBrace) && !self.check(TK::Eof) {
-            self.method();
+            if self.match_(TK::Var) {
+                self.class_variable_declaration();
+            } else {
+                self.method();
+            }
             // `method` does not consume tokens when the class body holds
             // something that cannot start a method, so without bailing here on
             // an error the loop would never make progress. Hand control back to
@@ -1183,6 +1187,47 @@ impl Compiler<'_, '_> {
         for upvalue in nested_upvalues {
             self.emit_bytes(upvalue.is_local, upvalue.index, location);
         }
+    }
+
+    /// A class variable declaration inside a class body:
+    /// `var name (: annotation)? (= default)? ;`. Compiles to the
+    /// annotation and default expressions (nil placeholders when omitted)
+    /// followed by `OP_CLASS_VARIABLE`, which records both on the class
+    /// sitting below them on the stack. A `has_default` operand byte
+    /// distinguishes an omitted default from an explicit `= nil`.
+    fn class_variable_declaration(&mut self) {
+        self.consume(TK::Identifier, "Expect class variable name.");
+        let name = self.previous.as_ref().unwrap().as_str().to_string();
+        if let Some(class_state) = self.current_class_mut()
+            && !class_state.class_variables.insert(name.clone())
+        {
+            self.error(&format!("Duplicate class variable '{name}'."));
+        }
+        let name_constant = self.identifier_constant(&name);
+        if self.match_(TK::Colon) {
+            // Non-assigning so the annotation stops before `= default`,
+            // and no comma rule so it cannot swallow a bare tuple.
+            self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Comma]);
+        } else {
+            self.emit_byte(OpCode::Nil, self.op_location());
+        }
+        let has_default = if self.match_(TK::Equal) {
+            self.expression();
+            true
+        } else {
+            self.emit_byte(OpCode::Nil, self.op_location());
+            false
+        };
+        self.consume(
+            TK::Semicolon,
+            "Expect ';' after class variable declaration.",
+        );
+        let name_index = ConstantIndex::try_from(name_constant).unwrap_or_else(|_| {
+            self.error("Too many constants when declaring class variable.");
+            ConstantIndex(0)
+        });
+        self.emit_bytes(OpCode::ClassVariable, name_index, self.op_location());
+        self.emit_byte(u8::from(has_default), self.op_location());
     }
 
     fn method(&mut self) {

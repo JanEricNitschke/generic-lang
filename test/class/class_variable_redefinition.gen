@@ -1,0 +1,4 @@
+class Duplicate {
+    var x = 1;
+    var x = 2;  # Error at 'x': Duplicate class variable 'x'.
+}

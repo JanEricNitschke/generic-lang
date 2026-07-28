@@ -1,2 +1,6 @@
 class Foo {}
-Foo.bar = "value"; # expect runtime error: TypeError: Tried to set property 'bar' of non-instance `<class Foo>`
+
+# Assigning through the class declares a class variable.
+Foo.bar = "value";
+print(Foo.bar); # expect: value
+print(Foo().bar); # expect: value

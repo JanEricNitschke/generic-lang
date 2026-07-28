@@ -1,0 +1,32 @@
+# Class variables are readable and writable through the class object;
+# methods are not part of class-object access.
+class Config {
+    var retries = 3;
+    var label: String;
+}
+
+print(Config.retries); # expect: 3
+Config.retries = 5;
+print(Config.retries); # expect: 5
+
+# Instances without a shadowing field see the class write.
+print(Config().retries); # expect: 5
+
+# Reflection works on classes and can declare new class variables.
+setattr(Config, "timeout", 30);
+print(Config.timeout); # expect: 30
+print(getattr(Config, "timeout")); # expect: 30
+print(hasattr(Config, "timeout")); # expect: true
+print(hasattr(Config, "nope")); # expect: false
+
+# A declaration without a default has no readable value.
+print(hasattr(Config, "label")); # expect: false
+
+# Methods are not reachable through the class object.
+class Greeter {
+    greet() {
+        return "hi";
+    }
+}
+
+print(hasattr(Greeter, "greet")); # expect: false

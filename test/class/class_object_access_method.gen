@@ -1,0 +1,8 @@
+# Methods are not part of class-object access.
+class Greeter {
+    greet() {
+        return "hi";
+    }
+}
+
+Greeter.greet; # expect runtime error: AttributeError: Undefined property 'greet'.

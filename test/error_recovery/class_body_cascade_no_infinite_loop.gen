@@ -17,7 +17,7 @@ class SetMutator {
         return "Mutator";  # Error at 'return': Can't return a value from an initializer.
     }
 }
-var other = Mutator();  # Error at 'var': Expect method name.
-set = {SetMutator(), SetMutator()};
+var other = Mutator();  # Parses as a class variable of the unclosed class body.
+set = {SetMutator(), SetMutator()};  # Error at '=': Expect '(' after function name.
 print(set);
 print(set);

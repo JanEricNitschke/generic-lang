@@ -1,0 +1,50 @@
+# Class variable declarations: `var name (: annotation)? (= default)?;`
+# inside a class body. Instances read them when no instance field or
+# method shadows the name.
+class Config {
+    var retries = 3;
+    var timeout: Integer = 30;
+    var label: String;
+
+    describe() {
+        return f"retries=${this.retries} timeout=${this.timeout}";
+    }
+}
+
+var config = Config();
+print(config.retries); # expect: 3
+print(config.timeout); # expect: 30
+print(config.describe()); # expect: retries=3 timeout=30
+
+# A declaration without a default reserves the name but provides no value.
+print(hasattr(config, "label")); # expect: false
+
+# Annotations are single expressions; a tuple annotation takes parens.
+class Annotated {
+    var plain: Integer = 1;
+    var pair: (Integer, String) = 2;
+}
+
+print(Annotated().plain); # expect: 1
+print(Annotated().pair); # expect: 2
+
+# Class variables holding callables are callable through the instance.
+class Handler {
+    var callback = ->(x) x * 2;
+}
+
+print(Handler().callback(21)); # expect: 42
+
+# Subclasses inherit class variables and can override them.
+class Base {
+    var kind = "base";
+    var shared = 1;
+}
+
+class Derived < Base {
+    var kind = "derived";
+}
+
+print(Derived().kind); # expect: derived
+print(Derived().shared); # expect: 1
+print(Base().kind); # expect: base

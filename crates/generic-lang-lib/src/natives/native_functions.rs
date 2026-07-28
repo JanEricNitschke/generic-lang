@@ -2,7 +2,9 @@
 
 use crate::vm::ExceptionKind::{AssertionError, AttributeError, IoError, TypeError, ValueError};
 use crate::{
-    value::{GenericInt, Number, Value, class_of_value, is_subclass_of, value_isinstance},
+    value::{
+        BoundMethod, GenericInt, Number, Value, class_of_value, is_subclass_of, value_isinstance,
+    },
     vm::{VM, errors::VmResult},
 };
 use rand::RngExt;
@@ -325,12 +327,38 @@ pub(super) fn rng_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
 /// Get an attribute from a value by name.
 pub(super) fn getattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     match (&args[0], &args[1]) {
-        (Value::Instance(instance), Value::String(string_id)) => {
+        (receiver @ Value::Instance(instance), Value::String(string_id)) => {
+            // Mirrors property access: fields, then methods (bound to the
+            // instance), then class variables.
             let field = &vm.heap.strings[*string_id];
-            match instance.to_value(&vm.heap).fields.get(field) {
-                Some(value_id) => Ok(*value_id),
+            if let Some(value_id) = instance.to_value(&vm.heap).fields.get(field) {
+                return Ok(*value_id);
+            }
+            let class = instance.to_value(&vm.heap).class;
+            if let Some(method) = class.to_value(&vm.heap).methods.get(string_id).copied() {
+                return Ok(vm.heap.add_bound_method(BoundMethod {
+                    receiver: *receiver,
+                    method,
+                }));
+            }
+            match class.to_value(&vm.heap).class_variable_value(*string_id) {
+                Some(value) => Ok(value),
                 None => Err(vm
-                    .throw(AttributeError, &format!("Undefined property '{}'.", *field))
+                    .throw(
+                        AttributeError,
+                        &format!("Undefined property '{}'.", vm.heap.strings[*string_id]),
+                    )
+                    .unwrap_err()),
+            }
+        }
+        (Value::Class(class), Value::String(string_id)) => {
+            match class.to_value(&vm.heap).class_variable_value(*string_id) {
+                Some(value) => Ok(value),
+                None => Err(vm
+                    .throw(
+                        AttributeError,
+                        &format!("Undefined property '{}'.", vm.heap.strings[*string_id]),
+                    )
                     .unwrap_err()),
             }
         }
@@ -379,6 +407,12 @@ pub(super) fn setattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             .fields
             .insert(field, value);
         Ok(Value::Nil)
+    } else if let Value::Class(class) = args[0] {
+        let name_id = vm.heap.string_id(&field);
+        class
+            .to_value_mut(&mut vm.heap)
+            .set_class_variable_value(name_id, value);
+        Ok(Value::Nil)
     } else {
         Err(vm
             .throw(
@@ -392,16 +426,25 @@ pub(super) fn setattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     }
 }
 
-/// Check if the given attribute exists as a property on the instance.
-/// Does NOT check for methods.
+/// Check if the given attribute exists on an instance (field, method, or
+/// class variable), a class (class variables only), or a module (globals).
 pub(super) fn hasattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     match (&args[0], &args[1]) {
-        (Value::Instance(instance), Value::String(string_id)) => Ok(Value::Bool(
-            instance
+        (Value::Instance(instance), Value::String(string_id)) => Ok((instance
+            .to_value(&vm.heap)
+            .has_field_or_method(*string_id, &vm.heap)
+            || instance
                 .to_value(&vm.heap)
-                .fields
-                .contains_key(&vm.heap.strings[*string_id]),
-        )),
+                .class
+                .to_value(&vm.heap)
+                .class_variable_value(*string_id)
+                .is_some())
+        .into()),
+        (Value::Class(class), Value::String(string_id)) => Ok(class
+            .to_value(&vm.heap)
+            .class_variable_value(*string_id)
+            .is_some()
+            .into()),
         (instance @ Value::Instance(_), x) => Err(vm
             .throw(
                 TypeError,

@@ -121,6 +121,7 @@ pub enum OpCode {
 
     Invoke,
     Method,
+    ClassVariable,
     Closure,
     Return,
     ReturnGenerator,
@@ -353,7 +354,7 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
                 | BuildDict | BuildFstring | DupN => 1,
                 Jump | JumpIfFalse | JumpIfTrue | PopJumpIfFalse | PopJumpIfTrue
                 | JumpIfTrueOrPop | JumpIfFalseOrPop | JumpIfNil | RegisterCatches | Loop
-                | Invoke | Import | SuperInvoke => 2,
+                | Invoke | Import | SuperInvoke | ClassVariable => 2,
                 ConstantLong
                 | GetGlobalLong
                 | SetGlobalLong
@@ -652,6 +653,29 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
         Ok(())
     }
 
+    fn debug_class_variable_opcode(
+        &self,
+        f: &mut std::fmt::Formatter,
+        name: &str,
+        offset: CodeOffset,
+        heap: &Heap,
+    ) -> std::fmt::Result {
+        let code = self.chunk.code();
+        let constant = code[offset.as_ref() + 1];
+        let has_default = code[offset.as_ref() + 2];
+        let constant_value = self.chunk.get_constant(constant);
+        let formatted_name = format!("{name} (default: {})", has_default != 0);
+        writeln!(
+            f,
+            "{:-OPCODE_NAME_ALIGNMENT$} {:>OPERAND_ALIGNMENT$} '{}'",
+            formatted_name,
+            constant,
+            constant_value.to_string(heap),
+            OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
+            OPERAND_ALIGNMENT = self.operand_alignment
+        )
+    }
+
     fn debug_invoke_opcode(
         &self,
         f: &mut std::fmt::Formatter,
@@ -778,6 +802,7 @@ impl Debug for InstructionDisassembler<'_, '_> {
                 RegisterCatches
             ),
             invoke(Invoke, SuperInvoke),
+            class_variable(ClassVariable),
             simple(
                 Add,
                 CloseUpvalue,

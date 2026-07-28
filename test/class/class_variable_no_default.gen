@@ -1,0 +1,6 @@
+class Point {
+    var x: Integer;
+}
+
+# A declaration without a default reserves the name but provides no value.
+Point().x; # expect runtime error: AttributeError: Undefined property 'x'.

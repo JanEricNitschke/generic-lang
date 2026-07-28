@@ -515,6 +515,13 @@ impl Heap {
             self.strings.gray.push(*method_name);
             gray_value!(self, method);
         }
+        for (variable_name, variable) in &class.variables {
+            self.strings.gray.push(*variable_name);
+            gray_value!(self, &variable.annotation);
+            if let Some(default) = &variable.default {
+                gray_value!(self, default);
+            }
+        }
         #[cfg(feature = "log_gc")]
         {
             eprintln!("Class/{:?} blacken {} end", index, item.item);

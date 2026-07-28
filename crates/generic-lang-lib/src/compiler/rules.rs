@@ -41,7 +41,7 @@ pub(super) enum Precedence {
 }
 
 impl Precedence {
-    const fn non_assigning() -> Self {
+    pub(super) const fn non_assigning() -> Self {
         Self::Tuple
     }
 }

@@ -1,0 +1,59 @@
+# Attribute resolution on one name: instance field > method > class
+# variable. Class-object access sees only the class variable.
+class Clash {
+    var x = "class variable";
+
+    x() {
+        return "method";
+    }
+}
+
+# The method beats the class variable on instances, for dot access,
+# bound access, and getattr.
+var clash = Clash();
+print(clash.x()); # expect: method
+var bound = clash.x;
+print(bound()); # expect: method
+print(getattr(clash, "x")()); # expect: method
+
+# The class object sees only the class variable.
+print(Clash.x); # expect: class variable
+print(getattr(Clash, "x")); # expect: class variable
+
+# Declaration order does not matter: methods and class variables live
+# in separate namespaces.
+class ClashReversed {
+    x() {
+        return "method";
+    }
+
+    var x = "class variable";
+}
+
+print(ClashReversed().x()); # expect: method
+print(ClashReversed.x); # expect: class variable
+
+# An assigned instance field shadows everything, per instance.
+clash.x = "field";
+print(clash.x); # expect: field
+print(getattr(clash, "x")); # expect: field
+print(Clash().x()); # expect: method
+
+# The class object is unaffected by instance fields.
+print(Clash.x); # expect: class variable
+
+# Without a method in between, an instance field shadows the class
+# variable directly, per instance.
+class Plain {
+    var value = "class";
+}
+
+var shadowed = Plain();
+shadowed.value = "instance";
+print(shadowed.value); # expect: instance
+print(Plain().value); # expect: class
+print(Plain.value); # expect: class
+
+# hasattr agrees with dot access on instances and classes.
+print(hasattr(clash, "x")); # expect: true
+print(hasattr(Clash, "x")); # expect: true

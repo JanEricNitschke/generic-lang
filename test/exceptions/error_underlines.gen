@@ -450,3 +450,29 @@
             ~~~~^^^" in e.stack_trace()); # expect: true
     }
 }
+
+# dot get on a class variable declared without a default
+{
+    class C {
+        var x: Integer;
+    }
+    try {
+        var v = C().x;
+    } catch Exception as e {
+        print("
+            var v = C().x;
+                    ~~~^^" in e.stack_trace()); # expect: true
+    }
+}
+
+# dot get (missing property) on a class object
+{
+    class C {}
+    try {
+        var v = C.foo;
+    } catch Exception as e {
+        print("
+            var v = C.foo;
+                    ~^^^^" in e.stack_trace()); # expect: true
+    }
+}

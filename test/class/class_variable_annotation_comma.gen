@@ -1,0 +1,3 @@
+class Broken {
+    var x: Integer, String = 1;  # Error at ',': Expect ';' after class variable declaration.
+}  # Error at '}': Expect expression.

@@ -29,12 +29,10 @@ fun identity(cls) {
 
 @identity
 class Plain {
-    kind() {
-        return "plain";
-    }
+    var kind = "plain";
 }
 
-print(Plain().kind()); # expect: plain
+print(Plain().kind); # expect: plain
 print(isinstance(Plain(), Plain)); # expect: true
 
 # Decorators stack like function decorators: the closest one runs first.

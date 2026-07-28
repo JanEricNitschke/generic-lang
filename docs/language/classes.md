@@ -28,6 +28,40 @@ Fields can also be read and written from outside (`p.x = 10`), and the
 reflection builtins `getattr`, `setattr`, `hasattr`, and `delattr` work on
 instances by name.
 
+## Class variables
+
+A class body may declare class variables with
+`var name (: annotation)? (= default)?;`. Reading the name on an instance
+falls back to the class variable when no instance field shadows it;
+assigning through an instance creates an instance field and leaves the
+class variable (and other instances) untouched. The annotation is an
+arbitrary expression evaluated at class-definition time and is not
+enforced; a declaration without a default reserves the name (reading it
+raises `AttributeError`). Declaring the same class variable twice in one
+class body is a compile-time error. Subclasses inherit class variables
+and may override them.
+
+```generic
+class Config {
+    var retries = 3;
+    var timeout: Integer = 30;
+}
+
+var c = Config();
+print(c.retries);      # 3
+c.retries = 5;         # instance field, shadows the class variable
+print(Config().retries);  # 3
+```
+
+Class variables are declared in order; that order is what
+[dataclasses](modules.md) use as their field order.
+
+## Class decorators
+
+Like functions, a class declaration can be decorated: `@dec class Foo
+{ … }` rebinds `Foo` to `dec(Foo)`. Decorators stack and are applied
+innermost-first.
+
 ## Inheritance and `super`
 
 A class inherits from another with `class Sub < Base`. Single inheritance
