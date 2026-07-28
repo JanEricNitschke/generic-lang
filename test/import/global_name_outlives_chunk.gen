@@ -1,0 +1,8 @@
+# A module global stays reachable even when no living chunk mentions its
+# name: the module must keep its global NAME strings alive, not just the
+# values (the accessing name here is built at runtime, so it roots a
+# fresh string, never the one the helper's chunk interned).
+import "global_name_helper.gen" as helper;
+
+var name = "mar" + "ker";
+print(getattr(helper, name)); # expect: kept alive
