@@ -38,8 +38,8 @@ fn module() -> ModuleContents {
             fun: sqrt_native,
         },
         ModuleExport::Value {
-            name: "pi",
-            create: |_vm| std::f64::consts::PI.into(),
+            name: "pi".into(),
+            create: |_vm, _context| std::f64::consts::PI.into(),
         },
     ]
 }

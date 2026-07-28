@@ -81,7 +81,7 @@ impl From<RuntimeResult> for InterpretResult {
 /// Wrapper around a global value to store whether it is mutable or not.
 #[derive(Debug, Clone, Copy)] // , PartialEq, Eq, PartialOrd
 pub struct Global {
-    pub(super) value: Value,
+    pub(crate) value: Value,
     pub(crate) mutable: bool,
 }
 
@@ -118,7 +118,7 @@ pub struct VM {
     open_upvalues: VecDeque<UpvalueId>,
     // Could also keep a cache of the last module or its globals for performance
     modules: Vec<ModuleId>,
-    builtins: HashMap<StringId, Global>,
+    pub(crate) builtins: HashMap<StringId, Global>,
     /// Depth of nested native dunder re-entry, bounded by
     /// [`crate::config::REENTRY_MAX`]. Balanced by `invoke_and_run_function`.
     reentry_depth: usize,

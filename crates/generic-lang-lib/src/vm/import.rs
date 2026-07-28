@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use crate::{
     config::GENERIC_STDLIB_DIR,
     heap::StringId,
-    value::{Closure, Module, ModuleContents, ModuleExport, NativeFunction, Value},
+    value::{Closure, CreatorContext, Module, ModuleContents, ModuleExport, NativeFunction, Value},
     vm::errors::VmResult,
 };
 
@@ -188,27 +188,27 @@ impl VM {
         let exports_base = self.stack.len();
         let mut exports: Vec<(StringId, Value)> = Vec::with_capacity(stdlib_exports.len());
         for export in stdlib_exports {
-            let entry = match *export {
+            let entry = match export {
                 ModuleExport::Function { name, arity, fun } => {
-                    let name_id = self.heap.string_id(&name);
+                    let name_id = self.heap.string_id(name);
                     let value = self.heap.add_native_function(NativeFunction {
                         name: name_id,
                         arity,
-                        fun,
+                        fun: *fun,
                         #[cfg(feature = "plugins")]
                         plugin_fn: None,
                     });
                     (name_id, value)
                 }
                 ModuleExport::Class { name } => {
-                    let class_id = *self.heap.native_classes.get(name).unwrap_or_else(|| {
+                    let class_id = *self.heap.native_classes.get(*name).unwrap_or_else(|| {
                         unreachable!("Stdlib module exports unregistered native class `{name}`.")
                     });
-                    (self.heap.string_id(&name), class_id.into())
+                    (self.heap.string_id(name), class_id.into())
                 }
                 ModuleExport::Value { name, create } => {
-                    let name_id = self.heap.string_id(&name);
-                    (name_id, create(self))
+                    let name_id = self.heap.string_id(name);
+                    (name_id, create(self, &CreatorContext { name }))
                 }
             };
             self.stack.push(entry.1);

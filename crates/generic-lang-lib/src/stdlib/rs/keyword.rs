@@ -4,13 +4,13 @@
 //! [`keywords`]: crate::scanner::keywords
 
 use crate::scanner::keywords;
-use crate::value::{Instance, List, ModuleContents, ModuleExport, Value};
+use crate::value::{CreatorContext, Instance, List, ModuleContents, ModuleExport, Value};
 use crate::vm::ExceptionKind::TypeError;
 use crate::vm::VM;
 use crate::vm::errors::VmResult;
 
 /// `kwlist` - the reserved words as a list of strings, built at import.
-fn make_kwlist(vm: &mut VM) -> Value {
+fn make_kwlist(vm: &mut VM, _context: &CreatorContext) -> Value {
     let items: Vec<Value> = keywords()
         .iter()
         .map(|keyword| vm.heap.string_id(keyword).into())
@@ -49,7 +49,7 @@ pub(super) fn register(vm: &mut VM) {
 fn module() -> ModuleContents {
     vec![
         ModuleExport::Value {
-            name: "kwlist",
+            name: "kwlist".into(),
             create: make_kwlist,
         },
         ModuleExport::Function {
