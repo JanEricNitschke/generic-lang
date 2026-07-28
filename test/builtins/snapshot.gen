@@ -1,0 +1,45 @@
+import "builtins";
+
+# The module snapshots the builtins namespace; its entries are the real
+# builtin values.
+print(builtins.len([1, 2, 3])); # expect: 3
+print(builtins.print == print); # expect: true
+print(builtins.str(42)); # expect: 42
+
+# A shadowing global leaves the module's entry untouched.
+var all = "shadowed";
+print(all); # expect: shadowed
+print(builtins.all([true, true])); # expect: true
+
+# Snapshot entries are module constants.
+try {
+    builtins.len = 5;
+} catch ConstReassignmentError as e {
+    print(e.message()); # expect: Cannot reassign const variable.
+}
+
+# New attributes on the module do not become real builtins.
+builtins.fake = 1;
+print(builtins.fake); # expect: 1
+try {
+    print(fake);
+} catch NameError as e {
+    print(e.message()); # expect: Undefined variable 'fake'.
+}
+
+# Mutating a live builtin through plain assignment does not reach the
+# earlier snapshot, but a later import sees the new state.
+sleep = "clobbered";
+print(sleep); # expect: clobbered
+print(builtins.sleep == sleep); # expect: false
+import "builtins" as later;
+print(later.sleep); # expect: clobbered
+
+# The snapshot copies bindings, not values: a mutable value reached
+# through both bindings is one shared object.
+input = [1, 2];
+import "builtins" as shared;
+input.append(3);
+print(shared.input); # expect: [1, 2, 3]
+shared.input.append(4);
+print(input); # expect: [1, 2, 3, 4]

@@ -112,6 +112,10 @@ The bundled modules:
 - **`keyword`** - the language's reserved words: `keyword.kwlist` (a
   list of strings, `true`/`false`/`nil`/`StopIteration` included) and
   `keyword.iskeyword(name)`.
+- **`builtins`** - a snapshot of the built-in functions namespace, taken
+  when the module is imported: `builtins.len` is the real `len` even if
+  a global shadows it. Assigning through the module changes only the
+  snapshot, never the live builtins.
 - **`functools`** - tools for callables: `reduce(f, iterable)` /
   `reduce(f, iterable, initial)` folds an iterable with `f(acc, item)`;
   `partial(f, args...)` returns a callable with the leading arguments

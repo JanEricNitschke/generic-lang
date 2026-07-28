@@ -8,6 +8,7 @@ use crate::{
         errors::{VmErrorKind, VmResult},
     },
 };
+use std::borrow::Cow;
 
 use hashbrown::HashTable;
 use hashbrown::hash_table::Entry;
@@ -118,7 +119,7 @@ pub type NativeMethodImpl = fn(&mut VM, &Value, &[Value]) -> VmResult<Value>;
 
 /// One export of a rust native stdlib module, resolved to a `Value` at
 /// import time by `VM::import_rust_stdlib`.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum ModuleExport {
     /// A native function, allocated on the heap at import time.
     Function {
@@ -136,9 +137,20 @@ pub enum ModuleExport {
     /// must not execute bytecode: imports run between instructions and
     /// rely on allocation never collecting.
     Value {
-        name: &'static str,
-        create: fn(&mut VM) -> Value,
+        /// Owned when the export is built dynamically at registration
+        /// (the `builtins` module loops the live namespace).
+        name: Cow<'static, str>,
+        create: fn(&mut VM, &CreatorContext) -> Value,
     },
+}
+
+/// Everything a value creator may use besides the VM - the positive
+/// list of its "captures". A plain `fn` pointer cannot close over
+/// anything (in particular not over heap `Value`s, which the GC could
+/// not trace), so any input a creator needs is threaded through here.
+pub struct CreatorContext<'a> {
+    /// The export's own name.
+    pub name: &'a str,
 }
 
 pub type ModuleContents = Vec<ModuleExport>;

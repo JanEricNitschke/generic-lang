@@ -20,8 +20,8 @@ pub use functions::{Closure, Function, Module, Upvalue};
 #[cfg(feature = "plugins")]
 pub use natives::PluginInstance;
 pub use natives::{
-    Dict, DictIterMode, DictIterator, Exception, Field, Generator, GeneratorState, Interpolation,
-    List, ListIterator, ModuleContents, ModuleExport, NativeClass, NativeFunction,
+    CreatorContext, Dict, DictIterMode, DictIterator, Exception, Field, Generator, GeneratorState,
+    Interpolation, List, ListIterator, ModuleContents, ModuleExport, NativeClass, NativeFunction,
     NativeFunctionImpl, NativeMethod, NativeMethodImpl, Partial, Range, RangeIterator, Set,
     SetIterator, Template, TemplateIterator, Tuple, TupleIterator,
 };

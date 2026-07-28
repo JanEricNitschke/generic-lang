@@ -1,5 +1,6 @@
 //! Module for registering rust native stdlib modules.
 
+mod builtins;
 mod dataclasses;
 mod functools;
 mod keyword;
@@ -12,4 +13,5 @@ pub fn register(vm: &mut VM) {
     functools::register(vm);
     dataclasses::register(vm);
     keyword::register(vm);
+    builtins::register(vm);
 }
