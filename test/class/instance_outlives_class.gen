@@ -1,0 +1,19 @@
+# An instance keeps its class alive even when nothing else references
+# the class anymore.
+fun make() {
+    class Ephemeral {
+        __init__() {
+            this.value = 42;
+        }
+
+        get() {
+            return this.value;
+        }
+    }
+    return Ephemeral();
+}
+
+var instance = make();
+
+print(instance.get()); # expect: 42
+print(instance.value); # expect: 42
