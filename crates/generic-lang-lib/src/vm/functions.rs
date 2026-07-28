@@ -699,13 +699,13 @@ impl VM {
                 if was_local_import {
                     self.stack_push(value.value);
                 } else {
-                    self.globals_mut().insert(name, value);
+                    self.defining_globals_mut().insert(name, value);
                 }
             }
         } else if was_local_import {
             self.stack_push(last_module.into());
         } else {
-            self.globals_mut().insert(
+            self.defining_globals_mut().insert(
                 last_module_alias,
                 Global {
                     value: last_module.into(),

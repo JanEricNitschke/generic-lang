@@ -1,0 +1,16 @@
+# eval compiles one expression and returns its value, resolving names
+# in the caller's module by default.
+print(eval("1 + 2 * 3")); # expect: 7
+print(eval("[1, 2] + [3]")); # expect: [1, 2, 3]
+
+var base = 10;
+print(eval("base + 1")); # expect: 11
+
+fun helper() {
+    return "from helper";
+}
+print(eval("helper()")); # expect: from helper
+
+# With a module as the second argument, names resolve there instead.
+import "math";
+print(eval("sqrt(9.0)", math)); # expect: 3.0

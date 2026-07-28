@@ -976,6 +976,15 @@ fn is_instance_matches_value_type_proxy_classes() {
     let bool_class = builtin_value(&mut vm, "Bool");
     let string_class = builtin_value(&mut vm, "String");
     let rational_class = builtin_value(&mut vm, "Rational");
+    let module_class = builtin_value(&mut vm, "Module");
+    let module_name = vm.heap.string_id(&"proxy_probe".to_string());
+    let module = vm.heap.add_module(crate::value::Module::new(
+        module_name,
+        std::path::PathBuf::from("<module:proxy_probe>"),
+        None,
+        module_name,
+        false,
+    ));
     let api = build_host_api(&mut vm);
 
     // Each value-type value is an instance of its own proxy class.
@@ -985,6 +994,7 @@ fn is_instance_matches_value_type_proxy_classes() {
         (Value::Bool(true), bool_class),
         (string, string_class),
         (rational, rational_class),
+        (module, module_class),
     ] {
         let ret = (api.is_instance)(api.ctx, to_ffi(value), to_ffi(class));
         assert_eq!(ok_value(ret), Value::Bool(true));

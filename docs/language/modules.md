@@ -63,12 +63,36 @@ These are always in scope (no import needed):
 | `all(iter)`, `any(iter)` | Boolean reductions. |
 | `enumerate(iter)` | A generator of `(index, item)` tuples. |
 | `assert(x)` | Raise `AssertionError` if `x` is falsey. |
-| `getattr/setattr/hasattr/delattr(obj, name, …)` | Reflective field access. |
+| `getattr/setattr/hasattr/delattr(obj, name, …)` | Reflective attribute access on instances, classes, and modules. |
 | `clock()`, `sleep(s)`, `input(prompt)` | Time, delay, read a line. |
 | `rng(low, high)` | Random integer in `[low, high)`; bounds must be 64-bit integers. |
+| `eval(src[, mod][, locals])` | Evaluate `src` as one expression and return its value. |
+| `exec(src[, mod][, locals])` | Run `src` as statements; returns `nil`. |
+| `Module(name[, init])` | A fresh anonymous module namespace, optionally initialized from a dict. |
 
 ```generic
 foreach (var pair in enumerate(["a", "b"])) { print(pair); }   # (0, a) then (1, b)
+```
+
+### eval and exec
+
+`eval` and `exec` compile and run code at runtime. Names resolve in the
+caller's module by default, or in `mod` when given - reads, writes, and
+`var` definitions all go there. A `locals` dict injects its entries as
+local variables of the injected code (they shadow globals; writes to
+them stay inside the injected code). The caller's own locals are never
+visible (locals are compile-time stack slots). A compile failure raises
+a catchable `SyntaxError`; runtime errors propagate as usual.
+
+```generic
+var base = 10;
+print(eval("base + 1"));            # 11
+print(eval("a * b", {"a": 6, "b": 7}));  # 42
+
+var ns = Module("sandbox", {"start": 5});
+exec("var doubled = start * 2;", ns);
+print(ns.doubled);                  # 10
+print(isinstance(ns, Module));      # true
 ```
 
 ## The standard library

@@ -33,7 +33,7 @@ use callstack::CallStack;
 use errors::RuntimeResult;
 use errors::{Return, VmErrorKind};
 use exception_handling::ExceptionKind::{
-    AttributeError, ConstReassignmentError, TypeError, ValueError,
+    AttributeError, ConstReassignmentError, SyntaxError, TypeError, ValueError,
 };
 pub use exception_handling::{ExceptionHandler, ExceptionKind, SuspendedExceptionHandler};
 #[cfg(feature = "plugins")]
@@ -45,7 +45,7 @@ use std::path::PathBuf;
 
 use crate::config::{GENERIC_BUILTINS_DIR, GENERIC_STDLIB_DIR};
 use crate::natives;
-use crate::types::Location;
+use crate::types::{InjectedKind, Location};
 use crate::vm::errors::VmResult;
 use crate::{
     chunk::{CodeOffset, OpCode},
@@ -57,6 +57,7 @@ use crate::{
     value::{Class, Closure, Function, ModuleContents, Number, Upvalue, Value},
 };
 use std::fmt::Write;
+use strum::IntoEnumIterator;
 
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -81,7 +82,7 @@ impl From<RuntimeResult> for InterpretResult {
 #[derive(Debug, Clone, Copy)] // , PartialEq, Eq, PartialOrd
 pub struct Global {
     pub(super) value: Value,
-    mutable: bool,
+    pub(crate) mutable: bool,
 }
 
 impl Global {
@@ -227,6 +228,62 @@ impl VM {
         compiler.compile()
     }
 
+    /// Compile and run injected source (`eval`/`exec`) against `module`'s
+    /// globals (the caller's module when `None`): the code runs in a plain
+    /// closure whose defining module is `module`, so global reads, writes,
+    /// and definitions all resolve there. `locals` become the function's
+    /// leading local slots, passed like arguments; the caller's own locals
+    /// are unreachable by construction (locals are compile-time stack
+    /// slots). Compile failures raise a catchable `SyntaxError`.
+    pub(crate) fn run_injected_source(
+        &mut self,
+        source: &str,
+        module: Option<ModuleId>,
+        locals: &[(String, Value)],
+        kind: InjectedKind,
+    ) -> VmResult<Value> {
+        let module = module.unwrap_or_else(|| self.defining_module());
+        let function_name = kind.function_name();
+        let local_names: Vec<String> = locals.iter().map(|(name, _)| name.clone()).collect();
+        let scanner = Scanner::new(
+            source,
+            #[cfg(feature = "debug_scanner")]
+            false,
+        );
+        let compiler = Compiler::new(
+            scanner,
+            &mut self.heap,
+            &function_name,
+            #[cfg(any(feature = "print_code", feature = "debug_parser"))]
+            false,
+        );
+        let function = match compiler.compile_injected(&local_names, kind) {
+            Ok(function) => function,
+            Err(errors) => {
+                return Err(self.throw(SyntaxError, &errors.join("\n")).unwrap_err());
+            }
+        };
+        let function_value = self.heap.add_function(function);
+        let closure = Closure::new(
+            *function_value.as_function(),
+            false,
+            Some(module),
+            &self.heap,
+        );
+        let closure_value = self.heap.add_closure(closure);
+        self.stack.push(closure_value);
+        for (_, value) in locals {
+            self.stack.push(*value);
+        }
+        let arg_count =
+            u8::try_from(locals.len()).expect("the compiler rejects more than 255 locals");
+        self.call_value_and_run(arg_count)?;
+        Ok(self
+            .stack
+            .pop()
+            .expect("injected source call left no result on the stack"))
+    }
+
     /// Load and execute generic builtin files from the embedded `src/builtins` directory.
     ///
     /// Each builtin file is compiled and executed to completion. Then its globals
@@ -332,14 +389,21 @@ impl VM {
                 .containing_module
                 .unwrap_or(self.modules[0])
                 .to_value(&self.heap);
-            let source_text = std::fs::read_to_string(&module.path).unwrap_or_else(|_| {
-                GENERIC_STDLIB_DIR
-                    .get_file(format!("{}.gen", module.name.to_value(&self.heap)))
-                    .unwrap()
-                    .contents_utf8()
-                    .unwrap()
-                    .to_string()
-            });
+            // The snippet renders only when the frame's line numbers refer
+            // to a readable module source. Injected (`<eval>`/`<exec>`)
+            // frames never do (their lines index the injected string), and
+            // a native module (e.g. as an `exec` target) has no source.
+            let injected = InjectedKind::iter().any(|kind| &kind.function_name() == function_name);
+            let source_text = if injected {
+                None
+            } else {
+                std::fs::read_to_string(&module.path).ok().or_else(|| {
+                    GENERIC_STDLIB_DIR
+                        .get_file(format!("{}.gen", module.name.to_value(&self.heap)))
+                        .and_then(|file| file.contents_utf8())
+                        .map(str::to_string)
+                })
+            };
 
             // Get opcode location at the instruction pointer (previous instruction)
             let oploc = function_val
@@ -373,6 +437,9 @@ impl VM {
             .unwrap();
 
             // Render lines + underlines
+            let Some(source_text) = source_text else {
+                continue;
+            };
             let lines: Vec<&str> = source_text.lines().collect();
             for line_no in first_line..=last_line {
                 let line = lines.get(line_no.saturating_sub(1)).copied().unwrap_or("");

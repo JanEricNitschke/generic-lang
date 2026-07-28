@@ -1,0 +1,67 @@
+# Module(name) builds a fresh, empty, anonymous module namespace.
+var ns = Module("sandbox");
+print(ns); # expect: <module sandbox>
+print(isinstance(ns, Module)); # expect: true
+print(isinstance(5, Module)); # expect: false
+
+# It serves as an eval/exec namespace; sequential runs share it.
+exec("var x = 1;", ns);
+exec("x = x + 1;", ns);
+print(eval("x", ns)); # expect: 2
+print(ns.x); # expect: 2
+
+# Module(name, init) initializes the globals from a dict; the entries
+# are mutable.
+var data = Module("data", {"a": 1, "b": 2});
+print(eval("a + b", data)); # expect: 3
+data.a = 10;
+print(data.a); # expect: 10
+
+# Imported modules are Module instances too.
+import "math";
+print(isinstance(math, Module)); # expect: true
+
+# Reflection works on modules.
+print(hasattr(ns, "x")); # expect: true
+print(hasattr(ns, "missing")); # expect: false
+print(getattr(ns, "x")); # expect: 2
+setattr(ns, "y", 5);
+print(ns.y); # expect: 5
+try {
+    getattr(ns, "missing");
+} catch AttributeError as e {
+    print(e.message()); # expect: Undefined name 'missing' in module sandbox.
+}
+
+# Module constants stay constant through setattr.
+try {
+    setattr(math, "sqrt", 5);
+} catch ConstReassignmentError as e {
+    print(e.message()); # expect: Cannot reassign const variable.
+}
+
+# Argument validation.
+try {
+    Module(5);
+} catch TypeError as e {
+    print(e.message()); # expect: 'Module' expects a string as its first argument, got: 5
+}
+try {
+    Module("bad", 5);
+} catch TypeError as e {
+    print(e.message()); # expect: 'Module' expects a dict as its second argument, got: 5
+}
+
+# delattr removes mutable module globals; constants refuse.
+delattr(ns, "y");
+print(hasattr(ns, "y")); # expect: false
+try {
+    delattr(ns, "y");
+} catch AttributeError as e {
+    print(e.message()); # expect: Undefined name 'y' in module sandbox.
+}
+try {
+    delattr(math, "pi");
+} catch ConstReassignmentError as e {
+    print(e.message()); # expect: Cannot delete const variable.
+}

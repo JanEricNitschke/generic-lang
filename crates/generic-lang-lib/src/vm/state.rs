@@ -22,6 +22,13 @@ impl VM {
         *self.modules.last().unwrap()
     }
 
+    /// The globals of the [defining module](Self::defining_module): where
+    /// global definitions, and with them import bindings, belong.
+    pub(super) fn defining_globals_mut(&mut self) -> &mut HashMap<StringId, Global> {
+        let module = self.defining_module();
+        &mut module.to_value_mut(&mut self.heap).globals
+    }
+
     /// Get the module present when the current closure was defined.
     ///
     /// Needed to properly handle captured globals in modules.

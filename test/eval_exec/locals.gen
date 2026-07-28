@@ -1,0 +1,42 @@
+# A locals dict injects values as the compiled function's leading local
+# slots.
+print(eval("x + y", {"x": 1, "y": 2})); # expect: 3
+
+# Injected locals shadow globals.
+var g = 100;
+print(eval("g", {"g": 5})); # expect: 5
+print(eval("g + x", {"x": 1})); # expect: 101
+
+# Writes to an injected local stay inside the injected code: the dict
+# is untouched. (Assignment is an expression, so eval accepts it and
+# returns the assigned value.)
+var locals_dict = {"v": 10};
+print(eval("v = v + 1", locals_dict)); # expect: 11
+print(locals_dict["v"]); # expect: 10
+
+# Locals combine with a target module.
+var ns = Module("with_locals");
+exec("var doubled = v * 2;", ns, locals_dict);
+print(ns.doubled); # expect: 20
+
+# The empty dict is allowed.
+print(eval("1 + 1", {:})); # expect: 2
+
+# Keys must be strings.
+try {
+    eval("1", {1: 2});
+} catch TypeError as e {
+    print(e.message()); # expect: locals dict keys must be strings, got: 1
+}
+
+# Dispatch errors for the second and third argument.
+try {
+    eval("1", 5);
+} catch TypeError as e {
+    print(e.message()); # expect: 'eval' expects a module or a locals dict as its second argument, got: 5
+}
+try {
+    exec("1;", ns, 5);
+} catch TypeError as e {
+    print(e.message()); # expect: 'exec' expects a locals dict as its third argument, got: 5
+}

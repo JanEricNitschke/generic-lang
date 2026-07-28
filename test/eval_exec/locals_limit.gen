@@ -1,0 +1,24 @@
+# The locals become the injected function's parameters, so the language's
+# 255-parameter limit applies and is reported as a catchable ValueError.
+var locals = {:};
+for (var i = 0; i < 256; i = i + 1) {
+    locals[f"key${i}"] = i;
+}
+
+try {
+    eval("key0", locals);
+} catch ValueError as e {
+    print(e.message()); # expect: 'eval' accepts at most 255 locals, got: 256
+}
+try {
+    exec("var unused = key0;", locals);
+} catch ValueError as e {
+    print(e.message()); # expect: 'exec' accepts at most 255 locals, got: 256
+}
+
+# 255 locals are fine.
+locals = {:};
+for (var i = 0; i < 255; i = i + 1) {
+    locals[f"key${i}"] = i;
+}
+print(eval("key0 + key254", locals)); # expect: 254

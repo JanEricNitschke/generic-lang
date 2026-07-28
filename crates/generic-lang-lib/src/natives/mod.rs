@@ -44,10 +44,10 @@ use list::{
 };
 
 use native_functions::{
-    assert_native, clock_native, delattr_native, getattr_native, hasattr_native, input_native,
-    is_int_native, isinstance_native, issubclass_native, iter_native, len_native, next_native,
-    print_native, rng_native, setattr_native, sleep_native, to_float_native, to_int_native,
-    to_string_native, type_native, typename_native,
+    assert_native, clock_native, delattr_native, eval_native, exec_native, getattr_native,
+    hasattr_native, input_native, is_int_native, isinstance_native, issubclass_native, iter_native,
+    len_native, module_init_native, next_native, print_native, rng_native, setattr_native,
+    sleep_native, to_float_native, to_int_native, to_string_native, type_native, typename_native,
 };
 
 use range::{
@@ -123,6 +123,8 @@ pub fn define(vm: &mut VM) {
     vm.define_native_function(&"typename", &[1], typename_native);
     vm.define_native_function(&"print", &[1, 2], print_native);
     vm.define_native_function(&"getattr", &[2], getattr_native);
+    vm.define_native_function(&"eval", &[1, 2, 3], eval_native);
+    vm.define_native_function(&"exec", &[1, 2, 3], exec_native);
     vm.define_native_function(&"setattr", &[3], setattr_native);
     vm.define_native_function(&"hasattr", &[2], hasattr_native);
     vm.define_native_function(&"delattr", &[2], delattr_native);
@@ -306,6 +308,8 @@ pub fn define(vm: &mut VM) {
     // Value type proxy classes (native classes with special __init__ methods)
     vm.define_native_class(&"Bool", true);
     vm.define_native_method(&"Bool", &"__init__", &[1], bool_init_native);
+    vm.define_native_class(&"Module", true);
+    vm.define_native_method(&"Module", &"__init__", &[1, 2], module_init_native);
 
     vm.define_native_class(&"String", true);
     vm.define_native_method(&"String", &"__init__", &[1], string_init_native);

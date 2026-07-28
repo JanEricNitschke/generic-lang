@@ -1,14 +1,20 @@
 //! Module containing free standing rust native functions.
 
-use crate::vm::ExceptionKind::{AssertionError, AttributeError, IoError, TypeError, ValueError};
+use crate::vm::ExceptionKind::{
+    AssertionError, AttributeError, ConstReassignmentError, IoError, TypeError, ValueError,
+};
 use crate::{
+    heap::Heap,
+    types::InjectedKind,
     value::{
-        BoundMethod, GenericInt, Number, Value, class_of_value, is_subclass_of, value_isinstance,
+        BoundMethod, GenericInt, Module, NativeClass, Number, Value, class_of_value,
+        is_subclass_of, value_isinstance,
     },
-    vm::{VM, errors::VmResult},
+    vm::{Global, VM, errors::VmResult},
 };
 use rand::RngExt;
 use std::io;
+use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -327,6 +333,23 @@ pub(super) fn rng_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
 /// Get an attribute from a value by name.
 pub(super) fn getattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     match (&args[0], &args[1]) {
+        (Value::Module(module_id), Value::String(string_id)) => {
+            let maybe_value = module_id
+                .to_value(&vm.heap)
+                .globals
+                .get(string_id)
+                .map(|global| global.value);
+            if let Some(value) = maybe_value {
+                Ok(value)
+            } else {
+                let message = format!(
+                    "Undefined name '{}' in module {}.",
+                    string_id.to_value(&vm.heap).clone(),
+                    module_id.to_value(&vm.heap).name.to_value(&vm.heap)
+                );
+                Err(vm.throw(AttributeError, &message).unwrap_err())
+            }
+        }
         (receiver @ Value::Instance(instance), Value::String(string_id)) => {
             // Mirrors property access: fields, then methods (bound to the
             // instance), then class variables.
@@ -376,7 +399,7 @@ pub(super) fn getattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             .throw(
                 TypeError,
                 &format!(
-                    "`getattr` only works on instances, got `{}`",
+                    "`getattr` only works on instances, classes, and modules, got `{}`",
                     not_instance.to_string(&vm.heap)
                 ),
             )
@@ -413,12 +436,35 @@ pub(super) fn setattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             .to_value_mut(&mut vm.heap)
             .set_class_variable_value(name_id, value);
         Ok(Value::Nil)
+    } else if let Value::Module(module_id) = args[0] {
+        let name_id = vm.heap.string_id(&field);
+        if let Some(global) = module_id
+            .to_value_mut(&mut vm.heap)
+            .globals
+            .get_mut(&name_id)
+        {
+            if !global.mutable {
+                return Err(vm
+                    .throw(ConstReassignmentError, "Cannot reassign const variable.")
+                    .unwrap_err());
+            }
+            global.value = value;
+        } else {
+            module_id.to_value_mut(&mut vm.heap).globals.insert(
+                name_id,
+                Global {
+                    value,
+                    mutable: true,
+                },
+            );
+        }
+        Ok(Value::Nil)
     } else {
         Err(vm
             .throw(
                 TypeError,
                 &format!(
-                    "`setattr` only works on instances, got `{}`",
+                    "`setattr` only works on instances, classes, and modules, got `{}`",
                     args[0].to_string(&vm.heap)
                 ),
             )
@@ -430,6 +476,9 @@ pub(super) fn setattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
 /// class variable), a class (class variables only), or a module (globals).
 pub(super) fn hasattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     match (&args[0], &args[1]) {
+        (Value::Module(module_id), Value::String(string_id)) => Ok(Value::Bool(
+            module_id.to_value(&vm.heap).globals.contains_key(string_id),
+        )),
         (Value::Instance(instance), Value::String(string_id)) => Ok((instance
             .to_value(&vm.heap)
             .has_field_or_method(*string_id, &vm.heap)
@@ -459,7 +508,7 @@ pub(super) fn hasattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             .throw(
                 TypeError,
                 &format!(
-                    "`hasattr` only works on instances, got `{}`",
+                    "`hasattr` only works on instances, classes, and modules, got `{}`",
                     not_instance.to_string(&vm.heap)
                 ),
             )
@@ -479,12 +528,42 @@ pub(super) fn delattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
                     .throw(AttributeError, &format!("Undefined property '{field}'."))
                     .unwrap_err()),
             }
+        } else if let Value::Class(class) = args[0] {
+            match class
+                .to_value_mut(&mut vm.heap)
+                .remove_class_variable(string_id)
+            {
+                Some(_) => Ok(Value::Nil),
+                None => Err(vm
+                    .throw(AttributeError, &format!("Undefined property '{field}'."))
+                    .unwrap_err()),
+            }
+        } else if let Value::Module(module_id) = args[0] {
+            match module_id.to_value(&vm.heap).globals.get(&string_id) {
+                Some(global) if !global.mutable => Err(vm
+                    .throw(ConstReassignmentError, "Cannot delete const variable.")
+                    .unwrap_err()),
+                Some(_) => {
+                    module_id
+                        .to_value_mut(&mut vm.heap)
+                        .globals
+                        .remove(&string_id);
+                    Ok(Value::Nil)
+                }
+                None => {
+                    let message = format!(
+                        "Undefined name '{field}' in module {}.",
+                        module_id.to_value(&vm.heap).name.to_value(&vm.heap)
+                    );
+                    Err(vm.throw(AttributeError, &message).unwrap_err())
+                }
+            }
         } else {
             Err(vm
                 .throw(
                     TypeError,
                     &format!(
-                        "`delattr` only works on instances, got `{}`",
+                        "`delattr` only works on instances, classes, and modules, got `{}`",
                         args[0].to_string(&vm.heap)
                     ),
                 )
@@ -580,4 +659,170 @@ pub(super) fn issubclass_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> 
             )
             .unwrap_err()),
     }
+}
+
+/// Whether `value` is a dict instance.
+fn is_dict(heap: &Heap, value: Value) -> bool {
+    matches!(value, Value::Instance(id)
+        if matches!(&id.to_value(heap).backing, Some(NativeClass::Dict(_))))
+}
+
+/// Read a `(name, value)` list out of a dict with string keys, for
+/// injected locals and `Module` initialization. `what` names the
+/// expectation in the error message.
+fn named_values_from_dict(
+    vm: &mut VM,
+    dict_value: Value,
+    what: &str,
+) -> VmResult<Vec<(String, Value)>> {
+    let entries: Vec<(Value, Value)> = dict_value
+        .as_dict(&vm.heap)
+        .items
+        .iter()
+        .map(|(key, value, _)| (*key, *value))
+        .collect();
+    let mut named = Vec::with_capacity(entries.len());
+    for (key, value) in entries {
+        let Value::String(key_id) = key else {
+            return Err(vm
+                .throw(
+                    TypeError,
+                    &format!(
+                        "{what} keys must be strings, got: {}",
+                        key.to_string(&vm.heap)
+                    ),
+                )
+                .unwrap_err());
+        };
+        named.push((vm.heap.strings[key_id].clone(), value));
+    }
+    Ok(named)
+}
+
+/// Shared implementation of `eval` and `exec`: decode the source string,
+/// the optional target module, and the optional locals dict, then hand
+/// off to the VM.
+fn run_injected_native(vm: &mut VM, args: &[Value], kind: InjectedKind) -> VmResult<Value> {
+    let Value::String(source_id) = args[0] else {
+        return Err(vm
+            .throw(
+                TypeError,
+                &format!(
+                    "'{kind}' expects a string as its first argument, got: {}",
+                    args[0].to_string(&vm.heap)
+                ),
+            )
+            .unwrap_err());
+    };
+    let (module, locals_dict) = match (args.get(1).copied(), args.get(2).copied()) {
+        (None, _) => (None, None),
+        (Some(Value::Module(module_id)), None) => (Some(module_id), None),
+        (Some(second), None) if is_dict(&vm.heap, second) => (None, Some(second)),
+        (Some(Value::Module(module_id)), Some(third)) if is_dict(&vm.heap, third) => {
+            (Some(module_id), Some(third))
+        }
+        (Some(Value::Module(_)), Some(third)) => {
+            return Err(vm
+                .throw(
+                    TypeError,
+                    &format!(
+                        "'{kind}' expects a locals dict as its third argument, got: {}",
+                        third.to_string(&vm.heap)
+                    ),
+                )
+                .unwrap_err());
+        }
+        (Some(second), _) => {
+            return Err(vm
+                .throw(
+                    TypeError,
+                    &format!(
+                        "'{kind}' expects a module or a locals dict as its second argument, got: {}",
+                        second.to_string(&vm.heap)
+                    ),
+                )
+                .unwrap_err());
+        }
+    };
+    let locals = match locals_dict {
+        Some(dict) => named_values_from_dict(vm, dict, "locals dict")?,
+        None => Vec::new(),
+    };
+    // The locals become the injected function's parameters, so the
+    // 255-parameter limit applies to them.
+    if locals.len() > usize::from(u8::MAX) {
+        return Err(vm
+            .throw(
+                ValueError,
+                &format!("'{kind}' accepts at most 255 locals, got: {}", locals.len()),
+            )
+            .unwrap_err());
+    }
+    let source = source_id.to_value(&vm.heap).clone();
+    vm.run_injected_source(&source, module, &locals, kind)
+}
+
+/// `eval(source)` / `eval(source, module)` / `eval(source, locals)` /
+/// `eval(source, module, locals)`: evaluate one expression and return
+/// its value.
+pub(super) fn eval_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
+    run_injected_native(vm, args, InjectedKind::Eval)
+}
+
+/// `exec(source)` / `exec(source, module)` / `exec(source, locals)` /
+/// `exec(source, module, locals)`: run statements; returns nil.
+pub(super) fn exec_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
+    run_injected_native(vm, args, InjectedKind::Exec)
+}
+
+/// `Module.__init__(name)` / `Module.__init__(name, init)`: a fresh
+/// module value, its globals optionally initialized from a dict with
+/// string keys (the entries are mutable). The module is anonymous: not
+/// importable and not cached.
+pub(super) fn module_init_native(
+    vm: &mut VM,
+    _receiver: &Value,
+    args: &[Value],
+) -> VmResult<Value> {
+    let Value::String(name_id) = args[0] else {
+        return Err(vm
+            .throw(
+                TypeError,
+                &format!(
+                    "'Module' expects a string as its first argument, got: {}",
+                    args[0].to_string(&vm.heap)
+                ),
+            )
+            .unwrap_err());
+    };
+    let init = match args.get(1) {
+        Some(&init) if is_dict(&vm.heap, init) => {
+            named_values_from_dict(vm, init, "'Module' init dict")?
+        }
+        Some(x) => {
+            return Err(vm
+                .throw(
+                    TypeError,
+                    &format!(
+                        "'Module' expects a dict as its second argument, got: {}",
+                        x.to_string(&vm.heap)
+                    ),
+                )
+                .unwrap_err());
+        }
+        None => Vec::new(),
+    };
+    let path = PathBuf::from(format!("<module:{}>", vm.heap.strings[name_id].clone()));
+    let mut module = Module::new(name_id, path, None, name_id, false);
+    for (name, value) in init {
+        let name_id = vm.heap.string_id(&name);
+        module.globals.insert(
+            name_id,
+            Global {
+                value,
+                mutable: true,
+            },
+        );
+    }
+    Ok(vm.heap.add_module(module))
 }

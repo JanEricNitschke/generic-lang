@@ -107,6 +107,12 @@ impl Class {
 
     /// The current value of a class variable, if it is declared and has a
     /// default.
+    /// Remove a class variable; the remaining declaration order is
+    /// preserved (`shift_remove`), which dataclass field order relies on.
+    pub(crate) fn remove_class_variable(&mut self, name: StringId) -> Option<ClassVariable> {
+        self.variables.shift_remove(&name)
+    }
+
     pub(crate) fn class_variable_value(&self, name: StringId) -> Option<Value> {
         self.variables
             .get(&name)
@@ -182,6 +188,7 @@ pub fn class_of_value(heap: &Heap, value: Value) -> Option<ClassId> {
         Value::Number(Number::Rational(_)) => Some(get_native_class_id(heap, "Rational")),
         Value::Nil => Some(get_native_class_id(heap, "NilType")),
         Value::StopIteration => Some(get_native_class_id(heap, "StopIterationType")),
+        Value::Module(_) => Some(get_native_class_id(heap, "Module")),
         _ => None,
     }
 }
@@ -189,7 +196,8 @@ pub fn class_of_value(heap: &Heap, value: Value) -> Option<ClassId> {
 /// Whether `value` is an instance of `class_id` or of a subclass of it -
 /// the semantics of the `isinstance` builtin. Value types match their
 /// proxy classes exactly (`Bool`, `String`, `Integer`, `Float`,
-/// `Rational`); everything else that is not an instance is `false`.
+/// `Rational`, `Module`); everything else that is not an instance is
+/// `false`.
 pub fn value_isinstance(heap: &Heap, value: Value, class_id: ClassId) -> bool {
     match value {
         Value::Instance(instance) => is_subclass_of(heap, instance.to_value(heap).class, class_id),
@@ -200,6 +208,7 @@ pub fn value_isinstance(heap: &Heap, value: Value, class_id: ClassId) -> bool {
         Value::Number(Number::Rational(_)) => class_id == get_native_class_id(heap, "Rational"),
         Value::Nil => class_id == get_native_class_id(heap, "NilType"),
         Value::StopIteration => class_id == get_native_class_id(heap, "StopIterationType"),
+        Value::Module(_) => class_id == get_native_class_id(heap, "Module"),
         _ => false,
     }
 }

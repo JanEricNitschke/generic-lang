@@ -1,0 +1,13 @@
+# MARKER_FIRST_LINE - stays on line 1: if an injected frame wrongly
+# rendered a snippet from this file, this line would appear in it.
+try {
+    eval("missing_inside_eval");
+} catch NameError as e {
+    var trace = e.stack_trace();
+    # The injected frame appears with its header.
+    print("in <eval>" in trace); # expect: true
+    # But without a snippet from this file.
+    print("MARKER_FIRST_LINE" in trace); # expect: false
+    # The calling frame still renders its snippet with underlines.
+    print("eval(" in trace); # expect: true
+}

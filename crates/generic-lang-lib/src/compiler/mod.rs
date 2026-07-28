@@ -17,7 +17,7 @@ use crate::{
     compiler::rules::{Rules, make_rules},
     heap::{Heap, StringId},
     scanner::{Scanner, Token, TokenKind},
-    types::{Location, Mutability, ReturnMode},
+    types::{InjectedKind, Location, Mutability, ReturnMode},
     value::Function,
 };
 
@@ -180,6 +180,10 @@ pub struct Compiler<'scanner, 'heap> {
 
     had_error: bool,
     panic_mode: bool,
+    /// Collected compile errors; printed to stderr by [`Self::compile`],
+    /// returned to the caller by the collecting entry points (eval/exec
+    /// wrap them in a catchable `SyntaxError`).
+    errors: Vec<String>,
 
     nestable_state: Vec<NestableState<'scanner>>,
     class_state: Vec<ClassState>,
@@ -204,6 +208,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             current: None,
             had_error: false,
             panic_mode: false,
+            errors: Vec::new(),
             rules: make_rules(),
             nestable_state: vec![NestableState::new(function_name, FunctionType::Script)],
             class_state: vec![],
@@ -212,10 +217,25 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         }
     }
 
-    /// Compile the tokens provided by the scanner into a function.
+    /// Compile the tokens provided by the scanner into a function,
+    /// printing any compile errors to stderr.
     ///
     /// This is the main compilation loop of generic.
-    pub(super) fn compile(mut self) -> Option<Function> {
+    pub(super) fn compile(self) -> Option<Function> {
+        match self.compile_collect() {
+            Ok(function) => Some(function),
+            Err(errors) => {
+                for error in errors {
+                    eprintln!("{error}");
+                }
+                None
+            }
+        }
+    }
+
+    /// Like [`Self::compile`], but return the compile errors instead of
+    /// printing them.
+    pub(super) fn compile_collect(mut self) -> Result<Function, Vec<String>> {
         self.advance();
 
         while !self.match_(TokenKind::Eof) {
@@ -223,10 +243,57 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         }
 
         self.end(ReturnMode::Normal, self.op_location());
-        if self.had_error {
-            None
+        self.finish()
+    }
+
+    /// Compile injected (`eval`/`exec`) source. `locals` are pre-declared
+    /// as the function's leading local slots, filled by the caller like
+    /// arguments (so the function's arity is their count). `Eval` compiles
+    /// a single expression whose value the function returns.
+    pub(super) fn compile_injected(
+        mut self,
+        locals: &'scanner [String],
+        kind: InjectedKind,
+    ) -> Result<Function, Vec<String>> {
+        for name in locals {
+            self.add_local(self.synthetic_identifier_token(name), Mutability::Mutable);
+            // `mark_initialized` no-ops at scope depth 0; these slots are
+            // filled by the caller like arguments, so they are live from
+            // the first instruction.
+            if let Some(local) = self.locals_mut().last_mut() {
+                local.depth = ScopeDepth::default();
+            }
+        }
+        self.advance();
+        // The callers (`eval`/`exec`) reject more than 255 locals up
+        // front, so the error here is a backstop (placed after `advance`
+        // so it attaches to a token and is not dropped).
+        if u8::try_from(locals.len()).is_ok() {
+            self.current_function_mut().arity = locals.len();
         } else {
-            Some(self.nestable_state.pop().unwrap().current_function)
+            self.error("Can't inject more than 255 locals.");
+        }
+        match kind {
+            InjectedKind::Eval => {
+                self.expression();
+                self.consume(TokenKind::Eof, "Expect end of expression.");
+                self.end(ReturnMode::Raw, self.op_location());
+            }
+            InjectedKind::Exec => {
+                while !self.match_(TokenKind::Eof) {
+                    self.declaration();
+                }
+                self.end(ReturnMode::Normal, self.op_location());
+            }
+        }
+        self.finish()
+    }
+
+    fn finish(mut self) -> Result<Function, Vec<String>> {
+        if self.had_error {
+            Err(std::mem::take(&mut self.errors))
+        } else {
+            Ok(self.nestable_state.pop().unwrap().current_function)
         }
     }
 

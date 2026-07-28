@@ -1,0 +1,50 @@
+# Compile failures raise a catchable SyntaxError carrying the compiler
+# message.
+try {
+    eval("1 +");
+} catch SyntaxError as e {
+    print(e.message()); # expect: [line 1] Error at end: Expect expression.
+}
+
+# Statements are not expressions.
+try {
+    eval("var x = 1;");
+} catch SyntaxError as e {
+    print(e.message()); # expect: [line 1] Error at 'var': Expect expression.
+}
+
+try {
+    exec("1 +");
+} catch SyntaxError as e {
+    print(e.message()); # expect: [line 1] Error at end: Expect expression.
+}
+
+# Runtime errors from the injected code propagate as usual.
+try {
+    eval("missing_name");
+} catch NameError as e {
+    print(e.message()); # expect: Undefined variable 'missing_name'.
+}
+
+# The caller's locals are unreachable: injected code sees globals only.
+fun local_scope() {
+    var hidden = "local";
+    try {
+        return eval("hidden");
+    } catch NameError as e {
+        return e.message();
+    }
+}
+print(local_scope()); # expect: Undefined variable 'hidden'.
+
+# Argument validation.
+try {
+    eval(5);
+} catch TypeError as e {
+    print(e.message()); # expect: 'eval' expects a string as its first argument, got: 5
+}
+try {
+    exec("1;", 5);
+} catch TypeError as e {
+    print(e.message()); # expect: 'exec' expects a module or a locals dict as its second argument, got: 5
+}

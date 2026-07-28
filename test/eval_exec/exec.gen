@@ -1,0 +1,29 @@
+# exec compiles statements and runs them against the caller's module
+# globals; it returns nil.
+exec("var created = 42;");
+print(created); # expect: 42
+
+exec("created = created + 1;");
+print(created); # expect: 43
+
+print(exec("var another = 1;")); # expect: nil
+
+# Multiple statements, including control flow.
+exec("var total = 0;
+foreach (var n in 1..=3) {
+    total = total + n;
+}");
+print(total); # expect: 6
+
+# Global definitions made by exec inside a function land in the
+# function's module, not in its locals.
+fun define_from_function() {
+    exec("var from_inner = 99;");
+}
+define_from_function();
+print(from_inner); # expect: 99
+
+# With a module as the second argument, definitions land there.
+import "math";
+exec("var double_sqrt = sqrt(16.0) * 2;", math);
+print(math.double_sqrt); # expect: 8.0

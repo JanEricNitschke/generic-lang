@@ -22,13 +22,17 @@ impl Compiler<'_, '_> {
         }
         self.panic_mode = true;
         if let Some(token) = token.as_ref() {
-            eprint!("[line {}] Error", *token.location.end_line);
-            if token.kind == TK::Eof {
-                eprint!(" at end");
-            } else if token.kind != TK::Error {
-                eprint!(" at '{}'", token.as_str());
-            }
-            eprintln!(": {msg}");
+            let position = if token.kind == TK::Eof {
+                " at end".to_string()
+            } else if token.kind == TK::Error {
+                String::new()
+            } else {
+                format!(" at '{}'", token.as_str())
+            };
+            self.errors.push(format!(
+                "[line {}] Error{position}: {msg}",
+                *token.location.end_line
+            ));
         }
         self.had_error = true;
         #[cfg(feature = "debug_parser")]
