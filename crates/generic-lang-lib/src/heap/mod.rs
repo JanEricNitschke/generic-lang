@@ -416,7 +416,10 @@ impl Heap {
         let item = item.clone();
         let module = &item.item;
         self.strings.gray.push(module.name);
-        for value in module.globals.values() {
+        // The keys are as load-bearing as the values: a global whose name
+        // string were swept would be unreachable by any later lookup.
+        for (name, value) in &module.globals {
+            self.strings.gray.push(*name);
             gray_value!(self, &value.value);
         }
     }

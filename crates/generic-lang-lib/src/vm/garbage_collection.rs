@@ -1,22 +1,5 @@
 use super::VM;
 
-macro_rules! clear_garbage {
-    ($collection:expr, $heap:expr, $collection_name:expr $(,)?) => {
-        $collection.retain(|string_id, _| {
-            #[cfg(feature = "log_gc")]
-            if !string_id.marked($heap) {
-                eprintln!(
-                    "String/{:?} free from {} {}",
-                    string_id,
-                    $collection_name,
-                    string_id.to_value($heap)
-                );
-            }
-            string_id.marked($heap)
-        });
-    };
-}
-
 impl VM {
     /// Call the heap garbage collector.
     ///
@@ -103,15 +86,7 @@ impl VM {
         // Trace references
         self.heap.trace();
 
-        // Remove references to unmarked strings in `globals` and `heap.strings_by_name`
-        // and `builtins`
-        for module_id in &mut self.modules.iter().copied() {
-            let module = module_id.to_value_mut(&mut self.heap);
-            let mut globals = std::mem::take(&mut module.globals);
-            clear_garbage!(&mut globals, &self.heap, "module globals");
-            module_id.to_value_mut(&mut self.heap).globals = globals;
-        }
-
+        // Remove references to unmarked strings in `heap.strings_by_name`.
         let mut strings_by_name = std::mem::take(&mut self.heap.strings_by_name);
         strings_by_name.retain(|_, string_id| {
             #[cfg(feature = "log_gc")]
