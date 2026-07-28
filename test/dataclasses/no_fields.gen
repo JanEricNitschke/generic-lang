@@ -1,0 +1,19 @@
+from "dataclasses" import dataclass;
+
+# A dataclass without class variables still gets the generated methods.
+@dataclass
+class Empty {}
+
+var empty = Empty();
+print(empty); # expect: Empty()
+print(empty == Empty()); # expect: true
+
+var lookup = {:};
+lookup[empty] = "found";
+print(lookup[Empty()]); # expect: found
+
+try {
+    Empty(1);
+} catch TypeError as error {
+    print(error.message()); # expect: 'Empty' takes at most 0 arguments, got 1.
+}

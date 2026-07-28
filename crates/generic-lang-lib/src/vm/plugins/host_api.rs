@@ -298,7 +298,7 @@ pub(super) fn value_kind_of(heap: &Heap, value: Value) -> u32 {
             None => ValueKind::Instance,
             #[cfg(feature = "plugins")]
             Some(NativeClass::Plugin(_)) => ValueKind::Instance,
-            Some(NativeClass::Partial(_)) => ValueKind::Instance,
+            Some(NativeClass::Partial(_) | NativeClass::Field(_)) => ValueKind::Instance,
             Some(NativeClass::List(_)) => ValueKind::List,
             Some(NativeClass::Tuple(_)) => ValueKind::Tuple,
             Some(NativeClass::Dict(_)) => ValueKind::Dict,

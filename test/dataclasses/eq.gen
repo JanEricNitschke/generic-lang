@@ -1,0 +1,21 @@
+from "dataclasses" import dataclass;
+
+# The generated __eq__: equal iff exactly the same class and all
+# fields compare equal.
+@dataclass
+class Point {
+    var x;
+    var y;
+}
+
+@dataclass
+class Other {
+    var x;
+    var y;
+}
+
+print(Point(1, 2) == Point(1, 2)); # expect: true
+print(Point(1, 2) == Point(1, 3)); # expect: false
+print(Point(1, 2) == Other(1, 2)); # expect: false
+print(Point(1, 2) == "no point"); # expect: false
+print(Point(1, 2) != Point(1, 3)); # expect: true

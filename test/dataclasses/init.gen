@@ -1,0 +1,18 @@
+from "dataclasses" import dataclass;
+
+# The generated __init__ fills fields positionally, in declaration
+# order; trailing fields with defaults may be omitted.
+@dataclass
+class Point {
+    var x;
+    var y = 0;
+}
+
+var p = Point(1, 2);
+print(p.x); # expect: 1
+print(p.y); # expect: 2
+print(Point(5).y); # expect: 0
+
+# Instances are ordinary instances of the class.
+print(isinstance(p, Point)); # expect: true
+print(typename(p)); # expect: <type Point>

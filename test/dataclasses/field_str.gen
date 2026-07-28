@@ -1,0 +1,23 @@
+from "dataclasses" import dataclass, field;
+
+# The field marker renders its factory through __str__, and a callable
+# instance works as a factory.
+class Factory {
+    __str__() {
+        return "custom factory";
+    }
+
+    __call__() {
+        return [];
+    }
+}
+
+var marker = field(Factory());
+print(marker); # expect: field(custom factory)
+
+@dataclass
+class WithFactory {
+    var items = field(Factory());
+}
+
+print(WithFactory().items); # expect: []

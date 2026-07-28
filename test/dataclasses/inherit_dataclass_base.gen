@@ -1,0 +1,31 @@
+from "dataclasses" import dataclass;
+
+# A dataclass subclass extends its base's field list in order.
+@dataclass
+class Base {
+    var a;
+}
+
+@dataclass
+class Extended < Base {
+    var b = 10;
+}
+
+print(Extended(1, 2)); # expect: Extended(a=1, b=2)
+print(Extended(1)); # expect: Extended(a=1, b=10)
+
+# A field redefined in the subclass keeps its inherited position.
+@dataclass
+class Wide {
+    var count = 0;
+    var label = "none";
+}
+
+@dataclass
+class Reordered < Wide {
+    var count = 5;
+    var flag = false;
+}
+
+print(Reordered()); # expect: Reordered(count=5, label=none, flag=false)
+print(Reordered(1, "a", true)); # expect: Reordered(count=1, label=a, flag=true)

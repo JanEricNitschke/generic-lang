@@ -1,0 +1,18 @@
+from "dataclasses" import dataclass;
+
+# The generated __str__ renders `Name(field=value, ...)` in field
+# order; values render through their own __str__.
+class Wrapped {
+    __str__() {
+        return "wrapped!";
+    }
+}
+
+@dataclass
+class Point {
+    var x;
+    var y;
+}
+
+print(Point(1, 2)); # expect: Point(x=1, y=2)
+print(str(Point("a", Wrapped()))); # expect: Point(x=a, y=wrapped!)

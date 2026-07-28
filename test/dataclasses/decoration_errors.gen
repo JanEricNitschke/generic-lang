@@ -1,0 +1,40 @@
+from "dataclasses" import dataclass;
+
+fun report(action) {
+    try {
+        action();
+    } catch TypeError as error {
+        print(error.message());
+    }
+}
+
+report(->() dataclass(5)); # expect: 'dataclass' expected a class, got: 5
+report(->() dataclass(List)); # expect: 'dataclass' expected a user-defined class.
+
+fun bad_order() {
+    @dataclass
+    class Bad {
+        var a;
+        var b = 1;
+        var c;
+        var d = 2;
+    }
+}
+
+report(bad_order); # expect: Field `c` without a default follows a field with a default.
+
+# The order rule also applies across inheritance: an inherited default
+# comes first in the merged field list.
+fun bad_inherited_order() {
+    @dataclass
+    class GoodBase {
+        var a = 1;
+    }
+
+    @dataclass
+    class BadSub < GoodBase {
+        var b;
+    }
+}
+
+report(bad_inherited_order); # expect: Field `b` without a default follows a field with a default.

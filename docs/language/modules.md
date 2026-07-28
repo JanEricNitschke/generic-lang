@@ -76,6 +76,15 @@ foreach (var pair in enumerate(["a", "b"])) { print(pair); }   # (0, a) then (1,
 The bundled modules:
 
 - **`math`** - numeric helpers (`math.sqrt(x)`, `math.pi`).
+- **`dataclasses`** - `@dataclass` generates `__init__`, `__str__`,
+  `__eq__`, and `__hash__` from a class's
+  [class variables](classes.md#class-variables) in declaration order
+  (methods the class defines itself win). The field list is frozen at
+  decoration time into the `__dataclass_fields__` class variable:
+  `_`-prefixed names are skipped, a dataclass base's fields come first,
+  and variables added after decoration (or by undecorated subclasses)
+  stay ordinary class variables. `field(factory)` wraps a default so
+  each instance gets a fresh value.
 - **`functools`** - tools for callables: `reduce(f, iterable)` /
   `reduce(f, iterable, initial)` folds an iterable with `f(acc, item)`;
   `partial(f, args...)` returns a callable with the leading arguments

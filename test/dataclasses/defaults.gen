@@ -1,0 +1,30 @@
+from "dataclasses" import dataclass, field;
+
+@dataclass
+class Job {
+    var name;
+    var retries = 3;
+    var tags = field(List);
+}
+
+var job = Job("build", 5, ["ci"]);
+print(job); # expect: Job(name=build, retries=5, tags=[ci])
+
+var defaulted = Job("test");
+print(defaulted.retries); # expect: 3
+print(defaulted.tags); # expect: []
+
+# The factory produces a fresh value per instance.
+defaulted.tags.append("local");
+print(defaulted.tags); # expect: [local]
+print(Job("again").tags); # expect: []
+
+# A plain mutable default is shared; that is what `field` is for.
+@dataclass
+class Shared {
+    var items = [];
+}
+
+var first = Shared();
+first.items.append(1);
+print(Shared().items); # expect: [1]

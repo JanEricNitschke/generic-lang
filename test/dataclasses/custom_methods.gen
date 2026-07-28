@@ -1,0 +1,23 @@
+from "dataclasses" import dataclass;
+
+# Methods defined on the class win over the generated ones; the other
+# generated methods are still installed and ordinary methods work as
+# usual.
+@dataclass
+class Interval {
+    var low;
+    var high;
+
+    __str__() {
+        return f"[${this.low}, ${this.high}]";
+    }
+
+    width() {
+        return this.high - this.low;
+    }
+}
+
+var interval = Interval(2, 5);
+print(interval); # expect: [2, 5]
+print(interval.width()); # expect: 3
+print(interval == Interval(2, 5)); # expect: true

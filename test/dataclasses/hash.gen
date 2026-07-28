@@ -1,0 +1,15 @@
+from "dataclasses" import dataclass;
+
+# The generated __hash__ combines the field hashes, so equal instances
+# hash equal and dataclasses work as dict keys.
+@dataclass
+class Point {
+    var x;
+    var y;
+}
+
+var lookup = {:};
+lookup[Point(1, 2)] = "origin-ish";
+print(lookup[Point(1, 2)]); # expect: origin-ish
+lookup[Point(1, 2)] = "updated";
+print(lookup[Point(1, 2)]); # expect: updated

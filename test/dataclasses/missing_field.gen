@@ -1,0 +1,41 @@
+from "dataclasses" import dataclass;
+
+@dataclass
+class Point {
+    var x;
+    var y;
+}
+
+# A deleted field makes the generated methods raise instead of reading nil.
+var point = Point(1, 2);
+delattr(point, "y");
+try {
+    str(point);
+} catch AttributeError as error {
+    print(error.message()); # expect: Undefined property 'y'.
+}
+
+# A user-defined __init__ wins over the generated one; fields it skips
+# are missing.
+@dataclass
+class Custom {
+    var a;
+    var b;
+
+    __init__(a) {
+        this.a = a;
+    }
+}
+
+var custom = Custom(1);
+print(custom.a); # expect: 1
+try {
+    str(custom);
+} catch AttributeError as error {
+    print(error.message()); # expect: Undefined property 'b'.
+}
+try {
+    custom == Custom(1);
+} catch AttributeError as error {
+    print(error.message()); # expect: Undefined property 'b'.
+}

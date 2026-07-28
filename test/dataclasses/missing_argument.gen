@@ -1,0 +1,9 @@
+from "dataclasses" import dataclass;
+
+@dataclass
+class Point {
+    var x;
+    var y;
+}
+
+Point(1); # expect runtime error: TypeError: Missing argument for field `y` without a default.

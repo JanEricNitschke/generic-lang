@@ -1,0 +1,27 @@
+from "dataclasses" import dataclass;
+
+# The decorator freezes whatever class variables the class holds when
+# it runs, however they got there.
+class Point {
+    var x;
+}
+
+setattr(Point, "y", 0);
+dataclass(Point);
+print(Point(1, 2)); # expect: Point(x=1, y=2)
+print(Point(1)); # expect: Point(x=1, y=0)
+
+# Stacked decorators apply innermost first, so an attribute injected by
+# a lower decorator is a field too.
+fun inject(cls) {
+    setattr(cls, "z", "injected");
+    return cls;
+}
+
+@dataclass
+@inject
+class Wide {
+    var a;
+}
+
+print(Wide(1)); # expect: Wide(a=1, z=injected)

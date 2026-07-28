@@ -162,6 +162,7 @@ pub enum NativeClass {
     TemplateIterator(TemplateIterator),
     Interpolation(Interpolation),
     Partial(Partial),
+    Field(Field),
     // Proxy classes for value type constructors
     BoolProxy,
     StringProxy,
@@ -231,6 +232,7 @@ impl NativeClass {
             "Tuple" => Self::Tuple(Tuple::default()),
             "Exception" => Self::Exception(Exception::default()),
             "partial" => Self::Partial(Partial::default()),
+            "Field" => Self::Field(Field::default()),
             // Proxy classes for value type constructors
             "Bool" => Self::BoolProxy,
             "String" => Self::StringProxy,
@@ -262,6 +264,7 @@ impl NativeClass {
             Self::TemplateIterator(template_iter) => template_iter.to_string(heap),
             Self::Interpolation(interpolation) => interpolation.to_string(heap),
             Self::Partial(partial) => partial.to_string(heap, depth),
+            Self::Field(field) => field.to_string(heap, depth),
             // Proxy classes should never be accessed for string conversion
             Self::BoolProxy => unreachable!("BoolProxy should never be converted to string"),
             Self::StringProxy => unreachable!("StringProxy should never be converted to string"),
@@ -312,6 +315,7 @@ impl_from_for_native_class!(
     TemplateIterator,
     Interpolation,
     Partial,
+    Field,
 );
 
 /// Backing of the `partial` class of the `functools` stdlib module: the
@@ -338,6 +342,26 @@ impl Partial {
 impl std::fmt::Display for Partial {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.pad("<partial Value>")
+    }
+}
+
+/// Backing of the `Field` marker class of the `dataclasses` stdlib
+/// module: a per-instance default factory. A dataclass `__init__` calls
+/// the factory for each new instance instead of sharing the default.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Field {
+    pub(crate) factory: Value,
+}
+
+impl Field {
+    fn to_string(&self, heap: &Heap, depth: usize) -> String {
+        format!("field({})", self.factory.to_string_capped(heap, depth + 1))
+    }
+}
+
+impl std::fmt::Display for Field {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad("<field Value>")
     }
 }
 

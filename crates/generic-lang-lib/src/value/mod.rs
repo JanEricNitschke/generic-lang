@@ -20,10 +20,10 @@ pub use functions::{Closure, Function, Module, Upvalue};
 #[cfg(feature = "plugins")]
 pub use natives::PluginInstance;
 pub use natives::{
-    Dict, DictIterMode, DictIterator, Exception, Generator, GeneratorState, Interpolation, List,
-    ListIterator, ModuleContents, ModuleExport, NativeClass, NativeFunction, NativeFunctionImpl,
-    NativeMethod, NativeMethodImpl, Partial, Range, RangeIterator, Set, SetIterator, Template,
-    TemplateIterator, Tuple, TupleIterator,
+    Dict, DictIterMode, DictIterator, Exception, Field, Generator, GeneratorState, Interpolation,
+    List, ListIterator, ModuleContents, ModuleExport, NativeClass, NativeFunction,
+    NativeFunctionImpl, NativeMethod, NativeMethodImpl, Partial, Range, RangeIterator, Set,
+    SetIterator, Template, TemplateIterator, Tuple, TupleIterator,
 };
 pub use number::{GenericInt, GenericRational, Number};
 
@@ -360,6 +360,7 @@ impl Value {
         TemplateIterator,
         Interpolation,
         Partial,
+        Field,
     );
 
     impl_as_native_class_mut!(

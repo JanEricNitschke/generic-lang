@@ -1,0 +1,14 @@
+from "dataclasses" import dataclass;
+
+# Class variables with a leading underscore never become fields; the
+# frozen field list itself is one of them and is inspectable.
+@dataclass
+class Point {
+    var x;
+    var _cache = "hidden";
+    var y = 0;
+}
+
+print(Point(1)); # expect: Point(x=1, y=0)
+print(Point(1)._cache); # expect: hidden
+print(Point.__dataclass_fields__); # expect: (x, y)
