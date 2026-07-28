@@ -109,6 +109,9 @@ The bundled modules:
   and variables added after decoration (or by undecorated subclasses)
   stay ordinary class variables. `field(factory)` wraps a default so
   each instance gets a fresh value.
+- **`keyword`** - the language's reserved words: `keyword.kwlist` (a
+  list of strings, `true`/`false`/`nil`/`StopIteration` included) and
+  `keyword.iskeyword(name)`.
 - **`functools`** - tools for callables: `reduce(f, iterable)` /
   `reduce(f, iterable, initial)` folds an iterable with `f(acc, item)`;
   `partial(f, args...)` returns a callable with the leading arguments

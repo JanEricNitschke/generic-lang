@@ -1,11 +1,14 @@
 //! Defines the tokens and scanner that handles the transforming or the source to tokens.
 
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use strum::{EnumIter, EnumProperty, IntoEnumIterator};
 
 use crate::types::Location;
 
 /// `Token` types that exist in the generic language.
-#[derive(IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(
+    IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Clone, Copy, Debug, EnumIter, EnumProperty,
+)]
 #[repr(u8)]
 pub enum TokenKind {
     // Character Tokens.
@@ -51,6 +54,7 @@ pub enum TokenKind {
     GreaterEqual,
     Less,
     LessEqual,
+    #[strum(props(keyword = "is"))]
     Is,
 
     // Literals.
@@ -58,57 +62,94 @@ pub enum TokenKind {
     String,
     Float,
     Integer,
+    #[strum(props(keyword = "false"))]
     False,
+    #[strum(props(keyword = "true"))]
     True,
+    #[strum(props(keyword = "nil"))]
     Nil,
+    #[strum(props(keyword = "StopIteration"))]
     StopIteration,
 
     // Keywords.
+    #[strum(props(keyword = "and"))]
     And,
+    #[strum(props(keyword = "or"))]
     Or,
+    #[strum(props(keyword = "if"))]
     If,
+    #[strum(props(keyword = "unless"))]
     Unless,
+    #[strum(props(keyword = "else"))]
     Else,
+    #[strum(props(keyword = "for"))]
     For,
+    #[strum(props(keyword = "foreach"))]
     ForEach,
+    #[strum(props(keyword = "while"))]
     While,
     Apostrophe,
+    #[strum(props(keyword = "until"))]
     Until,
+    #[strum(props(keyword = "continue"))]
     Continue,
+    #[strum(props(keyword = "break"))]
     Break,
+    #[strum(props(keyword = "switch"))]
     Switch,
+    #[strum(props(keyword = "default"))]
     Default,
+    #[strum(props(keyword = "case"))]
     Case,
 
+    #[strum(props(keyword = "in"))]
     In,
 
+    #[strum(props(keyword = "const"))]
     Const,
+    #[strum(props(keyword = "var"))]
     Var,
 
+    #[strum(props(keyword = "class"))]
     Class,
+    #[strum(props(keyword = "this"))]
     This,
+    #[strum(props(keyword = "super"))]
     Super,
 
     At,
+    #[strum(props(keyword = "fun"))]
     Fun,
+    #[strum(props(keyword = "gen"))]
     Gen,
     RightArrow,
+    #[strum(props(keyword = "return"))]
     Return,
 
     Error,
     Eof,
 
+    #[strum(props(keyword = "import"))]
     Import,
+    #[strum(props(keyword = "from"))]
     From,
+    #[strum(props(keyword = "as"))]
     As,
 
+    #[strum(props(keyword = "yield"))]
     Yield,
+    #[strum(props(keyword = "async"))]
     Async,
+    #[strum(props(keyword = "await"))]
     Await,
 
+    #[strum(props(keyword = "try"))]
     Try,
+    #[strum(props(keyword = "catch"))]
     Catch,
+    #[strum(props(keyword = "finally"))]
     Finally,
+    #[strum(props(keyword = "throw"))]
     Throw,
 
     DotDotLess,
@@ -738,10 +779,66 @@ impl<'a> Scanner<'a> {
     }
 }
 
+/// The reserved words of the language, read once from the `keyword`
+/// properties on [`TokenKind`] (zero cost for the scanner itself, which
+/// never consults them). The scanner tests pin the tags against the
+/// keyword trie in both directions.
+pub fn keywords() -> &'static [&'static str] {
+    static KEYWORDS: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| {
+        let mut keywords: Vec<&'static str> = TokenKind::iter()
+            .filter_map(|kind| kind.get_str("keyword"))
+            .collect();
+        keywords.sort_unstable();
+        keywords
+    });
+    &KEYWORDS
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use TokenKind as TK;
+
+    /// Forward drift guard: every tagged keyword lexeme scans to exactly
+    /// its own token kind, so a tag without a matching trie arm fails.
+    #[test]
+    fn keyword_tags_match_the_trie() {
+        assert_eq!(keywords().len(), 38);
+        assert!(keywords().is_sorted());
+        for kind in TokenKind::iter() {
+            let Some(lexeme) = kind.get_str("keyword") else {
+                continue;
+            };
+            let tokens = scan_tokens(lexeme);
+            assert_eq!(
+                (tokens.len(), tokens[0].kind),
+                (1, kind),
+                "tag `{lexeme}` does not scan to its own kind"
+            );
+        }
+    }
+
+    /// Reverse drift guard (convention-assisted): scanning the lowercased
+    /// variant name of every untagged token kind must NOT hit the trie,
+    /// so a trie keyword whose variant lost its tag fails here.
+    #[test]
+    fn untagged_kinds_are_not_keywords() {
+        for kind in TokenKind::iter() {
+            if kind.get_str("keyword").is_some() || kind == TK::Identifier {
+                continue;
+            }
+            let lexeme = format!("{kind:?}").to_lowercase();
+            if !lexeme.bytes().all(|byte| byte.is_ascii_alphabetic()) {
+                continue;
+            }
+            let tokens = scan_tokens(&lexeme);
+            assert_eq!(
+                (tokens.len(), tokens[0].kind),
+                (1, TK::Identifier),
+                "`{lexeme}` hits the trie but its kind carries no keyword tag"
+            );
+        }
+    }
 
     fn scan_tokens(source: &str) -> Vec<Token<'_>> {
         let mut scanner = Scanner::new(
