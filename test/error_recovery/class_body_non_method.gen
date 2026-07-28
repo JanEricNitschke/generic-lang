@@ -1,3 +1,3 @@
 class C {
-  var y = 1;  # Error at 'var': Expect method name.
+  42;  # Error at '42': Expect method name.
 }  # Error at '}': Expect expression.

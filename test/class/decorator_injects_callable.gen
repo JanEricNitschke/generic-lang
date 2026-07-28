@@ -1,0 +1,16 @@
+# A decorator can attach data and callables through the class object.
+# An injected callable is a plain function: it does not receive the
+# instance.
+fun add_helpers(cls) {
+    setattr(cls, "kind", "decorated");
+    setattr(cls, "describe", (->() "a plain callable, no receiver"));
+    return cls;
+}
+
+@add_helpers
+class Thing {}
+
+print(Thing.kind); # expect: decorated
+print(Thing().kind); # expect: decorated
+print(Thing().describe()); # expect: a plain callable, no receiver
+print(Thing.describe()); # expect: a plain callable, no receiver

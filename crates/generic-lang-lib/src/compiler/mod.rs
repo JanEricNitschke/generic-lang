@@ -8,7 +8,7 @@ mod front;
 mod rules;
 mod variables;
 
-use rustc_hash::FxHashMap as HashMap;
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use shrinkwraprs::Shrinkwrap;
 
@@ -147,16 +147,19 @@ impl NestableState<'_> {
 /// Keep track of the state of a class declaration
 ///
 /// Similar to `LoopState`, this is needed for nested class declarations.
-/// Currently only tracks whether the class has a superclass.
 struct ClassState {
     pub has_superclass: bool,
+    /// Class variable names declared in this class body, to reject
+    /// duplicate declarations at compile time.
+    pub class_variables: HashSet<String>,
 }
 
 impl ClassState {
     #[must_use]
-    const fn new() -> Self {
+    fn new() -> Self {
         Self {
             has_superclass: false,
+            class_variables: HashSet::default(),
         }
     }
 }

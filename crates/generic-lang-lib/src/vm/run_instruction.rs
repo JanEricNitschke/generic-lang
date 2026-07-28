@@ -282,6 +282,30 @@ macro_rules! run_instruction {
                             // instance so that it can later be called separately.
                             // Just using the side effects
                             Ok(None)
+                        } else if let Some(value) = instance
+                            .to_value(&$self.heap)
+                            .class
+                            .to_value(&$self.heap)
+                            .class_variable_value(field)
+                        {
+                            // Or a class variable, read through the instance.
+                            // Instance fields and methods shadow it.
+                            $self.stack.pop(); // instance
+                            $self.stack_push(value);
+                            Ok(None)
+                        } else {
+                            let message =
+                                format!("Undefined property '{}'.", field.to_value(&$self.heap));
+                            $self.throw(AttributeError, &message)
+                        }
+                    }
+                    // Class variables are readable through the class object.
+                    Value::Class(class) => {
+                        if let Some(value) = class.to_value(&$self.heap).class_variable_value(field)
+                        {
+                            $self.stack.pop(); // class
+                            $self.stack_push(value);
+                            Ok(None)
                         } else {
                             let message =
                                 format!("Undefined property '{}'.", field.to_value(&$self.heap));
@@ -325,6 +349,15 @@ macro_rules! run_instruction {
                             .to_value_mut(&mut $self.heap)
                             .fields
                             .insert(field, value);
+                        Ok(None)
+                    }
+                    // Assigning through the class writes the class variable
+                    // (declaring it when new). Subclasses that already
+                    // copied the declarations down do not see the change.
+                    Value::Class(class) => {
+                        class
+                            .to_value_mut(&mut $self.heap)
+                            .set_class_variable_value(field_string_id, value);
                         Ok(None)
                     }
                     Value::Module(module) => {
@@ -378,6 +411,14 @@ macro_rules! run_instruction {
                 $self.define_method(method_name);
                 Ok(None)
             }
+            // Operands are the variable name and a has-default flag; the
+            // stack holds the class, the annotation, and the default.
+            OpCode::ClassVariable => {
+                let variable_name = $self.read_string("OP_CLASS_VARIABLE");
+                let has_default = $self.read_byte() != 0;
+                $self.define_class_variable(variable_name, has_default);
+                Ok(None)
+            }
             // Operands are method name to invoke as well as the number of arguments
             // Stack contains the instance followed by the arguments.
             // (... --- Instance --- arg1 --- arg2 --- ... --- argN)
@@ -391,6 +432,7 @@ macro_rules! run_instruction {
                 let superclass_id = *$self.peek(1).expect("Stack underflow in OP_INHERIT");
                 if let Value::Class(superclass) = &superclass_id {
                     let methods = superclass.to_value(&$self.heap).methods.clone();
+                    let variables = superclass.to_value(&$self.heap).variables.clone();
                     let subclass = $self
                         .stack
                         .pop()
@@ -398,6 +440,11 @@ macro_rules! run_instruction {
                         .as_class()
                         .to_value_mut(&mut $self.heap);
                     subclass.methods.extend(methods);
+                    // The subclass body has not run yet, so this copy-down
+                    // seeds it with the inherited declarations (mirroring
+                    // the method copy above); its own declarations append
+                    // or overwrite in place.
+                    subclass.variables = variables;
                     subclass.superclass = Some(*superclass);
                     Ok(None)
                 } else {

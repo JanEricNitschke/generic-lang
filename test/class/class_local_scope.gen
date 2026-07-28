@@ -1,0 +1,31 @@
+# Classes declared inside functions: class variables, methods, and
+# decorators behave like at top level.
+fun tag(cls) {
+    setattr(cls, "tagged", true);
+    return cls;
+}
+
+fun make_plain() {
+    class Local {
+        var kind = "local";
+
+        describe() {
+            return f"a ${this.kind} class";
+        }
+    }
+    return Local;
+}
+
+print(make_plain()().describe()); # expect: a local class
+print(make_plain().kind); # expect: local
+
+fun make_tagged() {
+    @tag
+    class Tagged {
+        var kind = "tagged";
+    }
+    return Tagged;
+}
+
+print(make_tagged().tagged); # expect: true
+print(make_tagged()().kind); # expect: tagged

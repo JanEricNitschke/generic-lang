@@ -1,0 +1,17 @@
+# getattr resolves like property access: fields, then methods (bound to
+# the instance), then class variables.
+class Greeter {
+    __init__(name) {
+        this.name = name;
+    }
+
+    greet(greeting) {
+        return f"${greeting}, ${this.name}";
+    }
+}
+
+var greeter = Greeter("world");
+var method = getattr(greeter, "greet");
+print(method("hello")); # expect: hello, world
+print(hasattr(greeter, "greet")); # expect: true
+print(hasattr(greeter, "name")); # expect: true

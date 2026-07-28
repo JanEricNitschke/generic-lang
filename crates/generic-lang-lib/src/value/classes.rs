@@ -1,6 +1,7 @@
 use crate::heap::{ClassId, Heap, StringId};
 
 use derivative::Derivative;
+use indexmap::IndexMap;
 use rustc_hash::FxHashMap as HashMap;
 
 use super::{NativeClass, Number, Value};
@@ -26,18 +27,36 @@ pub enum ClassKind {
     Plugin(PluginClassInfo),
 }
 
+/// A class variable declared in a class body (`var x: annotation = default;`).
+/// The annotation is `Nil` when omitted; `default` is `None` for a bare
+/// declaration, which reserves the name (and its position, for
+/// dataclasses) without providing a readable value.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ClassVariable {
+    pub(crate) annotation: Value,
+    pub(crate) default: Option<Value>,
+}
+
 #[derive(Debug, Clone, Derivative)]
 #[derivative(PartialOrd)]
 pub struct Class {
     pub(crate) name: StringId,
+    /// The class's methods: `Closure`s for methods written in generic,
+    /// `NativeMethod`s for native, plugin, and dataclass-generated ones -
+    /// hence the general `Value`. Keyed by interned `StringId` (equal
+    /// content means equal id, and `blacken_class` marks the keys).
     #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
-    // Have to be general Value because it can be a nativemethod(how?) or a closure
-    // Should probably also be String and not StringId?
     pub(crate) methods: HashMap<StringId, Value>,
     #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
     pub(crate) kind: ClassKind,
     #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
     pub(crate) superclass: Option<ClassId>,
+    /// Class variables in declaration order (inherited ones first, copied
+    /// down at `OP_INHERIT` like methods). The order is observable: it is
+    /// the field order of dataclasses. An `IndexMap` so name lookups are
+    /// hashed while `get_index` keeps the ordered walks.
+    #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
+    pub(crate) variables: IndexMap<StringId, ClassVariable>,
 }
 
 impl Class {
@@ -48,7 +67,50 @@ impl Class {
             methods: HashMap::default(),
             kind,
             superclass: None,
+            variables: IndexMap::new(),
         }
+    }
+
+    /// Declare (or redeclare, keeping the original position) a class
+    /// variable.
+    pub(crate) fn add_class_variable(
+        &mut self,
+        name: StringId,
+        annotation: Value,
+        default: Option<Value>,
+    ) {
+        self.variables.insert(
+            name,
+            ClassVariable {
+                annotation,
+                default,
+            },
+        );
+    }
+
+    /// Set the value of a class variable, declaring it (without an
+    /// annotation) when it does not exist yet. An existing declaration
+    /// keeps its annotation and position.
+    pub(crate) fn set_class_variable_value(&mut self, name: StringId, value: Value) {
+        if let Some(variable) = self.variables.get_mut(&name) {
+            variable.default = Some(value);
+        } else {
+            self.variables.insert(
+                name,
+                ClassVariable {
+                    annotation: Value::Nil,
+                    default: Some(value),
+                },
+            );
+        }
+    }
+
+    /// The current value of a class variable, if it is declared and has a
+    /// default.
+    pub(crate) fn class_variable_value(&self, name: StringId) -> Option<Value> {
+        self.variables
+            .get(&name)
+            .and_then(|variable| variable.default)
     }
 
     /// Whether this class stops the native-superclass walk. Both `Native` and

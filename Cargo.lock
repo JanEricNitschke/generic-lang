@@ -242,6 +242,7 @@ dependencies = [
  "hashbrown 0.17.1",
  "humansize",
  "include_dir",
+ "indexmap",
  "libloading",
  "num-bigint",
  "num-traits",

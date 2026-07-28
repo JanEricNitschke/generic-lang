@@ -1,0 +1,5 @@
+class Point {
+    var x = 1;
+}
+
+Point.missing; # expect runtime error: AttributeError: Undefined property 'missing'.

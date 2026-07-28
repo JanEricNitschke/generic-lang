@@ -17,6 +17,7 @@ derivative   = { workspace = true }
 derive_more  = { workspace = true }
 generic-lang-api = { workspace = true, optional = true }
 hashbrown    = { workspace = true }
+indexmap     = { workspace = true }
 humansize    = { workspace = true }
 include_dir  = { workspace = true }
 libloading   = { workspace = true, optional = true }
