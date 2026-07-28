@@ -83,10 +83,11 @@ impl Compiler<'_, '_> {
             self.var_declaration(Mutability::Mutable);
         } else if self.match_(TK::Const) {
             self.var_declaration(Mutability::Immutable);
-        } else if self.check(TK::Fun) || self.check(TK::Gen) || self.check(TK::At) {
-            // We use `check` instead of `match_` here because
-            // `fun_declaration` will handle the advance for us
-            // because it needs to do so anyway for multiple decorators
+        } else if self.check(TK::At) {
+            self.decorated_declaration();
+        } else if self.check(TK::Fun) || self.check(TK::Gen) {
+            // `check` instead of `match_`: `fun_declaration` consumes the
+            // keyword itself to know which function type it declares.
             self.fun_declaration();
         } else if self.match_(TK::Class) {
             self.class_declaration();
@@ -113,53 +114,122 @@ impl Compiler<'_, '_> {
     }
 
     fn fun_declaration(&mut self) {
-        let global = self.fun_definition();
-        self.define_variable(global, Mutability::Mutable);
+        self.named_fun_declaration();
     }
 
-    fn fun_definition(&mut self) -> Option<ConstantLongIndex> {
-        if self.match_(TK::At) {
-            self.decorated_fun_definition()
-        } else if self.match_(TK::Fun) {
-            self.undecorated_fun_definition(FunctionType::Function)
-        } else if self.match_(TK::Gen) {
-            self.undecorated_fun_definition(FunctionType::Generator)
+    /// The undecorated function or generator statement (`fun`/`gen` not
+    /// yet consumed): define and bind it, returning the name and its
+    /// location for a decorator wrapper.
+    fn named_fun_declaration(&mut self) -> (String, Location) {
+        let function_type = if self.match_(TK::Gen) {
+            FunctionType::Generator
+        } else {
+            self.consume(TK::Fun, "Expect function declaration.");
+            FunctionType::Function
+        };
+        let (global, name, location) = self.undecorated_fun_definition(function_type);
+        self.define_variable(global, Mutability::Mutable);
+        (name, location)
+    }
+
+    /// A declaration introduced by one or more decorators; the target may
+    /// be a function, a generator, or a class. One uniform scheme for all
+    /// of them:
+    ///
+    /// 1. The decorator values are evaluated in source order and tracked
+    ///    as anonymous locals, so everything the following declaration
+    ///    declares (the `super` local, a local name) stays aligned with
+    ///    the physical stack.
+    /// 2. The plain declaration runs and binds its name as usual.
+    /// 3. The chain is applied to loaded copies, innermost first, and the
+    ///    result is written back over the binding
+    ///    (`Name = d1(d2(Name))`).
+    /// 4. At top level the temporaries are popped afterwards; in a scope
+    ///    they die with it.
+    ///
+    /// Stack progression for `@d1 @d2 fun Name`, at local scope (at top
+    /// level `Name` lives in the globals table instead of a slot):
+    ///
+    /// ```text
+    /// [..]                                  start
+    /// [.., d1, d2]                          decorator temporaries
+    /// [.., d1, d2, Name]                    declaration; Name's slot
+    /// [.., d1, d2, Name, d1, d2, Name]      loaded copies
+    /// [.., d1, d2, Name, d1, d2(Name)]      innermost call
+    /// [.., d1, d2, Name, d1(d2(Name))]      outermost call
+    /// [.., d1, d2, result, result]          SetLocal peeks, writes Name's slot
+    /// [.., d1, d2, result]                  Pop discards the leftover copy
+    /// [..]                                  (top level only) temporaries popped
+    /// ```
+    fn decorated_declaration(&mut self) {
+        let temporaries_base = self.locals().len();
+        let mut decorator_locations = Vec::new();
+        while self.match_(TK::At) {
+            let start_location = self.current_location();
+            self.expression();
+            let end_location = self.location();
+            decorator_locations.push(start_location.merge_ordered(&end_location));
+        }
+        for _ in &decorator_locations {
+            // `@` cannot start an identifier, so user code can never
+            // resolve these; they are only addressed by slot.
+            self.add_local(
+                self.synthetic_identifier_token("@decorator"),
+                Mutability::Immutable,
+            );
+            self.mark_initialized();
+        }
+
+        let (name, location) = if self.match_(TK::Class) {
+            self.class_declaration()
+        } else if self.check(TK::Fun) || self.check(TK::Gen) {
+            self.named_fun_declaration()
         } else {
             self.error_at_current(
-                "Expect function declaration or another decorator call after a decorator call.",
+                "Expect function or class declaration or another decorator call after a decorator call.",
             );
-            if *self.scope_depth() > 0 {
-                None
-            } else {
-                Some(ConstantLongIndex(0))
+            return;
+        };
+
+        for offset in 0..decorator_locations.len() {
+            self.emit_local_get(temporaries_base + offset, location);
+        }
+        self.named_variable(&name, false, location);
+        self.emit_decorator_calls(&decorator_locations);
+        self.emit_variable_set_and_pop(&name, location);
+
+        if *self.scope_depth() == 0 {
+            for _ in &decorator_locations {
+                self.emit_byte(OpCode::Pop, OpcodeLocation::new(location));
             }
+            self.locals_mut().truncate(temporaries_base);
         }
     }
 
-    fn decorated_fun_definition(&mut self) -> Option<ConstantLongIndex> {
-        let start_location = self.current_location();
-        self.expression();
-        let end_location = self.location();
-        let fun_global = self.fun_definition();
-        self.emit_bytes(
-            OpCode::Call,
-            1,
-            OpcodeLocation::new(start_location.merge_ordered(&end_location)),
-        );
-        fun_global
+    /// One `CALL 1` per decorator, innermost (closest to the definition)
+    /// first.
+    fn emit_decorator_calls(&mut self, decorator_locations: &[Location]) {
+        for decorator_location in decorator_locations.iter().rev() {
+            self.emit_bytes(OpCode::Call, 1, OpcodeLocation::new(*decorator_location));
+        }
     }
 
     fn undecorated_fun_definition(
         &mut self,
         function_type: FunctionType,
-    ) -> Option<ConstantLongIndex> {
+    ) -> (Option<ConstantLongIndex>, String, Location) {
         let global = self.parse_variable("Expect function name.", Mutability::Mutable);
+        let name = self.previous.as_ref().unwrap().as_str().to_string();
+        let location = self.location();
         self.mark_initialized();
         self.named_function(function_type);
-        global
+        (global, name, location)
     }
 
-    fn class_declaration(&mut self) {
+    /// Compile a class declaration (the `class` keyword is already
+    /// consumed). Returns the class name and its location so a decorator
+    /// wrapper can reload and rebind the class.
+    fn class_declaration(&mut self) -> (String, Location) {
         self.consume(TK::Identifier, "Expect class name.");
         let class_name_location = self.location();
         let class_name = self.previous.as_ref().unwrap().as_str().to_string();
@@ -219,6 +289,7 @@ impl Compiler<'_, '_> {
         }
 
         self.class_state.pop();
+        (class_name, class_name_location)
     }
 
     fn statement(&mut self) {

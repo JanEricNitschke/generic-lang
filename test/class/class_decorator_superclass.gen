@@ -1,0 +1,45 @@
+# Decorated classes with superclasses: the decorator temporaries are
+# tracked, so the `super` local that method closures capture stays
+# aligned at every scope.
+var tagged = [];
+
+fun tag(cls) {
+    tagged.append(cls);
+    return cls;
+}
+
+class Base {
+    __init__() {
+        this.origin = "base";
+    }
+
+    describe() {
+        return "base behavior";
+    }
+}
+
+@tag
+class Child < Base {
+    describe() {
+        return f"child wrapping (${super.describe()})";
+    }
+}
+
+var child = Child();
+print(child.origin); # expect: base
+print(child.describe()); # expect: child wrapping (base behavior)
+print(len(tagged)); # expect: 1
+
+fun make_local() {
+    @tag
+    class LocalChild < Base {
+        describe() {
+            return f"local wrapping (${super.describe()})";
+        }
+    }
+    return LocalChild;
+}
+
+var local_child = make_local()();
+print(local_child.describe()); # expect: local wrapping (base behavior)
+print(len(tagged)); # expect: 2

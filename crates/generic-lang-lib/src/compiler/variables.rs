@@ -66,26 +66,7 @@ impl<'scanner> Compiler<'scanner, '_> {
     {
         let getter_location = OpcodeLocation::new(variable_location);
 
-        let mut get_op = OpCode::GetLocal;
-        let mut set_op = OpCode::SetLocal;
-        let mut arg = self.resolve_local(name);
-
-        // Upvalue?
-        if arg.is_none()
-            && let Some(upvalue_arg) = self.resolve_upvalue(name)
-        {
-            get_op = OpCode::GetUpvalue;
-            set_op = OpCode::SetUpvalue;
-            arg = Some(usize::from(upvalue_arg));
-        }
-
-        // If neither local nor upvalue, then it must be a global
-        if arg.is_none() {
-            arg = Some(*self.identifier_constant(name));
-            get_op = OpCode::GetGlobal;
-            set_op = OpCode::SetGlobal;
-        }
-        let arg = arg.unwrap();
+        let (mut get_op, mut set_op, arg) = self.resolve_variable_ops(name);
 
         // Support for more than u8::MAX variables in a scope
         let encoding = if arg > u8::MAX.into() {
@@ -156,6 +137,80 @@ impl<'scanner> Compiler<'scanner, '_> {
         if !self.emit_number(arg, encoding, location) {
             self.error(&format!("Too many globals in {op:?}"));
         }
+    }
+
+    /// Resolve `name` against the current scopes, innermost first: local
+    /// slot, then upvalue, then global constant index. Returns the matching
+    /// get and set opcodes (short variants) along with the operand.
+    fn resolve_variable_ops<S>(&mut self, name: &S) -> (OpCode, OpCode, usize)
+    where
+        S: ToString,
+    {
+        let mut get_op = OpCode::GetLocal;
+        let mut set_op = OpCode::SetLocal;
+        let mut arg = self.resolve_local(name);
+
+        // Upvalue?
+        if arg.is_none()
+            && let Some(upvalue_arg) = self.resolve_upvalue(name)
+        {
+            get_op = OpCode::GetUpvalue;
+            set_op = OpCode::SetUpvalue;
+            arg = Some(usize::from(upvalue_arg));
+        }
+
+        // If neither local nor upvalue, then it must be a global
+        if arg.is_none() {
+            arg = Some(*self.identifier_constant(name));
+            get_op = OpCode::GetGlobal;
+            set_op = OpCode::SetGlobal;
+        }
+        (get_op, set_op, arg.unwrap())
+    }
+
+    /// Emit a load of the local at `slot`. Used by decorated declarations,
+    /// whose decorator temporaries are anonymous locals that cannot be
+    /// resolved by name.
+    ///
+    /// Stack: `[..] -> [.., slot value]`
+    pub(super) fn emit_local_get(&mut self, slot: usize, variable_location: Location) {
+        let location = OpcodeLocation::new(variable_location);
+        let (op, encoding) = if slot > u8::MAX.into() {
+            (OpCode::GetLocalLong, NumberEncoding::Long)
+        } else {
+            (OpCode::GetLocal, NumberEncoding::Short)
+        };
+        self.emit_byte(op, location);
+        if !self.emit_number(slot, encoding, location) {
+            self.error(&format!("Too many locals in {op:?}"));
+        }
+    }
+
+    /// Emit a plain store of the stack top into `name` (local, upvalue, or
+    /// global), then pop the stored value. Used by decorated declarations,
+    /// which rebind an already-declared name outside any assignment
+    /// expression.
+    ///
+    /// Stack: `[.., value] -> [..]`
+    pub(super) fn emit_variable_set_and_pop<S>(&mut self, name: &S, variable_location: Location)
+    where
+        S: ToString,
+    {
+        let location = OpcodeLocation::new(variable_location);
+        let (_, mut set_op, arg) = self.resolve_variable_ops(name);
+
+        let encoding = if arg > u8::MAX.into() {
+            set_op = set_op.to_long();
+            NumberEncoding::Long
+        } else {
+            NumberEncoding::Short
+        };
+
+        self.emit_byte(set_op, location);
+        if !self.emit_number(arg, encoding, location) {
+            self.error(&format!("Too many globals in {set_op:?}"));
+        }
+        self.emit_byte(OpCode::Pop, location);
     }
 
     // Because the closure would need unique access to self while it

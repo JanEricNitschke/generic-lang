@@ -49,7 +49,8 @@ in variables, or use them as decorators.
 
 ## Decorators
 
-A decorator is any callable applied to a function declaration with `@` on the
+A decorator is any callable applied to a function (or
+[class](classes.md#class-decorators)) declaration with `@` on the
 line(s) above it. The declared function is replaced by the decorator's return
 value. Decorators stack, and a decorator can itself be a call that returns a
 decorator ("decorator factory") or a lambda.
