@@ -27,19 +27,18 @@ try {
     print(e.message()); # expect: Undefined variable 'fake'.
 }
 
-# Mutating a live builtin through plain assignment does not reach the
-# earlier snapshot, but a later import sees the new state.
-sleep = "clobbered";
-print(sleep); # expect: clobbered
-print(builtins.sleep == sleep); # expect: false
-import "builtins" as later;
-print(later.sleep); # expect: clobbered
+# Builtins are constants: plain assignment cannot overwrite them, only
+# a declaration shadows them (as `var all` above).
+try {
+    sleep = "clobbered";
+} catch ConstReassignmentError as e {
+    print(e.message()); # expect: Cannot reassign const variable.
+}
+print(builtins.sleep == sleep); # expect: true
 
-# The snapshot copies bindings, not values: a mutable value reached
-# through both bindings is one shared object.
-input = [1, 2];
-import "builtins" as shared;
-input.append(3);
-print(shared.input); # expect: [1, 2, 3]
-shared.input.append(4);
-print(input); # expect: [1, 2, 3, 4]
+# The snapshot shares the underlying values: a class variable set on
+# the List class is visible through both bindings of the same class.
+print(builtins.List == List); # expect: true
+setattr(List, "tag", "shared");
+print(builtins.List.tag); # expect: shared
+print(getattr(builtins.List, "tag")); # expect: shared

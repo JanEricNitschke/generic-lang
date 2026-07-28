@@ -340,10 +340,20 @@ impl VM {
             panic!("Failed to execute builtin file {}.", builtin_path.display())
         });
 
-        // Copy globals from the completed module to builtins (excluding __name__)
+        // Copy globals from the completed module to builtins (excluding
+        // __name__). Builtins are constants: assignment can only shadow
+        // them via a declaration, never overwrite them.
         let module_globals = std::mem::take(self.globals_mut());
-        // Extend builtins with all globals from the module
-        self.builtins.extend(module_globals);
+        self.builtins
+            .extend(module_globals.into_iter().map(|(name, global)| {
+                (
+                    name,
+                    Global {
+                        value: global.value,
+                        mutable: false,
+                    },
+                )
+            }));
         // Remove __name__ from builtins
         self.builtins
             .remove(&self.heap.builtin_constants().script_name);

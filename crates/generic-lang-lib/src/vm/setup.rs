@@ -64,7 +64,7 @@ impl VM {
             name_id,
             Global {
                 value,
-                mutable: true,
+                mutable: false,
             },
         );
     }
@@ -80,7 +80,7 @@ impl VM {
                 name_id,
                 Global {
                     value,
-                    mutable: true,
+                    mutable: false,
                 },
             );
         }
