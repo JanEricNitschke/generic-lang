@@ -1,0 +1,17 @@
+import "keyword";
+
+# Keywords are reserved words: using any of them as a variable name is
+# a syntax error, checked for every keyword through exec.
+foreach (var word in keyword.kwlist) {
+    try {
+        exec(f"var ${word} = 1;");
+        print(f"not reserved: ${word}");
+    } catch SyntaxError as e {
+        # Reserved, as it should be.
+    }
+}
+print("all reserved"); # expect: all reserved
+
+# Extending a keyword by one character makes an ordinary identifier.
+exec("var classy = 1;");
+print("classy declares fine"); # expect: classy declares fine

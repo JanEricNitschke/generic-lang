@@ -1,0 +1,31 @@
+import "keyword";
+
+# iskeyword tests membership in the reserved words.
+print(keyword.iskeyword("class")); # expect: true
+print(keyword.iskeyword("foreach")); # expect: true
+print(keyword.iskeyword("yield")); # expect: true
+print(keyword.iskeyword("classy")); # expect: false
+var classy = "still an identifier";
+print(classy); # expect: still an identifier
+print(keyword.iskeyword("print")); # expect: false
+print(keyword.iskeyword("")); # expect: false
+
+# kwlist is the full list of reserved words.
+print(len(keyword.kwlist)); # expect: 38
+print("var" in keyword.kwlist); # expect: true
+print("StopIteration" in keyword.kwlist); # expect: true
+print("hello" in keyword.kwlist); # expect: false
+
+# The two agree: every kwlist entry is a keyword.
+foreach (var word in keyword.kwlist) {
+    if (!keyword.iskeyword(word)) {
+        print(f"not a keyword: ${word}");
+    }
+}
+print("all reserved"); # expect: all reserved
+
+try {
+    keyword.iskeyword(5);
+} catch TypeError as e {
+    print(e.message()); # expect: 'iskeyword' expects a string, got: 5
+}
