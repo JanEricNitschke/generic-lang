@@ -508,6 +508,9 @@ impl Heap {
         let item = item.clone();
         let class = &item.item;
         self.strings.gray.push(class.name);
+        if let Some(superclass) = class.superclass {
+            self.classes.gray.push(superclass);
+        }
         for (method_name, method) in &class.methods {
             self.strings.gray.push(*method_name);
             gray_value!(self, method);
@@ -539,8 +542,9 @@ impl Heap {
         #[cfg(feature = "log_gc")]
         let item = item.clone();
         let instance = &item.item;
-        let class = &self.classes[instance.class];
-        self.strings.gray.push(class.name);
+        // An instance can outlive every other reference to its class
+        // (e.g. one returned from the scope that declared the class).
+        self.classes.gray.push(instance.class);
         for field in instance.fields.values() {
             gray_value!(self, field);
         }

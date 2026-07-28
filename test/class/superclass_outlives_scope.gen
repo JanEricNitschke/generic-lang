@@ -1,0 +1,24 @@
+# A class keeps its superclass alive even when nothing else references
+# the superclass anymore: superclass walks (isinstance, instantiation)
+# must not observe a collected base class.
+fun make() {
+    class Base {
+        describe() {
+            return "base";
+        }
+    }
+
+    class Sub < Base {
+        __init__() {
+            this.value = 7;
+        }
+    }
+
+    return Sub();
+}
+
+var instance = make();
+
+print(instance.describe()); # expect: base
+print(isinstance(instance, Bool)); # expect: false
+print(instance.value); # expect: 7
