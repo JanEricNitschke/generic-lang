@@ -4,6 +4,7 @@
 
 use shrinkwraprs::Shrinkwrap;
 use std::cmp::Ordering;
+use strum_macros::{Display, EnumIter};
 
 #[derive(Shrinkwrap, PartialEq, Eq, Clone, Copy, Debug, PartialOrd)]
 #[shrinkwrap(mutable)]
@@ -141,6 +142,23 @@ impl From<JumpCondition> for bool {
 pub enum NumberEncoding {
     Short,
     Long,
+}
+
+/// Which shape of injected source `eval`/`exec` compiles and runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumIter)]
+pub enum InjectedKind {
+    #[strum(serialize = "eval")]
+    Eval,
+    #[strum(serialize = "exec")]
+    Exec,
+}
+
+impl InjectedKind {
+    /// The name the compiled function carries; also how injected frames
+    /// are recognized in stack traces.
+    pub fn function_name(self) -> String {
+        format!("<{self}>")
+    }
 }
 
 /// Enum for function return modes

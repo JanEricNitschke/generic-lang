@@ -646,6 +646,7 @@ impl Heap {
                 }
                 // Proxy classes don't contain any references to gray
                 NativeClass::BoolProxy
+                | NativeClass::ModuleProxy
                 | NativeClass::StringProxy
                 | NativeClass::IntegerProxy
                 | NativeClass::FloatProxy

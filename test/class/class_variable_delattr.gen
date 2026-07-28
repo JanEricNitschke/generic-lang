@@ -1,0 +1,43 @@
+# delattr removes a class variable; methods are untouched by it.
+class Config {
+    var retries = 3;
+    var label = "default";
+
+    describe() {
+        return "config";
+    }
+}
+
+print(Config().retries); # expect: 3
+delattr(Config, "retries");
+print(hasattr(Config, "retries")); # expect: false
+try {
+    Config().retries;
+} catch AttributeError as e {
+    print(e.message()); # expect: Undefined property 'retries'.
+}
+print(Config().label); # expect: default
+print(Config().describe()); # expect: config
+
+# Deleting a missing name raises; a method is not a class variable.
+try {
+    delattr(Config, "missing");
+} catch AttributeError as e {
+    print(e.message()); # expect: Undefined property 'missing'.
+}
+try {
+    delattr(Config, "describe");
+} catch AttributeError as e {
+    print(e.message()); # expect: Undefined property 'describe'.
+}
+
+# Deletion is per class: an already-derived subclass keeps its copy.
+class Base {
+    var kind = "base";
+}
+
+class Derived < Base {}
+
+delattr(Base, "kind");
+print(hasattr(Base, "kind")); # expect: false
+print(Derived().kind); # expect: base

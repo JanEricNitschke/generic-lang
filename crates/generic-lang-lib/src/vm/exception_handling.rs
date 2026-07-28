@@ -22,6 +22,7 @@ pub enum ExceptionKind {
     AttributeError,
     ImportError,
     AssertionError,
+    SyntaxError,
     IoError,
     KeyError,
     IndexError,

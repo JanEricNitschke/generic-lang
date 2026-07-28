@@ -165,6 +165,7 @@ pub enum NativeClass {
     Field(Field),
     // Proxy classes for value type constructors
     BoolProxy,
+    ModuleProxy,
     StringProxy,
     IntegerProxy,
     FloatProxy,
@@ -235,6 +236,7 @@ impl NativeClass {
             "Field" => Self::Field(Field::default()),
             // Proxy classes for value type constructors
             "Bool" => Self::BoolProxy,
+            "Module" => Self::ModuleProxy,
             "String" => Self::StringProxy,
             "Integer" => Self::IntegerProxy,
             "Float" => Self::FloatProxy,
@@ -267,6 +269,9 @@ impl NativeClass {
             Self::Field(field) => field.to_string(heap, depth),
             // Proxy classes should never be accessed for string conversion
             Self::BoolProxy => unreachable!("BoolProxy should never be converted to string"),
+            Self::ModuleProxy => {
+                unreachable!("ModuleProxy should never be converted to string")
+            }
             Self::StringProxy => unreachable!("StringProxy should never be converted to string"),
             Self::IntegerProxy => unreachable!("IntegerProxy should never be converted to string"),
             Self::FloatProxy => unreachable!("FloatProxy should never be converted to string"),

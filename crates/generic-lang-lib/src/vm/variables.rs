@@ -112,14 +112,17 @@ impl VM {
                     .stack
                     .last()
                     .unwrap_or_else(|| panic!("stack underflow in {op:?}"));
-                self.globals_mut().insert(
-                    name,
-                    Global {
-                        value: stack_top_value,
-                        mutable: op != OpCode::DefineGlobalConst
-                            && op != OpCode::DefineGlobalConstLong,
-                    },
-                );
+                self.defining_module()
+                    .to_value_mut(&mut self.heap)
+                    .globals
+                    .insert(
+                        name,
+                        Global {
+                            value: stack_top_value,
+                            mutable: op != OpCode::DefineGlobalConst
+                                && op != OpCode::DefineGlobalConstLong,
+                        },
+                    );
                 self.stack.pop();
             }
             x => panic!("Internal error: non-string operand to {op:?}: {x:?}"),

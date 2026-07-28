@@ -16,6 +16,7 @@ Exception
 ├── AttributeError
 ├── ImportError
 ├── AssertionError
+├── SyntaxError
 ├── IoError
 ├── KeyError
 ├── IndexError
