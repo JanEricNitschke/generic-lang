@@ -1,0 +1,22 @@
+from "argparse" import ArgumentParser;
+
+var parser = ArgumentParser("tool", "Does things.");
+parser.add_argument("path", {"help": "the input file"});
+parser.add_argument("--verbose", {"action": "store_true", "help": "more output"});
+
+print(parser.parse_args(["-h"]));
+# expect: usage: tool [-h] [--verbose] path
+# expect:
+# expect: Does things.
+# expect:
+# expect: positional arguments:
+# expect:   path - the input file
+# expect:
+# expect: options:
+# expect:   -h, --help - show this help message
+# expect:   --verbose - more output
+# expect: nil
+
+# A nil prog falls back to the script name.
+var unnamed = ArgumentParser(nil, nil);
+print(unnamed.format_help().startswith("usage: help.gen [-h]")); # expect: true

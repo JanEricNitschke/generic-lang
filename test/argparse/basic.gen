@@ -1,0 +1,25 @@
+from "argparse" import ArgumentParser;
+
+var parser = ArgumentParser("tool", "A test tool.");
+parser.add_argument("path", nil);
+parser.add_argument("--verbose", {"action": "store_true"});
+parser.add_argument("--count", {"type": int, "default": 1});
+parser.add_argument("--mode", {"choices": ["fast", "slow"], "default": "fast"});
+
+var args = parser.parse_args(["input.txt", "--verbose", "--count", "3"]);
+print(args.path); # expect: input.txt
+print(args.verbose); # expect: true
+print(args.count); # expect: 3
+print(args.mode); # expect: fast
+
+args = parser.parse_args(["other.txt"]);
+print(args.path); # expect: other.txt
+print(args.verbose); # expect: false
+print(args.count); # expect: 1
+
+args = parser.parse_args(["a", "--mode=slow"]);
+print(args.mode); # expect: slow
+
+args = parser.parse_args(["--count=25", "b"]);
+print(args.count); # expect: 25
+print(args.path); # expect: b

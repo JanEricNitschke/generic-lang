@@ -1,0 +1,18 @@
+from "argparse" import ArgumentParser;
+
+var parser = ArgumentParser("tool", nil);
+parser.add_argument("command", nil);
+parser.add_argument("files", {"nargs": "*"});
+
+var args = parser.parse_args(["run", "a.txt", "b.txt"]);
+print(args.command); # expect: run
+print(args.files); # expect: [a.txt, b.txt]
+
+args = parser.parse_args(["run"]);
+print(args.files); # expect: []
+
+# A typed greedy positional converts every value.
+var sum_parser = ArgumentParser("sum", nil);
+sum_parser.add_argument("numbers", {"nargs": "*", "type": int});
+args = sum_parser.parse_args(["1", "2", "3"]);
+print(args.numbers); # expect: [1, 2, 3]
