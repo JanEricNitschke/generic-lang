@@ -592,7 +592,15 @@ pub(super) fn len_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
 
 /// Get the next item from an iterator.
 pub(super) fn next_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
-    vm.invoke_method_by_name_with_attribute_error(args[0], "__next__")
+    let result = vm.invoke_method_by_name_with_attribute_error(args[0], "__next__")?;
+    // With a second argument, a spent iterator yields that default instead of
+    // surfacing the `StopIteration` sentinel.
+    if matches!(result, Value::StopIteration)
+        && let Some(default) = args.get(1)
+    {
+        return Ok(*default);
+    }
+    Ok(result)
 }
 
 /// Get the iterator from an iterable.

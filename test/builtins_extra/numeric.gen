@@ -5,6 +5,7 @@ print(abs(-2.5)); # expect: 2.5
 print(sum([1, 2, 3])); # expect: 6
 print(sum([])); # expect: 0
 print(sum([1.5, 2.5])); # expect: 4.0
+print(sum([1, 2, 3], 100)); # expect: 106
 print(min([3, 1, 2])); # expect: 1
 print(max([3, 1, 2])); # expect: 3
 print(min([2.5, 1.5])); # expect: 1.5

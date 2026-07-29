@@ -32,3 +32,6 @@ print(Bool(alternating)); # expect: false
 
 d.clear();
 print(len(d)); # expect: 0
+
+# Deque() with no argument is empty, like Deque(nil).
+print(Deque()); # expect: Deque([])

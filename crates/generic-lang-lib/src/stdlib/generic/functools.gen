@@ -1,8 +1,33 @@
 # Tools for working with functions and callables.
-# `reduce` and `partial` come from the native half of the module and are
-# re-exported here.
+# `partial` comes from the native half of the module and is re-exported
+# here; `reduce` and `cmp_to_key` are pure generic.
 
-from "_functools" import reduce, partial;
+from "_functools" import partial;
+
+# A private sentinel distinguishing "no initial value given" from an
+# explicit `nil` initial. A fresh `object` compared by identity, so a
+# caller can never collide with it.
+var _no_initial = object();
+
+# Fold an iterable into a single value with a callable taking
+# `(accumulator, item)`. Without an initial value the fold starts from the
+# first item and an empty iterable is an error; with one it starts there.
+fun reduce(function, iterable, initial=_no_initial) {
+    var accumulator = initial;
+    var have_accumulator = !(initial is _no_initial);
+    foreach (var item in iterable) {
+        if (have_accumulator) {
+            accumulator = function(accumulator, item);
+        } else {
+            accumulator = item;
+            have_accumulator = true;
+        }
+    }
+    if (!have_accumulator) {
+        throw TypeError("'reduce' of empty iterable with no initial value");
+    }
+    return accumulator;
+}
 
 # Turn a two-argument comparator (negative, zero, or positive result)
 # into a key function usable with `sorted` and `list.sort`: the returned

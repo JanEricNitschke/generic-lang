@@ -4,7 +4,7 @@
 # ends, kept as two stacks: `front` holds the left half reversed, `back`
 # the right half in order.
 class Deque {
-    __init__(items) {
+    __init__(items=nil) {
         this.front = [];
         this.back = [];
         if (!(items is nil)) {
@@ -103,7 +103,7 @@ class Deque {
 
 # A dict counting occurrences: missing keys read as 0.
 class Counter < Dict {
-    __init__(items) {
+    __init__(items=nil) {
         super.__init__();
         if (!(items is nil)) {
             this.update(items);
@@ -155,7 +155,7 @@ class Counter < Dict {
     # unique sequence number breaks count ties so the items themselves
     # are never compared. Heapifying is linear and each of the `n` pops
     # is logarithmic.
-    most_common(n) {
+    most_common(n=nil) {
         if (n is nil or n >= len(this)) {
             return sorted(this.items(), true, (->(pair) pair[1]));
         }
@@ -179,7 +179,7 @@ class Counter < Dict {
 
 # A dict that fills missing keys from a factory on first access.
 class DefaultDict < Dict {
-    __init__(default_factory) {
+    __init__(default_factory=nil) {
         super.__init__();
         this.default_factory = default_factory;
     }
@@ -344,7 +344,7 @@ class OrderedDict < Dict {
 # to the root and sifts it down; the constructor sifts each internal
 # node down once, last parent first, which is linear overall.
 class Heap {
-    __init__(items) {
+    __init__(items=nil) {
         this.entries = [];
         if (!(items is nil)) {
             foreach (var item in items) {

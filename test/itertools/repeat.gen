@@ -16,3 +16,13 @@ print(seen); # expect: [y, y, y, y]
 
 # A negative count behaves like zero.
 print(List(repeat("z", -2))); # expect: []
+
+# Omitting the count repeats forever, like an explicit nil.
+var unbounded = [];
+foreach (var item in repeat("q")) {
+    unbounded.append(item);
+    if (len(unbounded) == 3) {
+        break;
+    }
+}
+print(unbounded); # expect: [q, q, q]

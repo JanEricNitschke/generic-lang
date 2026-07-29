@@ -12,3 +12,6 @@ print(reduce((->(a, b) a * b), [1, 2, 3, 4], 1)); # expect: 24
 print(reduce(add, ["gen", "er", "ic"])); # expect: generic
 print(reduce(add, (1, 2, 3))); # expect: 6
 print(reduce((->(a, b) a + b * b), 1..<5, 0)); # expect: 30
+
+# An explicit nil initial is a real initial, distinct from omitting it.
+print(reduce((->(a, b) b), [1, 2, 3], nil)); # expect: 3

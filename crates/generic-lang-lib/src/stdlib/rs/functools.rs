@@ -1,86 +1,13 @@
 //! Native half of the `functools` stdlib module, registered as
-//! `_functools`: the `reduce` function and the `partial` class. The
-//! generic half (`functools.gen`) re-exports them alongside the pure
-//! generic parts of the module.
+//! `_functools`: the `partial` class. The generic half
+//! (`functools.gen`) re-exports it alongside the pure generic parts of
+//! the module (`reduce`, `cmp_to_key`).
 
 use crate::natives::VARIADIC_0_PLUS;
 use crate::value::{ModuleContents, ModuleExport, Value};
 use crate::vm::ExceptionKind::TypeError;
 use crate::vm::VM;
-use crate::vm::errors::{VmErrorKind, VmResult};
-
-/// Fold an iterable into a single value with a callable taking
-/// `(accumulator, item)`. `reduce(function, iterable)` starts from the
-/// first item and throws on an empty iterable;
-/// `reduce(function, iterable, initial)` starts from `initial`.
-fn reduce_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
-    let function = args[0];
-    let Some(items) = vm.collect_items_from_iterable(args[1])? else {
-        return Err(vm
-            .throw(
-                TypeError,
-                &format!(
-                    "'reduce' expected an iterable, got: {}",
-                    args[1].to_string(&vm.heap)
-                ),
-            )
-            .unwrap_err());
-    };
-
-    let (initial, rest) = if let Some(initial) = args.get(2) {
-        (*initial, items.as_slice())
-    } else if let Some((first, rest)) = items.split_first() {
-        (*first, rest)
-    } else {
-        return Err(vm
-            .throw(
-                TypeError,
-                "'reduce' of empty iterable with no initial value",
-            )
-            .unwrap_err());
-    };
-
-    // The accumulator and the remaining items are rooted on the VM stack
-    // across the re-entrant calls; the accumulator lives in the slot at
-    // `base` so each iteration's result stays reachable.
-    let base = vm.stack.len();
-    vm.stack.push(initial);
-    vm.stack.extend_from_slice(rest);
-    let end = vm.stack.len();
-
-    let outcome = run_reduce(vm, function, base, end);
-    match outcome {
-        Ok(()) => {
-            let result = vm.stack[base];
-            vm.stack.truncate(base);
-            Ok(result)
-        }
-        Err(error @ VmErrorKind::Exception(_)) => {
-            let exception = vm.stack.pop().expect("pending exception on stack top");
-            vm.stack.truncate(base);
-            vm.stack.push(exception);
-            Err(error)
-        }
-        Err(error) => Err(error),
-    }
-}
-
-/// The fold loop of [`reduce_native`]: combine the accumulator at
-/// `stack[base]` with each item at `stack[base + 1..end]` in order,
-/// writing each result back into the accumulator slot.
-fn run_reduce(vm: &mut VM, function: Value, base: usize, end: usize) -> VmResult<()> {
-    for index in (base + 1)..end {
-        vm.stack.push(function);
-        let accumulator = vm.stack[base];
-        vm.stack.push(accumulator);
-        let item = vm.stack[index];
-        vm.stack.push(item);
-        vm.call_value_and_run(2)?;
-        let result = vm.stack.pop().expect("call left no result on the stack");
-        vm.stack[base] = result;
-    }
-    Ok(())
-}
+use crate::vm::errors::VmResult;
 
 /// `partial(callable, bound...)`: store the callable and the leading
 /// arguments on the instance's backing.
@@ -161,12 +88,5 @@ pub(super) fn register(vm: &mut VM) {
 /// name they are to be accessed with from generic; functions
 /// additionally carry their supported arities.
 fn module() -> ModuleContents {
-    vec![
-        ModuleExport::Function {
-            name: "reduce",
-            arity: &[2, 3],
-            fun: reduce_native,
-        },
-        ModuleExport::Class { name: "partial" },
-    ]
+    vec![ModuleExport::Class { name: "partial" }]
 }

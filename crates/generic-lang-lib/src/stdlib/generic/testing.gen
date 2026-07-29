@@ -1,55 +1,56 @@
 # Testing module providing assertion functions and testing utilities.
 
-fun assert_equal(actual, expected, message) {
+# Prefix a failure detail with the caller's message when one was given.
+fun _prefixed(message, detail) {
+    if (message is nil) {
+        return detail;
+    }
+    return f"${message}: ${detail}";
+}
+
+fun assert_equal(actual, expected, message=nil) {
     if (actual != expected) {
-        var error_msg = f"${message}: expected ${expected}, got ${actual}";
-        throw AssertionError(error_msg);
+        throw AssertionError(_prefixed(message, f"expected ${expected}, got ${actual}"));
     }
 }
 
-fun assert_not_equal(actual, expected, message) {
+fun assert_not_equal(actual, expected, message=nil) {
     if (actual == expected) {
-        var error_msg = f"${message}: expected values to be different, but both were ${actual}";
-        throw AssertionError(error_msg);
+        throw AssertionError(_prefixed(message, f"expected values to be different, but both were ${actual}"));
     }
 }
 
-fun assert_true(condition, message) {
+fun assert_true(condition, message=nil) {
     if (!condition) {
-        var error_msg = f"${message}: expected true, got ${condition}";
-        throw AssertionError(error_msg);
+        throw AssertionError(_prefixed(message, f"expected true, got ${condition}"));
     }
 }
 
-fun assert_false(condition, message) {
+fun assert_false(condition, message=nil) {
     if (condition) {
-        var error_msg = f"${message}: expected false, got ${condition}";
-        throw AssertionError(error_msg);
+        throw AssertionError(_prefixed(message, f"expected false, got ${condition}"));
     }
 }
 
-fun assert_nil(value, message) {
-    if (value != nil) {
-        var error_msg = f"${message}: expected nil, got ${value}";
-        throw AssertionError(error_msg);
+fun assert_nil(value, message=nil) {
+    if (!(value is nil)) {
+        throw AssertionError(_prefixed(message, f"expected nil, got ${value}"));
     }
 }
 
-fun assert_not_nil(value, message) {
-    if (value == nil) {
-        var error_msg = f"${message}: expected non-nil value, got nil";
-        throw AssertionError(error_msg);
+fun assert_not_nil(value, message=nil) {
+    if (value is nil) {
+        throw AssertionError(_prefixed(message, "expected non-nil value, got nil"));
     }
 }
 
-fun assert_throws(func, exception, message) {
+fun assert_throws(func, exception, message=nil) {
     try {
         func();
     } catch exception {
         # Success - exception was thrown and caught
     } else {
         # If we reach here, no exception was thrown
-        var error_msg = f"${message}: expected function to throw an exception, but none was thrown";
-        throw AssertionError(error_msg);
+        throw AssertionError(_prefixed(message, "expected function to throw an exception, but none was thrown"));
     }
 }

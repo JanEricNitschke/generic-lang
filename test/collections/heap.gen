@@ -1,5 +1,8 @@
 from "collections" import Heap;
 
+# Heap() with no argument starts empty, like Heap(nil).
+print(len(Heap())); # expect: 0
+
 var heap = Heap([5, 1, 4, 2, 3]);
 print(len(heap)); # expect: 5
 print(heap.peek()); # expect: 1

@@ -58,7 +58,7 @@ fun _dest_name(name) {
 # (`--verbose value` or `--verbose=value`); otherwise it is a
 # positional, filled left to right.
 class _Argument {
-    __init__(name, options) {
+    __init__(name, options=nil) {
         # The user-facing spelling, e.g. "--mode" or "path". Used in
         # help output and error messages.
         this.name = name;
@@ -123,7 +123,7 @@ class _Argument {
 # Declares the accepted arguments and parses a command line against
 # them (see the module comment for the settings dict).
 class ArgumentParser {
-    __init__(prog, description) {
+    __init__(prog=nil, description=nil) {
         # Program name for the usage line; nil derives it from
         # `os.argv[0]` (or "prog" in the REPL).
         this.prog = prog;
@@ -141,7 +141,7 @@ class ArgumentParser {
 
     # Declare one argument; `options` is the settings dict or nil.
     # Throws ValueError on inconsistent settings or duplicate names.
-    add_argument(name, options) {
+    add_argument(name, options=nil) {
         var argument = _Argument(name, options);
         if (this.options.contains(argument.name)) {
             throw ValueError(f"duplicate argument name: ${name}");
@@ -176,7 +176,7 @@ class ArgumentParser {
     # Parse the given argument list (`nil` for `os.argv[1:]`) into a
     # `Namespace`. Throws `ValueError` on invalid input; prints help and
     # returns `nil` on `-h` / `--help`.
-    parse_args(args) {
+    parse_args(args=nil) {
         if (args is nil) {
             # os.argv without the leading script path.
             args = os.argv.copy();

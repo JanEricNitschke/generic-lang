@@ -1,0 +1,20 @@
+# `object` is the bare root builtin class: instantiable, method-less, and
+# handy as a unique identity sentinel.
+print(object); # expect: <class object>
+
+var a = object();
+print(a); # expect: <object instance>
+print(isinstance(a, object)); # expect: true
+
+# Distinct instances are never identical; an instance is identical to itself.
+print(a is a); # expect: true
+print(a is object()); # expect: false
+print(a == object()); # expect: false
+print(a == a); # expect: true
+
+# It takes no constructor arguments.
+try {
+    object(1);
+} catch TypeError as e {
+    print(e.message()); # expect: Expected 0 arguments but got 1.
+}

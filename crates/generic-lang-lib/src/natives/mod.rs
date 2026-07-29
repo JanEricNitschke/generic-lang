@@ -137,7 +137,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_function(&"round", &[1], round_native);
     vm.define_native_function(&"isinstance", &[2], isinstance_native);
     vm.define_native_function(&"issubclass", &[2], issubclass_native);
-    vm.define_native_function(&"next", &[1], next_native);
+    vm.define_native_function(&"next", &[1, 2], next_native);
     vm.define_native_function(&"iter", &[1], iter_native);
     vm.define_native_function(&"sorted", &[1, 2, 3], sorted_native);
 

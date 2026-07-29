@@ -6,6 +6,11 @@ import "testing";
 testing.assert_equal(2 + 2, 4, "Math should work");
 print("Assert equal passed"); # expect: Assert equal passed
 
+# The message is optional.
+testing.assert_equal(2 + 2, 4);
+testing.assert_true(true);
+print("Assert without message passed"); # expect: Assert without message passed
+
 # Test assert_not_equal 
 testing.assert_not_equal(5, 3, "Different numbers");
 print("Assert not equal passed"); # expect: Assert not equal passed
