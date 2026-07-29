@@ -531,14 +531,15 @@ mod tests {
     /// Helper macro to create bytecode vectors without needing "as u8" for opcodes
     /// Usage: bytecode![`OpCode::LoadOne`, `OpCode::LoadTwo`, 0, `OpCode::Add`]
     macro_rules! bytecode {
-        ($($item:expr),* $(,)?) => {
-            vec![
-                $(
-                    // Convert OpCode to u8 using Into trait, or keep u8 values as-is
-                    $item.into(),
-                )*
-            ]
-        };
+        ($($item:expr),* $(,)?) => {{
+            // Convert OpCodes to u8 using Into, keeping u8 values as-is.
+            // The explicit type keeps the `.into()` calls unambiguous no
+            // matter which `From<u8>` impls dependencies bring into scope.
+            let bytecode: Vec<u8> = vec![
+                $($item.into(),)*
+            ];
+            bytecode
+        }};
     }
 
     fn compile_and_get_bytecode(source: &str) -> Vec<u8> {

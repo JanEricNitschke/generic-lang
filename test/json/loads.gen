@@ -1,0 +1,53 @@
+import "json";
+from "string" import quote;
+
+# Quote-free documents parse directly.
+print(json.loads("null")); # expect: nil
+print(json.loads("true")); # expect: true
+print(json.loads("false")); # expect: false
+print(json.loads("42")); # expect: 42
+print(json.loads("-3.5")); # expect: -3.5
+print(json.loads("[1, 2.5, null, true]")); # expect: [1, 2.5, nil, true]
+print(json.loads("[[1], [2, 3]]")); # expect: [[1], [2, 3]]
+
+# A fraction dot or an exponent makes a float (the JSON convention,
+# matching every other parser), even when the value is integer-valued.
+print(json.loads("1e3")); # expect: 1000.0
+print(json.loads("2E2")); # expect: 200.0
+print(json.loads("1.5e2")); # expect: 150.0
+print(json.loads("1e-3")); # expect: 0.001
+
+# A zero mantissa with a huge exponent is just 0.0 - no allocation.
+print(json.loads("0E100000000")); # expect: 0.0
+# An exponent that overflows f64 becomes infinity, not an error.
+print(json.loads("1e400")); # expect: inf
+
+# Plain integer literals beyond u64 stay EXACT (arbitrary precision).
+var huge = json.loads("99999999999999999999999999999999");
+print(huge); # expect: 99999999999999999999999999999999
+print(huge + 1); # expect: 100000000000000000000000000000000
+print(json.loads("18446744073709551616")); # expect: 18446744073709551616
+
+# Objects (keys need quotes; f-strings interpolate with ${...}, literal
+# braces pass through).
+var q = quote;
+var doc = json.loads(f"{${q}name${q}: ${q}gen${q}, ${q}n${q}: 2}");
+print(doc["name"]); # expect: gen
+print(doc["n"]); # expect: 2
+var nested = json.loads(f"{${q}outer${q}: {${q}inner${q}: [1, 2]}}");
+print(nested["outer"]["inner"]); # expect: [1, 2]
+
+# Whitespace is insignificant.
+print(json.loads(" [ 1 , 2 ] ")); # expect: [1, 2]
+
+# Malformed documents raise ValueError; non-strings a TypeError.
+try {
+    json.loads("[1, 2");
+} catch ValueError as e {
+    print(e.message().startswith("Invalid JSON")); # expect: true
+}
+try {
+    json.loads(5);
+} catch TypeError as e {
+    print(e.message()); # expect: 'loads' expects a string, got: 5
+}

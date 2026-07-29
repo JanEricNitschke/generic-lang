@@ -122,6 +122,12 @@ The bundled modules:
   `string.carriage_return`, `string.tab`, `string.quote`,
   `string.backslash`, `string.null`. Use them via interpolation, e.g.
   `f"a${string.newline}b"`.
+- **`json`** - `json.loads(source)` parses a JSON document into
+  generic values (objects become dicts, arrays lists, numbers keep
+  exact integers of any size); `json.dumps(value)` /
+  `json.dumps(value, indent)` serializes lists, tuples (as arrays),
+  dicts with string keys, strings, numbers, booleans, and `nil`.
+  Circular references and non-serializable values raise.
 - **`functools`** - tools for callables: `reduce(f, iterable)` /
   `reduce(f, iterable, initial)` folds an iterable with `f(acc, item)`;
   `partial(f, args...)` returns a callable with the leading arguments
