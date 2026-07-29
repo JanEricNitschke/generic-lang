@@ -7,7 +7,9 @@
 //! below the copied arguments - so `NativeFunctionImpl`, the dispatch
 //! sites, and the number of loadable plugin functions are all unconstrained.
 
-use generic_lang_api::{FfiReturn, FfiStatus, GenericValue, PluginFn, PluginMethodFn};
+use generic_lang_api::{
+    FfiReturn, FfiStatus, GenericValue, PluginFn, PluginMethodFn, PluginValueFn,
+};
 
 use super::host_api::{build_host_api, from_ffi, to_ffi};
 use crate::heap::StringId;
@@ -54,6 +56,18 @@ pub(super) fn call_plugin(
         args.as_ptr().cast::<GenericValue>(),
         args.len(),
     );
+    map_plugin_return(vm, ret, name)
+}
+
+/// Call a plugin value creator: no arguments, only the host vtable. Used
+/// once per exported module value at import time.
+pub(super) fn call_plugin_value(
+    vm: &mut VM,
+    fun: PluginValueFn,
+    name: StringId,
+) -> VmResult<Value> {
+    let host = build_host_api(vm);
+    let ret: FfiReturn = fun(&raw const host);
     map_plugin_return(vm, ret, name)
 }
 

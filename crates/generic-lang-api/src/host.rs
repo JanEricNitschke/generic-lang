@@ -864,6 +864,31 @@ pub unsafe fn __invoke_plugin_method_fn(
     finish_plugin_invoke(api, result)
 }
 
+/// Signature of a Rust plugin value creator used with `export_module!`:
+/// builds one module constant at import time.
+pub type RustPluginValueFn = fn(&mut Host) -> Result<GenericValue, PluginError>;
+
+/// Implementation detail of `export_module!`: the value-creator counterpart
+/// of [`__invoke_plugin_fn`].
+///
+/// # Safety
+///
+/// `host` must point to a valid [`HostApi`], valid for the duration of the
+/// call - which is what the interpreter guarantees when importing the
+/// plugin module.
+#[doc(hidden)]
+pub unsafe fn __invoke_plugin_value_fn(fun: RustPluginValueFn, host: *const HostApi) -> FfiReturn {
+    // SAFETY: guaranteed by the caller, see above.
+    let api = unsafe { &*host };
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut host = Host::new(api);
+        fun(&mut host)
+    }));
+
+    finish_plugin_invoke(api, result)
+}
+
 /// Map a caught plugin invocation outcome to an [`FfiReturn`], turning a panic
 /// into a catchable base `Exception` so nothing unwinds across the C ABI.
 fn finish_plugin_invoke(

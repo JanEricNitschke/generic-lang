@@ -9,6 +9,9 @@
 /// - A class: `class("Name") { (method, arities, fun), ... }`, optionally
 ///   followed by `drop: drop_fn,` and/or `traverse: traverse_fn,` (in that
 ///   order). Method `arities` count `self`; the receiver arrives as `args[0]`.
+/// - A value: `value("name", creator)`, where `creator` is a
+///   [`RustPluginValueFn`](crate::RustPluginValueFn) building one module
+///   constant at import time.
 ///
 /// ```ignore
 /// use generic_lang_api::{GenericValue, Host, PluginError, PluginVisitFn};
@@ -51,40 +54,48 @@
 #[macro_export]
 macro_rules! export_module {
     [$($t:tt)*] => {
-        $crate::__export_go!(@go [] [] $($t)*);
+        $crate::__export_go!(@go [] [] [] $($t)*);
     };
 }
 
 /// Single tt-muncher behind [`export_module!`]: walks the entry list once,
-/// appending each entry to the functions accumulator or the classes
-/// accumulator, then emits `generic_plugin_init` with both `const` tables.
+/// appending each entry to the functions, classes, or values accumulator,
+/// then emits `generic_plugin_init` with the `const` tables.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __export_go {
-    (@go [$($fa:tt)*] [$($ca:tt)*]) => {
+    (@go [$($fa:tt)*] [$($ca:tt)*] [$($va:tt)*]) => {
         /// Entry point resolved by the generic interpreter's plugin loader.
         #[unsafe(no_mangle)]
         pub extern "C" fn generic_plugin_init() -> *const $crate::ModuleDesc {
             const FUNCTIONS: &[$crate::FunctionDesc] = &[ $($fa)* ];
             const CLASSES: &[$crate::ClassDesc] = &[ $($ca)* ];
+            const VALUES: &[$crate::ValueDesc] = &[ $($va)* ];
             static DESC: $crate::ModuleDesc = $crate::ModuleDesc {
                 abi_version: $crate::GENERIC_PLUGIN_ABI_VERSION,
                 functions: FUNCTIONS.as_ptr(),
                 functions_len: FUNCTIONS.len(),
                 classes: CLASSES.as_ptr(),
                 classes_len: CLASSES.len(),
+                values: VALUES.as_ptr(),
+                values_len: VALUES.len(),
             };
             &raw const DESC
         }
     };
-    (@go [$($fa:tt)*] [$($ca:tt)*] ($n:expr, $a:expr, $f:expr) $(, $($r:tt)*)?) => {
+    (@go [$($fa:tt)*] [$($ca:tt)*] [$($va:tt)*] ($n:expr, $a:expr, $f:expr) $(, $($r:tt)*)?) => {
         $crate::__export_go!(
-            @go [$($fa)* $crate::__function_desc!($n, $a, $f),] [$($ca)*] $($($r)*)?
+            @go [$($fa)* $crate::__function_desc!($n, $a, $f),] [$($ca)*] [$($va)*] $($($r)*)?
         );
     };
-    (@go [$($fa:tt)*] [$($ca:tt)*] class($cn:expr) { $($b:tt)* } $(, $($r:tt)*)?) => {
+    (@go [$($fa:tt)*] [$($ca:tt)*] [$($va:tt)*] class($cn:expr) { $($b:tt)* } $(, $($r:tt)*)?) => {
         $crate::__export_go!(
-            @go [$($fa)*] [$($ca)* $crate::__class_desc!($cn, { $($b)* }),] $($($r)*)?
+            @go [$($fa)*] [$($ca)* $crate::__class_desc!($cn, { $($b)* }),] [$($va)*] $($($r)*)?
+        );
+    };
+    (@go [$($fa:tt)*] [$($ca:tt)*] [$($va:tt)*] value($vn:expr, $vf:expr) $(, $($r:tt)*)?) => {
+        $crate::__export_go!(
+            @go [$($fa)*] [$($ca)*] [$($va)* $crate::__value_desc!($vn, $vf),] $($($r)*)?
         );
     };
 }
@@ -125,6 +136,26 @@ macro_rules! __function_desc {
             },
             arities: ARITIES.as_ptr(),
             arities_len: ARITIES.len(),
+            fun: Some(wrapper),
+        }
+    }};
+}
+
+/// Build one [`ValueDesc`](crate::ValueDesc) with its panic-safe wrapper.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __value_desc {
+    ($name:expr, $fun:expr) => {{
+        extern "C" fn wrapper(host: *const $crate::HostApi) -> $crate::FfiReturn {
+            // SAFETY: the host passes a valid vtable.
+            unsafe { $crate::__invoke_plugin_value_fn($fun, host) }
+        }
+        const NAME: &str = $name;
+        $crate::ValueDesc {
+            name: $crate::FfiStr {
+                ptr: NAME.as_ptr(),
+                len: NAME.len(),
+            },
             fun: Some(wrapper),
         }
     }};

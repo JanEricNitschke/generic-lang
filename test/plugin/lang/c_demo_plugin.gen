@@ -59,3 +59,6 @@ print(isinstance(s, c_demo_plugin.Counter)); # expect: true
 # --- the held label survives collections (traverse) ---
 var listed = c_demo_plugin.Counter([1, 2, 3]);
 print(listed.label());  # expect: [1, 2, 3]
+
+# --- module values, built once at import time ---
+print(c_demo_plugin.speed_of_light);  # expect: 299792458

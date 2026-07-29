@@ -15,14 +15,15 @@ use rustc_hash::FxHashMap as HashMap;
 
 use generic_lang_api::{
     GENERIC_PLUGIN_ABI_VERSION, ModuleDesc, PluginFn, PluginMethodFn, PluginTraverseFn,
+    PluginValueFn,
 };
 
-use super::trampolines::plugin_trampoline;
+use super::trampolines::{call_plugin_value, plugin_trampoline};
 use crate::heap::StringId;
 use crate::value::{Class, ClassKind, NativeFunction, NativeMethod, PluginClassInfo, Value};
 use crate::vm::ExceptionKind::ImportError;
 use crate::vm::VM;
-use crate::vm::errors::VmResult;
+use crate::vm::errors::{VmErrorKind, VmResult};
 
 /// One exported function of a loaded plugin: name, arity slice (leaked once at
 /// load - bounded, plugins never unload), and the `extern "C"` pointer.
@@ -43,6 +44,10 @@ type PluginClassExport = (
     Vec<PluginMethodExport>,
 );
 
+/// One exported module value of a loaded plugin: name and the creator
+/// called at import time.
+type PluginValueExport = (StringId, PluginValueFn);
+
 /// A validated-but-not-yet-interned function: borrowed name, arity slice, and
 /// pointer - all borrowing the descriptor for the library's lifetime.
 type ValidatedFunction<'d> = (&'d str, &'d [u8], PluginFn);
@@ -60,11 +65,16 @@ type ValidatedClass<'d> = (
     Vec<ValidatedMethod<'d>>,
 );
 
-/// Everything cached per loaded plugin path: functions and classes.
+/// A validated-but-not-yet-interned module value: borrowed name and creator.
+type ValidatedValue<'d> = (&'d str, PluginValueFn);
+
+/// Everything cached per loaded plugin path: functions, classes, and
+/// module values.
 #[derive(Default, Clone)]
 pub struct PluginModuleExports {
     pub(in crate::vm) functions: Vec<PluginFunctionExport>,
     pub(in crate::vm) classes: Vec<PluginClassExport>,
+    pub(in crate::vm) values: Vec<PluginValueExport>,
 }
 
 /// Per-VM plugin state: the loaded libraries (kept alive for the VM's
@@ -240,6 +250,7 @@ impl VM {
         // never leaks the allocations of the entries validated before it.
         let functions = self.validate_plugin_functions(path, desc)?;
         let classes = self.validate_plugin_classes(path, desc)?;
+        let values = self.validate_plugin_values(path, desc)?;
 
         // Everything validated: intern names and leak the arity slices. Leaked
         // once per entry at load - bounded, since plugins are cached per
@@ -262,9 +273,15 @@ impl VM {
             })
             .collect();
 
+        let value_exports: Vec<PluginValueExport> = values
+            .into_iter()
+            .map(|(name, fun)| (self.heap.string_id(&name), fun))
+            .collect();
+
         let exports = PluginModuleExports {
             functions: function_exports,
             classes: class_exports,
+            values: value_exports,
         };
 
         self.plugins.libraries.push(library);
@@ -327,6 +344,54 @@ impl VM {
                     );
                 };
                 Ok((name, arities, fun))
+            })
+            .collect()
+    }
+
+    /// Validate the descriptor's value table without interning: for each
+    /// module value, the borrowed name and creator. `Err` is an
+    /// already-thrown `ImportError`.
+    #[allow(unsafe_code)]
+    fn validate_plugin_values<'d>(
+        &mut self,
+        path: &Path,
+        desc: &'d ModuleDesc,
+    ) -> Result<Vec<ValidatedValue<'d>>, VmResult> {
+        macro_rules! import_error {
+            ($($arg:tt)*) => { return Err(self.throw(ImportError, &format!($($arg)*))) };
+        }
+
+        let values = if desc.values_len == 0 {
+            &[]
+        } else {
+            if desc.values.is_null() {
+                import_error!(
+                    "Plugin `{}` declares {} values but a null table.",
+                    path.display(),
+                    desc.values_len
+                );
+            }
+            // SAFETY: non-null table of `values_len` descriptors, valid for
+            // the library's lifetime (ABI contract).
+            unsafe { std::slice::from_raw_parts(desc.values, desc.values_len) }
+        };
+
+        values
+            .iter()
+            .map(|value| {
+                let Some(name) = read_ffi_name(value.name) else {
+                    import_error!(
+                        "Plugin `{}` exports a value with an invalid name.",
+                        path.display()
+                    );
+                };
+                let Some(fun) = value.fun else {
+                    import_error!(
+                        "Plugin value `{name}` in `{}` has a null creator pointer.",
+                        path.display()
+                    );
+                };
+                Ok((name, fun))
             })
             .collect()
     }
@@ -415,7 +480,7 @@ impl VM {
     /// Build each export's trampoline `NativeFunction` and hand them to
     /// `install_native_module`, which registers the module honoring
     /// `from`-imports, aliases, and local imports.
-    fn import_plugin_module(
+    pub(super) fn import_plugin_module(
         &mut self,
         name_id: StringId,
         path: PathBuf,
@@ -438,7 +503,47 @@ impl VM {
             let class_value = self.add_plugin_class(*class_name_id, *drop, *traverse, methods);
             natives.push((*class_name_id, class_value));
         }
-        self.install_native_module(name_id, path, alias, natives, names_to_import, local_import)
+        // Module values are built by the plugin at import time. The
+        // creators may re-enter and collect, so everything built so far
+        // is rooted on the VM stack while they run: the function and
+        // class exports above, and each finished value while the
+        // remaining creators execute. The whole batch is unrooted after
+        // the module took ownership.
+        let natives_base = self.stack.len();
+        for (_, value) in &natives {
+            self.stack.push(*value);
+        }
+        let values_base = self.stack.len();
+        for (value_name_id, fun) in &exports.values {
+            match call_plugin_value(self, *fun, *value_name_id) {
+                Ok(value) => self.stack.push(value),
+                Err(error) => {
+                    // Drop the partial batch from under a pending exception.
+                    let created = self.stack.len()
+                        - values_base
+                        - usize::from(matches!(error, VmErrorKind::Exception(_)));
+                    self.stack.drain(natives_base..values_base + created);
+                    return Err(error);
+                }
+            }
+        }
+        for (offset, (value_name_id, _)) in exports.values.iter().enumerate() {
+            natives.push((*value_name_id, self.stack[values_base + offset]));
+        }
+        let result = self.install_native_module(
+            name_id,
+            path,
+            alias,
+            natives,
+            names_to_import,
+            local_import,
+        );
+        // The module owns the batch now; drop it from under whatever
+        // `install_native_module` left on top (locally imported values,
+        // or a pending exception from a failed `from`-import).
+        self.stack
+            .drain(natives_base..values_base + exports.values.len());
+        result
     }
 
     /// Register a plugin function as a heap native: the shared

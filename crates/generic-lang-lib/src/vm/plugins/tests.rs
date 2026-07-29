@@ -36,9 +36,10 @@ use crate::vm::VM;
 use crate::vm::callstack::CallFrame;
 use crate::vm::errors::VmErrorKind;
 use crate::vm::plugins::host_api::{build_host_api, from_ffi, to_ffi, value_kind_of};
+use crate::vm::plugins::loader::PluginModuleExports;
 #[cfg(not(miri))]
 use crate::vm::plugins::loader::find_plugin_candidate;
-use crate::vm::plugins::trampolines::{call_plugin, plugin_trampoline};
+use crate::vm::plugins::trampolines::{call_plugin, call_plugin_value, plugin_trampoline};
 
 // --- Value constructors for the tests: build heap values the way a running
 // VM holds them (interned strings, native-backed containers, a plain
@@ -1219,4 +1220,156 @@ fn plugin_traverse_keeps_held_value_alive_across_gc() {
 
     vm.stack.pop();
     vm.stack.pop();
+}
+
+// --- module value creators -------------------------------------------------
+
+extern "C" fn value_creator_seven(host: *const HostApi) -> FfiReturn {
+    // SAFETY: the host passes a valid vtable for the duration of the call.
+    let api = unsafe { &*host };
+    FfiReturn {
+        status: FfiStatus::Ok as u32,
+        value: (api.int_new)(api.ctx, 7),
+    }
+}
+
+extern "C" fn value_creator_throws(host: *const HostApi) -> FfiReturn {
+    // SAFETY: as above.
+    let api = unsafe { &*host };
+    let class_name = "ValueError";
+    let message = "value creation failed";
+    let class = (api.builtin_get)(
+        api.ctx,
+        FfiStr {
+            ptr: class_name.as_ptr(),
+            len: class_name.len(),
+        },
+    );
+    assert_eq!(class.status, FfiStatus::Ok as u32);
+    let exception = (api.exception_new)(
+        api.ctx,
+        class.value,
+        FfiStr {
+            ptr: message.as_ptr(),
+            len: message.len(),
+        },
+    );
+    assert_eq!(exception.status, FfiStatus::Ok as u32);
+    FfiReturn {
+        status: FfiStatus::Exception as u32,
+        value: exception.value,
+    }
+}
+
+/// A value creator's `Ok` result comes back as the created value.
+#[test]
+fn value_creator_result_is_returned() {
+    let mut vm = VM::new();
+    let name = vm.heap.string_id(&"seven");
+    let result = call_plugin_value(&mut vm, value_creator_seven, name);
+    let value = result.expect("creator succeeds");
+    assert_eq!(value, Value::from(7));
+}
+
+/// A throwing value creator leaves the pending exception on the stack top,
+/// per the native error contract, so a failing import surfaces it.
+#[test]
+fn value_creator_exception_is_pending() {
+    let mut vm = VM::new();
+    let depth = vm.stack.len();
+    let name = vm.heap.string_id(&"broken");
+    let result = call_plugin_value(&mut vm, value_creator_throws, name);
+    assert!(matches!(result, Err(VmErrorKind::Exception(_))));
+    assert_eq!(vm.stack.len(), depth + 1, "pending exception on the stack");
+}
+
+extern "C" fn value_creator_forces_gc(host: *const HostApi) -> FfiReturn {
+    // SAFETY: the host passes a valid vtable for the duration of the call;
+    // `ctx` is the VM, recovered the way the host callbacks do. The forced
+    // collection stands in for any re-entering creator that runs generic
+    // code, where every instruction may collect.
+    let api = unsafe { &*host };
+    let vm = unsafe { &mut *api.ctx.cast::<VM>() };
+    vm.heap.force_next_gc();
+    vm.collect_garbage();
+    FfiReturn {
+        status: FfiStatus::Ok as u32,
+        value: (api.int_new)(api.ctx, 1),
+    }
+}
+
+/// The function and class exports built before the value creators run are
+/// rooted while the creators execute: a creator that collects must not
+/// sweep them out from under the module being imported.
+#[test]
+fn module_exports_survive_gc_during_value_creation() {
+    let mut vm = VM::new();
+
+    // A real import always runs from an executing frame with a current
+    // module; recreate that minimal context.
+    let module_name = vm.heap.string_id(&"importer");
+    let importer = vm.heap.add_module(Module::new(
+        module_name,
+        PathBuf::from("importer"),
+        None,
+        module_name,
+        false,
+    ));
+    vm.modules.push(*importer.as_module());
+    let raw_function = vm.heap.add_function(Function::new(0, module_name));
+    let closure = Closure::new(*raw_function.as_function(), false, None, &vm.heap);
+    let closure_value = vm.heap.add_closure(closure);
+    // The calling convention keeps the callee on the value stack at its
+    // frame's base; the GC relies on that to keep the closure alive.
+    let stack_base = vm.stack.len();
+    vm.stack.push(closure_value);
+    vm.callstack
+        .push(*closure_value.as_closure(), stack_base, &vm.heap);
+
+    let plugin_name = vm.heap.string_id(&"gc_probe");
+    let path = PathBuf::from("gc_probe");
+    let exports = PluginModuleExports {
+        functions: vec![(vm.heap.string_id(&"seven"), &[0], plugin_returns_seven)],
+        classes: vec![],
+        values: vec![(vm.heap.string_id(&"probe"), value_creator_forces_gc)],
+    };
+    // The loader caches the exports before building the module; the cached
+    // names are GC roots, exactly as in a real import.
+    vm.plugins.loaded.insert(path.clone(), exports.clone());
+    vm.import_plugin_module(plugin_name, path, None, &exports, None, false)
+        .expect("import succeeds");
+
+    // The module bound in the importer carries the function export built
+    // before the collecting creator ran; reading it back through the heap
+    // panics on a swept arena entry.
+    let function_name = vm.heap.string_id(&"seven");
+    let value_name = vm.heap.string_id(&"probe");
+    let bound = importer
+        .as_module()
+        .to_value(&vm.heap)
+        .globals
+        .get(&plugin_name)
+        .expect("module bound in the importer")
+        .value;
+    let globals = &bound.as_module().to_value(&vm.heap).globals;
+    let function = globals
+        .get(&function_name)
+        .expect("function export present")
+        .value;
+    let Value::NativeFunction(function_id) = function else {
+        panic!("function export is not a native function");
+    };
+    let probe = globals
+        .get(&value_name)
+        .expect("value export present")
+        .value;
+    assert_eq!(
+        *function_id.to_value(&vm.heap).name.to_value(&vm.heap),
+        "seven"
+    );
+    assert_eq!(probe, Value::from(1));
+
+    vm.callstack.pop(&vm.heap);
+    vm.stack.pop();
+    vm.modules.pop();
 }

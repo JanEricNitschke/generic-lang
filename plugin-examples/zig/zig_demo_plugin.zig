@@ -282,12 +282,23 @@ const FUNCTIONS = [_]c.FunctionDesc{
     .{ .name = .{ .ptr = "raise", .len = 5 }, .arities = &ARITY_2, .arities_len = 1, .fun = raise },
 };
 
+// golden_ratio - a module constant, built once when the module is imported.
+fn makeGoldenRatio(host: [*c]const c.HostApi) callconv(.c) c.FfiReturn {
+    return ok(host.*.float_new.?(host.*.ctx, 1.618033988749895));
+}
+
+const VALUES = [_]c.ValueDesc{
+    .{ .name = .{ .ptr = "golden_ratio", .len = 12 }, .fun = makeGoldenRatio },
+};
+
 const DESC = c.ModuleDesc{
     .abi_version = c.GENERIC_PLUGIN_ABI_VERSION,
     .functions = &FUNCTIONS,
     .functions_len = FUNCTIONS.len,
     .classes = &CLASSES,
     .classes_len = CLASSES.len,
+    .values = &VALUES,
+    .values_len = VALUES.len,
 };
 
 export fn generic_plugin_init() callconv(.c) [*c]const c.ModuleDesc {

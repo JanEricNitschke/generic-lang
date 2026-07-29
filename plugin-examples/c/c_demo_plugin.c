@@ -373,6 +373,16 @@ static const ClassDesc CLASSES[] = {
      .traverse = NULL},
 };
 
+/* speed_of_light - a module constant, built once when the module is
+ * imported. Value creators receive only the host vtable. */
+static FfiReturn make_speed_of_light(const HostApi *host) {
+    return ok(host->int_new(host->ctx, 299792458));
+}
+
+static const ValueDesc VALUES[] = {
+    {.name = {.ptr = (const uint8_t *)"speed_of_light", .len = 14}, .fun = make_speed_of_light},
+};
+
 static const FunctionDesc FUNCTIONS[] = {
     {.name = {.ptr = (const uint8_t *)"add", .len = 3},
      .arities = ARITY_2,
@@ -397,6 +407,8 @@ static const ModuleDesc DESC = {
     .functions_len = sizeof FUNCTIONS / sizeof FUNCTIONS[0],
     .classes = CLASSES,
     .classes_len = sizeof CLASSES / sizeof CLASSES[0],
+    .values = VALUES,
+    .values_len = sizeof VALUES / sizeof VALUES[0],
 };
 
 const ModuleDesc *generic_plugin_init(void) { return &DESC; }

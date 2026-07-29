@@ -337,6 +337,15 @@ const ClassDesc CLASSES[] = {
      nullptr},
 };
 
+// tau - a module constant, built once when the module is imported.
+FfiReturn make_tau(const HostApi *host) {
+    return ok(host->float_new(host->ctx, 6.283185307179586));
+}
+
+const ValueDesc VALUES[] = {
+    {FfiStr{reinterpret_cast<const uint8_t *>("tau"), 3}, make_tau},
+};
+
 const FunctionDesc FUNCTIONS[] = {
     {FfiStr{reinterpret_cast<const uint8_t *>("add"), 3}, ARITY_2, 1, add},
     {FfiStr{reinterpret_cast<const uint8_t *>("shout"), 5}, ARITY_1, 1, shout},
@@ -349,6 +358,8 @@ const ModuleDesc DESC = {
     sizeof FUNCTIONS / sizeof FUNCTIONS[0],
     CLASSES,
     sizeof CLASSES / sizeof CLASSES[0],
+    VALUES,
+    sizeof VALUES / sizeof VALUES[0],
 };
 
 }  // namespace
