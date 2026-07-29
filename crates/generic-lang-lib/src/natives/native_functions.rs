@@ -12,6 +12,7 @@ use crate::{
     },
     vm::{Global, VM, errors::VmResult},
 };
+use num_traits::FromPrimitive;
 use rand::RngExt;
 use std::io;
 use std::path::PathBuf;
@@ -825,4 +826,97 @@ pub(super) fn module_init_native(
         );
     }
     Ok(vm.heap.add_module(module))
+}
+
+/// `ord(s)` - the Unicode code point of a single-character string.
+pub(super) fn ord_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
+    let Value::String(string_id) = args[0] else {
+        return Err(vm
+            .throw(
+                TypeError,
+                &format!(
+                    "'ord' expects a string, got: {}",
+                    args[0].to_string(&vm.heap)
+                ),
+            )
+            .unwrap_err());
+    };
+    let string = &vm.heap.strings[string_id];
+    let mut chars = string.chars();
+    match (chars.next(), chars.next()) {
+        (Some(character), None) => Ok(i64::from(u32::from(character)).into()),
+        _ => Err(vm
+            .throw(
+                ValueError,
+                &format!(
+                    "'ord' expects a single character, got a string of length {}",
+                    string.chars().count()
+                ),
+            )
+            .unwrap_err()),
+    }
+}
+
+/// `chr(n)` - the single-character string for a Unicode code point.
+pub(super) fn chr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
+    let Value::Number(Number::Integer(integer)) = args[0] else {
+        return Err(vm
+            .throw(
+                TypeError,
+                &format!(
+                    "'chr' expects an integer, got: {}",
+                    args[0].to_string(&vm.heap)
+                ),
+            )
+            .unwrap_err());
+    };
+    let code = u32::try_from(integer.to_bigint(&vm.heap))
+        .ok()
+        .and_then(char::from_u32);
+    match code {
+        Some(character) => Ok(vm.heap.string_id(&character.to_string()).into()),
+        None => Err(vm
+            .throw(
+                ValueError,
+                &format!(
+                    "'chr' expects a valid code point, got: {}",
+                    args[0].to_string(&vm.heap)
+                ),
+            )
+            .unwrap_err()),
+    }
+}
+
+/// `hash(x)` - the hash of a hashable value, as an integer.
+pub(super) fn hash_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
+    let hash = vm.compute_hash(args[0])?;
+    Ok(hash.cast_signed().into())
+}
+
+/// `round(x)` - the nearest integer to a number, ties to even.
+pub(super) fn round_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
+    match &args[0] {
+        Value::Number(Number::Integer(_)) => Ok(args[0]),
+        Value::Number(number) => {
+            let rounded = number.to_f64(&vm.heap).round_ties_even();
+            match num_bigint::BigInt::from_f64(rounded) {
+                Some(big) => match i64::try_from(&big) {
+                    Ok(integer) => Ok(integer.into()),
+                    Err(_) => Ok(vm.heap.add_big_int(big)),
+                },
+                None => Err(vm
+                    .throw(ValueError, "'round' cannot round a non-finite float")
+                    .unwrap_err()),
+            }
+        }
+        _ => Err(vm
+            .throw(
+                TypeError,
+                &format!(
+                    "'round' expects a number, got: {}",
+                    args[0].to_string(&vm.heap)
+                ),
+            )
+            .unwrap_err()),
+    }
 }

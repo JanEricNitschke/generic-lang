@@ -1,0 +1,24 @@
+# ord/chr round-trip; hash is stable.
+print(ord("A")); # expect: 65
+print(chr(65)); # expect: A
+print(chr(97)); # expect: a
+print(ord(chr(8364))); # expect: 8364
+print(hash(5) == hash(5)); # expect: true
+print(hash("hi") == hash("hi")); # expect: true
+
+# ord needs exactly one character; chr needs a valid code point.
+try {
+    ord("ab");
+} catch ValueError as e {
+    print(e.message().startswith("'ord' expects a single character")); # expect: true
+}
+try {
+    chr(-1);
+} catch ValueError as e {
+    print(e.message().startswith("'chr' expects a valid code point")); # expect: true
+}
+try {
+    ord(5);
+} catch TypeError as e {
+    print(e.message()); # expect: 'ord' expects a string, got: 5
+}

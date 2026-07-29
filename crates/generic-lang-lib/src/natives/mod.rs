@@ -44,10 +44,11 @@ use list::{
 };
 
 use native_functions::{
-    assert_native, clock_native, delattr_native, eval_native, exec_native, getattr_native,
-    hasattr_native, input_native, is_int_native, isinstance_native, issubclass_native, iter_native,
-    len_native, module_init_native, next_native, print_native, rng_native, setattr_native,
-    sleep_native, to_float_native, to_int_native, to_string_native, type_native, typename_native,
+    assert_native, chr_native, clock_native, delattr_native, eval_native, exec_native,
+    getattr_native, hasattr_native, hash_native, input_native, is_int_native, isinstance_native,
+    issubclass_native, iter_native, len_native, module_init_native, next_native, ord_native,
+    print_native, rng_native, round_native, setattr_native, sleep_native, to_float_native,
+    to_int_native, to_string_native, type_native, typename_native,
 };
 
 use range::{
@@ -130,6 +131,10 @@ pub fn define(vm: &mut VM) {
     vm.define_native_function(&"delattr", &[2], delattr_native);
     vm.define_native_function(&"rng", &[2], rng_native);
     vm.define_native_function(&"len", &[1], len_native);
+    vm.define_native_function(&"ord", &[1], ord_native);
+    vm.define_native_function(&"chr", &[1], chr_native);
+    vm.define_native_function(&"hash", &[1], hash_native);
+    vm.define_native_function(&"round", &[1], round_native);
     vm.define_native_function(&"isinstance", &[2], isinstance_native);
     vm.define_native_function(&"issubclass", &[2], issubclass_native);
     vm.define_native_function(&"next", &[1], next_native);

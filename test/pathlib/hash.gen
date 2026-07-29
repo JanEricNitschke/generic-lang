@@ -1,6 +1,9 @@
-# Equal paths (equal normalized forms) behave as one key in sets and
-# dicts.
+# Equal paths (equal normalized forms) hash equal, so paths behave as
+# set members and dict keys.
 from "pathlib" import Path;
+
+print(hash(Path("a/b")) == hash(Path("a/b"))); # expect: true
+print(hash(Path("a/./b/")) == hash(Path("a/b"))); # expect: true
 
 var seen = {Path("a/b"), Path("a/./b")};
 print(len(seen)); # expect: 1

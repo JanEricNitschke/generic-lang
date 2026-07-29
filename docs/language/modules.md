@@ -67,6 +67,12 @@ These are always in scope (no import needed):
 | `isinstance(x, C)`, `issubclass(A, B)` | Inheritance-aware type checks. |
 | `iter(x)`, `next(x)` | The iterator protocol. |
 | `all(iter)`, `any(iter)` | Boolean reductions. |
+| `abs(x)`, `round(x)` | Absolute value; nearest integer (ties to even). |
+| `min(iter)`, `max(iter)`, `sum(iter)` | Reductions over an iterable. |
+| `bool(x)`, `ord(s)`, `chr(n)`, `hash(x)` | Truthiness; code point of a 1-char string and back; hash of a value. |
+| `map(f, iter)`, `filter(f, iter)` | Lazy generators. |
+| `zip(a, b)` | Lazy generator of pairs, stopping at the shorter. |
+| `reversed(iter)` | A reversed list (eager). |
 | `enumerate(iter)` | A generator of `(index, item)` tuples. |
 | `assert(x)` | Raise `AssertionError` if `x` is falsey. |
 | `getattr/setattr/hasattr/delattr(obj, name, …)` | Reflective attribute access on instances, classes, and modules. |

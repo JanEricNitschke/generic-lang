@@ -1,0 +1,49 @@
+# reversed is eager (a list); map/zip/filter are lazy generators.
+print(reversed([1, 2, 3])); # expect: [3, 2, 1]
+print(reversed([])); # expect: []
+
+# reversed accepts any iterable, not just a list: a tuple and a generator
+# both collect and reverse the same way.
+print(reversed((1, 2, 3))); # expect: [3, 2, 1]
+gen count3() {
+    yield 1;
+    yield 2;
+    yield 3;
+}
+print(reversed(count3())); # expect: [3, 2, 1]
+
+# map applies the function lazily.
+var doubled = map((->(n) n * 2), [1, 2, 3]);
+foreach (var v in doubled) {
+    print(v);
+}
+# expect: 2
+# expect: 4
+# expect: 6
+
+# filter keeps the truthy results.
+foreach (var v in filter((->(n) n % 2 == 0), [1, 2, 3, 4, 5, 6])) {
+    print(v);
+}
+# expect: 2
+# expect: 4
+# expect: 6
+
+# zip pairs and stops at the shorter side.
+foreach (var pair in zip([1, 2, 3], ["a", "b"])) {
+    print(pair);
+}
+# expect: (1, a)
+# expect: (2, b)
+
+# They are lazy: a map over an endless-looking source is only advanced
+# as far as it is consumed.
+gen naturals() {
+    var n = 0;
+    while (true) {
+        yield n;
+        n = n + 1;
+    }
+}
+var squares = map((->(n) n * n), naturals());
+print(next(iter(squares))); # expect: 0
