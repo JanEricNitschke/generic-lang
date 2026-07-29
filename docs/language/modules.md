@@ -191,6 +191,13 @@ The bundled modules:
   (integer or float, non-negative), and the UTC strings
   `time.utc_date()` (`YYYY-MM-DD`) and `time.utc_time()` (`HH:MM:SS`,
   24h).
+- **`random`** - a shared, seedable pseudo-random source: `random()` (a
+  float in `[0.0, 1.0)`), `uniform(a, b)` (a float in `[a, b]`),
+  `randint(a, b)` (an integer in `[a, b]` inclusive), `choice(list)`,
+  `sample(list, k)` (k distinct elements in random order),
+  `shuffle(list)` (in place, returns `nil`), and `seed(n)` (reseed for
+  reproducible sequences). The generator is process-global and seeded
+  from the operating system until `seed` replaces it.
 - **`testing`** - assertion helpers for the test runner: `assert_equal`,
   `assert_not_equal`, `assert_true`, `assert_false`, `assert_nil`,
   `assert_not_nil`, `assert_throws`. Each raises `AssertionError` with a

@@ -1,0 +1,106 @@
+import "random";
+
+# Seeding makes the sequence reproducible: two runs from the same seed
+# produce identical draws.
+random.seed(123);
+var first = random.randint(1, 1000000);
+random.seed(123);
+var second = random.randint(1, 1000000);
+print(first == second); # expect: true
+
+random.seed(7);
+var a = [random.random(), random.random(), random.random()];
+random.seed(7);
+var b = [random.random(), random.random(), random.random()];
+print(a == b); # expect: true
+
+# random() is a float in [0.0, 1.0).
+random.seed(1);
+var r = random.random();
+print(r >= 0.0 and r < 1.0); # expect: true
+
+# randint is inclusive on both ends; a single-point range is fixed.
+print(random.randint(4, 4)); # expect: 4
+var n = random.randint(10, 20);
+print(n >= 10 and n <= 20); # expect: true
+
+# uniform returns a float within the (possibly reversed) bounds.
+var u = random.uniform(2.0, 3.0);
+print(u >= 2.0 and u <= 3.0); # expect: true
+var v = random.uniform(3.0, 2.0);
+print(v >= 2.0 and v <= 3.0); # expect: true
+
+# choice picks an element that is a member of the list.
+var options = [10, 20, 30];
+print(random.choice(options) in options); # expect: true
+
+# sample returns k elements; a full-length sample is a permutation, so its
+# sorted contents match the source.
+var s = random.sample([1, 2, 3, 4, 5], 3);
+print(len(s)); # expect: 3
+var whole = random.sample([1, 2, 3], 3);
+print(sorted(whole) == [1, 2, 3]); # expect: true
+
+# shuffle reorders a list in place and returns nil; it is a permutation, so
+# the sorted contents are unchanged.
+var deck = [1, 2, 3, 4, 5];
+var before = sorted(deck);
+print(random.shuffle(deck)); # expect: nil
+print(sorted(deck) == before); # expect: true
+
+# choice of an empty list raises.
+try {
+    random.choice([]);
+} catch ValueError as e {
+    print(e.message()); # expect: 'choice' cannot choose from an empty list
+}
+
+# randint with the bounds reversed raises.
+try {
+    random.randint(5, 1);
+} catch ValueError as e {
+    print(e.message()); # expect: 'randint' requires the low bound not exceed the high bound
+}
+
+# sample asking for more than the list holds raises.
+try {
+    random.sample([1, 2], 5);
+} catch ValueError as e {
+    print(e.message()); # expect: 'sample' count must be between 0 and the list length
+}
+
+# randint rejects non-integer bounds.
+try {
+    random.randint(1.5, 2);
+} catch TypeError as e {
+    print(e.message()); # expect: 'randint' expects two integers, got: 1.5 and 2
+}
+
+# choice rejects a non-list argument.
+try {
+    random.choice(5);
+} catch TypeError as e {
+    print(e.message()); # expect: 'choice' expects a list, got: 5
+}
+
+# randint bounds must fit in a 64-bit integer; wider big-int bounds are
+# rejected with a clear error rather than silently mishandled.
+try {
+    random.randint(1000000000000000000000000000000, 1000000000000000000000000000010);
+} catch ValueError as e {
+    print(e.message()); # expect: 'randint' bounds must fit in a 64-bit integer
+}
+
+# seed accepts a big-int seed and stays deterministic.
+random.seed(123456789012345678901234567890);
+var x = random.random();
+random.seed(123456789012345678901234567890);
+var y = random.random();
+print(x == y); # expect: true
+
+# A big-int sample count exceeds any list length, so it is out of range.
+try {
+    random.sample([1, 2, 3], 100000000000000000000);
+} catch ValueError as e {
+    print(e.message()); # expect: 'sample' count must be between 0 and the list length
+}
