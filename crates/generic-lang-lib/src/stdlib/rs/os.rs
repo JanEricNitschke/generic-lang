@@ -23,13 +23,13 @@ fn getenv_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     };
     let name = name_id.to_value(&vm.heap).clone();
     match std::env::var(&name) {
-        Ok(value) => Ok(Value::String(vm.heap.string_id(&value))),
+        Ok(value) => Ok(vm.heap.string_id(&value).into()),
         Err(_) => Ok(args.get(1).copied().unwrap_or(Value::Nil)),
     }
 }
 
 fn create_name(vm: &mut VM, _context: &CreatorContext) -> Value {
-    Value::String(vm.heap.string_id(&std::env::consts::OS))
+    vm.heap.string_id(&std::env::consts::OS).into()
 }
 
 /// A `Dict` snapshot of the environment at import time. Entries whose
@@ -43,8 +43,8 @@ fn create_environ(vm: &mut VM, _context: &CreatorContext) -> Value {
         let (Ok(key), Ok(value)) = (key.into_string(), value.into_string()) else {
             continue;
         };
-        let key = Value::String(vm.heap.string_id(&key));
-        let value = Value::String(vm.heap.string_id(&value));
+        let key = vm.heap.string_id(&key).into();
+        let value = vm.heap.string_id(&value).into();
         // String keys hash without re-entering the interpreter, so the
         // insert cannot throw, and no bytecode runs while the dict is
         // being filled, so nothing here needs rooting.
@@ -59,7 +59,7 @@ fn create_argv(vm: &mut VM, _context: &CreatorContext) -> Value {
     let args = vm.script_args.clone();
     let items = args
         .iter()
-        .map(|arg| Value::String(vm.heap.string_id(arg)))
+        .map(|arg| vm.heap.string_id(arg).into())
         .collect();
     let list_class = *vm.heap.native_classes.get("List").unwrap();
     vm.heap
