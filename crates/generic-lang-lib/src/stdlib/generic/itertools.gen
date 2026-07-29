@@ -93,36 +93,50 @@ gen repeat(item, count) {
             yield item;
         }
     } else {
-        var i = 0;
-        while (i < count) {
-            yield item;
-            i = i + 1;
+        # Guarded because a range with a negative end would run backwards.
+        if (count > 0) {
+            foreach (var _ in 0..<count) {
+                yield item;
+            }
         }
     }
 }
 
 # The cartesian product over an iterable of iterables, as tuples. Each
 # input is materialized once up front, since the product needs multiple
-# passes over it.
+# passes over it. `indices` is an odometer with one cursor per pool:
+# each step advances the rightmost cursor and carries left on overflow.
 gen product(iterables) {
     var pools = [];
     foreach (var iterable in iterables) {
         pools.append(List(iterable));
     }
-    foreach (var combination in _product_from(pools, 0)) {
+    var indices = [];
+    foreach (var pool in pools) {
+        if (!pool) {
+            # Any empty input makes the whole product empty.
+            return;
+        }
+        indices.append(0);
+    }
+    while (true) {
+        var combination = Tuple();
+        foreach (var slot in 0..<len(pools)) {
+            combination = combination + Tuple(pools[slot][indices[slot]]);
+        }
         yield combination;
-    }
-}
 
-# The product of `pools[index..]`, prefixed onto by the callers above.
-gen _product_from(pools, index) {
-    if (index == len(pools)) {
-        yield Tuple();
-        return;
-    }
-    foreach (var item in pools[index]) {
-        foreach (var rest in _product_from(pools, index + 1)) {
-            yield Tuple(item) + rest;
+        var cursor = len(pools) - 1;
+        while (cursor >= 0) {
+            indices[cursor] = indices[cursor] + 1;
+            if (indices[cursor] < len(pools[cursor])) {
+                break;
+            }
+            indices[cursor] = 0;
+            cursor = cursor - 1;
+        }
+        if (cursor < 0) {
+            return;
         }
     }
 }

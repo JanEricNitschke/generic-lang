@@ -13,3 +13,6 @@ foreach (var item in repeat("y", nil)) {
     }
 }
 print(seen); # expect: [y, y, y, y]
+
+# A negative count behaves like zero.
+print(List(repeat("z", -2))); # expect: []
