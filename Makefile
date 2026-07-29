@@ -113,6 +113,7 @@ plugin-lang-fixture: plugin-bad-fixture
 	mkdir -p test/plugin/lang
 	$(CC)  -shared -fPIC -std=c2x $(PLUGIN_WARNINGS_C) -I $(PLUGIN_INC) -o test/plugin/lang/c_demo_plugin.$(DYLIB_EXT) plugin-examples/c/c_demo_plugin.c
 	$(CXX) -shared -fPIC -std=c++23 $(PLUGIN_WARNINGS) -I $(PLUGIN_INC) -o test/plugin/lang/cpp_demo_plugin.$(DYLIB_EXT) plugin-examples/cpp/cpp_demo_plugin.cpp
+	$(CC)  -shared -fPIC -std=c2x $(PLUGIN_WARNINGS_C) -I $(PLUGIN_INC) -o test/plugin/lang/valuethrows.$(DYLIB_EXT) plugin-examples/bad/value_throws.c
 	cd plugin-examples/zig && zig build -Doptimize=ReleaseSafe -Dcpu=baseline
 	rm -f test/plugin/lang/zig_demo_plugin.$(DYLIB_EXT)
 	cp plugin-examples/zig/zig-out/$(ZIG_OUT_LIB) test/plugin/lang/zig_demo_plugin.$(DYLIB_EXT)
@@ -130,6 +131,9 @@ plugin-bad-fixture:
 	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/noarities.$(DYLIB_EXT) plugin-examples/bad/no_arities.c
 	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/nulldesc.$(DYLIB_EXT) plugin-examples/bad/null_desc.c
 	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/nulltable.$(DYLIB_EXT) plugin-examples/bad/null_table.c
+	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/nullvaluetable.$(DYLIB_EXT) plugin-examples/bad/null_value_table.c
+	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/badvaluename.$(DYLIB_EXT) plugin-examples/bad/bad_value_name.c
+	$(CC)  -shared -fPIC -Wall -Wextra -I $(PLUGIN_INC) -o test/plugin/lang/nullvaluefun.$(DYLIB_EXT) plugin-examples/bad/null_value_fun.c
 	printf 'not a real dylib, just text\n' > test/plugin/lang/corrupt.$(DYLIB_EXT)
 
 # Build the cross-language plugins, then run only their `.gen` tests (the

@@ -80,6 +80,9 @@ impl VM {
                         self.heap.mark_value(&(*method_name_id).into());
                     }
                 }
+                for (value_name_id, _fun) in &exports.values {
+                    self.heap.mark_value(&(*value_name_id).into());
+                }
             }
         }
 

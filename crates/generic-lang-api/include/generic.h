@@ -597,6 +597,24 @@ typedef struct ClassDesc {
 } ClassDesc;
 
 /**
+ * Description of one exported plugin module value (a module constant,
+ * built once at import time).
+ */
+typedef struct ValueDesc {
+  /**
+   * Value name as seen from generic code.
+   */
+  struct FfiStr name;
+  /**
+   * The creator; a null pointer is rejected at load. This is
+   * [`PluginValueFn`] spelled out inline - cbindgen only renders a
+   * nullable C function pointer for an inline `Option<fn>`, not through
+   * the alias.
+   */
+  struct FfiReturn (*fun)(const struct HostApi *host);
+} ValueDesc;
+
+/**
  * Description of a plugin module; returned by `generic_plugin_init`, the
  * one symbol every plugin must export:
  *
@@ -625,6 +643,14 @@ typedef struct ModuleDesc {
    * Number of entries in `classes`. May be 0 (function-only plugins).
    */
   size_t classes_len;
+  /**
+   * Pointer to `values_len` contiguous [`ValueDesc`] entries.
+   */
+  const struct ValueDesc *values;
+  /**
+   * Number of entries in `values`. May be 0.
+   */
+  size_t values_len;
 } ModuleDesc;
 
 /**

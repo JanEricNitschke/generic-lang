@@ -55,3 +55,6 @@ print(isinstance(s, zig_demo_plugin.Counter)); # expect: true
 # --- the held label survives collections (traverse) ---
 var listed = zig_demo_plugin.Counter([1, 2, 3]);
 print(listed.label());  # expect: [1, 2, 3]
+
+# --- module values, built once at import time ---
+print(zig_demo_plugin.golden_ratio);  # expect: 1.618033988749895

@@ -1,0 +1,47 @@
+import "rust_demo_plugin";
+
+# Module values are built by the plugin once, at import time.
+print(rust_demo_plugin.answer); # expect: 42
+print(rust_demo_plugin.greeting); # expect: hello from the plugin
+print(rust_demo_plugin.answer + 1); # expect: 43
+
+from "rust_demo_plugin" import answer, greeting;
+print(answer); # expect: 42
+print(greeting); # expect: hello from the plugin
+
+# Re-importing under an alias rebuilds the module from the cached
+# exports, re-running the value creators.
+import "rust_demo_plugin" as aliased;
+print(aliased.answer); # expect: 42
+
+# The value bindings on the module are constants.
+try {
+    rust_demo_plugin.answer = 99;
+} catch ConstReassignmentError as e {
+    print(e.message()); # expect: Cannot reassign const variable.
+}
+print(rust_demo_plugin.answer); # expect: 42
+
+# A from-imported name is bound as a constant too.
+try {
+    answer = 7;
+} catch ConstReassignmentError as e {
+    print(e.message()); # expect: Cannot reassign const variable.
+}
+
+# New attributes can be attached to the module and stay mutable.
+rust_demo_plugin.extra = 1;
+rust_demo_plugin.extra = 2;
+print(rust_demo_plugin.extra); # expect: 2
+
+# The binding is constant, the value is not: a mutable exported value
+# (a list) can be mutated in place.
+print(rust_demo_plugin.items); # expect: [1, 2]
+rust_demo_plugin.items.append(3);
+print(rust_demo_plugin.items); # expect: [1, 2, 3]
+
+# An aliased re-import rebuilds the module from the cached exports,
+# re-running the value creators: the fresh module does not see the
+# mutation.
+import "rust_demo_plugin" as refreshed;
+print(refreshed.items); # expect: [1, 2]

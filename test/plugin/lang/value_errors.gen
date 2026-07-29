@@ -1,0 +1,42 @@
+# Import-time failures of module value creators (the `valuethrows` fixture:
+# its first creator succeeds, its second throws). The plugin's own exception
+# propagates to the importer; nothing of the module is installed and the
+# partially built value batch is dropped.
+try {
+    import "valuethrows";
+    print("should not reach");
+} catch ValueError as e {
+    print(e.message()); # expect: value creation failed
+}
+
+# The failed import did not bind the module name.
+try {
+    print(valuethrows.seven);
+} catch NameError as e {
+    print(str(e).contains("valuethrows")); # expect: true
+}
+
+# The same failure inside a function: catching it leaves the caller's
+# locals and stack intact, for the plain import and the from-import form.
+fun try_import(label) {
+    var before = "intact";
+    try {
+        import "valuethrows";
+        return "should not reach";
+    } catch ValueError as e {
+        return f"${label} ${before}: ${e.message()}";
+    }
+}
+
+fun try_from_import(label) {
+    var before = "intact";
+    try {
+        from "valuethrows" import seven;
+        return "should not reach";
+    } catch ValueError as e {
+        return f"${label} ${before}: ${e.message()}";
+    }
+}
+
+print(try_import("import")); # expect: import intact: value creation failed
+print(try_from_import("from")); # expect: from intact: value creation failed

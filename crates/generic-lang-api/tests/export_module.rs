@@ -94,7 +94,17 @@ extern "C" fn widget_traverse(
     0
 }
 
+fn make_seven(_host: &mut Host) -> Result<GenericValue, PluginError> {
+    Ok(blob(7))
+}
+
+fn value_fail(host: &mut Host) -> Result<GenericValue, PluginError> {
+    Err(host.type_error("value creation failed"))
+}
+
 generic_lang_api::export_module![
+    value("seven", make_seven),
+    value("broken", value_fail),
     ("add", &[2], add),
     ("fail", &[0], fail),
     ("explode", &[0], explode),
@@ -469,6 +479,32 @@ fn descriptor_contents() {
 
     // The macro always emits a non-null function pointer.
     assert!(functions.iter().all(|f| f.fun.is_some()));
+}
+
+#[test]
+fn value_descriptor_contents_and_creators() {
+    // SAFETY: generic_plugin_init returns a valid, leaked descriptor.
+    let desc = unsafe { &*generic_plugin_init() };
+    assert_eq!(desc.values_len, 2);
+    // SAFETY: the descriptor references a leaked slice of values_len entries.
+    let values = unsafe { core::slice::from_raw_parts(desc.values, desc.values_len) };
+
+    // SAFETY: names are leaked static strings.
+    let names: Vec<&str> = values.iter().map(|v| unsafe { ffi_str(v.name) }).collect();
+    assert_eq!(names, ["seven", "broken"]);
+    assert!(values.iter().all(|v| v.fun.is_some()));
+
+    // The generated creator glue passes the host through and returns the
+    // built value byte-exact.
+    let api = mock_host_api();
+    let ret = values[0].fun.expect("checked non-null above")(&raw const api);
+    assert_eq!(ret.status, FfiStatus::Ok as u32);
+    // SAFETY: the mock encodes integers in the first opaque limb.
+    assert_eq!(unsafe { limb0(ret.value) }, 7);
+
+    // A failing creator surfaces as an exception, like a failing function.
+    let ret = values[1].fun.expect("checked non-null above")(&raw const api);
+    assert_eq!(ret.status, FfiStatus::Exception as u32);
 }
 
 /// # Safety

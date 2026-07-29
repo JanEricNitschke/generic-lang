@@ -391,7 +391,33 @@ fn ticket_init(
     Ok(this)
 }
 
+// --- module values --------------------------------------------------------
+
+/// `answer` - a module constant, built once when the module is imported.
+fn make_answer(host: &mut Host) -> Result<GenericValue, PluginError> {
+    Ok(host.make_int(42))
+}
+
+/// `greeting` - a string module constant.
+fn make_greeting(host: &mut Host) -> Result<GenericValue, PluginError> {
+    Ok(host.make_str("hello from the plugin"))
+}
+
+/// `items` - a list module constant: the module binding is a constant, the
+/// list itself stays an ordinary mutable list.
+fn make_items(host: &mut Host) -> Result<GenericValue, PluginError> {
+    let list = host.make_list();
+    for n in [1_i64, 2] {
+        let item = host.make_int(n);
+        host.list_push(list, item)?;
+    }
+    Ok(list)
+}
+
 generic_lang_api::export_module![
+    value("answer", make_answer),
+    value("greeting", make_greeting),
+    value("items", make_items),
     ("add", &[2], add),
     ("shout", &[1], shout),
     ("sum", &[1], sum),

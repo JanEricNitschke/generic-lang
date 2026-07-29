@@ -180,6 +180,26 @@ pub type PluginVisitFn = extern "C" fn(ctx: *mut c_void, value: GenericValue);
 pub type PluginTraverseFn =
     extern "C" fn(opaque_ptr: *mut c_void, visit: PluginVisitFn, visit_ctx: *mut c_void) -> i32;
 
+/// The signature of a plugin value creator.
+///
+/// Builds one module constant at import time, using the host callbacks to
+/// construct the value. May use re-entering callbacks. Returning
+/// [`FfiStatus::Exception`] makes the import fail with that exception.
+pub type PluginValueFn = extern "C" fn(host: *const HostApi) -> FfiReturn;
+
+/// Description of one exported plugin module value (a module constant,
+/// built once at import time).
+#[repr(C)]
+pub struct ValueDesc {
+    /// Value name as seen from generic code.
+    pub name: FfiStr,
+    /// The creator; a null pointer is rejected at load. This is
+    /// [`PluginValueFn`] spelled out inline - cbindgen only renders a
+    /// nullable C function pointer for an inline `Option<fn>`, not through
+    /// the alias.
+    pub fun: Option<extern "C" fn(host: *const HostApi) -> FfiReturn>,
+}
+
 /// The signature of a plugin method: like [`PluginFn`], but the receiver
 /// (`self`) arrives as a separate first value, not in `args`. `args`/`nargs`
 /// are the remaining arguments only.
@@ -257,16 +277,21 @@ pub struct ModuleDesc {
     pub classes: *const ClassDesc,
     /// Number of entries in `classes`. May be 0 (function-only plugins).
     pub classes_len: usize,
+    /// Pointer to `values_len` contiguous [`ValueDesc`] entries.
+    pub values: *const ValueDesc,
+    /// Number of entries in `values`. May be 0.
+    pub values_len: usize,
 }
 
 // SAFETY: sharing a descriptor only permits reading its fields (copying
 // pointer values), which is thread-safe; dereferencing the pointers is
 // `unsafe` and carries the following obligations at each use site:
 // - `functions` must point to `functions_len` contiguous, initialized
-//   `FunctionDesc` entries, and `classes` to `classes_len` contiguous,
-//   initialized `ClassDesc` entries - all never mutated and outliving every
-//   read; for descriptors returned by `generic_plugin_init`, that means the
-//   lifetime of the loaded library.
+//   `FunctionDesc` entries, `classes` to `classes_len` contiguous,
+//   initialized `ClassDesc` entries, and `values` to `values_len`
+//   contiguous, initialized `ValueDesc` entries - all never mutated and
+//   outliving every read; for descriptors returned by
+//   `generic_plugin_init`, that means the lifetime of the loaded library.
 // - Within each `FunctionDesc`/`MethodDesc`, `name` must reference `name.len`
 //   bytes of valid UTF-8, `arities` must reference `arities_len` initialized
 //   bytes, and `fun` must be a function with the documented `PluginFn` ABI.

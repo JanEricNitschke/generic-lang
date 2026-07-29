@@ -441,6 +441,38 @@ accepted argument count - `&[2]` for exactly two, `&[0, 1]` for optional,
 up to 255. The host checks arity *before* calling you; a mismatch is an
 ordinary `TypeError` in generic code and your function never runs.
 
+## Module values (constants)
+
+A plugin can export module values alongside functions and classes:
+`ValueDesc` entries on `ModuleDesc` (Rust: `value("name", creator)` in
+`export_module!`). Each creator is called once per import of the module,
+receives only the host vtable, and returns the value to bind under the
+name:
+
+```rust
+fn make_answer(host: &mut Host) -> Result<GenericValue, PluginError> {
+    Ok(host.make_int(42))
+}
+
+generic_lang_api::export_module![
+    value("answer", make_answer),
+];
+```
+
+```generic
+import "my_plugin";
+print(my_plugin.answer);   # 42
+```
+
+A creator may use any host callback, including re-entering ones (the
+usual rooting contract applies). Returning an exception makes the whole
+import fail with it. Re-importing the module re-runs the creators.
+
+The binding is a module constant: assigning to it from generic code
+raises `ConstReassignmentError`. The value itself is ordinary - a
+mutable value (e.g. a list) can be mutated in place, and an aliased
+re-import gets a fresh one from the creator.
+
 ## Defining classes
 
 A plugin can export classes, not just functions. A class carries methods,

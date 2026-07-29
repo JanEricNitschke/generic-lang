@@ -59,3 +59,6 @@ print(isinstance(s, cpp_demo_plugin.Counter)); # expect: true
 # --- the held label survives collections (traverse) ---
 var listed = cpp_demo_plugin.Counter([1, 2, 3]);
 print(listed.label());  # expect: [1, 2, 3]
+
+# --- module values, built once at import time ---
+print(cpp_demo_plugin.tau);  # expect: 6.283185307179586

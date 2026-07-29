@@ -85,3 +85,28 @@ try {
 }
 
 print("survived"); # expect: survived
+
+# A value table declared with a null pointer.
+try {
+    import "nullvaluetable";
+    print("should not reach");
+} catch ImportError as e {
+    print(str(e).contains("declares 1 values but a null table")); # expect: true
+}
+
+# A value export whose name pointer is null.
+try {
+    import "badvaluename";
+    print("should not reach");
+} catch ImportError as e {
+    print(str(e).contains("exports a value with an invalid name")); # expect: true
+}
+
+# A value export whose creator pointer is null.
+try {
+    import "nullvaluefun";
+    print("should not reach");
+} catch ImportError as e {
+    print(str(e).contains("Plugin value `broken`")); # expect: true
+    print(str(e).contains("has a null creator pointer")); # expect: true
+}

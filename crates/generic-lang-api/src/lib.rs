@@ -37,11 +37,11 @@ mod host;
 pub use abi::{
     ClassDesc, FfiReturn, FfiStatus, FfiStr, FunctionDesc, GENERIC_PLUGIN_ABI_VERSION,
     GenericValue, HostApi, MethodDesc, ModuleDesc, PluginFn, PluginMethodFn, PluginTraverseFn,
-    PluginVisitFn,
+    PluginValueFn, PluginVisitFn, ValueDesc,
 };
 pub use host::{
-    __invoke_plugin_fn, __invoke_plugin_method_fn, ArgValue, Host, Rooted, RustPluginFn,
-    RustPluginMethodFn,
+    __invoke_plugin_fn, __invoke_plugin_method_fn, __invoke_plugin_value_fn, ArgValue, Host,
+    Rooted, RustPluginFn, RustPluginMethodFn, RustPluginValueFn,
 };
 
 /// Value kinds returned by [`HostApi::value_kind`].
