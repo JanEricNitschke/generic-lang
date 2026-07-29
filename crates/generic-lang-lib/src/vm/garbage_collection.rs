@@ -45,6 +45,13 @@ impl VM {
         for module in &self.modules {
             self.heap.mark_module(*module);
         }
+        // Cached completed imports stay alive for the rest of the run so
+        // that re-imports bind the same module object.
+        #[cfg(feature = "log_gc")]
+        eprintln!("Marking cached modules.");
+        for module in self.module_cache.values() {
+            self.heap.mark_module(*module);
+        }
         // Builtin names must not rely on their values carrying the same
         // interned string (native functions, classes, and closures happen
         // to; a plain constant or an aliased binding would not).

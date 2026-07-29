@@ -118,6 +118,11 @@ pub struct VM {
     open_upvalues: VecDeque<UpvalueId>,
     // Could also keep a cache of the last module or its globals for performance
     modules: Vec<ModuleId>,
+    /// Completed imports, keyed by module identity (the canonical file or
+    /// dylib path for file-backed modules, the bare name for stdlib ones).
+    /// A later import of the same module binds the cached module object
+    /// instead of executing or building it again.
+    module_cache: HashMap<PathBuf, ModuleId>,
     pub(crate) builtins: HashMap<StringId, Global>,
     /// Depth of nested native dunder re-entry, bounded by
     /// [`crate::config::REENTRY_MAX`]. Balanced by `invoke_and_run_function`.
@@ -154,6 +159,7 @@ impl VM {
             exception_handlers: Vec::new(),
             open_upvalues: VecDeque::new(),
             modules: Vec::new(),
+            module_cache: HashMap::default(),
             builtins: HashMap::default(),
             reentry_depth: 0,
             repr_in_progress: HashSet::default(),

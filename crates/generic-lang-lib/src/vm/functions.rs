@@ -682,6 +682,10 @@ impl VM {
         // Pop the module itself from the stack
         self.stack.pop();
         let last_module = self.modules.pop().expect("Module underflow in OP_RETURN");
+        // The completed import is cached by identity: a later import of the
+        // same module binds this module object instead of re-executing it.
+        self.module_cache
+            .insert(last_module.to_value(&self.heap).path.clone(), last_module);
         let last_module_alias = last_module.to_value(&self.heap).alias;
         let names_to_import =
             std::mem::take(&mut last_module.to_value_mut(&mut self.heap).names_to_import);

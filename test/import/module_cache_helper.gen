@@ -1,0 +1,2 @@
+print("cache helper ran"); # expect: cache helper ran
+var items = [1, 2];

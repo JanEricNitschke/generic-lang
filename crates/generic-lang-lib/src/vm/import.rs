@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use crate::{
     config::GENERIC_STDLIB_DIR,
-    heap::StringId,
+    heap::{ModuleId, StringId},
     value::{Closure, CreatorContext, Module, ModuleContents, ModuleExport, NativeFunction, Value},
     vm::errors::VmResult,
 };
@@ -39,6 +39,11 @@ impl VM {
 
         // User defined generic module
         if let Ok(contents) = std::fs::read_to_string(&file_path) {
+            if let Some(cached) =
+                self.bind_if_cached(&file_path, names_to_import.as_deref(), alias, local_import)
+            {
+                return cached;
+            }
             // Check for circular imports only for user-defined modules
             // Skip stdlib modules since they're under our control and can't have circular imports
             if self.modules.iter().any(|module| {
@@ -81,6 +86,15 @@ impl VM {
             // inlined always-`None` stub at the bottom of this file, so the
             // arm folds away entirely.
             plugin_result?;
+        } else if let Some(cached) = self.bind_if_cached(
+            // Both stdlib kinds are keyed by name: they resolve the same
+            // from everywhere, unlike file-backed modules.
+            &PathBuf::from(&name),
+            names_to_import.as_deref(),
+            alias,
+            local_import,
+        ) {
+            return cached;
         } else if let Some(stdlib_file) = GENERIC_STDLIB_DIR.get_file(format!("{name}.gen")) {
             // stdlib generic module from embedded directory - no circular import check needed
             // since we have full control of stdlib modules
@@ -88,7 +102,7 @@ impl VM {
                 std::str::from_utf8(stdlib_file.contents())
                     .unwrap_or_else(|_| panic!("Invalid UTF-8 in generic stdlib module: {name}")),
                 &name,
-                file_path,
+                PathBuf::from(&name),
                 names_to_import,
                 alias,
                 local_import,
@@ -98,7 +112,7 @@ impl VM {
             // If they cause performance issues this can be inlined or turned into a macro.
             self.import_rust_stdlib(
                 file_path_string_id,
-                file_path,
+                PathBuf::from(&name),
                 alias,
                 &stdlib_functions,
                 names_to_import.as_deref(),
@@ -114,11 +128,11 @@ impl VM {
         Ok(None)
     }
 
-    /// Build a native module from its `(name, value)` exports and install
-    /// it into the current scope: honor a `from`-import (move the named
-    /// globals in and drop the module), an alias, and local imports. Shared
-    /// by the rust-stdlib and plugin importers, which differ only in how
-    /// each export's `NativeFunction` is constructed.
+    /// Build a native module from its `(name, value)` exports, cache it,
+    /// and install it into the current scope (honoring `from`-imports,
+    /// aliases, and local imports). Shared by the rust-stdlib and plugin
+    /// importers, which differ only in how each export's `NativeFunction`
+    /// is constructed.
     pub(super) fn install_native_module(
         &mut self,
         name_id: StringId,
@@ -129,7 +143,7 @@ impl VM {
         local_import: bool,
     ) -> VmResult {
         let alias = alias.unwrap_or(name_id);
-        let mut module = Module::new(name_id, file_path, None, alias, local_import);
+        let mut module = Module::new(name_id, file_path.clone(), None, alias, local_import);
         for (name, value) in exports {
             module.globals.insert(
                 name,
@@ -139,31 +153,59 @@ impl VM {
                 },
             );
         }
+        let module_value = self.heap.add_module(module);
+        let module_id = *module_value.as_module();
+        self.module_cache.insert(file_path, module_id);
+        self.bind_cached_module(module_id, names_to_import, Some(alias), local_import)
+    }
+
+    /// Look up `cache_key` and bind the cached module if there is one.
+    pub(in crate::vm) fn bind_if_cached(
+        &mut self,
+        cache_key: &PathBuf,
+        names_to_import: Option<&[StringId]>,
+        alias: Option<StringId>,
+        local_import: bool,
+    ) -> Option<VmResult> {
+        let module_id = *self.module_cache.get(cache_key)?;
+        Some(self.bind_cached_module(module_id, names_to_import, alias, local_import))
+    }
+
+    /// Bind an already-built module: a `from` import reads the named
+    /// globals off the module, a plain import binds the module itself
+    /// under the alias. Shared by the native-module installer and the
+    /// cache-hit path of every module kind.
+    pub(in crate::vm) fn bind_cached_module(
+        &mut self,
+        module_id: ModuleId,
+        names_to_import: Option<&[StringId]>,
+        alias: Option<StringId>,
+        local_import: bool,
+    ) -> VmResult {
         if let Some(names_to_import) = names_to_import {
             for name in names_to_import {
-                if let Some(global) = module.globals.remove(name) {
-                    if local_import {
-                        self.stack_push(global.value);
-                    } else {
-                        self.globals_mut().insert(*name, global);
-                    }
-                } else {
+                let Some(global) = module_id.to_value(&self.heap).globals.get(name).copied() else {
                     let message = format!(
                         "Could not find name to import `{}`.",
                         name.to_value(&self.heap)
                     );
                     return self.throw(ImportError, &message);
+                };
+                if local_import {
+                    self.stack_push(global.value);
+                } else {
+                    self.defining_globals_mut().insert(*name, global);
                 }
             }
         } else {
-            let module_id = self.heap.add_module(module);
+            let alias = alias.unwrap_or_else(|| module_id.to_value(&self.heap).name);
             if local_import {
-                self.stack_push(module_id);
+                self.stack_push(module_id.into());
             } else {
-                self.globals_mut().insert(
+                self.defining_globals_mut().insert(
                     alias,
                     Global {
-                        value: module_id,
+                        value: module_id.into(),
                         mutable: true,
                     },
                 );

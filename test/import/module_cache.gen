@@ -1,0 +1,18 @@
+# A module is imported once: later imports (any form, any spelling of
+# the path, any alias) bind the same module object without re-executing
+# the body.
+import "module_cache_helper.gen"; # expect: cache helper ran
+
+module_cache_helper.items.append(3);
+
+import "module_cache_helper.gen" as again;
+print(again.items); # expect: [1, 2, 3]
+print(again == module_cache_helper); # expect: true
+
+# A from-import reads off the same cached module.
+from "module_cache_helper.gen" import items;
+print(items); # expect: [1, 2, 3]
+
+# Different spellings of the same path share the cache entry.
+import "./module_cache_helper.gen" as dotted;
+print(dotted == again); # expect: true
