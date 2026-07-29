@@ -1,0 +1,23 @@
+import "string";
+
+# The control characters have no escape syntax in source, so the module
+# exports them as constants for use via interpolation.
+print(string.quote.chars()); # expect: ["]
+print(string.backslash.chars()); # expect: [\]
+print(string.tab.chars()); # expect: [	]
+
+# They interpolate into f-strings.
+var q = string.quote;
+print(f"${q}hi${q}"); # expect: "hi"
+print(f"a${string.newline}b");
+# expect: a
+# expect: b
+
+# Each is a single character.
+foreach (var name in ["newline", "carriage_return", "tab", "quote", "backslash", "null"]) {
+    var value = getattr(string, name);
+    if (len(value.chars()) != 1) {
+        print(f"not one char: ${name}");
+    }
+}
+print("all single chars"); # expect: all single chars

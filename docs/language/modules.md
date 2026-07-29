@@ -117,6 +117,11 @@ The bundled modules:
   a global shadows it. Builtins are constants - assignment can shadow
   them only through a declaration (`var len = ...;`), and the module's
   entries are constants too.
+- **`string`** - named constants for the control characters the
+  language has no escape syntax for: `string.newline`,
+  `string.carriage_return`, `string.tab`, `string.quote`,
+  `string.backslash`, `string.null`. Use them via interpolation, e.g.
+  `f"a${string.newline}b"`.
 - **`functools`** - tools for callables: `reduce(f, iterable)` /
   `reduce(f, iterable, initial)` folds an iterable with `f(acc, item)`;
   `partial(f, args...)` returns a callable with the leading arguments
