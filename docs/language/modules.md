@@ -133,6 +133,15 @@ The bundled modules:
   with `.status_code()`, `.ok()`, `.text()`, `.json()`, and
   `.headers()`. HTTP error statuses are ordinary responses; only
   transport failures raise `IoError`. Requests time out after 30s.
+- **`pathlib`** - a `Path` class over the filesystem: `Path("a/b")`,
+  joining with `/` or `.join(...)`, the components `.name()`,
+  `.stem()`, `.suffix()`, `.parent()`, the queries `.exists()`,
+  `.is_file()`, `.is_dir()`, `.read_text()` / `.write_text(s)`,
+  `.iterdir()` (a list of child paths), `.parts()` (the components as a
+  list), `.mkdir()` (creates missing parents, ok if present), and
+  `.rmdir()` / `.rmdir(true)` (remove an empty directory, or everything
+  under it). Paths are lexically normalized at creation. Filesystem
+  errors raise `IoError`.
 - **`functools`** - tools for callables: `reduce(f, iterable)` /
   `reduce(f, iterable, initial)` folds an iterable with `f(acc, item)`;
   `partial(f, args...)` returns a callable with the leading arguments

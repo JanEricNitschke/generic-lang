@@ -1,0 +1,38 @@
+from "pathlib" import Path;
+
+# Read-only filesystem queries against files that exist in the repo
+# (the suite runs from the repository root).
+var manifest = Path("Cargo.toml");
+print(manifest.exists()); # expect: true
+print(manifest.is_file()); # expect: true
+print(manifest.is_dir()); # expect: false
+print(Path("crates").is_dir()); # expect: true
+print(Path("does/not/exist").exists()); # expect: false
+
+# read_text reads the whole file; a known line is present.
+var contents = manifest.read_text();
+print(contents.contains("[workspace]")); # expect: true
+
+# iterdir lists a directory's entries as paths; this test's own
+# directory contains this file.
+var here = Path("test/pathlib");
+var names = [];
+foreach (var entry in here.iterdir()) {
+    names.append(entry.name());
+}
+print("filesystem.gen" in names); # expect: true
+print("paths.gen" in names); # expect: true
+
+# Reading a missing file raises IoError.
+try {
+    Path("does/not/exist.txt").read_text();
+} catch IoError as e {
+    # Our wrapping (action + path) is deterministic; the OS error tail
+    # is not, so only the prefix is pinned.
+    print(e.message().startswith("Could not read `does/not/exist.txt`:")); # expect: true
+}
+try {
+    Path("does/not/exist").iterdir();
+} catch IoError as e {
+    print(e.message().startswith("Could not read directory `does/not/exist`:")); # expect: true
+}

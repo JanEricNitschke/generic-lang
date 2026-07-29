@@ -40,6 +40,9 @@ unicode-normalization = { workspace = true }
 unicode-segmentation  = { workspace = true }
 walkdir      = { workspace = true }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [features]
 default                 = ["plugins"]
 # C-ABI native module loading (`import` of shared libraries). Off: none of
