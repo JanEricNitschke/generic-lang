@@ -79,6 +79,17 @@ fn to_generic(vm: &mut VM, json: &serde_json::Value) -> VmResult<Value> {
     })
 }
 
+/// Parse a JSON document; the error carries `what` as the source name.
+/// Shared by `loads` and `Response.json()`.
+pub(super) fn parse_json_source(vm: &mut VM, source: &str) -> VmResult<Value> {
+    match serde_json::from_str::<serde_json::Value>(source) {
+        Ok(json) => to_generic(vm, &json),
+        Err(error) => Err(vm
+            .throw(ValueError, &format!("Invalid JSON: {error}"))
+            .unwrap_err()),
+    }
+}
+
 /// `loads(source)` - parse a JSON document.
 fn loads_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     let Value::String(source_id) = args[0] else {
@@ -93,12 +104,7 @@ fn loads_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             .unwrap_err());
     };
     let source = source_id.to_value(&vm.heap).clone();
-    match serde_json::from_str::<serde_json::Value>(&source) {
-        Ok(json) => to_generic(vm, &json),
-        Err(error) => Err(vm
-            .throw(ValueError, &format!("Invalid JSON: {error}"))
-            .unwrap_err()),
-    }
+    parse_json_source(vm, &source)
 }
 
 /// Serialization state: the optional indent and the instances on the

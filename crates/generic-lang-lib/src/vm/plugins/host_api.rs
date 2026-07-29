@@ -317,6 +317,7 @@ pub(super) fn value_kind_of(heap: &Heap, value: Value) -> u32 {
             Some(
                 NativeClass::Template(_)
                 | NativeClass::Interpolation(_)
+                | NativeClass::Response(_)
                 | NativeClass::BoolProxy
                 | NativeClass::ModuleProxy
                 | NativeClass::StringProxy

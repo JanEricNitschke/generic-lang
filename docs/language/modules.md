@@ -128,6 +128,11 @@ The bundled modules:
   `json.dumps(value, indent)` serializes lists, tuples (as arrays),
   dicts with string keys, strings, numbers, booleans, and `nil`.
   Circular references and non-serializable values raise.
+- **`requests`** - a blocking HTTP client: `requests.get(url[, headers])`
+  and `post`/`put`/`delete(url[, body][, headers])` return a `Response`
+  with `.status_code()`, `.ok()`, `.text()`, `.json()`, and
+  `.headers()`. HTTP error statuses are ordinary responses; only
+  transport failures raise `IoError`. Requests time out after 30s.
 - **`functools`** - tools for callables: `reduce(f, iterable)` /
   `reduce(f, iterable, initial)` folds an iterable with `f(acc, item)`;
   `partial(f, args...)` returns a callable with the leading arguments

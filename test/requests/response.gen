@@ -1,0 +1,29 @@
+import "requests";
+from "string" import quote;
+
+# The Response methods are exercised offline through the internal
+# `_response` builder (real network requests are in the Rust tests: a
+# local stub server, plus an ignored live TLS request).
+var ok = requests._response(200, "hello there", {"Content-Type": "text/plain", "X-Test": "yes"});
+print(ok.status_code()); # expect: 200
+print(ok.ok()); # expect: true
+print(ok.text()); # expect: hello there
+print(sorted(ok.headers().items())); # expect: [(Content-Type, text/plain), (X-Test, yes)]
+print(isinstance(ok, requests.Response)); # expect: true
+print(ok); # expect: <Response [200]>
+
+# A 4xx status is a normal response, distinguished by ok().
+var missing = requests._response(404, "not found", {:});
+print(missing.status_code()); # expect: 404
+print(missing.ok()); # expect: false
+print(missing.text()); # expect: not found
+
+# A 500 is also not ok; 399 is the last ok status.
+print(requests._response(500, "", {:}).ok()); # expect: false
+print(requests._response(399, "", {:}).ok()); # expect: true
+
+# json() parses the body.
+print(requests._response(200, "[1, 2, 3]", {:}).json()); # expect: [1, 2, 3]
+var q = quote;
+var doc = requests._response(200, f"{${q}k${q}: 5}", {:}).json();
+print(doc["k"]); # expect: 5

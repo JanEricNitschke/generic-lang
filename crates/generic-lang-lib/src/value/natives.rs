@@ -175,6 +175,7 @@ pub enum NativeClass {
     Interpolation(Interpolation),
     Partial(Partial),
     Field(Field),
+    Response(Response),
     // Proxy classes for value type constructors
     BoolProxy,
     ModuleProxy,
@@ -246,6 +247,7 @@ impl NativeClass {
             "Exception" => Self::Exception(Exception::default()),
             "partial" => Self::Partial(Partial::default()),
             "Field" => Self::Field(Field::default()),
+            "Response" => Self::Response(Response::default()),
             // Proxy classes for value type constructors
             "Bool" => Self::BoolProxy,
             "Module" => Self::ModuleProxy,
@@ -279,6 +281,7 @@ impl NativeClass {
             Self::Interpolation(interpolation) => interpolation.to_string(heap),
             Self::Partial(partial) => partial.to_string(heap, depth),
             Self::Field(field) => field.to_string(heap, depth),
+            Self::Response(response) => response.to_string(heap, depth),
             // Proxy classes should never be accessed for string conversion
             Self::BoolProxy => unreachable!("BoolProxy should never be converted to string"),
             Self::ModuleProxy => {
@@ -1429,5 +1432,26 @@ impl Default for Interpolation {
 impl std::fmt::Display for Interpolation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.pad("<Interpolation Value>")
+    }
+}
+
+/// Backing of the `Response` native class of the `requests` stdlib
+/// module: a finished HTTP exchange. Plain Rust data, no heap values.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Response {
+    pub(crate) status: u16,
+    pub(crate) headers: Vec<(String, String)>,
+    pub(crate) body: String,
+}
+
+impl Response {
+    fn to_string(&self, _heap: &Heap, _depth: usize) -> String {
+        format!("<Response [{}]>", self.status)
+    }
+}
+
+impl From<Response> for NativeClass {
+    fn from(response: Response) -> Self {
+        Self::Response(response)
     }
 }
