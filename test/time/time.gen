@@ -1,0 +1,49 @@
+import "time";
+
+# time() is seconds since the Unix epoch, well past 2020.
+var now = time.time();
+print(now > 1577836800.0); # expect: true
+
+# time_ns() is integer nanoseconds; consistent with time() at the
+# second scale.
+var now_ns = time.time_ns();
+print(now_ns > 1577836800000000000); # expect: true
+
+# monotonic() never goes backwards; monotonic_ns() is the integer twin.
+var first = time.monotonic();
+var second = time.monotonic();
+print(second >= first); # expect: true
+print(time.monotonic_ns() >= 0); # expect: true
+var first_ns = time.monotonic_ns();
+var second_ns = time.monotonic_ns();
+print(second_ns >= first_ns); # expect: true
+
+# sleep accepts non-negative integers and floats.
+print(time.sleep(0)); # expect: nil
+print(time.sleep(0.001)); # expect: nil
+
+# Fractional sleep really waits.
+var before_ns = time.monotonic_ns();
+time.sleep(0.01);
+print(time.monotonic_ns() - before_ns >= 10000000); # expect: true
+
+try {
+    time.sleep(-1);
+} catch TypeError as e {
+    print(e.message()); # expect: 'sleep' expects a non-negative number of seconds, got: -1
+}
+try {
+    time.sleep("soon");
+} catch TypeError as e {
+    print(e.message()); # expect: 'sleep' expects a non-negative number of seconds, got: soon
+}
+
+# UTC date and time strings: ISO date compares lexicographically, the
+# time is 24h hh:mm:ss.
+var date = time.utc_date();
+print(date >= "2026-01-01"); # expect: true
+print(date.contains("-")); # expect: true
+var tod = time.utc_time();
+print(tod.contains(":")); # expect: true
+print(tod < "24"); # expect: true
+print(tod >= "00"); # expect: true

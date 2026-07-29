@@ -1,0 +1,9 @@
+# A finite sleep duration beyond what a Duration can represent raises a
+# catchable ValueError instead of aborting the interpreter.
+import "time";
+
+try {
+    time.sleep(10.0 ** 20.0);
+} catch ValueError as e {
+    print(e.message().startswith("'sleep' duration is too large")); # expect: true
+}

@@ -172,6 +172,13 @@ The bundled modules:
   keys read as 0), `DefaultDict(factory)` (fills missing keys from the
   factory), `OrderedDict()` (insertion-ordered iteration), and
   `Heap(items)` (binary min-heap with `push`/`pop`/`peek`).
+- **`time`** - wall-clock and monotonic time: `time.time()` /
+  `time.time_ns()` (seconds since the Unix epoch as float / integer
+  nanoseconds), `time.monotonic()` / `time.monotonic_ns()` (from a
+  process-fixed origin, never decreasing), `time.sleep(seconds)`
+  (integer or float, non-negative), and the UTC strings
+  `time.utc_date()` (`YYYY-MM-DD`) and `time.utc_time()` (`HH:MM:SS`,
+  24h).
 - **`testing`** - assertion helpers for the test runner: `assert_equal`,
   `assert_not_equal`, `assert_true`, `assert_false`, `assert_nil`,
   `assert_not_nil`, `assert_throws`. Each raises `AssertionError` with a
