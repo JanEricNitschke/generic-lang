@@ -1,0 +1,5 @@
+from "itertools" import batched;
+
+foreach (var batch in batched([1, 2, 3], 0)) {
+    print(batch);
+} # expect runtime error: ValueError: 'batched' expected a batch size of at least 1.

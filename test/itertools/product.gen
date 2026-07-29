@@ -1,0 +1,7 @@
+from "itertools" import product;
+
+print(List(product([[1, 2], "ab".chars()]))); # expect: [(1, a), (1, b), (2, a), (2, b)]
+print(List(product([[1, 2]]))); # expect: [(1,), (2,)]
+print(List(product([[1, 2], [], [3]]))); # expect: []
+print(List(product([]))); # expect: [()]
+print(List(product([[0, 1], [0, 1], [0, 1]]))); # expect: [(0, 0, 0), (0, 0, 1), (0, 1, 0), (0, 1, 1), (1, 0, 0), (1, 0, 1), (1, 1, 0), (1, 1, 1)]

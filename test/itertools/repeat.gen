@@ -1,0 +1,15 @@
+from "itertools" import repeat;
+
+print(List(repeat("x", 3))); # expect: [x, x, x]
+print(List(repeat(7, 0))); # expect: []
+print(List(repeat(nil, 2))); # expect: [nil, nil]
+
+# A nil count repeats forever; the consumer bounds it.
+var seen = [];
+foreach (var item in repeat("y", nil)) {
+    seen.append(item);
+    if (len(seen) == 4) {
+        break;
+    }
+}
+print(seen); # expect: [y, y, y, y]
