@@ -1,0 +1,13 @@
+# Equal paths (equal normalized forms) behave as one key in sets and
+# dicts.
+from "pathlib" import Path;
+
+var seen = {Path("a/b"), Path("a/./b")};
+print(len(seen)); # expect: 1
+
+var sizes = {Path("src"): 10};
+print(sizes[Path("./src")]); # expect: 10
+
+# Distinct paths land in distinct entries.
+var both = {Path("a"), Path("b")};
+print(len(both)); # expect: 2

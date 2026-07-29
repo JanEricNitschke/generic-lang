@@ -6,6 +6,7 @@ mod functools;
 mod json;
 mod keyword;
 mod math;
+mod pathlib;
 mod requests;
 mod string;
 
@@ -17,6 +18,7 @@ pub fn register(vm: &mut VM) {
     json::register(vm);
     string::register(vm);
     requests::register(vm);
+    pathlib::register(vm);
     dataclasses::register(vm);
     keyword::register(vm);
     builtins::register(vm);

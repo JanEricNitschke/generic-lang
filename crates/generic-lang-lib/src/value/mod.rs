@@ -22,8 +22,8 @@ pub use natives::PluginInstance;
 pub use natives::{
     CreatorContext, Dict, DictIterMode, DictIterator, Exception, Field, Generator, GeneratorState,
     Interpolation, List, ListIterator, ModuleContents, ModuleExport, NativeClass, NativeFunction,
-    NativeFunctionImpl, NativeMethod, NativeMethodImpl, Partial, Range, RangeIterator, Response,
-    Set, SetIterator, Template, TemplateIterator, Tuple, TupleIterator,
+    NativeFunctionImpl, NativeMethod, NativeMethodImpl, Partial, Path, Range, RangeIterator,
+    Response, Set, SetIterator, Template, TemplateIterator, Tuple, TupleIterator,
 };
 pub use number::{GenericInt, GenericRational, Number};
 
@@ -362,6 +362,7 @@ impl Value {
         Partial,
         Field,
         Response,
+        Path,
     );
 
     impl_as_native_class_mut!(

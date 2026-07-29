@@ -176,6 +176,7 @@ pub enum NativeClass {
     Partial(Partial),
     Field(Field),
     Response(Response),
+    Path(Path),
     // Proxy classes for value type constructors
     BoolProxy,
     ModuleProxy,
@@ -248,6 +249,7 @@ impl NativeClass {
             "partial" => Self::Partial(Partial::default()),
             "Field" => Self::Field(Field::default()),
             "Response" => Self::Response(Response::default()),
+            "Path" => Self::Path(Path::default()),
             // Proxy classes for value type constructors
             "Bool" => Self::BoolProxy,
             "Module" => Self::ModuleProxy,
@@ -282,6 +284,7 @@ impl NativeClass {
             Self::Partial(partial) => partial.to_string(heap, depth),
             Self::Field(field) => field.to_string(heap, depth),
             Self::Response(response) => response.to_string(heap, depth),
+            Self::Path(path) => path.to_string(heap, depth),
             // Proxy classes should never be accessed for string conversion
             Self::BoolProxy => unreachable!("BoolProxy should never be converted to string"),
             Self::ModuleProxy => {
@@ -382,6 +385,26 @@ impl Field {
 impl std::fmt::Display for Field {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.pad("<field Value>")
+    }
+}
+
+/// Backing of the `Path` native class of the `pathlib` stdlib module: a
+/// filesystem path as a plain string, no heap values. Path arithmetic
+/// and filesystem access live in the module's natives.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Path {
+    pub(crate) path: std::path::PathBuf,
+}
+
+impl Path {
+    fn to_string(&self, _heap: &Heap, _depth: usize) -> String {
+        format!("Path({})", self.path.to_string_lossy())
+    }
+}
+
+impl From<Path> for NativeClass {
+    fn from(path: Path) -> Self {
+        Self::Path(path)
     }
 }
 
