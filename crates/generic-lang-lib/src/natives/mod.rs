@@ -6,7 +6,7 @@ mod dict;
 mod exception;
 mod generator;
 mod list;
-mod native_functions;
+pub mod native_functions;
 mod range;
 mod set;
 mod sort;

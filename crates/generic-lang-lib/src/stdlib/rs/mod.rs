@@ -10,6 +10,7 @@ mod os;
 mod pathlib;
 mod requests;
 mod string;
+mod time;
 
 use crate::vm::VM;
 
@@ -24,4 +25,5 @@ pub fn register(vm: &mut VM) {
     dataclasses::register(vm);
     keyword::register(vm);
     builtins::register(vm);
+    time::register(vm);
 }
