@@ -1,0 +1,23 @@
+from "collections" import DefaultDict;
+
+var groups = DefaultDict(List);
+groups["evens"].append(2);
+groups["evens"].append(4);
+groups["odds"].append(1);
+print(groups["evens"]); # expect: [2, 4]
+print(groups["odds"]); # expect: [1]
+print(len(groups)); # expect: 2
+
+var counts = DefaultDict((->() 0));
+counts["x"] = counts["x"] + 1;
+counts["x"] = counts["x"] + 1;
+print(counts["x"]); # expect: 2
+
+# Explicitly stored values win over the factory.
+var d = DefaultDict((->() "default"));
+d["key"] = "stored";
+print(d["key"]); # expect: stored
+
+var strict = DefaultDict(nil);
+print(strict.get("nope", "fallback")); # expect: fallback
+strict["nope"]; # expect runtime error: KeyError: Key `nope` not found.

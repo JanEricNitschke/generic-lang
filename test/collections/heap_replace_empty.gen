@@ -1,0 +1,3 @@
+from "collections" import Heap;
+
+Heap(nil).replace(1); # expect runtime error: IndexError: replace on an empty Heap

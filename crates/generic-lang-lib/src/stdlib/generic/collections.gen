@@ -1,0 +1,456 @@
+# Container classes built on the native `List` and `Dict`.
+
+# A double-ended queue with amortised O(1) appends and pops on both
+# ends, kept as two stacks: `front` holds the left half reversed, `back`
+# the right half in order.
+class Deque {
+    __init__(items) {
+        this.front = [];
+        this.back = [];
+        if (!(items is nil)) {
+            this.extend(items);
+        }
+    }
+
+    append(item) {
+        this.back.append(item);
+    }
+
+    appendleft(item) {
+        this.front.append(item);
+    }
+
+    extend(items) {
+        foreach (var item in items) {
+            this.append(item);
+        }
+    }
+
+    pop() {
+        if (len(this) == 0) {
+            throw IndexError("pop from an empty Deque");
+        }
+        if (len(this.back) == 0) {
+            this._shift(this.front, this.back);
+        }
+        return this.back.pop();
+    }
+
+    popleft() {
+        if (len(this) == 0) {
+            throw IndexError("pop from an empty Deque");
+        }
+        if (len(this.front) == 0) {
+            this._shift(this.back, this.front);
+        }
+        return this.front.pop();
+    }
+
+    # Move all items of `source` reversed onto `target` (one of them is
+    # empty when this is called, so order is preserved overall).
+    _shift(source, target) {
+        while (source) {
+            target.append(source.pop());
+        }
+    }
+
+    to_list() {
+        var result = [];
+        # `front` is stored reversed; guarded like every descending
+        # range over a possibly empty list.
+        if (this.front) {
+            foreach (var index in (len(this.front) - 1)..=0) {
+                result.append(this.front[index]);
+            }
+        }
+        result.extend(this.back);
+        return result;
+    }
+
+    clear() {
+        this.front.clear();
+        this.back.clear();
+    }
+
+    contains(item) {
+        return item in this.front or item in this.back;
+    }
+
+    __len__() {
+        return len(this.front) + len(this.back);
+    }
+
+    __bool__() {
+        return len(this) > 0;
+    }
+
+    __iter__() {
+        return iter(this.to_list());
+    }
+
+    __eq__(other) {
+        if (!isinstance(other, Deque)) {
+            return false;
+        }
+        return this.to_list() == other.to_list();
+    }
+
+    __str__() {
+        var items = this.to_list();
+        return f"Deque(${items})";
+    }
+}
+
+# A dict counting occurrences: missing keys read as 0.
+class Counter < Dict {
+    __init__(items) {
+        super.__init__();
+        if (!(items is nil)) {
+            this.update(items);
+        }
+    }
+
+    __getitem__(key) {
+        if (this.contains(key)) {
+            return super.__getitem__(key);
+        }
+        return 0;
+    }
+
+    add(item) {
+        this[item] = this[item] + 1;
+    }
+
+    subtract(item) {
+        this[item] = this[item] - 1;
+    }
+
+    # Count the items of an iterable, or add the counts of a mapping
+    # (any `Dict`, including another `Counter`).
+    update(items) {
+        if (isinstance(items, Dict)) {
+            foreach (var key in items.keys()) {
+                this[key] = this[key] + items[key];
+            }
+        } else {
+            foreach (var item in items) {
+                this.add(item);
+            }
+        }
+    }
+
+    total() {
+        var sum = 0;
+        foreach (var count in this.values()) {
+            sum = sum + count;
+        }
+        return sum;
+    }
+
+    # The `n` most common `(item, count)` pairs, ordered by descending
+    # count; `nil` lists all. Ties order arbitrarily.
+    #
+    # Entries are decorated as `(negated count, sequence, pair)`:
+    # negating makes the min-heap pop the most common first, and the
+    # unique sequence number breaks count ties so the items themselves
+    # are never compared. Heapifying is linear and each of the `n` pops
+    # is logarithmic.
+    most_common(n) {
+        if (n is nil or n >= len(this)) {
+            return sorted(this.items(), true, (->(pair) pair[1]));
+        }
+        if (n <= 0) {
+            return [];
+        }
+        var decorated = [];
+        var sequence = 0;
+        foreach (var pair in this.items()) {
+            decorated.append((-pair[1], sequence, pair));
+            sequence = sequence + 1;
+        }
+        var heap = Heap(decorated);
+        var result = [];
+        foreach (var _ in 0..<n) {
+            result.append(heap.pop()[2]);
+        }
+        return result;
+    }
+}
+
+# A dict that fills missing keys from a factory on first access.
+class DefaultDict < Dict {
+    __init__(default_factory) {
+        super.__init__();
+        this.default_factory = default_factory;
+    }
+
+    __getitem__(key) {
+        if (this.contains(key)) {
+            return super.__getitem__(key);
+        }
+        if (this.default_factory is nil) {
+            throw KeyError(f"Key `${key}` not found.");
+        }
+        var value = this.default_factory();
+        this[key] = value;
+        return value;
+    }
+}
+
+# A key of the circular insertion-order list of an `OrderedDict`.
+class _Link {
+    __init__(key) {
+        this.key = key;
+        this.previous = nil;
+        this.next = nil;
+    }
+}
+
+# The keys of `ordered` in insertion order, walked lazily off its link
+# list.
+gen _ordered_keys(ordered) {
+    var link = ordered.sentinel.next;
+    while (link != ordered.sentinel) {
+        yield link.key;
+        link = link.next;
+    }
+}
+
+gen _ordered_values(ordered) {
+    foreach (var key in _ordered_keys(ordered)) {
+        yield ordered[key];
+    }
+}
+
+gen _ordered_items(ordered) {
+    foreach (var key in _ordered_keys(ordered)) {
+        yield (key, ordered[key]);
+    }
+}
+
+# A dict that iterates (and stringifies) in insertion order. Equality
+# against another `OrderedDict` is order-sensitive; against a plain
+# `Dict` it compares contents only.
+#
+# The order lives in a circular doubly linked list of keys threaded
+# through `links` (key to its list node): removal
+# unlinks in O(1) instead of scanning a key list. After
+# `d["b"] = ...; d["a"] = ...; d["c"] = ...;` the state is
+#
+#     order:  sentinel <=> "b" <=> "a" <=> "c" <=> sentinel (circular)
+#     links:  {"b": <link b>, "a": <link a>, "c": <link c>}
+#     dict:   the inherited backing holds the key/value pairs
+#
+# `d.pop("a")` finds link a through `links` and unlinks it:
+#
+#     order:  sentinel <=> "b" <=> "c" <=> sentinel
+#
+# Assigning an existing key keeps its position; only new keys append
+# (in front of the sentinel).
+class OrderedDict < Dict {
+    __init__() {
+        super.__init__();
+        # List head: `sentinel.next` is the oldest key,
+        # `sentinel.previous` the newest.
+        this.sentinel = _Link(nil);
+        this.sentinel.previous = this.sentinel;
+        this.sentinel.next = this.sentinel;
+        # key -> its `_Link` in the order list.
+        this.links = {:};
+    }
+
+    __eq__(other) {
+        if (isinstance(other, OrderedDict)) {
+            return List(this.items()) == List(other.items());
+        }
+        return super.__eq__(other);
+    }
+
+    __setitem__(key, value) {
+        if (!this.contains(key)) {
+            var link = _Link(key);
+            var newest = this.sentinel.previous;
+            link.previous = newest;
+            link.next = this.sentinel;
+            newest.next = link;
+            this.sentinel.previous = link;
+            this.links[key] = link;
+        }
+        super.__setitem__(key, value);
+    }
+
+    pop(key) {
+        # Throws KeyError for a missing key before the order changes.
+        var value = super.pop(key);
+        var link = this.links.pop(key);
+        link.previous.next = link.next;
+        link.next.previous = link.previous;
+        return value;
+    }
+
+    clear() {
+        super.clear();
+        this.links.clear();
+        this.sentinel.previous = this.sentinel;
+        this.sentinel.next = this.sentinel;
+    }
+
+    # Like the base dict, the views are lazy and `__iter__` is the same
+    # iteration as `keys()`.
+    keys() {
+        return _ordered_keys(this);
+    }
+
+    values() {
+        return _ordered_values(this);
+    }
+
+    items() {
+        return _ordered_items(this);
+    }
+
+    __iter__() {
+        return _ordered_keys(this);
+    }
+
+    __str__() {
+        if (len(this) == 0) {
+            return "OrderedDict({:})";
+        }
+        var parts = [];
+        foreach (var key in this.keys()) {
+            var value = super.__getitem__(key);
+            parts.append(f"${key}: ${value}");
+        }
+        return "OrderedDict({" + ", ".join(parts) + "})";
+    }
+}
+
+# A binary min-heap. Push, pop, and replace are O(log n); `peek` is
+# O(1); building from `items` is O(n). Items are ordered by `<`, so
+# anything comparable can be stored.
+#
+# The tree lives flat in `entries`: the children of `entries[i]` are
+# `entries[2 * i + 1]` and `entries[2 * i + 2]`, and every parent is no
+# larger than its children, so `entries[0]` is the minimum:
+#
+#             1
+#           /   \
+#          3     2        entries = [1, 3, 2, 7, 4]
+#         / \
+#        7   4
+#
+# `push` appends and sifts the new entry up; `pop` moves the last entry
+# to the root and sifts it down; the constructor sifts each internal
+# node down once, last parent first, which is linear overall.
+class Heap {
+    __init__(items) {
+        this.entries = [];
+        if (!(items is nil)) {
+            foreach (var item in items) {
+                this.entries.append(item);
+            }
+            # Linear heapify: sift down every internal node, last
+            # parent first. Guarded because with fewer than two
+            # entries the descending range would flip into an
+            # ascending one starting at -1.
+            if (len(this.entries) > 1) {
+                foreach (var index in (len(this.entries) // 2 - 1)..=0) {
+                    this._sift_down(index);
+                }
+            }
+        }
+    }
+
+    push(item) {
+        this.entries.append(item);
+        this._sift_up(len(this.entries) - 1);
+    }
+
+    pop() {
+        if (len(this.entries) == 0) {
+            throw IndexError("pop from an empty Heap");
+        }
+        var last = this.entries.pop();
+        if (len(this.entries) == 0) {
+            return last;
+        }
+        var smallest = this.entries[0];
+        this.entries[0] = last;
+        this._sift_down(0);
+        return smallest;
+    }
+
+    peek() {
+        if (len(this.entries) == 0) {
+            throw IndexError("peek into an empty Heap");
+        }
+        return this.entries[0];
+    }
+
+    # Pop the smallest and push `item` in one downward sift; the
+    # cheaper equivalent of `pop()` followed by `push(item)`.
+    replace(item) {
+        if (len(this.entries) == 0) {
+            throw IndexError("replace on an empty Heap");
+        }
+        var smallest = this.entries[0];
+        this.entries[0] = item;
+        this._sift_down(0);
+        return smallest;
+    }
+
+    # Bubble the entry at `index` up while it is smaller than its
+    # parent.
+    _sift_up(index) {
+        while (index > 0) {
+            var parent = (index - 1) // 2;
+            if (this.entries[index] < this.entries[parent]) {
+                this._swap(index, parent);
+                index = parent;
+            } else {
+                return;
+            }
+        }
+    }
+
+    # Sink the entry at `index` down while a child is smaller.
+    _sift_down(index) {
+        var count = len(this.entries);
+        while (true) {
+            var smallest = index;
+            var left = 2 * index + 1;
+            var right = 2 * index + 2;
+            if (left < count and this.entries[left] < this.entries[smallest]) {
+                smallest = left;
+            }
+            if (right < count and this.entries[right] < this.entries[smallest]) {
+                smallest = right;
+            }
+            if (smallest == index) {
+                return;
+            }
+            this._swap(index, smallest);
+            index = smallest;
+        }
+    }
+
+    _swap(a, b) {
+        var tmp = this.entries[a];
+        this.entries[a] = this.entries[b];
+        this.entries[b] = tmp;
+    }
+
+    __len__() {
+        return len(this.entries);
+    }
+
+    __bool__() {
+        return len(this.entries) > 0;
+    }
+
+    __str__() {
+        var entries = this.entries;
+        return f"Heap(${entries})";
+    }
+}

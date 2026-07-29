@@ -1,0 +1,45 @@
+from "collections" import Counter;
+
+var counter = Counter(["a", "b", "a", "c", "a", "b"]);
+print(counter["a"]); # expect: 3
+print(counter["b"]); # expect: 2
+print(counter["missing"]); # expect: 0
+print(counter.total()); # expect: 6
+print(len(counter)); # expect: 3
+
+counter.add("d");
+print(counter["d"]); # expect: 1
+counter.subtract("a");
+print(counter["a"]); # expect: 2
+
+# Break the a/b tie so the selection order is deterministic.
+counter.add("a");
+print(counter.most_common(1)); # expect: [(a, 3)]
+print(counter.most_common(2)); # expect: [(a, 3), (b, 2)]
+print(counter.most_common(nil)[0]); # expect: (a, 3)
+print(counter.most_common(0)); # expect: []
+
+var empty = Counter(nil);
+print(len(empty)); # expect: 0
+print(empty.most_common(3)); # expect: []
+
+print(isinstance(counter, Counter)); # expect: true
+print(isinstance(counter, Dict)); # expect: true
+
+# A Counter can be built from a mapping of counts, including another
+# Counter, and `update` adds counts from either shape.
+var from_mapping = Counter({"x": 4, "y": 1});
+print(from_mapping["x"]); # expect: 4
+from_mapping.update(["x", "y"]);
+print(from_mapping["x"]); # expect: 5
+print(from_mapping["y"]); # expect: 2
+from_mapping.update({"y": 10});
+print(from_mapping["y"]); # expect: 12
+print(Counter(from_mapping)["x"]); # expect: 5
+
+# Count ties between items that cannot be compared with each other are
+# fine: the sequence tag in the selection heap keeps the items
+# themselves from ever being compared.
+var mixed = Counter([1, "one", 1, "one", 2]);
+print(mixed.most_common(2)[0][1]); # expect: 2
+print(mixed.most_common(2)[1][1]); # expect: 2
