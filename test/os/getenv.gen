@@ -1,0 +1,12 @@
+import "os";
+
+# PATH exists on every supported platform.
+print(os.getenv("PATH") != nil); # expect: true
+print(os.getenv("GENERIC_SURELY_UNSET_4711")); # expect: nil
+print(os.getenv("GENERIC_SURELY_UNSET_4711", "fallback")); # expect: fallback
+print(os.getenv("GENERIC_SURELY_UNSET_4711", 42)); # expect: 42
+
+from "os" import getenv;
+print(getenv("PATH") == os.getenv("PATH")); # expect: true
+
+os.getenv(7); # expect runtime error: TypeError: 'getenv' expected a string name, got: 7

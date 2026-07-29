@@ -1,0 +1,6 @@
+import "os";
+
+# The value is platform dependent ("macos", "linux", "windows", ...);
+# only its shape is asserted here.
+print(os.name != ""); # expect: true
+print(os.name == str(os.name)); # expect: true

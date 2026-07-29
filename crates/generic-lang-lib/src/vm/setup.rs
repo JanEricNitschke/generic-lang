@@ -117,6 +117,11 @@ impl VM {
         target_class.methods.insert(name_id, value_id);
     }
 
+    /// Install the command line arguments exposed as `os.argv`.
+    pub(crate) fn set_script_args(&mut self, script_args: Vec<String>) {
+        self.script_args = script_args;
+    }
+
     /// Register a rust native stdlib module by its name and exports.
     ///
     /// Add the name of the module to the heap and add the exports
