@@ -444,6 +444,15 @@ macro_rules! run_instruction {
                 let arg_count = $self.read_byte();
                 $self.invoke(method_name, arg_count)
             }
+            OpCode::UnpackCall => $self.unpack_call(),
+            OpCode::InvokeUnpack => {
+                let method_name = $self.read_string("OP_INVOKE_UNPACK");
+                $self.invoke_unpack(method_name)
+            }
+            OpCode::SuperInvokeUnpack => {
+                let method_name = $self.read_string("OP_SUPER_INVOKE_UNPACK");
+                $self.super_invoke_unpack(method_name)
+            }
             // Stack has (... --- Superclass --- Class)
             OpCode::Inherit => {
                 let superclass_id = *$self.peek(1).expect("Stack underflow in OP_INHERIT");

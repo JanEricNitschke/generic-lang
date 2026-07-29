@@ -1146,6 +1146,24 @@ impl Compiler<'_, '_> {
 
             if !compiler.check(TK::RightParen) {
                 loop {
+                    if compiler.match_(TK::Star) {
+                        // `*rest` collects surplus positional arguments; it is
+                        // the last parameter and is not counted in the arity.
+                        compiler.current_function_mut().is_variadic = true;
+                        let constant = compiler
+                            .parse_variable("Expect rest parameter name.", Mutability::Mutable);
+                        compiler.define_variable(constant, Mutability::Mutable);
+                        if !compiler.check(TK::RightParen) {
+                            compiler
+                                .error_at_current("A rest parameter must be the last parameter.");
+                            // Discard the stray trailing parameters so the body
+                            // still parses and no cascade errors follow.
+                            while !compiler.check(TK::RightParen) && !compiler.check(TK::Eof) {
+                                compiler.advance();
+                            }
+                        }
+                        break;
+                    }
                     if compiler.current_function().arity == 255 {
                         compiler.error_at_current("Can't have more than 255 parameters.");
                     } else {

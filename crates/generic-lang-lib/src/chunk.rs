@@ -154,6 +154,12 @@ pub enum OpCode {
     CompareException,
     Reraise,
     Throw,
+
+    // Argument unpacking (`f(*xs)`). Each carries a segment count followed by
+    // a spread bitmap marking which segments are spreads.
+    UnpackCall,
+    InvokeUnpack,
+    SuperInvokeUnpack,
 }
 
 #[cfg(test)]
@@ -365,6 +371,10 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
                 | ImportAs => 3,
                 Closure => 1 + self.upvalue_code_len(offset, heap),
                 ImportFrom => 2 + self.import_from_len(offset),
+                // segment-count byte + a ceil(segments / 8)-byte spread bitmap.
+                UnpackCall => 1 + self.spread_bitmap_len(offset + 1),
+                // method-name byte + segment count + the spread bitmap.
+                InvokeUnpack | SuperInvokeUnpack => 2 + self.spread_bitmap_len(offset + 2),
             }
     }
 
@@ -379,6 +389,12 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
         let code = self.chunk.code();
         let n_op = code[import_from_offset + 3];
         1 + n_op as usize
+    }
+
+    /// Bytes of spread bitmap for the segment-count byte at `count_offset`:
+    /// `ceil(segments / 8)`.
+    fn spread_bitmap_len(&self, count_offset: usize) -> usize {
+        (self.chunk.code[count_offset] as usize).div_ceil(8)
     }
 
     fn debug_constant_opcode(
@@ -698,6 +714,61 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
             OPERAND_ALIGNMENT = self.operand_alignment
         )
     }
+
+    /// `OP_UNPACK_CALL`: a segment count followed by the spread bitmap.
+    fn debug_unpack_call_opcode(
+        &self,
+        f: &mut std::fmt::Formatter,
+        name: &str,
+        offset: CodeOffset,
+        _heap: &Heap,
+    ) -> std::fmt::Result {
+        let segments = self.chunk.code()[offset.as_ref() + 1];
+        let bitmap = self.spread_bitmap_binary(offset.as_ref() + 2, segments);
+        writeln!(
+            f,
+            "{:-OPCODE_NAME_ALIGNMENT$} {segments:>OPERAND_ALIGNMENT$} segments [{bitmap}]",
+            name,
+            OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
+            OPERAND_ALIGNMENT = self.operand_alignment
+        )
+    }
+
+    /// `OP_INVOKE_UNPACK` / `OP_SUPER_INVOKE_UNPACK`: a method-name constant, a
+    /// segment count, then the spread bitmap.
+    fn debug_invoke_unpack_opcode(
+        &self,
+        f: &mut std::fmt::Formatter,
+        name: &str,
+        offset: CodeOffset,
+        heap: &Heap,
+    ) -> std::fmt::Result {
+        let code = self.chunk.code();
+        let constant = code[offset.as_ref() + 1];
+        let segments = code[offset.as_ref() + 2];
+        let constant_value = self.chunk.get_constant(constant);
+        let bitmap = self.spread_bitmap_binary(offset.as_ref() + 3, segments);
+        let formatted_name = format!("{name} ({segments} segments [{bitmap}])");
+        writeln!(
+            f,
+            "{:-OPCODE_NAME_ALIGNMENT$} {:>OPERAND_ALIGNMENT$} '{}'",
+            formatted_name,
+            constant,
+            constant_value.to_string(heap),
+            OPCODE_NAME_ALIGNMENT = self.opcode_name_alignment,
+            OPERAND_ALIGNMENT = self.operand_alignment
+        )
+    }
+
+    /// Render the `ceil(segments / 8)` spread-bitmap bytes at `start` as binary,
+    /// least-significant bit first, so segment `i`'s flag reads left to right.
+    fn spread_bitmap_binary(&self, start: usize, segments: u8) -> String {
+        let code = self.chunk.code();
+        (0..(segments as usize).div_ceil(8))
+            .map(|byte| format!("{:08b}", code[start + byte].reverse_bits()))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 }
 
 macro_rules! disassemble {
@@ -851,6 +922,8 @@ impl Debug for InstructionDisassembler<'_, '_> {
                 Throw,
                 Reraise
             ),
+            unpack_call(UnpackCall),
+            invoke_unpack(InvokeUnpack, SuperInvokeUnpack),
         )?;
         Ok(())
     }

@@ -69,6 +69,15 @@ impl VM {
         self.stack_push(instance_value);
     }
 
+    /// Build a `Tuple` instance from `items` and return it (nothing is pushed).
+    pub(crate) fn new_tuple(&mut self, items: Vec<Value>) -> Value {
+        let instance = Instance::new(
+            *self.heap.native_classes.get("Tuple").unwrap(),
+            Some(Tuple::new(items).into()),
+        );
+        self.heap.add_instance(instance)
+    }
+
     /// Build a tuple. The number of items is the operand.
     ///
     /// Items are on the stack in order from left to right
@@ -79,16 +88,9 @@ impl VM {
             .rev()
             .map(|index| *self.peek(usize::from(index)).unwrap())
             .collect();
-        let tuple = Tuple::new(items);
-
-        // Pop all items from stack at once
         self.stack
             .truncate(self.stack.len() - usize::from(arg_count));
-        let instance = Instance::new(
-            *self.heap.native_classes.get("Tuple").unwrap(),
-            Some(tuple.into()),
-        );
-        let instance_value = self.heap.add_instance(instance);
+        let instance_value = self.new_tuple(items);
         self.stack_push(instance_value);
     }
 

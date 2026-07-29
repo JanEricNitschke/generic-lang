@@ -1,3 +1,4 @@
+use crate::config::SPREAD_BITMAP_BYTES;
 use crate::heap::ClassId;
 use crate::value::NativeClass;
 #[cfg(feature = "plugins")]
@@ -396,13 +397,21 @@ impl VM {
     /// Then the closure is pushed onto the callstack.
     pub(super) fn execute_call(&mut self, closure_id: Value, arg_count: u8) -> VmResult {
         let closure = closure_id.as_closure();
-        let (arity, required) = {
+        let (arity, required, is_variadic) = {
             let function = closure.to_value(&self.heap).function.to_value(&self.heap);
-            (function.arity, function.required_params)
+            (
+                function.arity,
+                function.required_params,
+                function.is_variadic,
+            )
         };
         let arg_count = usize::from(arg_count);
-        if arg_count < required || arg_count > arity {
-            return self.throw(TypeError, &Self::arity_message(required, arity, arg_count));
+        // A variadic function has no upper bound; a fixed one caps at `arity`.
+        if arg_count < required || (!is_variadic && arg_count > arity) {
+            return self.throw(
+                TypeError,
+                &Self::arity_message(required, arity, is_variadic, arg_count),
+            );
         }
 
         if self.callstack.len() == crate::config::FRAMES_MAX {
@@ -410,22 +419,173 @@ impl VM {
         }
 
         let stack_base = self.stack.len() - arg_count - 1;
-        // Fill the omitted trailing optional parameters from the closure's
-        // defaults; the provided arguments already sit in their slots.
-        for slot in arg_count..arity {
-            let default = closure.to_value(&self.heap).default_values[slot - required];
-            self.stack_push(default);
+        if is_variadic && arg_count >= arity {
+            // Every fixed parameter is already supplied; collect the surplus
+            // positional arguments into the `*rest` tuple.
+            let overflow = self.stack.split_off(stack_base + 1 + arity);
+            let rest = self.new_tuple(overflow);
+            self.stack_push(rest);
+        } else {
+            // Fill the omitted trailing optional parameters from the closure's
+            // defaults; the provided arguments already sit in their slots.
+            for slot in arg_count..arity {
+                let default = closure.to_value(&self.heap).default_values[slot - required];
+                self.stack_push(default);
+            }
+            if is_variadic {
+                let rest = self.new_tuple(Vec::new());
+                self.stack_push(rest);
+            }
         }
         self.callstack
             .push(*closure_id.as_closure(), stack_base, &self.heap);
         Ok(None)
     }
 
-    /// The "wrong number of arguments" message, phrased as an exact count when
-    /// the function takes no optionals and as a range otherwise.
-    fn arity_message(required: usize, arity: usize, got: usize) -> String {
+    /// `OP_UNPACK_CALL`: flatten the argument segments and call the callee
+    /// sitting below them.
+    pub(super) fn unpack_call(&mut self) -> VmResult {
+        let arg_count = self.gather_unpacked_arguments()?;
+        let callee = *self
+            .peek(usize::from(arg_count))
+            .expect("Callee missing below unpacked arguments");
+        self.call_value(callee, arg_count)
+    }
+
+    /// `OP_INVOKE_UNPACK`: flatten the argument segments and invoke `method_name`
+    /// on the receiver sitting below them.
+    pub(super) fn invoke_unpack(&mut self, method_name: StringId) -> VmResult {
+        let arg_count = self.gather_unpacked_arguments()?;
+        self.invoke(method_name, arg_count)
+    }
+
+    /// `OP_SUPER_INVOKE_UNPACK`: pop the superclass, flatten the argument
+    /// segments, and invoke `method_name` from that superclass.
+    pub(super) fn super_invoke_unpack(&mut self, method_name: StringId) -> VmResult {
+        let superclass = self
+            .stack
+            .pop()
+            .expect("Stack underflow in OP_SUPER_INVOKE_UNPACK");
+        let arg_count = self.gather_unpacked_arguments()?;
+        self.invoke_from_class(*superclass.as_class(), method_name, arg_count)
+    }
+
+    /// Flatten the argument segments of an unpacking call, expanding spreads.
+    ///
+    /// # Argument unpacking (`f(a, *xs, b)`)
+    ///
+    /// A call whose argument list contains a spread (`*expr`) cannot know its
+    /// final argument count at compile time, so it is compiled differently
+    /// from a plain call. Each written argument is a *segment*: the compiler
+    /// emits every segment's value as-is (a spread leaves the *iterable*
+    /// itself on the stack) and records a spread bitmap - one bit per segment,
+    /// set when that segment is a spread. The call is then one of
+    /// `OP_UNPACK_CALL` / `OP_INVOKE_UNPACK` / `OP_SUPER_INVOKE_UNPACK` instead
+    /// of `OP_CALL` / `OP_INVOKE` / `OP_SUPER_INVOKE`, carrying (after the
+    /// method-name operand, for the invoke forms) a segment-count byte and the
+    /// `ceil(count / 8)` bitmap bytes.
+    ///
+    /// ## The spread bitmap and the 255-argument cap
+    ///
+    /// Segment `i` occupies bit `i % 8` of byte `i / 8`, least-significant bit
+    /// first (so segment 0 is bit 0 of byte 0). A call takes at most 255
+    /// arguments, so the map never needs more than `ceil(255 / 8) = 32` bytes
+    /// ([`SPREAD_BITMAP_BYTES`]); the compiler fills a fixed array of that size
+    /// and emits only the `ceil(count / 8)` bytes actually used, and this
+    /// routine reads back exactly that many. For a ten-segment call whose
+    /// segments 1 and 8 are spreads:
+    ///
+    /// ```text
+    ///   f(a, *b, c, d, e, f, g, h, *i, j)   // segments 1 and 8 are spreads
+    ///
+    ///   segments 0..=7  -> byte 0 = 0b0000_0010   (bit 1 set: segment 1)
+    ///   segment  8..=9  -> byte 1 = 0b0000_0001   (bit 0 set: segment 8)
+    /// ```
+    ///
+    /// The 255 cap is enforced twice. The compiler rejects more than 255
+    /// *written* arguments outright. At runtime a spread's length is not known
+    /// until it is expanded, so a flattened total above 255 raises a
+    /// `TypeError` here - which is also the ceiling on how many arguments a
+    /// `*rest` parameter can ever receive.
+    ///
+    /// This routine reads that count and bitmap, then rewrites the segments on
+    /// the stack top into the final positional arguments: a plain segment
+    /// contributes its one value, a spread segment is expanded into its
+    /// iterable's items (a non-iterable spread raises `TypeError`). The callee
+    /// or receiver below the segments is untouched, so afterwards the stack
+    /// reads `[callee, arg0, arg1, ...]` and the ordinary call machinery runs.
+    /// The count is returned (and checked to fit the 255-argument limit).
+    ///
+    /// Because expanding a spread re-enters the interpreter (`__iter__` /
+    /// `__next__`) and may collect garbage, the growing argument list is built
+    /// on the VM stack - never in a `Vec` - so every value stays rooted.
+    ///
+    /// ```text
+    /// var xs = [2, 3];
+    /// add(1, *xs, 4);        // add(a, b, c, d)
+    ///
+    ///   ... GET_GLOBAL add           push the callee
+    ///   ... CONSTANT 1               segment 0 (plain)
+    ///   ... GET_GLOBAL xs            segment 1 (spread: the list itself)
+    ///   ... CONSTANT 4               segment 2 (plain)
+    ///   ... UNPACK_CALL  3  [010...] three segments, segment 1 is a spread
+    ///
+    ///   stack before: [add, 1, [2,3], 4]
+    ///   stack after:  [add, 1, 2, 3, 4]     -> call add with 4 arguments
+    /// ```
+    ///
+    /// The definition-side counterpart, `*rest`, is handled in
+    /// [`Self::execute_call`]: surplus positional arguments are collected into
+    /// a tuple bound to the rest parameter.
+    pub(super) fn gather_unpacked_arguments(&mut self) -> VmResult<u8> {
+        let n_segments = usize::from(self.read_byte());
+        // The `ceil(n / 8)` spread-bitmap bytes follow; segment `i` is a spread
+        // when bit `i % 8` of byte `i / 8` is set.
+        let mut bitmap = [0u8; SPREAD_BITMAP_BYTES];
+        for byte in bitmap.iter_mut().take(n_segments.div_ceil(8)) {
+            *byte = self.read_byte();
+        }
+
+        // The segments occupy the top of the stack; expand them into arguments
+        // pushed above, keeping everything stack-rooted across the re-entrant
+        // `collect_items_from_iterable` calls.
+        let segment_base = self.stack.len() - n_segments;
+        let result_base = self.stack.len();
+        for index in 0..n_segments {
+            let value = self.stack[segment_base + index];
+            if bitmap[index / 8] & (1u8 << (index % 8)) == 0 {
+                self.stack.push(value);
+            } else {
+                let Some(items) = self.collect_items_from_iterable(value)? else {
+                    let rendered = value.to_string(&self.heap);
+                    return Err(self
+                        .throw(
+                            TypeError,
+                            &format!("Cannot unpack non-iterable {rendered}."),
+                        )
+                        .unwrap_err());
+                };
+                self.stack.extend_from_slice(&items);
+            }
+        }
+        let total = self.stack.len() - result_base;
+        self.stack.drain(segment_base..result_base);
+        u8::try_from(total).map_err(|_| {
+            self.throw(TypeError, "A call cannot pass more than 255 arguments.")
+                .unwrap_err()
+        })
+    }
+
+    /// The "wrong number of arguments" message: "at least N" for a variadic
+    /// function, an exact count when there are no optionals, a range otherwise.
+    fn arity_message(required: usize, arity: usize, is_variadic: bool, got: usize) -> String {
         let plural = |n: usize| if n == 1 { "" } else { "s" };
-        if required == arity {
+        if is_variadic {
+            format!(
+                "Expected at least {required} argument{} but got {got}.",
+                plural(required)
+            )
+        } else if required == arity {
             format!("Expected {arity} argument{} but got {got}.", plural(arity))
         } else {
             format!("Expected between {required} and {arity} arguments but got {got}.")

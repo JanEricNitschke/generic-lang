@@ -4,6 +4,9 @@ use include_dir::{Dir, include_dir};
 
 /// Maximum number of frames that can be active simultaneously.
 pub const FRAMES_MAX: usize = 64;
+/// Bytes of spread bitmap needed to flag every argument of a call: one bit per
+/// argument, and a call takes at most 255 arguments (`ceil(255 / 8)`).
+pub const SPREAD_BITMAP_BYTES: usize = 32;
 /// Maximum size of the total stack.
 pub const STACK_MAX: usize = FRAMES_MAX * 256;
 /// Maximum depth of nested native re-entry (dunder calls such as `__str__`,

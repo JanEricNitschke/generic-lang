@@ -1,0 +1,72 @@
+# A `*expr` argument spreads an iterable into positional arguments.
+fun add3(a, b, c) {
+    return a + b + c;
+}
+print(add3(*[1, 2, 3])); # expect: 6
+print(add3(1, *[2, 3])); # expect: 6
+print(add3(*[1], 2, *[3])); # expect: 6
+
+# Any iterable spreads: tuples and generators too.
+print(add3(*(10, 20, 30))); # expect: 60
+gen three() {
+    yield 1;
+    yield 2;
+    yield 3;
+}
+print(add3(*three())); # expect: 6
+
+# An empty spread contributes no arguments.
+fun identity(x) {
+    return x;
+}
+print(identity(*[], 5)); # expect: 5
+print(identity(5, *[])); # expect: 5
+
+# Spreading pairs naturally with a `*rest` parameter, so calls forward.
+fun collect(*xs) {
+    return xs;
+}
+fun forward(*xs) {
+    return collect(*xs);
+}
+print(forward(1, 2, 3)); # expect: (1, 2, 3)
+
+fun variadic(a, *rest) {
+    return f"${a} ${rest}";
+}
+print(variadic(*[1, 2, 3, 4])); # expect: 1 (2, 3, 4)
+
+# Method and super calls accept spreads.
+class Base {
+    combine(a, b) {
+        return f"base ${a} ${b}";
+    }
+}
+class Derived < Base {
+    combine(a, b) {
+        return f"derived ${super.combine(*[a, b])}";
+    }
+}
+var derived = Derived();
+print(derived.combine(*[1, 2])); # expect: derived base 1 2
+print(derived.combine(7, *[8])); # expect: derived base 7 8
+
+# Spreading a non-iterable raises.
+try {
+    identity(*5);
+} catch TypeError as e {
+    print(e.message()); # expect: Cannot unpack non-iterable 5.
+}
+
+# A call passes at most 255 arguments, so unpacking is bounded by that. A
+# `*rest` parameter therefore receives up to 255 arguments, and a spread that
+# would push the flattened count past 255 raises.
+fun count_args(*xs) {
+    return len(xs);
+}
+print(count_args(*List(1..=255))); # expect: 255
+try {
+    count_args(*List(1..=256));
+} catch TypeError as e {
+    print(e.message()); # expect: A call cannot pass more than 255 arguments.
+}

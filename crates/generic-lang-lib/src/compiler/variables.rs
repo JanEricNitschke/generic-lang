@@ -5,6 +5,7 @@
 use super::{Compiler, Local, ScopeDepth, Upvalue};
 use crate::chunk::{ConstantLongIndex, OpCode};
 use crate::compiler::rules::Precedence;
+use crate::config::SPREAD_BITMAP_BYTES;
 use crate::scanner::{Token, TokenKind as TK};
 use crate::types::{Location, Mutability, NumberEncoding, OpcodeLocation};
 
@@ -435,15 +436,27 @@ impl<'scanner> Compiler<'scanner, '_> {
     ///
     /// This means all comma separated expressions until a closing `)` is found.
     /// Does NOT permit trailing commas.
-    pub(super) fn argument_list(&mut self) -> u8 {
-        let mut arg_count = 0;
+    /// Parse a call's argument list. Each argument leaves one value on the
+    /// stack (a spread `*expr` leaves the iterable itself). Returns the segment
+    /// count and, when any argument is a spread, a per-segment flag list so the
+    /// caller can emit an unpacking call; `None` means a plain call.
+    pub(super) fn argument_list(&mut self) -> (u8, Option<[u8; SPREAD_BITMAP_BYTES]>) {
+        let mut arg_count: u8 = 0;
+        // Spread bitmap: segment `i` sets bit `i % 8` of byte `i / 8`. A fixed
+        // stack array covers the full 255-argument range (32 bytes); only the
+        // `ceil(arg_count / 8)` used bytes are emitted after the opcode.
+        let mut spread_bitmap = [0u8; SPREAD_BITMAP_BYTES];
         if !self.check(TK::RightParen) {
             loop {
+                let is_spread = self.match_(TK::Star);
                 self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Comma]);
 
                 if arg_count == 255 {
                     self.error("Can't have more than 255 arguments.");
                     break;
+                }
+                if is_spread {
+                    spread_bitmap[usize::from(arg_count) / 8] |= 1u8 << (arg_count % 8);
                 }
                 arg_count += 1;
 
@@ -453,7 +466,25 @@ impl<'scanner> Compiler<'scanner, '_> {
             }
         }
         self.consume(TK::RightParen, "Expect ')' after arguments.");
-        arg_count
+        // An all-zero bitmap means no spreads, so a plain call.
+        let spreads = spread_bitmap
+            .iter()
+            .any(|&byte| byte != 0)
+            .then_some(spread_bitmap);
+        (arg_count, spreads)
+    }
+
+    /// Emit the `ceil(arg_count / 8)` used spread-bitmap bytes after an
+    /// unpacking-call opcode and its segment count.
+    pub(super) fn emit_spread_bitmap(
+        &mut self,
+        bitmap: &[u8; SPREAD_BITMAP_BYTES],
+        arg_count: u8,
+        location: OpcodeLocation,
+    ) {
+        for &byte in &bitmap[..usize::from(arg_count).div_ceil(8)] {
+            self.emit_byte(byte, location);
+        }
     }
 
     fn check_local_const(&mut self, local_index: usize) {

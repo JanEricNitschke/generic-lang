@@ -82,11 +82,15 @@ impl std::fmt::Display for Closure {
 /// Additionally hold the chunk of compiled bytecode.
 #[derive(Debug, Eq, Clone)]
 pub struct Function {
-    /// Total number of parameters (required plus optional).
+    /// Number of fixed parameters (required plus optional), not counting a
+    /// trailing `*rest`.
     pub(crate) arity: usize,
-    /// Number of leading required parameters; the remaining
-    /// `arity - required_params` are optional and carry defaults.
+    /// Number of leading required parameters; the parameters from here up to
+    /// `arity` are optional and carry defaults.
     pub(crate) required_params: usize,
+    /// Whether a trailing `*rest` parameter collects surplus positional
+    /// arguments into a tuple. Its local slot follows the fixed parameters.
+    pub(crate) is_variadic: bool,
     pub(crate) chunk: Chunk,
     pub(crate) name: StringId,
     pub(crate) upvalue_count: usize,
@@ -98,6 +102,7 @@ impl Function {
         Self {
             arity,
             required_params: arity,
+            is_variadic: false,
             name,
             chunk: Chunk::new(name),
             upvalue_count: 0,

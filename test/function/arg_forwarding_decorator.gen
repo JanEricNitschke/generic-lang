@@ -1,0 +1,35 @@
+# A decorator that logs the arguments and forwards them unchanged: it wraps
+# any function with a variadic `*args` wrapper that prints the arguments and
+# then calls the wrapped function by spreading them back.
+fun logged(func) {
+    fun wrapper(*args) {
+        print(args);
+        return func(*args);
+    }
+    return wrapper;
+}
+
+@logged
+fun add(a, b, c) {
+    return a + b + c;
+}
+print(add(1, 2, 3));
+# expect: (1, 2, 3)
+# expect: 6
+
+@logged
+fun greet(name) {
+    return f"hi ${name}";
+}
+print(greet("bob"));
+# expect: (bob,)
+# expect: hi bob
+
+# It forwards zero arguments too.
+@logged
+fun answer() {
+    return 42;
+}
+print(answer());
+# expect: ()
+# expect: 42
