@@ -20,3 +20,17 @@ print(parser.parse_args(["-h"]));
 # A nil prog falls back to the script name.
 var unnamed = ArgumentParser(nil, nil);
 print(unnamed.format_help().startswith("usage: help.gen [-h]")); # expect: true
+
+# Arguments without a help text show just their name.
+var bare = ArgumentParser("bare", nil);
+bare.add_argument("thing", nil);
+bare.add_argument("--flag", {"action": "store_true"});
+bare.print_help();
+# expect: usage: bare [-h] [--flag] thing
+# expect:
+# expect: positional arguments:
+# expect:   thing
+# expect:
+# expect: options:
+# expect:   -h, --help - show this help message
+# expect:   --flag

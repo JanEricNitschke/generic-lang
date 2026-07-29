@@ -1,0 +1,54 @@
+from "argparse" import ArgumentParser;
+
+# Inconsistent settings are rejected when the argument is declared,
+# not when parsing happens to hit them.
+fun report(configure) {
+    var parser = ArgumentParser("tool", nil);
+    try {
+        configure(parser);
+    } catch ValueError as error {
+        print(error.message());
+    }
+}
+
+report(->(p) p.add_argument("--mode", {"choices": ["fast", "slow"], "default": "medium"})); # expect: default for --mode is not one of the choices: medium
+report(->(p) p.add_argument("--flag", {"action": "store_maybe"})); # expect: unknown action for --flag: store_maybe
+report(->(p) p.add_argument("--items", {"nargs": "*"})); # expect: nargs is only supported for positional arguments: --items
+report(->(p) p.add_argument("path", {"action": "store_true"})); # expect: actions are only supported for options: path
+report(->(p) p.add_argument("path", {"required": true})); # expect: required is only supported for options: path
+report(->(p) p.add_argument("files", {"nargs": "?"})); # expect: unsupported nargs for files: ?
+report(->(p) p.add_argument("--verbose", {"action": "store_true", "default": true})); # expect: an action option always stores its fixed value and cannot take a default: --verbose
+report(->(p) p.add_argument("--quiet", {"action": "store_false", "default": false})); # expect: an action option always stores its fixed value and cannot take a default: --quiet
+
+fun positional_after_greedy(parser) {
+    parser.add_argument("rest", {"nargs": "*"});
+    parser.add_argument("last", nil);
+}
+
+report(positional_after_greedy); # expect: positional last can never be filled after the greedy rest
+
+fun greedy_after_greedy(parser) {
+    parser.add_argument("rest", {"nargs": "*"});
+    parser.add_argument("more", {"nargs": "*"});
+}
+
+report(greedy_after_greedy); # expect: positional more can never be filled after the greedy rest
+
+fun duplicate_option(parser) {
+    parser.add_argument("--mode", nil);
+    parser.add_argument("--mode", nil);
+}
+
+report(duplicate_option); # expect: duplicate argument name: --mode
+
+fun duplicate_dest(parser) {
+    parser.add_argument("--mode", nil);
+    parser.add_argument("mode", nil);
+}
+
+report(duplicate_dest); # expect: duplicate argument name: mode
+
+# A default matching the choices is fine.
+var valid = ArgumentParser("tool", nil);
+valid.add_argument("--mode", {"choices": ["fast", "slow"], "default": "fast"});
+print(valid.parse_args([]).mode); # expect: fast
