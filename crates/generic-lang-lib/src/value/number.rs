@@ -552,7 +552,10 @@ impl GenericInt {
 
     fn neg(self, heap: &mut Heap) -> Self {
         match self {
-            Self::Small(n) => Self::Small(n.neg()),
+            Self::Small(n) => match n.checked_neg() {
+                Some(res) => Self::Small(res),
+                None => *heap.add_big_int(BigInt::from(n).neg()).as_generic_int(),
+            },
             Self::Big(n) => *heap
                 .add_big_int((n.to_value(heap)).clone().neg())
                 .as_generic_int(),

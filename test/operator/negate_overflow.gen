@@ -1,0 +1,12 @@
+# Negating the smallest 64-bit integer overflows the small representation
+# and must promote to a big integer instead of wrapping.
+var min = -9223372036854775807 - 1;
+
+print(-min); # expect: 9223372036854775808
+print(abs(min)); # expect: 9223372036854775808
+print(-min == 9223372036854775808); # expect: true
+print(-(-min) == min); # expect: true
+
+# The neighbours stay in the small representation.
+print(-(min + 1)); # expect: 9223372036854775807
+print(abs(-9223372036854775807)); # expect: 9223372036854775807
