@@ -2,7 +2,7 @@
 //!
 //! Uses the `clap` crate to parse command line arguments and then calls the appropriate function to either run the REPL or run a file.
 //! Not specifying a file will run the REPL, otherwise it will run the file.
-//! There are currently no other command line options.
+//! Everything after the file is passed through to the script as `os.argv[1:]`.
 
 #![forbid(unsafe_code)]
 // Pre-existing duplicate transitive dependencies; nothing actionable per crate.
@@ -21,6 +21,10 @@ struct Args {
     /// Run in test mode, discovering and executing test functions from a file or directory
     #[arg(short, long)]
     test: bool,
+
+    /// Arguments after the file, passed to the script as `os.argv[1:]`
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    script_arguments: Vec<String>,
 }
 
 /// Main entry point for the generic interpreter
@@ -33,7 +37,7 @@ fn main() {
             TestRunResult::HadFailures => std::process::exit(1),
             TestRunResult::InvalidPath => std::process::exit(74),
         },
-        (Some(file), false) => match run_file(file) {
+        (Some(file), false) => match run_file(file, args.script_arguments) {
             Err(e) => {
                 eprintln!("{e}");
                 std::process::exit(74);

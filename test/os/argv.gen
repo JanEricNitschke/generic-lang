@@ -1,0 +1,6 @@
+import "os";
+
+# The test runner invokes this script without extra arguments, so argv
+# holds exactly the script path.
+print(len(os.argv)); # expect: 1
+print(os.argv[0].endswith("argv.gen")); # expect: true

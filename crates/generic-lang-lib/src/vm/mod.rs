@@ -127,6 +127,10 @@ pub struct VM {
     /// only ancestors of the in-progress render, all rooted on the VM stack.
     repr_in_progress: HashSet<InstanceId>,
     stdlib: HashMap<StringId, ModuleContents>,
+    /// The script path followed by the arguments given after it on the
+    /// command line; exposed to programs as `os.argv`. Empty in the REPL
+    /// and in embedded uses that do not set it.
+    pub(super) script_args: Vec<String>,
     /// Must stay declared after `heap`: `Drop` for `Heap` runs plugin `drop`
     /// callbacks whose fn pointers live in the dylibs held here, and Rust drops
     /// fields in declaration order, so the heap must finalize before these
@@ -154,6 +158,7 @@ impl VM {
             reentry_depth: 0,
             repr_in_progress: HashSet::default(),
             stdlib: HashMap::default(),
+            script_args: Vec::new(),
             #[cfg(feature = "plugins")]
             plugins: PluginState::default(),
         };

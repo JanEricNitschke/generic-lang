@@ -67,11 +67,20 @@ pub fn repl() {
 /// Will read the whole file into memory and pass it to the VM for interpretation.
 /// The VM will compile and then interpret the code.
 ///
+/// `script_args` are the command line arguments for the script itself;
+/// together with the script path they become `os.argv`.
+///
 /// # Errors
 ///
 /// Returns an error if the file cannot be read.
-pub fn run_file(file: PathBuf) -> Result<InterpretResult, std::io::Error> {
+pub fn run_file(
+    file: PathBuf,
+    script_args: Vec<String>,
+) -> Result<InterpretResult, std::io::Error> {
     let contents = std::fs::read_to_string(&file)?;
     let mut vm = VM::new();
+    let mut argv = vec![file.to_string_lossy().into_owned()];
+    argv.extend(script_args);
+    vm.set_script_args(argv);
     Ok(vm.interpret(&contents, file))
 }

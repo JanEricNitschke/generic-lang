@@ -142,6 +142,12 @@ The bundled modules:
   `.rmdir()` / `.rmdir(true)` (remove an empty directory, or everything
   under it). Paths are lexically normalized at creation. Filesystem
   errors raise `IoError`.
+- **`os`** - operating system interaction: `os.name` (the platform,
+  e.g. `"macos"`, `"linux"`, `"windows"`), `os.getenv(name)` /
+  `os.getenv(name, default)` (live environment lookup), `os.environ`
+  (a `Dict` snapshot taken at import time), and `os.argv` (the script
+  path followed by the command line arguments after it; empty in the
+  REPL).
 - **`functools`** - tools for callables: `reduce(f, iterable)` /
   `reduce(f, iterable, initial)` folds an iterable with `f(acc, item)`;
   `partial(f, args...)` returns a callable with the leading arguments

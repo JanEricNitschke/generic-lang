@@ -1,0 +1,7 @@
+import "os";
+
+# The environ snapshot behaves like a regular Dict.
+print(os.environ.contains("PATH")); # expect: true
+print(len(os.environ) > 0); # expect: true
+print(os.environ["PATH"] == os.getenv("PATH")); # expect: true
+print(os.environ.get("GENERIC_SURELY_UNSET_4711", "fallback")); # expect: fallback
