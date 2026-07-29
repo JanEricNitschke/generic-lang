@@ -161,6 +161,12 @@ The bundled modules:
   `partial(f, args...)` returns a callable with the leading arguments
   bound; `cmp_to_key(cmp)` turns a two-argument comparator into a key
   function for `sorted` / `list.sort`.
+- **`itertools`** - lazy building blocks for iterables:
+  `accumulate(iterable, func)` (running fold, `nil` func adds),
+  `batched(iterable, n)`, `chain(iterables)`, `cycle(iterable)`,
+  `pairwise(iterable)`, `repeat(item, count)` (`nil` count repeats
+  forever), and `product(iterables)` (cartesian product of an iterable
+  of iterables).
 - **`testing`** - assertion helpers for the test runner: `assert_equal`,
   `assert_not_equal`, `assert_true`, `assert_false`, `assert_nil`,
   `assert_not_nil`, `assert_throws`. Each raises `AssertionError` with a

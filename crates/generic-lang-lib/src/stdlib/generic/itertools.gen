@@ -1,0 +1,128 @@
+# Building blocks for working with iterables. Everything here is a
+# generator function producing its values lazily.
+
+# Turn any iterable into a tuple of its items.
+fun _to_tuple(iterable) {
+    var result = Tuple();
+    foreach (var item in iterable) {
+        result = result + Tuple(item);
+    }
+    return result;
+}
+
+# Yield the running results of folding the iterable with `func`, starting
+# from its first item. A `nil` func means addition.
+gen accumulate(iterable, func) {
+    var total = nil;
+    var started = false;
+    foreach (var item in iterable) {
+        if (started) {
+            if (func is nil) {
+                total = total + item;
+            } else {
+                total = func(total, item);
+            }
+        } else {
+            total = item;
+            started = true;
+        }
+        yield total;
+    }
+}
+
+# Yield tuples of `n` consecutive items; the final batch may be shorter.
+gen batched(iterable, n) {
+    if (!isinstance(n, Integer) or n < 1) {
+        throw ValueError("'batched' expected a batch size of at least 1.");
+    }
+    var batch = [];
+    foreach (var item in iterable) {
+        batch.append(item);
+        if (len(batch) == n) {
+            yield _to_tuple(batch);
+            batch = [];
+        }
+    }
+    if (batch) {
+        yield _to_tuple(batch);
+    }
+}
+
+# Yield the items of each iterable in `iterables` in turn.
+gen chain(iterables) {
+    foreach (var iterable in iterables) {
+        foreach (var item in iterable) {
+            yield item;
+        }
+    }
+}
+
+# Yield the items of the iterable, then repeat them from a saved copy,
+# forever. Yields nothing for an empty iterable.
+gen cycle(iterable) {
+    var saved = [];
+    foreach (var item in iterable) {
+        yield item;
+        saved.append(item);
+    }
+    while (saved) {
+        foreach (var item in saved) {
+            yield item;
+        }
+    }
+}
+
+# Yield overlapping pairs of consecutive items as tuples. Yields nothing
+# for iterables with fewer than two items.
+gen pairwise(iterable) {
+    var previous = nil;
+    var started = false;
+    foreach (var item in iterable) {
+        if (started) {
+            yield (previous, item);
+        }
+        previous = item;
+        started = true;
+    }
+}
+
+# Yield `item` `count` times; a `nil` count means forever.
+gen repeat(item, count) {
+    if (count is nil) {
+        while (true) {
+            yield item;
+        }
+    } else {
+        var i = 0;
+        while (i < count) {
+            yield item;
+            i = i + 1;
+        }
+    }
+}
+
+# The cartesian product over an iterable of iterables, as tuples. Each
+# input is materialized once up front, since the product needs multiple
+# passes over it.
+gen product(iterables) {
+    var pools = [];
+    foreach (var iterable in iterables) {
+        pools.append(List(iterable));
+    }
+    foreach (var combination in _product_from(pools, 0)) {
+        yield combination;
+    }
+}
+
+# The product of `pools[index..]`, prefixed onto by the callers above.
+gen _product_from(pools, index) {
+    if (index == len(pools)) {
+        yield Tuple();
+        return;
+    }
+    foreach (var item in pools[index]) {
+        foreach (var rest in _product_from(pools, index + 1)) {
+            yield Tuple(item) + rest;
+        }
+    }
+}

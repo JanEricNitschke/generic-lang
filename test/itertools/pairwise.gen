@@ -1,0 +1,8 @@
+from "itertools" import pairwise;
+
+print(List(pairwise([1, 2, 3, 4]))); # expect: [(1, 2), (2, 3), (3, 4)]
+print(List(pairwise([1, 2]))); # expect: [(1, 2)]
+print(List(pairwise([1]))); # expect: []
+print(List(pairwise([]))); # expect: []
+print(List(pairwise("abc".chars()))); # expect: [(a, b), (b, c)]
+print(List(pairwise([nil, 1, nil]))); # expect: [(nil, 1), (1, nil)]

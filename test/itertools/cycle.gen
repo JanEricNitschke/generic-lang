@@ -1,0 +1,13 @@
+from "itertools" import cycle;
+
+var seen = [];
+foreach (var item in cycle([1, 2, 3])) {
+    seen.append(item);
+    if (len(seen) == 8) {
+        break;
+    }
+}
+print(seen); # expect: [1, 2, 3, 1, 2, 3, 1, 2]
+
+# An empty iterable cycles to nothing instead of spinning forever.
+print(List(cycle([]))); # expect: []

@@ -1,0 +1,18 @@
+# The batch size must be a genuine integer: fractional numbers, booleans,
+# and numeric strings are all rejected, not silently mis-batched.
+from "itertools" import batched;
+
+fun probe(n) {
+    try {
+        foreach (var batch in batched([1, 2, 3], n)) {
+            print(batch);
+        }
+    } catch ValueError as e {
+        print(e.message());
+    }
+}
+
+probe(2.5); # expect: 'batched' expected a batch size of at least 1.
+probe(true); # expect: 'batched' expected a batch size of at least 1.
+probe("2"); # expect: 'batched' expected a batch size of at least 1.
+probe(nil); # expect: 'batched' expected a batch size of at least 1.
