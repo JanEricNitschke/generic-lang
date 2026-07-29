@@ -1,0 +1,83 @@
+import "json";
+from "string" import quote;
+
+# Scalars, containers, and tuples (as arrays).
+print(json.dumps(nil)); # expect: null
+print(json.dumps(true)); # expect: true
+print(json.dumps(42)); # expect: 42
+print(json.dumps(3.5)); # expect: 3.5
+print(json.dumps("hi")); # expect: "hi"
+print(json.dumps([1, 2])); # expect: [1, 2]
+print(json.dumps((1, 2))); # expect: [1, 2]
+print(json.dumps([])); # expect: []
+print(json.dumps({"k": 1})); # expect: {"k": 1}
+print(json.dumps({"a": [1, 2]})); # expect: {"a": [1, 2]}
+
+# Big integer literals serialize exactly (no u64 ceiling).
+print(json.dumps(123456789012345678901234567890)); # expect: 123456789012345678901234567890
+
+# Indent switches to multi-line output.
+print(json.dumps([1, [2]], 2));
+# expect: [
+# expect:   1,
+# expect:   [
+# expect:     2
+# expect:   ]
+# expect: ]
+
+# Non-finite floats have no JSON representation and are rejected. A huge
+# exponent overflows to infinity on load; subtracting two gives NaN.
+# Neither can be dumped (nothing ever *loads* to NaN - serde validates).
+var inf = json.loads("1e400");
+try {
+    json.dumps(inf);
+} catch TypeError as e {
+    print(e.message()); # expect: a non-finite float is not JSON serializable.
+}
+var nan = inf - inf;
+try {
+    json.dumps(nan);
+} catch TypeError as e {
+    print(e.message()); # expect: a non-finite float is not JSON serializable.
+}
+
+# Non-serializable values raise TypeError with the value in the message.
+try {
+    json.dumps({42});
+} catch TypeError as e {
+    print(e.message()); # expect: `{42}` is not JSON serializable.
+}
+try {
+    json.dumps(print);
+} catch TypeError as e {
+    print(e.message()); # expect: `<native fn print>` is not JSON serializable.
+}
+class Widget {}
+try {
+    json.dumps(Widget());
+} catch TypeError as e {
+    print(e.message()); # expect: `<Widget instance>` is not JSON serializable.
+}
+
+# A non-string dict key is rejected with a dedicated message.
+try {
+    json.dumps({1: "one"});
+} catch TypeError as e {
+    print(e.message()); # expect: JSON object keys must be strings, got: `1`
+}
+
+# A negative indent is rejected.
+try {
+    json.dumps([1], -1);
+} catch TypeError as e {
+    print(e.message()); # expect: 'dumps' indent must not be negative.
+}
+
+# Circular references are detected.
+var cyclic = [1];
+cyclic.append(cyclic);
+try {
+    json.dumps(cyclic);
+} catch ValueError as e {
+    print(e.message()); # expect: Circular reference cannot be serialized.
+}

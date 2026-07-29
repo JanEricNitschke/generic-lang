@@ -30,6 +30,7 @@ rand         = { workspace = true }
 rustc-hash   = { workspace = true }
 shrinkwraprs = { workspace = true }
 slotmap      = { workspace = true }
+serde_json   = { workspace = true }
 strum        = { workspace = true }
 strum_macros = { workspace = true }
 thiserror    = { workspace = true }

@@ -1,0 +1,19 @@
+# The dumper recurses on the host stack, so nesting is capped: anything
+# deeper than the parser's own recursion limit raises a ValueError
+# instead of overflowing the stack.
+import "json";
+
+var nested = [];
+for (var i = 0; i < 100; i = i + 1) {
+    nested = [nested];
+}
+print(json.dumps(nested).startswith("[[[")); # expect: true
+
+for (var i = 0; i < 200; i = i + 1) {
+    nested = [nested];
+}
+try {
+    json.dumps(nested);
+} catch ValueError as e {
+    print(e.message()); # expect: Nesting is too deep to be serialized.
+}

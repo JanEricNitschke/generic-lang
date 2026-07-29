@@ -1,0 +1,67 @@
+import "json";
+from "string" import quote, backslash;
+
+var q = quote;
+var bs = backslash;
+
+# Values whose canonical (compact) JSON form is deterministic - so BOTH
+# directions are checked over the SAME list: value -> json -> value and
+# json -> value -> json. Canonical strings are built with f-strings
+# (the quote/backslash constants interpolate; literal braces pass
+# through). Multi-key dicts are excluded (object key order is not fixed)
+# and round-tripped by value below.
+var cases = [
+    [nil, "null"],
+    [true, "true"],
+    [false, "false"],
+    [0, "0"],
+    [-17, "-17"],
+    [3.5, "3.5"],
+    [-0.25, "-0.25"],
+    [1000.0, "1000.0"],
+    [0.001, "0.001"],
+    [123456789012345678901234567890, "123456789012345678901234567890"],
+    ["hello", f"${q}hello${q}"],
+    ["a " + q + "quoted" + q + " word", f"${q}a ${bs}${q}quoted${bs}${q} word${q}"],
+    [[], "[]"],
+    [[1, 2, 3], "[1, 2, 3]"],
+    [["a", "b"], f"[${q}a${q}, ${q}b${q}]"],
+    [{"k": 1}, f"{${q}k${q}: 1}"],
+    [{"n": [1, 2]}, f"{${q}n${q}: [1, 2]}"],
+];
+
+foreach (var example in cases) {
+    var value = example[0];
+    var canonical = example[1];
+    if (json.loads(json.dumps(value)) != value) {
+        print(f"value roundtrip failed: ${canonical}");
+    }
+    if (json.dumps(value) != canonical) {
+        print(f"dumps mismatch: ${canonical} got ${json.dumps(value)}");
+    }
+    if (json.dumps(json.loads(canonical)) != canonical) {
+        print(f"source roundtrip failed: ${canonical}");
+    }
+    if (json.loads(canonical) != value) {
+        print(f"loads mismatch: ${canonical}");
+    }
+}
+print("all shared cases ok"); # expect: all shared cases ok
+
+# Scientific-notation inputs load to floats; dumps never emits exponent
+# notation, so they normalize to plain decimal (which then round-trips).
+print(json.dumps(json.loads("1e3"))); # expect: 1000.0
+print(json.dumps(json.loads("1.5e2"))); # expect: 150.0
+print(json.dumps(json.loads("2.5e-1"))); # expect: 0.25
+print(json.dumps(json.loads("1e-3"))); # expect: 0.001
+
+# Multi-key dicts: object key order is not stable, so round-trip by
+# value and compare the parsed result's SORTED items against an explicit
+# expectation.
+var multi = json.loads(json.dumps({"x": 1, "y": 2, "z": 3}));
+print(sorted(multi.items())); # expect: [(x, 1), (y, 2), (z, 3)]
+var deep = json.loads(json.dumps({"nested": {"deep": [1, {"k": nil}]}}));
+print(sorted(deep["nested"].items())); # expect: [(deep, [1, {k: nil}])]
+
+# Tuples serialize as arrays, so they come back as lists.
+print(json.loads(json.dumps((1, 2, 3)))); # expect: [1, 2, 3]

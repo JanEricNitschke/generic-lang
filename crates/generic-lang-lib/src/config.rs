@@ -21,6 +21,11 @@ pub const REENTRY_MAX: usize = 1024;
 /// stack while being formatted. Kept small: this only formats values inside
 /// error messages, where deep nesting is noise.
 pub const REPR_MAX_DEPTH: usize = 10;
+/// Maximum nesting depth `json.dumps` serializes before raising. The
+/// dumper recurses on the host stack, so unbounded depth would overflow
+/// it; the cap matches the parser's (serde's) 128-level recursion limit,
+/// so every document `json.loads` accepts also serializes back.
+pub const JSON_MAX_DEPTH: usize = 128;
 /// Garbage collection occurs whenever the heap has reached a certain size.
 /// To avoid constant collection at large sizes, the next collection
 /// is performed when the heap has grown by a constant factor compared
