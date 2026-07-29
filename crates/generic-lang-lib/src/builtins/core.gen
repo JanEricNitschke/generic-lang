@@ -1,5 +1,10 @@
 # Core builtin functions implemented in Generic language
 
+# The root class. It carries no methods of its own; instances compare by
+# identity and render as `<object instance>`. Chiefly useful as a unique,
+# never-colliding sentinel via `object()`.
+class object {}
+
 fun all(iterable) {
     foreach (var item in iterable) {
         if (!item) {
@@ -18,8 +23,8 @@ fun any(iterable) {
     return false;
 }
 
-gen enumerate(iterable) {
-    var index = 0;
+gen enumerate(iterable, start=0) {
+    var index = start;
     foreach (var item in iterable) {
         yield (index, item);
         index = index + 1;
@@ -36,8 +41,8 @@ fun bool(x) {
     return Bool(x);
 }
 
-fun sum(iterable) {
-    var total = 0;
+fun sum(iterable, start=0) {
+    var total = start;
     foreach (var item in iterable) {
         total = total + item;
     }

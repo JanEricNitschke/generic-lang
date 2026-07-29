@@ -65,15 +65,16 @@ These are always in scope (no import needed):
 | `type(x)` | A type description, e.g. `<type int>`, `<type Set>`, `<type Foo>`. |
 | `len(x)` | Length (via `__len__`). |
 | `isinstance(x, C)`, `issubclass(A, B)` | Inheritance-aware type checks. |
-| `iter(x)`, `next(x)` | The iterator protocol. |
+| `iter(x)`, `next(x[, default])` | The iterator protocol; `next` returns `default` (instead of `StopIteration`) once the iterator is spent. |
 | `all(iter)`, `any(iter)` | Boolean reductions. |
 | `abs(x)`, `round(x)` | Absolute value; nearest integer (ties to even). |
-| `min(iter)`, `max(iter)`, `sum(iter)` | Reductions over an iterable. |
+| `min(iter)`, `max(iter)`, `sum(iter[, start])` | Reductions over an iterable; `sum` adds onto `start` (default `0`). |
 | `bool(x)`, `ord(s)`, `chr(n)`, `hash(x)` | Truthiness; code point of a 1-char string and back; hash of a value. |
 | `map(f, iter)`, `filter(f, iter)` | Lazy generators. |
 | `zip(a, b)` | Lazy generator of pairs, stopping at the shorter. |
 | `reversed(iter)` | A reversed list (eager). |
-| `enumerate(iter)` | A generator of `(index, item)` tuples. |
+| `enumerate(iter[, start])` | A generator of `(index, item)` tuples, indices counting from `start` (default `0`). |
+| `object()` | The bare root class; instances are method-less and compare by identity (a handy unique sentinel). |
 | `assert(x)` | Raise `AssertionError` if `x` is falsey. |
 | `getattr/setattr/hasattr/delattr(obj, name, …)` | Reflective attribute access on instances, classes, and modules. |
 | `clock()`, `sleep(s)`, `input(prompt)` | Time, delay, read a line. |
@@ -154,11 +155,11 @@ The bundled modules:
   `.rmdir()` / `.rmdir(true)` (remove an empty directory, or everything
   under it). Paths are lexically normalized at creation. Filesystem
   errors raise `IoError`.
-- **`argparse`** - command line parsing: `ArgumentParser(prog,
-  description)`, `parser.add_argument(name, settings)` (settings is a
-  dict or `nil`; leading `-` makes an option), `parser.parse_args(args)`
-  (`nil` parses `os.argv[1:]`) returning a `Namespace` with one field
-  per argument. Supports `help`, `default`, `type`, `action`
+- **`argparse`** - command line parsing: `ArgumentParser(prog=nil,
+  description=nil)`, `parser.add_argument(name, settings=nil)` (settings is
+  a dict or `nil`; leading `-` makes an option), `parser.parse_args(args=nil)`
+  (omitted or `nil` parses `os.argv[1:]`) returning a `Namespace` with one
+  field per argument. Supports `help`, `default`, `type`, `action`
   (`"store_true"`/`"store_false"`), `required`, `choices`, and `nargs`
   (`"*"`); `-h`/`--help` prints usage and makes `parse_args` return
   `nil`.
@@ -174,16 +175,16 @@ The bundled modules:
   bound; `cmp_to_key(cmp)` turns a two-argument comparator into a key
   function for `sorted` / `list.sort`.
 - **`itertools`** - lazy building blocks for iterables:
-  `accumulate(iterable, func)` (running fold, `nil` func adds),
+  `accumulate(iterable, func=nil)` (running fold, omitted/`nil` func adds),
   `batched(iterable, n)`, `chain(iterables)`, `cycle(iterable)`,
-  `pairwise(iterable)`, `repeat(item, count)` (`nil` count repeats
-  forever), and `product(iterables)` (cartesian product of an iterable
-  of iterables).
-- **`collections`** - container classes: `Deque(items)` (double-ended
-  queue, `nil` for empty), `Counter(items)` (occurrence counts, missing
-  keys read as 0), `DefaultDict(factory)` (fills missing keys from the
-  factory), `OrderedDict()` (insertion-ordered iteration), and
-  `Heap(items)` (binary min-heap with `push`/`pop`/`peek`).
+  `pairwise(iterable)`, `repeat(item, count=nil)` (omitted/`nil` count
+  repeats forever), and `product(iterables)` (cartesian product of an
+  iterable of iterables).
+- **`collections`** - container classes: `Deque(items=nil)` (double-ended
+  queue, empty by default), `Counter(items=nil)` (occurrence counts,
+  missing keys read as 0), `DefaultDict(factory=nil)` (fills missing keys
+  from the factory), `OrderedDict()` (insertion-ordered iteration), and
+  `Heap(items=nil)` (binary min-heap with `push`/`pop`/`peek`).
 - **`time`** - wall-clock and monotonic time: `time.time()` /
   `time.time_ns()` (seconds since the Unix epoch as float / integer
   nanoseconds), `time.monotonic()` / `time.monotonic_ns()` (from a
@@ -200,8 +201,9 @@ The bundled modules:
   from the operating system until `seed` replaces it.
 - **`testing`** - assertion helpers for the test runner: `assert_equal`,
   `assert_not_equal`, `assert_true`, `assert_false`, `assert_nil`,
-  `assert_not_nil`, `assert_throws`. Each raises `AssertionError` with a
-  descriptive message on failure. See [Testing](testing.md).
+  `assert_not_nil`, `assert_throws`. Each takes an optional trailing
+  `message` and raises `AssertionError` with a descriptive message on
+  failure. See [Testing](testing.md).
 - **`zen`** - a tiny example module.
 
 ```generic

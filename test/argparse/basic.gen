@@ -1,7 +1,7 @@
 from "argparse" import ArgumentParser;
 
 var parser = ArgumentParser("tool", "A test tool.");
-parser.add_argument("path", nil);
+parser.add_argument("path");
 parser.add_argument("--verbose", {"action": "store_true"});
 parser.add_argument("--count", {"type": int, "default": 1});
 parser.add_argument("--mode", {"choices": ["fast", "slow"], "default": "fast"});
@@ -23,3 +23,9 @@ print(args.mode); # expect: slow
 args = parser.parse_args(["--count=25", "b"]);
 print(args.count); # expect: 25
 print(args.path); # expect: b
+
+# ArgumentParser needs neither prog nor description, and add_argument needs
+# no options dict.
+var bare = ArgumentParser();
+bare.add_argument("file");
+print(bare.parse_args(["out.txt"]).file); # expect: out.txt

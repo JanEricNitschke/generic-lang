@@ -12,3 +12,6 @@ foreach (var item in iterator) {
 }
 
 print(List(enumerate(["x", "y", "z"]))); # expect: [(0, x), (1, y), (2, z)]
+
+# A start value offsets the first index.
+print(List(enumerate(["x", "y"], 10))); # expect: [(10, x), (11, y)]

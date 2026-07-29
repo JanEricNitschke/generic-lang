@@ -14,3 +14,6 @@ fun max2(a, b) {
 
 print(List(accumulate([3, 1, 4, 1, 5, 2], max2))); # expect: [3, 3, 4, 4, 5, 5]
 print(List(accumulate(1..<5, (->(a, b) a * b)))); # expect: [1, 2, 6, 24]
+
+# The function is optional; omitting it sums, like passing nil.
+print(List(accumulate([1, 2, 3, 4]))); # expect: [1, 3, 6, 10]

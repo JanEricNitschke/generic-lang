@@ -6,3 +6,7 @@ print(next(my_list_iter)); # expect: 1
 print(next(my_list_iter)); # expect: 2
 print(next(my_list_iter)); # expect: 3
 print(next(my_list_iter)); # expect: StopIteration
+
+# With a default argument, a spent iterator yields the default instead.
+print(next(my_list_iter, "done")); # expect: done
+print(next(iter([7]), "done")); # expect: 7

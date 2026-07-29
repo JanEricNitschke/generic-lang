@@ -1,5 +1,8 @@
 from "collections" import Counter;
 
+# Counter() with no argument starts empty, like Counter(nil).
+print(len(Counter())); # expect: 0
+
 var counter = Counter(["a", "b", "a", "c", "a", "b"]);
 print(counter["a"]); # expect: 3
 print(counter["b"]); # expect: 2

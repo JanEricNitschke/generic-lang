@@ -12,7 +12,7 @@ fun _to_tuple(iterable) {
 
 # Yield the running results of folding the iterable with `func`, starting
 # from its first item. A `nil` func means addition.
-gen accumulate(iterable, func) {
+gen accumulate(iterable, func=nil) {
     var total = nil;
     var started = false;
     foreach (var item in iterable) {
@@ -87,7 +87,7 @@ gen pairwise(iterable) {
 }
 
 # Yield `item` `count` times; a `nil` count means forever.
-gen repeat(item, count) {
+gen repeat(item, count=nil) {
     if (count is nil) {
         while (true) {
             yield item;

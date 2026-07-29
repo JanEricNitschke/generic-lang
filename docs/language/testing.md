@@ -137,13 +137,15 @@ Two options:
 - The builtin `assert(expr)` raises `AssertionError` when `expr` is falsey.
 - The `testing` stdlib module gives richer, self-describing assertions:
 
+The trailing `msg` is optional; when given it prefixes the failure message.
+
 | Function | Checks |
 |---|---|
-| `assert_equal(actual, expected, msg)` | `actual == expected` |
-| `assert_not_equal(actual, expected, msg)` | `actual != expected` |
-| `assert_true(cond, msg)` / `assert_false(cond, msg)` | truthiness |
-| `assert_nil(v, msg)` / `assert_not_nil(v, msg)` | nil-ness |
-| `assert_throws(func, ExceptionClass, msg)` | that calling `func` throws that class |
+| `assert_equal(actual, expected, msg=nil)` | `actual == expected` |
+| `assert_not_equal(actual, expected, msg=nil)` | `actual != expected` |
+| `assert_true(cond, msg=nil)` / `assert_false(cond, msg=nil)` | truthiness |
+| `assert_nil(v, msg=nil)` / `assert_not_nil(v, msg=nil)` | nil-ness |
+| `assert_throws(func, ExceptionClass, msg=nil)` | that calling `func` throws that class |
 
 Each raises `AssertionError` with a message describing the mismatch (e.g.
 `expected 2, got 1`) on failure, which the runner reports against the failing
