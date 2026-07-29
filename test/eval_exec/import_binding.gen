@@ -1,0 +1,40 @@
+# Imports executed inside `exec`/`eval` bind into the target module like
+# every other global definition, not into the module that ran `exec`.
+from "string" import quote;
+
+fun undefined(name) {
+    try {
+        eval(name);
+        return false;
+    } catch NameError as e {
+        return e.message().startswith("Undefined variable");
+    }
+}
+
+var target = Module("target");
+
+# A native stdlib import inside exec lands on the target module.
+exec(f"import ${quote}math${quote};", target);
+print(eval("math.sqrt(4.0)", target)); # expect: 2.0
+print(undefined("math")); # expect: true
+
+# A from-import binds the imported name on the target (the module is
+# cached now, so this exercises the cache-hit binding path).
+exec(f"from ${quote}math${quote} import sqrt;", target);
+print(eval("sqrt(9.0)", target)); # expect: 3.0
+print(undefined("sqrt")); # expect: true
+
+# A first-time generic module import binds on the target when its body
+# finishes executing.
+exec(f"import ${quote}import_binding_helper.gen${quote} as helper;", target);
+print(eval("helper.marker", target)); # expect: first helper
+print(undefined("helper")); # expect: true
+
+# The same for a first-time from-import of a generic module.
+exec(f"from ${quote}import_binding_second_helper.gen${quote} import second_marker;", target);
+print(eval("second_marker", target)); # expect: second helper
+print(undefined("second_marker")); # expect: true
+
+# Imports outside of exec/eval still bind in the importing module.
+import "math";
+print(math.sqrt(16.0)); # expect: 4.0

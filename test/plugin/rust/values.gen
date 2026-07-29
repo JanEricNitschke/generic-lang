@@ -9,10 +9,10 @@ from "rust_demo_plugin" import answer, greeting;
 print(answer); # expect: 42
 print(greeting); # expect: hello from the plugin
 
-# Re-importing under an alias rebuilds the module from the cached
-# exports, re-running the value creators.
+# Re-importing under an alias binds the same cached module object.
 import "rust_demo_plugin" as aliased;
 print(aliased.answer); # expect: 42
+print(aliased == rust_demo_plugin); # expect: true
 
 # The value bindings on the module are constants.
 try {
@@ -40,8 +40,9 @@ print(rust_demo_plugin.items); # expect: [1, 2]
 rust_demo_plugin.items.append(3);
 print(rust_demo_plugin.items); # expect: [1, 2, 3]
 
-# An aliased re-import rebuilds the module from the cached exports,
-# re-running the value creators: the fresh module does not see the
-# mutation.
+# Any re-import binds the same cached module: the mutation stays
+# visible through every binding.
 import "rust_demo_plugin" as refreshed;
-print(refreshed.items); # expect: [1, 2]
+print(refreshed.items); # expect: [1, 2, 3]
+print(refreshed == aliased); # expect: true
+print(aliased.items); # expect: [1, 2, 3]

@@ -183,9 +183,17 @@ globals become the module object. Rust-stdlib and plugin modules build a
 rust-stdlib export (`ModuleExport`, `src/value/natives.rs`) is a
 function (one heap `NativeFunction`), a native class (resolved through
 `heap.native_classes`, whose entries are permanent GC roots), or a value
-built at import time (which must not execute bytecode). Plugin exports
-are always functions. `from`-imports move individual globals instead of
-registering the module.
+built at import time (which must not execute bytecode). Plugins export
+functions, classes, and values. `from`-imports read the named globals
+off the module.
+
+Completed imports land in `VM::module_cache`, keyed by module identity
+(canonical file/dylib path for file-backed modules, bare name for stdlib
+ones); every later import of the same module binds the cached module
+object instead of executing or building it again. Cached modules are
+permanent GC roots. Failures are not cached: a generic module is only
+inserted when its body returns (`handle_module_end`), a native one when
+its exports are fully built.
 
 ## Plugin host
 

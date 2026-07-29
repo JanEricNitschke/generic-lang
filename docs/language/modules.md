@@ -35,6 +35,12 @@ binding disappears when the function returns. A module's `const` bindings stay
 in the entry file and the module's name (its file stem) inside an imported
 module.
 
+A module is imported **once** per run: the first import executes (or builds)
+it, and every later import of the same module - from anywhere, under any
+alias, in any form - binds the same module object without re-running it. Any
+state on the module is therefore shared by everyone who imports it. A failed
+import is not cached and can be retried.
+
 ### Resolution order
 
 For `import "name";` the interpreter tries, in order:

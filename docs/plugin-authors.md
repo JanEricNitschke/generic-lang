@@ -466,12 +466,13 @@ print(my_plugin.answer);   # 42
 
 A creator may use any host callback, including re-entering ones (the
 usual rooting contract applies). Returning an exception makes the whole
-import fail with it. Re-importing the module re-runs the creators.
+import fail with it. The creators run once, on the first import: every
+later import (aliased or not) binds the same cached module object.
 
 The binding is a module constant: assigning to it from generic code
 raises `ConstReassignmentError`. The value itself is ordinary - a
-mutable value (e.g. a list) can be mutated in place, and an aliased
-re-import gets a fresh one from the creator.
+mutable value (e.g. a list) can be mutated in place, and the mutation
+stays visible through any re-import.
 
 ## Defining classes
 

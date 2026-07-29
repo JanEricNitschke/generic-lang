@@ -116,6 +116,10 @@ impl VM {
         // disk, so this only fails on races - fall back to the raw path.
         let path = path.canonicalize().unwrap_or(path);
 
+        if let Some(cached) = self.bind_if_cached(&path, names_to_import, alias, local_import) {
+            return Some(cached);
+        }
+
         // Failed loads are deliberately not cached.
         let exports = if let Some(exports) = self.plugins.loaded.get(&path) {
             exports.clone()

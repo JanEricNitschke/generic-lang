@@ -1,0 +1,11 @@
+# Stdlib modules are cached like file-backed ones, native and generic
+# alike: re-imports bind the same module object.
+import "math";
+math.extra = "attached";
+import "math" as math_again;
+print(math_again.extra); # expect: attached
+print(math_again == math); # expect: true
+
+import "functools";
+import "functools" as functools_again;
+print(functools_again == functools); # expect: true

@@ -1,13 +1,13 @@
-# The loader caches each plugin's exports - including the interned export
-# name ids - per path, and a re-import rebuilds the module from that cache.
-# A local from-import inside a function drops the module (and every export
-# not literally named in this script) as soon as the function returns, so
-# the cached name ids must be GC roots: without that, a collection between
-# the two imports sweeps them and the rebuilt module carries dangling ids
-# (a deterministic arena panic under the stress-GC profile).
+# Imports are cached by module identity: the local from-import inside the
+# function builds the plugin module once, and the module cache keeps it
+# (with every export, not just the names literally imported) alive across
+# a collection after the function returned. The later top-level import
+# binds that same module without rebuilding it, so its ids must have
+# survived the GC (a deterministic arena panic under the stress-GC
+# profile otherwise).
 #
 # Exports exercised here:
-#   add(a, b) -- via a local from-import inside a function
+#   add(a, b) -- via the local from-import inside the function
 #   shout(s)  -- via the cache-hit re-import at top level
 fun use_add_locally() {
     from "rust_demo_plugin" import add;
