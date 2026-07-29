@@ -25,7 +25,8 @@ import "os";
 const _NEWLINE = "
 ";
 
-# The result object; `parse_args` fills one field per argument.
+# The result object: `parse_args` sets one field per declared
+# argument, named after its dest (`namespace.verbose`, `namespace.path`).
 class Namespace {}
 
 fun _basename(path) {
@@ -53,36 +54,120 @@ fun _dest_name(name) {
     return stripped.replace("-", "_");
 }
 
+# One declared argument. A leading `-` in the name makes it an option
+# (`--verbose value` or `--verbose=value`); otherwise it is a
+# positional, filled left to right.
 class _Argument {
     __init__(name, options) {
+        # The user-facing spelling, e.g. "--mode" or "path". Used in
+        # help output and error messages.
         this.name = name;
         this.is_option = name.startswith("-");
+        # The field name on the result Namespace: dashes stripped and
+        # inner ones turned into underscores ("--dry-run" -> dry_run).
         this.dest = _dest_name(name);
+        # Free text for the help line; nil shows just the name.
         this.help = _setting(options, "help", nil);
+        # Value used when the argument is not given. For options nil
+        # means "absent is nil"; a positional without a default is
+        # required.
         this.default_value = _setting(options, "default", nil);
+        # A callable applied to each raw string value (e.g. `int`).
         this.type = _setting(options, "type", nil);
+        # "store_true" / "store_false": the option takes no value and
+        # stores the fixed bool; absent stores the opposite.
         this.action = _setting(options, "action", nil);
+        # Options only: parsing fails when the option is not given.
         this.required = _setting(options, "required", false);
+        # A list of allowed (converted) values.
         this.choices = _setting(options, "choices", nil);
+        # Positionals only: "*" consumes all remaining tokens as a list.
         this.nargs = _setting(options, "nargs", nil);
+        this._validate();
+    }
+
+    # Reject inconsistent settings at declaration time instead of
+    # surfacing them as confusing parse results.
+    _validate() {
+        var name = this.name;
+        if (!(this.action is nil) and this.action != "store_true" and this.action != "store_false") {
+            var action = this.action;
+            throw ValueError(f"unknown action for ${name}: ${action}");
+        }
+        if (this.is_option) {
+            if (!(this.nargs is nil)) {
+                throw ValueError(f"nargs is only supported for positional arguments: ${name}");
+            }
+            if (!(this.action is nil) and !(this.default_value is nil)) {
+                throw ValueError(f"an action option always stores its fixed value and cannot take a default: ${name}");
+            }
+        } else {
+            if (!(this.action is nil)) {
+                throw ValueError(f"actions are only supported for options: ${name}");
+            }
+            if (this.required) {
+                throw ValueError(f"required is only supported for options: ${name}");
+            }
+            if (!(this.nargs is nil) and this.nargs != "*") {
+                var nargs = this.nargs;
+                throw ValueError(f"unsupported nargs for ${name}: ${nargs}");
+            }
+        }
+        if (!(this.choices is nil) and !(this.default_value is nil) and !(this.default_value in this.choices)) {
+            var default_value = this.default_value;
+            throw ValueError(f"default for ${name} is not one of the choices: ${default_value}");
+        }
     }
 }
 
+# Declares the accepted arguments and parses a command line against
+# them (see the module comment for the settings dict).
 class ArgumentParser {
     __init__(prog, description) {
+        # Program name for the usage line; nil derives it from
+        # `os.argv[0]` (or "prog" in the REPL).
         this.prog = prog;
+        # Free text shown between the usage line and the argument help.
         this.description = description;
+        # Positional _Arguments in declaration order.
         this.positionals = [];
+        # Option _Arguments keyed by their spelling ("--mode") for
+        # lookup while parsing.
         this.options = {:};
+        # Option _Arguments in declaration order, for help output and
+        # default filling.
         this.option_list = [];
     }
 
+    # Declare one argument; `options` is the settings dict or nil.
+    # Throws ValueError on inconsistent settings or duplicate names.
     add_argument(name, options) {
         var argument = _Argument(name, options);
+        if (this.options.contains(argument.name)) {
+            throw ValueError(f"duplicate argument name: ${name}");
+        }
+        foreach (var existing in this.option_list) {
+            if (existing.dest == argument.dest) {
+                throw ValueError(f"duplicate argument name: ${name}");
+            }
+        }
+        foreach (var existing in this.positionals) {
+            if (existing.dest == argument.dest) {
+                throw ValueError(f"duplicate argument name: ${name}");
+            }
+        }
         if (argument.is_option) {
             this.options[argument.name] = argument;
             this.option_list.append(argument);
         } else {
+            # A greedy positional consumes every remaining token, so a
+            # positional declared after it could never be filled.
+            foreach (var existing in this.positionals) {
+                if (existing.nargs == "*") {
+                    var greedy = existing.name;
+                    throw ValueError(f"positional ${name} can never be filled after the greedy ${greedy}");
+                }
+            }
             this.positionals.append(argument);
         }
         return argument;
@@ -93,11 +178,10 @@ class ArgumentParser {
     # returns `nil` on `-h` / `--help`.
     parse_args(args) {
         if (args is nil) {
-            args = [];
-            var argv_index = 1;
-            while (argv_index < len(os.argv)) {
-                args.append(os.argv[argv_index]);
-                argv_index = argv_index + 1;
+            # os.argv without the leading script path.
+            args = os.argv.copy();
+            if (args) {
+                args.pop(0);
             }
         }
 
@@ -132,6 +216,9 @@ class ArgumentParser {
         var name = token;
         var inline_value = nil;
         if (token.contains("=")) {
+            # Split only at the first "=": the name is the first piece
+            # and the value is the remaining pieces rejoined, so the
+            # value may itself contain "=" ("--sep=a=b" -> "a=b").
             var parts = token.split("=");
             name = parts[0];
             var rest = [];
@@ -233,7 +320,9 @@ class ArgumentParser {
             value = argument.type(value);
         }
         if (!(argument.choices is nil) and !(value in argument.choices)) {
-            throw ValueError(f"invalid choice: ${value}");
+            var name = argument.name;
+            var choices = argument.choices;
+            throw ValueError(f"invalid choice for ${name}: ${value} (choose from ${choices})");
         }
         return value;
     }

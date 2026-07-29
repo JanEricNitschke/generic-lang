@@ -4,6 +4,8 @@ var parser = ArgumentParser("tool", nil);
 parser.add_argument("path", nil);
 parser.add_argument("--mode", {"choices": ["fast", "slow"]});
 parser.add_argument("--token", {"required": true});
+parser.add_argument("--verbose", {"action": "store_true"});
+parser.add_argument("--count", {"type": int});
 
 fun report(args) {
     try {
@@ -16,7 +18,9 @@ fun report(args) {
 report([]); # expect: missing required argument: path
 report(["p", "--nope"]); # expect: unrecognized argument: --nope
 report(["p", "extra", "--token", "t"]); # expect: unrecognized argument: extra
-report(["p", "--mode", "medium", "--token", "t"]); # expect: invalid choice: medium
+report(["p", "--mode", "medium", "--token", "t"]); # expect: invalid choice for --mode: medium (choose from [fast, slow])
 report(["p", "--token"]); # expect: expected a value for option --token
 report(["p"]); # expect: missing required option: --token
-report(["p", "--token=x", "--mode=fast", "--verbose"]); # expect: unrecognized argument: --verbose
+report(["p", "--token=x", "--wat"]); # expect: unrecognized argument: --wat
+report(["p", "--verbose=1", "--token", "t"]); # expect: option --verbose takes no value
+report(["p", "--count", "abc", "--token", "t"]); # expect: 'int' could not convert string 'abc' to an integer.
