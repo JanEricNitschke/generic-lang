@@ -480,7 +480,8 @@ impl Heap {
             eprintln!("Closure/{index:?} mark {}", item.item);
         }
         item.marked = self.black_value;
-
+        #[cfg(feature = "log_gc")]
+        let item = item.clone();
         let closure = &item.item;
         self.functions.gray.push(closure.function);
         for upvalue in &closure.upvalues {
@@ -488,6 +489,9 @@ impl Heap {
         }
         if let Some(module) = closure.containing_module {
             self.modules.gray.push(module);
+        }
+        for default in &closure.default_values {
+            gray_value!(self, default);
         }
         #[cfg(feature = "log_gc")]
         {

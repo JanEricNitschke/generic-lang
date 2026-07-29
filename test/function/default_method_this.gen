@@ -1,0 +1,8 @@
+# `this` inside a default is an ordinary identifier of the enclosing
+# scope: the default runs at definition time, outside the method, where
+# no receiver exists for a top-level class.
+class Widget {
+    scaled(n = this.base) {
+        return n;
+    }
+} # expect runtime error: NameError: Undefined variable 'this'.

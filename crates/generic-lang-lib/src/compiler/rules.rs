@@ -414,7 +414,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// We support either single expressions, where no `return` is needed,
     /// or full blocks with a `return` statement.
     fn lambda(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
-        self.function(&LAMBDA_NAME, FunctionType::Function, true);
+        self.function(&LAMBDA_NAME, FunctionType::Lambda);
     }
 
     /// Parse `X in Y`

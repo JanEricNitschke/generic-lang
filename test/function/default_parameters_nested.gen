@@ -1,0 +1,50 @@
+# A default can reference an enclosing local; it is captured when the inner
+# closure is created, so each closure keeps its own snapshot.
+fun make_adder(base) {
+    return ->(x, extra=base) x + extra;
+}
+var add10 = make_adder(10);
+var add20 = make_adder(20);
+print(add10(5)); # expect: 15
+print(add20(5)); # expect: 25
+print(add10(5, 1)); # expect: 6
+
+# Defaults resolve through several nesting levels, each against the scope in
+# force when its closure is built.
+fun outer(a) {
+    fun middle(b=a) {
+        fun inner(c=b) {
+            return a + b + c;
+        }
+        return inner;
+    }
+    return middle;
+}
+var inner_default = outer(1)();
+print(inner_default()); # expect: 3
+print(inner_default(10)); # expect: 12
+var inner_explicit = outer(1)(5);
+print(inner_explicit()); # expect: 11
+
+# A default expression may itself be a call, evaluated once at definition time.
+fun tag() {
+    return "tag";
+}
+fun label(value, name=tag()) {
+    return f"${name}=${value}";
+}
+print(label(1)); # expect: tag=1
+print(label(1, "x")); # expect: x=1
+
+# Defaults work for a closure returned and called well after its defining
+# scope has exited.
+fun counter_from(start) {
+    var n = start;
+    return ->(step=1) {
+        n = n + step;
+        return n;
+    };
+}
+var tick = counter_from(100);
+print(tick()); # expect: 101
+print(tick(10)); # expect: 111

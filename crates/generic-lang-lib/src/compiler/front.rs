@@ -221,7 +221,11 @@ impl Compiler<'_, '_> {
         let global = self.parse_variable("Expect function name.", Mutability::Mutable);
         let name = self.previous.as_ref().unwrap().as_str().to_string();
         let location = self.location();
-        self.mark_initialized();
+        // The name local stays uninitialized while the parameter list
+        // compiles: default expressions run in the enclosing scope before
+        // the closure exists, so reading the name there is the
+        // own-initializer error. `function` marks it initialized ahead of
+        // the body, which may self-reference for recursion.
         self.named_function(function_type);
         (global, name, location)
     }
@@ -1124,15 +1128,16 @@ impl Compiler<'_, '_> {
 
     fn named_function(&mut self, function_type: FunctionType) {
         let function_name = self.previous.as_ref().unwrap().as_str().to_string();
-        self.function(&function_name, function_type, false);
+        self.function(&function_name, function_type);
     }
 
-    pub(super) fn function<S: ToString>(
-        &mut self,
-        function_name: &S,
-        function_type: FunctionType,
-        allow_expression_body: bool,
-    ) {
+    pub(super) fn function<S: ToString>(&mut self, function_name: &S, function_type: FunctionType) {
+        // Declarations (and only they) have a pending name local in the
+        // enclosing scope to initialize once the parameter list is done.
+        let initializes_enclosing_name = matches!(
+            function_type,
+            FunctionType::Function | FunctionType::Generator
+        );
         let location = self.op_location();
         let nested_state = self.nested(function_name, function_type, |compiler| {
             compiler.begin_scope();
@@ -1149,6 +1154,27 @@ impl Compiler<'_, '_> {
                     let constant =
                         compiler.parse_variable("Expect parameter name.", Mutability::Mutable);
                     compiler.define_variable(constant, Mutability::Mutable);
+                    if compiler.match_(TK::Equal) {
+                        // The default is evaluated once, in the enclosing scope
+                        // at definition time; its value is left on the stack for
+                        // the following OP_CLOSURE to capture into the closure.
+                        compiler.in_enclosing(|compiler| {
+                            compiler.parse_precedence_ignoring(
+                                Precedence::non_assigning(),
+                                &[TK::Comma],
+                            );
+                        });
+                    } else {
+                        compiler.current_function_mut().required_params += 1;
+                        // Required parameters must form a prefix: once a default
+                        // has appeared, `arity` outruns the required count, so a
+                        // later required parameter shows up as the two diverging.
+                        if compiler.current_function().required_params
+                            != compiler.current_function().arity
+                        {
+                            compiler.error("A required parameter cannot follow an optional one.");
+                        }
+                    }
                     if !compiler.match_(TK::Comma) {
                         break;
                     }
@@ -1156,6 +1182,9 @@ impl Compiler<'_, '_> {
             }
 
             compiler.consume(TK::RightParen, "Expect ')' after parameters.");
+            if initializes_enclosing_name {
+                compiler.in_enclosing(Self::mark_initialized);
+            }
 
             if compiler.match_(TK::LeftBrace) {
                 if function_type == FunctionType::Generator {
@@ -1164,7 +1193,7 @@ impl Compiler<'_, '_> {
 
                 compiler.block();
                 compiler.end(ReturnMode::Normal, location);
-            } else if allow_expression_body {
+            } else if function_type == FunctionType::Lambda {
                 compiler.expression();
                 compiler.end(ReturnMode::Raw, location);
             } else {

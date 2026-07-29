@@ -396,32 +396,40 @@ impl VM {
     /// Then the closure is pushed onto the callstack.
     pub(super) fn execute_call(&mut self, closure_id: Value, arg_count: u8) -> VmResult {
         let closure = closure_id.as_closure();
-        let arity = closure
-            .to_value(&self.heap)
-            .function
-            .to_value(&self.heap)
-            .arity;
+        let (arity, required) = {
+            let function = closure.to_value(&self.heap).function.to_value(&self.heap);
+            (function.arity, function.required_params)
+        };
         let arg_count = usize::from(arg_count);
-        if arg_count != arity {
-            let message = format!(
-                "Expected {} argument{} but got {}.",
-                arity,
-                { if arity == 1 { "" } else { "s" } },
-                arg_count
-            );
-            return self.throw(TypeError, &message);
+        if arg_count < required || arg_count > arity {
+            return self.throw(TypeError, &Self::arity_message(required, arity, arg_count));
         }
 
         if self.callstack.len() == crate::config::FRAMES_MAX {
             return self.throw(RecursionError, "maximum recursion depth exceeded");
         }
 
-        self.callstack.push(
-            *closure_id.as_closure(),
-            self.stack.len() - arg_count - 1,
-            &self.heap,
-        );
+        let stack_base = self.stack.len() - arg_count - 1;
+        // Fill the omitted trailing optional parameters from the closure's
+        // defaults; the provided arguments already sit in their slots.
+        for slot in arg_count..arity {
+            let default = closure.to_value(&self.heap).default_values[slot - required];
+            self.stack_push(default);
+        }
+        self.callstack
+            .push(*closure_id.as_closure(), stack_base, &self.heap);
         Ok(None)
+    }
+
+    /// The "wrong number of arguments" message, phrased as an exact count when
+    /// the function takes no optionals and as a range otherwise.
+    fn arity_message(required: usize, arity: usize, got: usize) -> String {
+        let plural = |n: usize| if n == 1 { "" } else { "s" };
+        if required == arity {
+            format!("Expected {arity} argument{} but got {got}.", plural(arity))
+        } else {
+            format!("Expected between {required} and {arity} arguments but got {got}.")
+        }
     }
 
     /// Execute a call to a native function.

@@ -4,10 +4,8 @@
 
 ## Declarations
 
-Functions are declared with `fun`. Parameters are fixed-arity - calling with
-the wrong number of arguments is an error - and there are no default
-parameters or varargs for user functions. `return` without a value returns
-`nil`.
+Functions are declared with `fun`. Calling with the wrong number of
+arguments is an error. `return` without a value returns `nil`.
 
 ```generic
 fun greet(name) {
@@ -15,6 +13,42 @@ fun greet(name) {
 }
 print(greet("world"));
 ```
+
+## Default parameters
+
+A parameter may declare a default with `= expression`, making it optional.
+Any parameter with a default must come after all required ones (a required
+parameter cannot follow an optional one). Calling with too few or too many
+arguments reports the accepted range.
+
+```generic
+fun greet(name, greeting="Hello") {
+    return f"${greeting}, ${name}";
+}
+print(greet("world"));         # Hello, world
+print(greet("world", "Hi"));   # Hi, world
+```
+
+Defaults are evaluated **once, at definition time**, in the scope enclosing
+the function - not on each call. A default therefore captures the value in
+force when the function is defined, and a mutable default is shared across
+calls:
+
+```generic
+var base = 100;
+fun offset(x, from=base) { return x + from; }
+base = 999;
+print(offset(1));   # 101 - `from` captured 100 at definition
+
+fun collect(item, into=[]) {
+    into.append(item);
+    return into;
+}
+print(collect(1));  # [1]
+print(collect(2));  # [1, 2] - the same list, evaluated once
+```
+
+There are no varargs for user functions.
 
 ## Closures
 

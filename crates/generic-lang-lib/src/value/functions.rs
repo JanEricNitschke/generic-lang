@@ -21,11 +21,17 @@ use std::path::PathBuf;
 /// For the correct resolution of global variables referenced from function
 /// in imported modules, it is also necessary that the module that contains
 /// that function is also available for that resolution.
-#[derive(Debug, PartialOrd, Clone)]
+#[derive(Debug, Clone, Derivative)]
+#[derivative(PartialOrd)]
 pub struct Closure {
     pub(crate) function: FunctionId,
     pub(crate) upvalues: Vec<UpvalueId>,
     pub(crate) upvalue_count: usize,
+    /// Default values for the trailing optional parameters, evaluated once at
+    /// closure creation (definition time). Indexed by optional position: entry
+    /// `j` fills parameter slot `required_params + j` when the caller omits it.
+    #[derivative(PartialOrd = "ignore")]
+    pub(crate) default_values: Vec<Value>,
     pub(crate) is_module: bool,
     pub(crate) containing_module: Option<ModuleId>,
 }
@@ -37,11 +43,14 @@ impl Closure {
         containing_module: Option<ModuleId>,
         heap: &Heap,
     ) -> Self {
-        let upvalue_count = function.to_value(heap).upvalue_count;
+        let function_value = function.to_value(heap);
+        let upvalue_count = function_value.upvalue_count;
+        let default_count = function_value.arity - function_value.required_params;
         Self {
             function,
             upvalues: Vec::with_capacity(upvalue_count),
             upvalue_count,
+            default_values: Vec::with_capacity(default_count),
             is_module,
             containing_module,
         }
@@ -73,7 +82,11 @@ impl std::fmt::Display for Closure {
 /// Additionally hold the chunk of compiled bytecode.
 #[derive(Debug, Eq, Clone)]
 pub struct Function {
+    /// Total number of parameters (required plus optional).
     pub(crate) arity: usize,
+    /// Number of leading required parameters; the remaining
+    /// `arity - required_params` are optional and carry defaults.
+    pub(crate) required_params: usize,
     pub(crate) chunk: Chunk,
     pub(crate) name: StringId,
     pub(crate) upvalue_count: usize,
@@ -84,6 +97,7 @@ impl Function {
     pub(crate) fn new(arity: usize, name: StringId) -> Self {
         Self {
             arity,
+            required_params: arity,
             name,
             chunk: Chunk::new(name),
             upvalue_count: 0,

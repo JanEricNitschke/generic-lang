@@ -1,0 +1,67 @@
+# Defaults on an initializer and on ordinary methods.
+class Greeter {
+    __init__(name, greeting="Hello") {
+        this.name = name;
+        this.greeting = greeting;
+    }
+    greet(punctuation="!") {
+        return f"${this.greeting}, ${this.name}${punctuation}";
+    }
+}
+var bob = Greeter("Bob");
+print(bob.greet()); # expect: Hello, Bob!
+print(bob.greet(".")); # expect: Hello, Bob.
+var sue = Greeter("Sue", "Hi");
+print(sue.greet()); # expect: Hi, Sue!
+
+# A method with several defaults fills them left to right.
+class Box {
+    __init__(width=1, height=2, depth=3) {
+        this.volume = width * height * depth;
+    }
+}
+print(Box().volume); # expect: 6
+print(Box(2).volume); # expect: 12
+print(Box(2, 5).volume); # expect: 30
+print(Box(2, 5, 10).volume); # expect: 100
+
+# Defaults survive inheritance and super-calls: the overriding method and the
+# inherited one each supply their own default.
+class Base {
+    describe(prefix="base") {
+        return f"${prefix}";
+    }
+}
+class Derived < Base {
+    describe(prefix="derived") {
+        return f"${prefix}:${super.describe()}";
+    }
+}
+print(Derived().describe()); # expect: derived:base
+print(Derived().describe("x")); # expect: x:base
+
+# The arity range is reported for a method too.
+try {
+    Greeter();
+} catch TypeError as e {
+    print(e.message()); # expect: Expected between 1 and 2 arguments but got 0.
+}
+
+# For a class declared inside a method, `this` in a default resolves to
+# the OUTER receiver: the default is an ordinary expression of the
+# enclosing scope, evaluated at definition time.
+class Factory {
+    __init__(scale) {
+        this.scale = scale;
+    }
+
+    build() {
+        class Product {
+            value(n = this.scale) {
+                return n;
+            }
+        }
+        return Product();
+    }
+}
+print(Factory(7).build().value()); # expect: 7

@@ -1,0 +1,8 @@
+# A method's name is not a variable (it lives on the class), so a default
+# reading it resolves like any identifier and misses: defaults run in the
+# enclosing scope when the class body executes.
+class Widget {
+    size(n = size) {
+        return n;
+    }
+} # expect runtime error: NameError: Undefined variable 'size'.

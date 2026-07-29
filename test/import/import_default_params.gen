@@ -1,0 +1,13 @@
+# Defaults defined in another module work across the import boundary, and the
+# default captured there (the module-level `suffix`) is used when omitted.
+import "default_params_helper.gen";
+
+print(default_params_helper.shout("hi")); # expect: hi!
+print(default_params_helper.shout("hi", "?")); # expect: hi?
+
+var origin = default_params_helper.Point();
+print(origin.moved()); # expect: (1, 1)
+print(origin.moved(10, 20)); # expect: (10, 20)
+
+var p = default_params_helper.Point(5, 5);
+print(p.moved()); # expect: (6, 6)
