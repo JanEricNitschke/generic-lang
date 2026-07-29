@@ -1,0 +1,38 @@
+# abs, sum, min, max over numbers; bool coercion; round (ties to even).
+print(abs(-3)); # expect: 3
+print(abs(3)); # expect: 3
+print(abs(-2.5)); # expect: 2.5
+print(sum([1, 2, 3])); # expect: 6
+print(sum([])); # expect: 0
+print(sum([1.5, 2.5])); # expect: 4.0
+print(min([3, 1, 2])); # expect: 1
+print(max([3, 1, 2])); # expect: 3
+print(min([2.5, 1.5])); # expect: 1.5
+print(bool(0)); # expect: false
+print(bool("")); # expect: false
+print(bool([1])); # expect: true
+print(bool(nil)); # expect: false
+print(round(2.5)); # expect: 2
+print(round(3.5)); # expect: 4
+print(round(2.4)); # expect: 2
+print(round(-2.5)); # expect: -2
+print(round(7)); # expect: 7
+
+# round handles values far beyond i64: it returns the exact big int the
+# float represents, not a truncated or saturated i64.
+import "json";
+print(round(json.loads("1e30"))); # expect: 1000000000000000019884624838656
+print(round(json.loads("-1e30"))); # expect: -1000000000000000019884624838656
+print(round(json.loads("1e18"))); # expect: 1000000000000000000
+
+# min/max of an empty sequence raise ValueError.
+try {
+    min([]);
+} catch ValueError as e {
+    print(e.message()); # expect: min() arg is an empty sequence
+}
+try {
+    max([]);
+} catch ValueError as e {
+    print(e.message()); # expect: max() arg is an empty sequence
+}

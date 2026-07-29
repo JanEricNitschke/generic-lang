@@ -25,3 +25,103 @@ gen enumerate(iterable) {
         index = index + 1;
     }
 }
+fun abs(x) {
+    if (x < 0) {
+        return -x;
+    }
+    return x;
+}
+
+fun bool(x) {
+    return Bool(x);
+}
+
+fun sum(iterable) {
+    var total = 0;
+    foreach (var item in iterable) {
+        total = total + item;
+    }
+    return total;
+}
+
+fun min(iterable) {
+    var result = nil;
+    var seen = false;
+    foreach (var item in iterable) {
+        if (!seen) {
+            result = item;
+            seen = true;
+        } else {
+            if (item < result) {
+                result = item;
+            }
+        }
+    }
+    if (!seen) {
+        throw ValueError("min() arg is an empty sequence");
+    }
+    return result;
+}
+
+fun max(iterable) {
+    var result = nil;
+    var seen = false;
+    foreach (var item in iterable) {
+        if (!seen) {
+            result = item;
+            seen = true;
+        } else {
+            if (item > result) {
+                result = item;
+            }
+        }
+    }
+    if (!seen) {
+        throw ValueError("max() arg is an empty sequence");
+    }
+    return result;
+}
+
+fun reversed(iterable) {
+    var items = [];
+    foreach (var item in iterable) {
+        items.append(item);
+    }
+    var result = [];
+    var index = len(items) - 1;
+    while (index >= 0) {
+        result.append(items[index]);
+        index = index - 1;
+    }
+    return result;
+}
+
+gen map(function, iterable) {
+    foreach (var item in iterable) {
+        yield function(item);
+    }
+}
+
+gen zip(first, second) {
+    var left = iter(first);
+    var right = iter(second);
+    while (true) {
+        var a = next(left);
+        if (a is StopIteration) {
+            return;
+        }
+        var b = next(right);
+        if (b is StopIteration) {
+            return;
+        }
+        yield (a, b);
+    }
+}
+
+gen filter(function, iterable) {
+    foreach (var item in iterable) {
+        if (function(item)) {
+            yield item;
+        }
+    }
+}
