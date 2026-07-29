@@ -1,0 +1,3 @@
+from "collections" import Heap;
+
+Heap(nil).pop(); # expect runtime error: IndexError: pop from an empty Heap

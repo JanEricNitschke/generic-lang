@@ -1,0 +1,35 @@
+from "collections" import Heap;
+
+var heap = Heap([5, 1, 4, 2, 3]);
+print(len(heap)); # expect: 5
+print(heap.peek()); # expect: 1
+print(heap.pop()); # expect: 1
+print(heap.pop()); # expect: 2
+heap.push(0);
+print(heap.pop()); # expect: 0
+print(heap.pop()); # expect: 3
+print(heap.pop()); # expect: 4
+print(heap.pop()); # expect: 5
+print(Bool(heap)); # expect: false
+
+var words = Heap(nil);
+words.push("pear");
+words.push("apple");
+words.push("orange");
+print(words.pop()); # expect: apple
+print(words.pop()); # expect: orange
+print(words.pop()); # expect: pear
+
+# Duplicates are fine.
+var dupes = Heap([2, 1, 2, 1]);
+print(dupes.pop()); # expect: 1
+print(dupes.pop()); # expect: 1
+print(dupes.pop()); # expect: 2
+print(dupes.pop()); # expect: 2
+
+# `replace` pops the minimum and pushes in one step.
+var swap_heap = Heap([5, 2, 8]);
+print(swap_heap.replace(4)); # expect: 2
+print(swap_heap.pop()); # expect: 4
+print(swap_heap.pop()); # expect: 5
+print(swap_heap.pop()); # expect: 8

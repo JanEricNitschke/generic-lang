@@ -167,6 +167,11 @@ The bundled modules:
   `pairwise(iterable)`, `repeat(item, count)` (`nil` count repeats
   forever), and `product(iterables)` (cartesian product of an iterable
   of iterables).
+- **`collections`** - container classes: `Deque(items)` (double-ended
+  queue, `nil` for empty), `Counter(items)` (occurrence counts, missing
+  keys read as 0), `DefaultDict(factory)` (fills missing keys from the
+  factory), `OrderedDict()` (insertion-ordered iteration), and
+  `Heap(items)` (binary min-heap with `push`/`pop`/`peek`).
 - **`testing`** - assertion helpers for the test runner: `assert_equal`,
   `assert_not_equal`, `assert_true`, `assert_false`, `assert_nil`,
   `assert_not_nil`, `assert_throws`. Each raises `AssertionError` with a
