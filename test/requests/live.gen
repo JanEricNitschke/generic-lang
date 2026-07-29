@@ -1,0 +1,60 @@
+import "requests";
+
+# Real HTTPS requests exercising the full DNS -> TLS -> parse path. This
+# makes the suite depend on network access and on the endpoints staying
+# up (example.com is IANA-maintained; httpbingo.org echoes requests so
+# each verb, body, header, and status can be checked end to end).
+
+# A plain GET against the most stable endpoint on the internet. The body
+# is a whole HTML page, so only its status/headers are pinned exactly.
+var home = requests.get("https://example.com/");
+print(home.status_code()); # expect: 200
+print(home.ok()); # expect: true
+print(home.text().contains("Example Domain")); # expect: true
+print(home.headers().contains("content-type")); # expect: true
+
+# GET against the echo service: the reflected url is exact.
+var got = requests.get("https://httpbingo.org/get");
+print(got.status_code()); # expect: 200
+print(got.json()["url"]); # expect: https://httpbingo.org/get
+
+# POST sends a body, echoed back verbatim (text content type keeps it
+# from being base64-wrapped).
+var posted = requests.post("https://httpbingo.org/post", "hello-body", {"Content-Type": "text/plain"});
+print(posted.status_code()); # expect: 200
+print(posted.json()["data"]); # expect: hello-body
+
+# Every verb reaches the server correctly (/anything echoes the method).
+print(requests.get("https://httpbingo.org/anything").json()["method"]); # expect: GET
+print(requests.post("https://httpbingo.org/anything", "x").json()["method"]); # expect: POST
+print(requests.put("https://httpbingo.org/anything", "x").json()["method"]); # expect: PUT
+print(requests.delete("https://httpbingo.org/anything").json()["method"]); # expect: DELETE
+
+# Custom request headers are delivered (httpbingo returns each value as
+# a list).
+var echoed = requests.get("https://httpbingo.org/headers", {"X-Probe": "probe-value"});
+print(echoed.json()["headers"]["X-Probe"]); # expect: [probe-value]
+
+# An error status is a normal response, distinguished by ok().
+var missing = requests.get("https://httpbingo.org/status/404");
+print(missing.status_code()); # expect: 404
+print(missing.ok()); # expect: false
+
+# Transport failures raise IoError: an unresolvable host and a malformed
+# URL. (Both are checked by the exception type, not the OS-specific
+# message tail.)
+try {
+    requests.get("https://this-host-should-not-exist-12345.invalid/");
+    print("unreachable host did not fail");
+} catch IoError as e {
+    # Our wrapping (url + "failed:") is deterministic; the DNS message
+    # tail is OS-specific, so only the prefix is pinned.
+    print(e.message().startswith("Request to `https://this-host-should-not-exist-12345.invalid/` failed:")); # expect: true
+}
+try {
+    requests.get("not-a-valid-url");
+    print("malformed url did not fail");
+} catch IoError as e {
+    print(e.message().startswith("Request to `not-a-valid-url` failed:")); # expect: true
+    print(e.message().contains("missing scheme")); # expect: true
+}

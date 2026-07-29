@@ -45,6 +45,7 @@ shrinkwraprs = "0.3.0"
 slotmap      = "1.1.1"
 strum        = { version = "0.28", features = ["derive"] }
 serde_json   = { version = "1", features = ["arbitrary_precision"] }
+ureq         = "3"
 strum_macros = "0.28"
 thiserror    = "2.0.18"
 tinyvec      = { version = "1.10.0", features = ["alloc"] }

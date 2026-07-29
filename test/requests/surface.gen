@@ -1,0 +1,27 @@
+import "requests";
+
+# The module exposes the HTTP verbs and the Response class. This file
+# stays offline (argument validation happens before any network access);
+# the real network path is exercised by live.gen and by the Rust
+# integration tests (hermetic local server).
+print(typename(requests.get)); # expect: <type native function>
+print(typename(requests.post)); # expect: <type native function>
+print(isinstance(requests.get, requests.Response)); # expect: false
+
+# Argument validation happens before any network access, so it is
+# testable offline: a non-string url raises immediately.
+try {
+    requests.get(5);
+} catch TypeError as e {
+    print(e.message()); # expect: 'get' expects a url string, got: 5
+}
+try {
+    requests.post("http://example.invalid/", 5);
+} catch TypeError as e {
+    print(e.message()); # expect: 'post' expects a body string, got: 5
+}
+try {
+    requests.get("http://example.invalid/", "not a dict");
+} catch TypeError as e {
+    print(e.message()); # expect: headers must be a dict of strings to strings, got: not a dict
+}
