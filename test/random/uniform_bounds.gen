@@ -1,0 +1,28 @@
+# `uniform` bounds must describe a samplable range: NaN, infinite, and
+# span-overflowing bounds raise a catchable ValueError instead of
+# aborting the interpreter.
+import "random";
+
+var nan = 0.0 / 0.0;
+var inf = 1.0 / 0.0;
+var near_max = 1.7 * (10.0 ** 308.0);
+
+try {
+    random.uniform(nan, 1.0);
+} catch ValueError as e {
+    print(e.message()); # expect: 'uniform' bounds must be finite and their span must not overflow
+}
+try {
+    random.uniform(0.0, inf);
+} catch ValueError as e {
+    print(e.message()); # expect: 'uniform' bounds must be finite and their span must not overflow
+}
+try {
+    random.uniform(-near_max, near_max);
+} catch ValueError as e {
+    print(e.message()); # expect: 'uniform' bounds must be finite and their span must not overflow
+}
+
+# Ordinary bounds keep working, in either order.
+var value = random.uniform(3.0, 1.0);
+print(value >= 1.0 and value <= 3.0); # expect: true

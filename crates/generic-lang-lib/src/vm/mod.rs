@@ -39,6 +39,8 @@ pub use exception_handling::{ExceptionHandler, ExceptionKind, SuspendedException
 #[cfg(feature = "plugins")]
 use plugins::PluginState;
 
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -124,6 +126,10 @@ pub struct VM {
     /// instead of executing or building it again.
     module_cache: HashMap<PathBuf, ModuleId>,
     pub(crate) builtins: HashMap<StringId, Global>,
+    /// The `random` module's generator: seeded from the operating system at
+    /// construction, reseeded by `random.seed(n)`. Per-VM so separate runs
+    /// (and parallel test VMs) never share a random stream.
+    pub(crate) rng: StdRng,
     /// Depth of nested native dunder re-entry, bounded by
     /// [`crate::config::REENTRY_MAX`]. Balanced by `invoke_and_run_function`.
     reentry_depth: usize,
@@ -161,6 +167,7 @@ impl VM {
             modules: Vec::new(),
             module_cache: HashMap::default(),
             builtins: HashMap::default(),
+            rng: StdRng::from_rng(&mut rand::rng()),
             reentry_depth: 0,
             repr_in_progress: HashSet::default(),
             stdlib: HashMap::default(),

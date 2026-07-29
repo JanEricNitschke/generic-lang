@@ -8,6 +8,7 @@ mod keyword;
 mod math;
 mod os;
 mod pathlib;
+mod random;
 mod requests;
 mod string;
 mod time;
@@ -22,6 +23,7 @@ pub fn register(vm: &mut VM) {
     string::register(vm);
     requests::register(vm);
     pathlib::register(vm);
+    random::register(vm);
     dataclasses::register(vm);
     keyword::register(vm);
     builtins::register(vm);
