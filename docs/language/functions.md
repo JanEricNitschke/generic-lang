@@ -48,7 +48,58 @@ print(collect(1));  # [1]
 print(collect(2));  # [1, 2] - the same list, evaluated once
 ```
 
-There are no varargs for user functions.
+## Rest parameters (`*rest`)
+
+A final parameter written `*name` collects any surplus positional arguments
+into a tuple. It must be the last parameter, and it is not counted toward the
+required arguments, so a function can accept any number of arguments beyond
+its fixed ones.
+
+```generic
+fun tail(first, *rest) {
+    return rest;
+}
+print(tail(1));          # ()
+print(tail(1, 2, 3));    # (2, 3)
+
+fun total(*numbers) {
+    var sum = 0;
+    foreach (var n in numbers) {
+        sum = sum + n;
+    }
+    return sum;
+}
+print(total(1, 2, 3, 4));   # 10
+```
+
+Defaults may sit between the fixed and rest parameters: the arguments fill the
+required parameters, then the optional ones (falling back to their defaults),
+and only the remainder is collected.
+
+## Argument unpacking (`*expr`)
+
+At a call site, `*expr` spreads an iterable into individual positional
+arguments. It works with any callable, and mixes freely with plain arguments
+and with several spreads:
+
+```generic
+fun add(a, b, c) {
+    return a + b + c;
+}
+var pair = [2, 3];
+print(add(1, *pair));        # 6
+print(add(*[1], 2, *[3]));   # 6
+
+# Any iterable spreads - lists, tuples, generators - and it pairs naturally
+# with a rest parameter to forward arguments.
+fun forward(*args) {
+    return add(*args);
+}
+print(forward(1, 2, 3));     # 6
+```
+
+An unpacking call is limited to 255 arguments after expansion, and spreading a
+non-iterable raises `TypeError`.
 
 ## Closures
 

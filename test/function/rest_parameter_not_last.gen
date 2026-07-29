@@ -1,0 +1,4 @@
+# [line 2] Error at ',': A rest parameter must be the last parameter.
+fun bad(a, *rest, b) {
+    return a;
+}

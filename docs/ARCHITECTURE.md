@@ -164,6 +164,52 @@ state on the VM.
   patterns index the stack by position and rely on it
   (`for_each_rooted` debug-asserts it).
 
+## Argument passing: defaults, `*rest`, and unpacking
+
+A `Function` records `arity` (fixed parameters), `required_params` (the
+leading required ones), and `is_variadic` (a trailing `*rest`). Defaults are
+evaluated once at closure creation and stored on the `Closure`
+(`default_values`); `execute_call` fills omitted trailing optionals from
+them, and for a variadic function collects the surplus positional arguments
+into a tuple bound to the rest parameter.
+
+Call-site unpacking (`f(a, *xs, b)`) is compiled differently because the
+argument count is unknown until run time. Each written argument is a
+*segment*; the compiler emits every segment's value as-is (a spread leaves
+the *iterable* on the stack) plus a **spread bitmap**, and emits
+`OP_UNPACK_CALL` / `OP_INVOKE_UNPACK` / `OP_SUPER_INVOKE_UNPACK` (the invoke
+forms mirror the plain ones - receiver/superclass stay at the bottom, so the
+same dispatch works). The opcode carries a segment-count byte and then
+`ceil(count / 8)` bitmap bytes.
+
+**Bit mapping.** Segment `i` is bit `i % 8` of byte `i / 8`,
+least-significant bit first (segment 0 = bit 0 of byte 0). A call takes at
+most 255 arguments, so the map needs at most `ceil(255 / 8) = 32` bytes
+(`config::SPREAD_BITMAP_BYTES`); the compiler builds it in a fixed 32-byte
+array and emits only the used prefix. For `f(a, *b, c, d, e, f, g, h, *i, j)`
+(segments 1 and 8 are spreads):
+
+```text
+segment:  0 1 2 3 4 5 6 7   8 9
+spread?:  . * . . . . . .   * .
+byte 0 = 0b0000_0010   (bit 1 -> segment 1)
+byte 1 = 0b0000_0001   (bit 0 -> segment 8)
+```
+
+At run time `gather_unpacked_arguments` (`src/vm/functions.rs`) reads the
+count and bitmap and rewrites the segments in place: a plain segment
+contributes its value, a spread is expanded into its iterable's items (a
+non-iterable raises `TypeError`). Because expanding a spread re-enters the
+interpreter (`__iter__`/`__next__`) and can collect garbage, the growing
+argument list is built **on the VM stack, never in a `Vec`**, so every value
+stays rooted.
+
+**The 255 cap is enforced twice**: the compiler rejects more than 255 written
+arguments, and `gather_unpacked_arguments` raises `TypeError` when a
+flattened total exceeds 255 (a spread's length is only known once expanded).
+That runtime cap is therefore also the most arguments a `*rest` parameter can
+receive.
+
 ## Import machinery
 
 `import_file` (`src/vm/import.rs:24`) resolves a fallback chain:

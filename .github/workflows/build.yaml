@@ -108,6 +108,7 @@ jobs:
     - name: Check print_code_verbose
       run: |
         cargo run --features "print_code_verbose" test/function_literals/literals_as_decorators.gen
+        cargo run --features "print_code_verbose" test/function/argument_unpacking.gen
     - name: Check trace_execution_verbose
       run: |
         cargo run --features "trace_execution_verbose" test/exceptions/exceptions_deep.gen

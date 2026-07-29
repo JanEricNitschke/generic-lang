@@ -1,0 +1,60 @@
+# A `*rest` parameter collects surplus positional arguments into a tuple.
+fun tail(a, b, *rest) {
+    return rest;
+}
+print(tail(1, 2)); # expect: ()
+print(tail(1, 2, 3)); # expect: (3,)
+print(tail(1, 2, 3, 4, 5)); # expect: (3, 4, 5)
+
+# A function can be entirely variadic.
+fun all_args(*args) {
+    return args;
+}
+print(all_args()); # expect: ()
+print(all_args(1, 2, 3)); # expect: (1, 2, 3)
+
+# The rest tuple supports the usual tuple operations.
+fun counted(*xs) {
+    return len(xs);
+}
+print(counted()); # expect: 0
+print(counted(1, 2, 3, 4)); # expect: 4
+
+fun first(*xs) {
+    return xs[0];
+}
+print(first(9, 8, 7)); # expect: 9
+
+# Optionals may precede the rest: defaults fill first, then overflow collects.
+fun mix(a, b=10, *rest) {
+    return f"${a} ${b} ${rest}";
+}
+print(mix(1)); # expect: 1 10 ()
+print(mix(1, 2)); # expect: 1 2 ()
+print(mix(1, 2, 3, 4)); # expect: 1 2 (3, 4)
+
+# A variadic method and generator collect the same way.
+class Sink {
+    swallow(*items) {
+        return len(items);
+    }
+}
+print(Sink().swallow(1, 2, 3)); # expect: 3
+
+gen take_all(*items) {
+    foreach (var item in items) {
+        yield item;
+    }
+}
+foreach (var value in take_all(1, 2)) {
+    print(value);
+}
+# expect: 1
+# expect: 2
+
+# Too few arguments still report the minimum.
+try {
+    tail(1);
+} catch TypeError as e {
+    print(e.message()); # expect: Expected at least 2 arguments but got 1.
+}

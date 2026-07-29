@@ -449,14 +449,19 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Parsing any call just means parsing the arguments and then emitting the correct bytecode.
     fn call(&mut self, _can_assign: bool, _ignore_operators: &[TK], lhs_location: Location) {
         let argument_list_start_location = self.location();
-        let arg_count = self.argument_list();
+        let (arg_count, spreads) = self.argument_list();
         let argument_list_end_location = self.location();
         let location = OpcodeLocation {
             preceding: Some(lhs_location),
             source: argument_list_start_location.merge_ordered(&argument_list_end_location),
             following: None,
         };
-        self.emit_bytes(OpCode::Call, arg_count, location);
+        if let Some(bitmap) = spreads {
+            self.emit_bytes(OpCode::UnpackCall, arg_count, location);
+            self.emit_spread_bitmap(&bitmap, arg_count, location);
+        } else {
+            self.emit_bytes(OpCode::Call, arg_count, location);
+        }
     }
 
     /// Parse property access.
@@ -533,18 +538,26 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             }
         } else if self.match_(TK::LeftParen) {
             let args_start_location = self.location();
-            let arg_count = self.argument_list();
+            let (arg_count, spreads) = self.argument_list();
             let args_end_location = self.location();
             let invoke_location = OpcodeLocation {
                 preceding: Some(target_location),
                 source: args_start_location.merge_ordered(&args_end_location),
                 following: None,
             };
-            self.emit_byte(OpCode::Invoke, invoke_location);
+            let opcode = if spreads.is_some() {
+                OpCode::InvokeUnpack
+            } else {
+                OpCode::Invoke
+            };
+            self.emit_byte(opcode, invoke_location);
             if !self.emit_number(name_constant.0, NumberEncoding::Short, invoke_location) {
                 self.error("Too many constants created for OP_INVOKE");
             }
             self.emit_byte(arg_count, invoke_location);
+            if let Some(bitmap) = spreads {
+                self.emit_spread_bitmap(&bitmap, arg_count, invoke_location);
+            }
         } else {
             self.emit_byte(OpCode::GetProperty, getter_location);
             if !self.emit_number(name_constant.0, NumberEncoding::Short, getter_location) {
@@ -1106,7 +1119,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         );
         if self.match_(TK::LeftParen) {
             let args_start_location = self.location();
-            let arg_count = self.argument_list();
+            let (arg_count, spreads) = self.argument_list();
             let args_end_location = self.location();
             let invoke_location = OpcodeLocation {
                 preceding: Some(target_location),
@@ -1118,11 +1131,19 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 false,
                 super_location,
             );
-            self.emit_byte(OpCode::SuperInvoke, invoke_location);
+            let opcode = if spreads.is_some() {
+                OpCode::SuperInvokeUnpack
+            } else {
+                OpCode::SuperInvoke
+            };
+            self.emit_byte(opcode, invoke_location);
             if !self.emit_number(*name, NumberEncoding::Short, invoke_location) {
                 self.error("Too many constants while compiling OP_SUPER_INVOKE");
             }
             self.emit_byte(arg_count, invoke_location);
+            if let Some(bitmap) = spreads {
+                self.emit_spread_bitmap(&bitmap, arg_count, invoke_location);
+            }
         } else {
             let getter_location = OpcodeLocation {
                 preceding: Some(super_location),
