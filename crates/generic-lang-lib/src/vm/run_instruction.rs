@@ -179,6 +179,10 @@ macro_rules! run_instruction {
             OpCode::Closure => {
                 let value = $self.read_constant(NumberEncoding::Short);
                 let function = value.as_function();
+                let default_count = {
+                    let function = function.to_value(&$self.heap);
+                    function.arity - function.required_params
+                };
                 // The new closure inherits the *defining* module, not the
                 // dynamically current one: a closure created while a
                 // function of module A runs on behalf of a caller in module
@@ -203,6 +207,19 @@ macro_rules! run_instruction {
                             .push($self.callstack.closure().to_value(&$self.heap).upvalues[index]);
                     }
                 }
+                // The enclosing code evaluated the optional parameters' defaults
+                // just before this instruction, leaving them on the stack in
+                // parameter order; pop them (reversing back into order) so the
+                // closure carries them for every later call.
+                for _ in 0..default_count {
+                    closure.default_values.push(
+                        $self
+                            .stack
+                            .pop()
+                            .expect("Missing default value for closure"),
+                    );
+                }
+                closure.default_values.reverse();
                 let closure_id = $self.heap.add_closure(closure);
                 $self.stack_push(closure_id);
                 Ok(None)

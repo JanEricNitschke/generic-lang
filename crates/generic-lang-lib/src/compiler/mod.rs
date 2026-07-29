@@ -42,7 +42,14 @@ struct Local<'scanner> {
 
 /// Characterizes the types of functions.
 ///
-/// - Function is a normal function.
+/// - Function is a `fun` declaration: it binds its name in the enclosing
+///   scope, which stays uninitialized through the parameter list (the
+///   defaults run before the closure exists) and initializes ahead of
+///   the body so it can self-reference for recursion.
+/// - Generator is a `gen` declaration: like Function, plus the generator
+///   return protocol.
+/// - Lambda is a `->` literal: the only form whose body may be a bare
+///   expression, and it binds no name.
 /// - Initializer is a constructor and is special because it returns `this` on exit without
 ///   a return statement or on a bare `return`. Returns with values are not allowed.
 /// - Method is a method on a class. It is special because the local slot 0 is always `this`.
@@ -52,6 +59,7 @@ struct Local<'scanner> {
 enum FunctionType {
     Function,
     Generator,
+    Lambda,
     Initializer,
     Method,
     Script,
@@ -265,11 +273,14 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
             }
         }
         self.advance();
-        // The callers (`eval`/`exec`) reject more than 255 locals up
-        // front, so the error here is a backstop (placed after `advance`
-        // so it attaches to a token and is not dropped).
+        // Every local is filled by the caller, so all of them are
+        // required and the closure carries no defaults; the callers
+        // (`eval`/`exec`) reject more than 255 locals up front, so the
+        // error here is a backstop (placed after `advance` so it
+        // attaches to a token and is not dropped).
         if u8::try_from(locals.len()).is_ok() {
             self.current_function_mut().arity = locals.len();
+            self.current_function_mut().required_params = locals.len();
         } else {
             self.error("Can't inject more than 255 locals.");
         }

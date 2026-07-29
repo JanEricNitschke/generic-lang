@@ -1,0 +1,10 @@
+# A default expression runs in the enclosing scope before the closure
+# exists, so it cannot read the name being declared: at local scope the
+# slot would not be filled yet.
+# [line 6] Error at 'inner': Can't read local variable in its own initializer.
+fun outer() {
+    fun inner(x = inner) {
+        return x;
+    }
+    return inner;
+}

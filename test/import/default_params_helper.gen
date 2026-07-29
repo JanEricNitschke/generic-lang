@@ -1,0 +1,18 @@
+# A module whose exported function and class carry default parameters, used to
+# check that defaults survive across a module boundary (their values are
+# captured in the imported module's scope at definition time).
+var suffix = "!";
+
+fun shout(word, ending=suffix) {
+    return f"${word}${ending}";
+}
+
+class Point {
+    __init__(x=0, y=0) {
+        this.x = x;
+        this.y = y;
+    }
+    moved(dx=1, dy=1) {
+        return f"(${this.x + dx}, ${this.y + dy})";
+    }
+}

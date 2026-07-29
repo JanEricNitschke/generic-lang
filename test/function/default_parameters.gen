@@ -1,0 +1,78 @@
+# A default fills an omitted trailing argument; a provided argument wins.
+fun greet(name, greeting="Hello") {
+    return f"${greeting}, ${name}";
+}
+print(greet("Bob")); # expect: Hello, Bob
+print(greet("Bob", "Hi")); # expect: Hi, Bob
+
+# Several defaults fill left to right as the arguments run out.
+fun many(a, b=2, c=3) {
+    return a + b + c;
+}
+print(many(1)); # expect: 6
+print(many(1, 10)); # expect: 14
+print(many(1, 10, 100)); # expect: 111
+
+# Defaults are evaluated once, at definition time, in the enclosing scope, so
+# a later change to a captured variable does not affect the stored default.
+var base = 100;
+fun with_base(x, y=base) {
+    return x + y;
+}
+base = 999;
+print(with_base(5)); # expect: 105
+
+# The stored default is a single shared value: a mutable default accumulates
+# across calls (the definition-time semantics).
+fun collect(item, into=[]) {
+    into.append(item);
+    return into;
+}
+print(collect(1)); # expect: [1]
+print(collect(2)); # expect: [1, 2]
+
+# Methods, initializers, and lambdas take defaults too.
+class Counter {
+    __init__(start=0) {
+        this.n = start;
+    }
+    bump(by=1) {
+        this.n = this.n + by;
+        return this.n;
+    }
+}
+var counter = Counter();
+print(counter.bump()); # expect: 1
+print(counter.bump(10)); # expect: 11
+print(Counter(50).n); # expect: 50
+
+var scale = ->(a, b=7) a * b;
+print(scale(3)); # expect: 21
+print(scale(3, 2)); # expect: 6
+
+# A generator body sees its defaults like any other call.
+gen count_up(start=0, step=1) {
+    var n = start;
+    while (n < start + 3 * step) {
+        yield n;
+        n = n + step;
+    }
+}
+foreach (var v in count_up()) {
+    print(v);
+}
+# expect: 0
+# expect: 1
+# expect: 2
+
+# Too few or too many arguments report the accepted range.
+try {
+    many();
+} catch TypeError as e {
+    print(e.message()); # expect: Expected between 1 and 3 arguments but got 0.
+}
+try {
+    many(1, 2, 3, 4);
+} catch TypeError as e {
+    print(e.message()); # expect: Expected between 1 and 3 arguments but got 4.
+}
