@@ -142,6 +142,14 @@ The bundled modules:
   `.rmdir()` / `.rmdir(true)` (remove an empty directory, or everything
   under it). Paths are lexically normalized at creation. Filesystem
   errors raise `IoError`.
+- **`argparse`** - command line parsing: `ArgumentParser(prog,
+  description)`, `parser.add_argument(name, settings)` (settings is a
+  dict or `nil`; leading `-` makes an option), `parser.parse_args(args)`
+  (`nil` parses `os.argv[1:]`) returning a `Namespace` with one field
+  per argument. Supports `help`, `default`, `type`, `action`
+  (`"store_true"`/`"store_false"`), `required`, `choices`, and `nargs`
+  (`"*"`); `-h`/`--help` prints usage and makes `parse_args` return
+  `nil`.
 - **`os`** - operating system interaction: `os.name` (the platform,
   e.g. `"macos"`, `"linux"`, `"windows"`), `os.getenv(name)` /
   `os.getenv(name, default)` (live environment lookup), `os.environ`

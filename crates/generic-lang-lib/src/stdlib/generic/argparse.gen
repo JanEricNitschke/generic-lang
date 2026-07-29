@@ -1,0 +1,291 @@
+# Command line argument parsing. Because the language has no keyword
+# arguments, per-argument settings are passed as a dict (or `nil`):
+#
+#     var parser = ArgumentParser("tool", "Does things.");
+#     parser.add_argument("path", nil);
+#     parser.add_argument("--verbose", {"action": "store_true"});
+#     parser.add_argument("--count", {"type": int, "default": 1});
+#     var args = parser.parse_args(nil);   # nil parses os.argv[1:]
+#
+# Supported settings: "help", "default", "type" (a callable applied to
+# the raw string), "action" ("store_true" / "store_false"), "required"
+# (options only), "choices" (a list), "nargs" ("*", positionals only).
+# `parse_args` returns a `Namespace` with one field per argument, or
+# `nil` when it printed help because of `-h` / `--help`.
+#
+# Any token starting with `-` parses as an option, so a negative number
+# cannot be passed as a positional value and there is no `--` separator
+# to force positional parsing; route such values through an option
+# (`--count -5` and `--count=-5` both work).
+
+import "os";
+
+# String literals carry no escape sequences, so the separator for help
+# text is a literal newline inside a string.
+const _NEWLINE = "
+";
+
+# The result object; `parse_args` fills one field per argument.
+class Namespace {}
+
+fun _basename(path) {
+    var parts = path.split("/");
+    var last = parts[len(parts) - 1];
+    parts = last.split("\\");
+    return parts[len(parts) - 1];
+}
+
+# The value for `key` from a settings dict that may be nil.
+fun _setting(options, key, fallback) {
+    if (options is nil) {
+        return fallback;
+    }
+    return options.get(key, fallback);
+}
+
+# The field name for an argument: leading dashes stripped, inner ones
+# turned into underscores.
+fun _dest_name(name) {
+    var stripped = name;
+    while (stripped.startswith("-")) {
+        stripped = stripped.removeprefix("-");
+    }
+    return stripped.replace("-", "_");
+}
+
+class _Argument {
+    __init__(name, options) {
+        this.name = name;
+        this.is_option = name.startswith("-");
+        this.dest = _dest_name(name);
+        this.help = _setting(options, "help", nil);
+        this.default_value = _setting(options, "default", nil);
+        this.type = _setting(options, "type", nil);
+        this.action = _setting(options, "action", nil);
+        this.required = _setting(options, "required", false);
+        this.choices = _setting(options, "choices", nil);
+        this.nargs = _setting(options, "nargs", nil);
+    }
+}
+
+class ArgumentParser {
+    __init__(prog, description) {
+        this.prog = prog;
+        this.description = description;
+        this.positionals = [];
+        this.options = {:};
+        this.option_list = [];
+    }
+
+    add_argument(name, options) {
+        var argument = _Argument(name, options);
+        if (argument.is_option) {
+            this.options[argument.name] = argument;
+            this.option_list.append(argument);
+        } else {
+            this.positionals.append(argument);
+        }
+        return argument;
+    }
+
+    # Parse the given argument list (`nil` for `os.argv[1:]`) into a
+    # `Namespace`. Throws `ValueError` on invalid input; prints help and
+    # returns `nil` on `-h` / `--help`.
+    parse_args(args) {
+        if (args is nil) {
+            args = [];
+            var argv_index = 1;
+            while (argv_index < len(os.argv)) {
+                args.append(os.argv[argv_index]);
+                argv_index = argv_index + 1;
+            }
+        }
+
+        var result = Namespace();
+        var seen = {:};
+        var positional_index = 0;
+        var index = 0;
+        while (index < len(args)) {
+            var token = args[index];
+            if (token == "-h" or token == "--help") {
+                this.print_help();
+                return nil;
+            }
+            if (token.startswith("-") and token != "-") {
+                index = this._parse_option(token, args, index, result, seen);
+            } else {
+                var indices = this._parse_positional(token, args, index, result, seen, positional_index);
+                positional_index = indices[0];
+                index = indices[1];
+            }
+            index = index + 1;
+        }
+
+        this._fill_missing_positionals(result, seen, positional_index);
+        this._fill_missing_options(result, seen);
+        return result;
+    }
+
+    # Handle one option token (optionally with an inline `=value`).
+    # Returns the index of the last consumed token.
+    _parse_option(token, args, index, result, seen) {
+        var name = token;
+        var inline_value = nil;
+        if (token.contains("=")) {
+            var parts = token.split("=");
+            name = parts[0];
+            var rest = [];
+            var part_index = 1;
+            while (part_index < len(parts)) {
+                rest.append(parts[part_index]);
+                part_index = part_index + 1;
+            }
+            inline_value = "=".join(rest);
+        }
+
+        var argument = this.options.get(name, nil);
+        if (argument is nil) {
+            throw ValueError(f"unrecognized argument: ${name}");
+        }
+
+        var value = nil;
+        if (argument.action == "store_true" or argument.action == "store_false") {
+            if (!(inline_value is nil)) {
+                throw ValueError(f"option ${name} takes no value");
+            }
+            value = argument.action == "store_true";
+        } else {
+            if (!(inline_value is nil)) {
+                value = this._convert(argument, inline_value);
+            } else {
+                index = index + 1;
+                if (index >= len(args)) {
+                    throw ValueError(f"expected a value for option ${name}");
+                }
+                value = this._convert(argument, args[index]);
+            }
+        }
+        setattr(result, argument.dest, value);
+        seen[argument.dest] = true;
+        return index;
+    }
+
+    # Handle one positional token. Returns a
+    # `(next positional slot, last consumed token index)` tuple; a
+    # greedy "*" argument consumes all remaining tokens.
+    _parse_positional(token, args, index, result, seen, positional_index) {
+        if (positional_index >= len(this.positionals)) {
+            throw ValueError(f"unrecognized argument: ${token}");
+        }
+        var argument = this.positionals[positional_index];
+        seen[argument.dest] = true;
+        if (argument.nargs == "*") {
+            var values = [];
+            while (index < len(args)) {
+                values.append(this._convert(argument, args[index]));
+                index = index + 1;
+            }
+            setattr(result, argument.dest, values);
+            return (positional_index + 1, index);
+        }
+        setattr(result, argument.dest, this._convert(argument, token));
+        return (positional_index + 1, index);
+    }
+
+    _fill_missing_positionals(result, seen, positional_index) {
+        while (positional_index < len(this.positionals)) {
+            var argument = this.positionals[positional_index];
+            if (!seen.contains(argument.dest)) {
+                if (argument.nargs == "*") {
+                    setattr(result, argument.dest, []);
+                } else {
+                    if (argument.default_value is nil) {
+                        throw ValueError(f"missing required argument: ${argument.name}");
+                    }
+                    setattr(result, argument.dest, argument.default_value);
+                }
+            }
+            positional_index = positional_index + 1;
+        }
+    }
+
+    _fill_missing_options(result, seen) {
+        foreach (var argument in this.option_list) {
+            if (!seen.contains(argument.dest)) {
+                if (argument.required) {
+                    throw ValueError(f"missing required option: ${argument.name}");
+                }
+                if (argument.action == "store_true") {
+                    setattr(result, argument.dest, false);
+                } else {
+                    if (argument.action == "store_false") {
+                        setattr(result, argument.dest, true);
+                    } else {
+                        setattr(result, argument.dest, argument.default_value);
+                    }
+                }
+            }
+        }
+    }
+
+    _convert(argument, value) {
+        if (!(argument.type is nil)) {
+            value = argument.type(value);
+        }
+        if (!(argument.choices is nil) and !(value in argument.choices)) {
+            throw ValueError(f"invalid choice: ${value}");
+        }
+        return value;
+    }
+
+    format_help() {
+        var prog = this.prog;
+        if (prog is nil) {
+            prog = "prog";
+            if (len(os.argv) > 0) {
+                prog = _basename(os.argv[0]);
+            }
+        }
+        var usage = f"usage: ${prog} [-h]";
+        foreach (var argument in this.option_list) {
+            usage = usage + f" [${argument.name}]";
+        }
+        foreach (var argument in this.positionals) {
+            if (argument.nargs == "*") {
+                usage = usage + f" [${argument.name} ...]";
+            } else {
+                usage = usage + f" ${argument.name}";
+            }
+        }
+        var lines = [usage];
+        if (!(this.description is nil)) {
+            lines.append("");
+            lines.append(this.description);
+        }
+        if (this.positionals) {
+            lines.append("");
+            lines.append("positional arguments:");
+            foreach (var argument in this.positionals) {
+                lines.append(this._help_line(argument));
+            }
+        }
+        lines.append("");
+        lines.append("options:");
+        lines.append("  -h, --help - show this help message");
+        foreach (var argument in this.option_list) {
+            lines.append(this._help_line(argument));
+        }
+        return _NEWLINE.join(lines);
+    }
+
+    _help_line(argument) {
+        if (argument.help is nil) {
+            return f"  ${argument.name}";
+        }
+        return f"  ${argument.name} - ${argument.help}";
+    }
+
+    print_help() {
+        print(this.format_help());
+    }
+}

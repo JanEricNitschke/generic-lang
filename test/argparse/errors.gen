@@ -1,0 +1,22 @@
+from "argparse" import ArgumentParser;
+
+var parser = ArgumentParser("tool", nil);
+parser.add_argument("path", nil);
+parser.add_argument("--mode", {"choices": ["fast", "slow"]});
+parser.add_argument("--token", {"required": true});
+
+fun report(args) {
+    try {
+        parser.parse_args(args);
+    } catch ValueError as error {
+        print(error.message());
+    }
+}
+
+report([]); # expect: missing required argument: path
+report(["p", "--nope"]); # expect: unrecognized argument: --nope
+report(["p", "extra", "--token", "t"]); # expect: unrecognized argument: extra
+report(["p", "--mode", "medium", "--token", "t"]); # expect: invalid choice: medium
+report(["p", "--token"]); # expect: expected a value for option --token
+report(["p"]); # expect: missing required option: --token
+report(["p", "--token=x", "--mode=fast", "--verbose"]); # expect: unrecognized argument: --verbose
