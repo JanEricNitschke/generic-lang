@@ -1,0 +1,24 @@
+# Big-int ordering must compare the values, not the order the big ints were
+# allocated on the heap. Allocating the larger value first, so value order is
+# the reverse of allocation order, is what exposes a slot-key comparison.
+var big = 5000000000000000000000000000000;
+var small = 1000000000000000000000000000000;
+print(big > small); # expect: true
+print(small < big); # expect: true
+print(big >= small); # expect: true
+print(small <= big); # expect: true
+print(big < small); # expect: false
+print(small > big); # expect: false
+
+# A runtime-computed big int compares by value against a literal too.
+var computed = small * 5;
+print(computed == big); # expect: true
+print(computed >= big); # expect: true
+print(computed <= big); # expect: true
+
+# Negative big ints order below positive ones and among themselves.
+var neg = 0 - big;
+print(neg < small); # expect: true
+print(neg < big); # expect: true
+print(neg < 0 - small); # expect: true
+print(0 - small > neg); # expect: true

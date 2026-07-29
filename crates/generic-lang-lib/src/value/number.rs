@@ -575,7 +575,7 @@ impl GenericInt {
     fn partial_cmp(&self, other: &Self, heap: &Heap) -> Option<std::cmp::Ordering> {
         match (self, other) {
             (Self::Small(a), Self::Small(b)) => a.partial_cmp(b),
-            (Self::Big(a), Self::Big(b)) => a.partial_cmp(b),
+            (Self::Big(a), Self::Big(b)) => a.to_value(heap).partial_cmp(b.to_value(heap)),
             (Self::Small(a), Self::Big(b)) => BigInt::from(*a).partial_cmp(b.to_value(heap)),
             (Self::Big(a), Self::Small(b)) => (a.to_value(heap)).partial_cmp(&BigInt::from(*b)),
         }
