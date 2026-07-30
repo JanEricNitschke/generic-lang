@@ -73,7 +73,8 @@ impl Compiler<'_, '_> {
                 | TK::Return
                 | TK::Try
                 | TK::Throw
-                | TK::Import,
+                | TK::Import
+                | TK::From,
             ) = self.current_token_kind()
             {
                 #[cfg(feature = "debug_parser")]
