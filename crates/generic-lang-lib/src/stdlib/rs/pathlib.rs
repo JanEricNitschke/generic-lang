@@ -279,19 +279,18 @@ fn path_rmdir_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<
     }
 }
 
-/// `p == other` - path equality against another path or a string, both
-/// compared in their normalized forms.
+/// `p == other` - path equality against another path, compared in their
+/// normalized forms. A `Path` is never equal to a string: equality would be
+/// one-directional (the VM dispatches `__eq__` on the left operand only) and
+/// inconsistent with the hash (a `Path` and a string hash differently).
 fn path_eq_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
-    let other = match args[0] {
-        Value::String(string_id) => normalize(StdPath::new(&vm.heap.strings[string_id])),
-        other @ Value::Instance(id)
-            if matches!(&id.to_value(&vm.heap).backing, Some(NativeClass::Path(_))) =>
-        {
-            other.as_path(&vm.heap).path.clone()
-        }
-        _ => return Ok(false.into()),
+    let Value::Instance(id) = args[0] else {
+        return Ok(false.into());
     };
-    Ok((receiver.as_path(&vm.heap).path == other).into())
+    if !matches!(&id.to_value(&vm.heap).backing, Some(NativeClass::Path(_))) {
+        return Ok(false.into());
+    }
+    Ok((receiver.as_path(&vm.heap).path == args[0].as_path(&vm.heap).path).into())
 }
 
 /// `hash(p)` - equal paths (equal normalized forms) hash equal, so paths

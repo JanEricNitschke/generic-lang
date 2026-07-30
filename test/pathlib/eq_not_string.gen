@@ -1,0 +1,15 @@
+from "pathlib" import Path;
+
+# A Path equals another Path with the same normalized form.
+print(Path("a/b") == Path("a/b")); # expect: true
+print(Path("a/b") == Path("a/c")); # expect: false
+
+# A Path is never equal to a string, in either operand order: string equality
+# would be one-directional and would not match the Path's hash.
+var p = Path("a/b");
+print(p == "a/b"); # expect: false
+print("a/b" == p); # expect: false
+
+# And a Path is therefore not a member of a set of the equal string.
+var strings = {"a/b"};
+print(p in strings); # expect: false

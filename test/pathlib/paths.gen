@@ -23,9 +23,9 @@ print(Path("a") / "b" / "c"); # expect: Path(a/b/c)
 print(Path("README").suffix()); # expect:
 print(Path("README").stem()); # expect: README
 
-# Equality against paths and strings.
+# Equality holds only against other paths, never strings or other types.
 print(Path("a/b") == Path("a/b")); # expect: true
-print(Path("a/b") == "a/b"); # expect: true
+print(Path("a/b") == "a/b"); # expect: false
 print(Path("a/b") == Path("a/c")); # expect: false
 print(Path("a/b") == 5); # expect: false
 print(isinstance(p, Path)); # expect: true
