@@ -766,11 +766,14 @@ impl Compiler<'_, '_> {
     ///     var iter = my_list.__iter__();
     ///     var val = 0;
     ///
-    ///     while ((val = iter.__next__()) != StopIteration) {
+    ///     while (!((val = iter.__next__()) is StopIteration)) {
     ///         print(val);
     ///     }
     /// }
     /// ```
+    /// Exhaustion is an identity (`is`) test against the `StopIteration`
+    /// sentinel, never an `==` dispatch, so a user `__eq__` cannot end (or
+    /// fail to end) the loop.
     fn foreach_statement(&mut self) {
         self.begin_scope();
         let label = self.loop_label();
