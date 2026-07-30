@@ -12,6 +12,7 @@ use crate::{
     },
     vm::{Global, VM, errors::VmResult},
 };
+use num_bigint::BigInt;
 use num_traits::FromPrimitive;
 use rand::RngExt;
 use std::io;
@@ -907,7 +908,7 @@ pub(super) fn round_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
         Value::Number(Number::Integer(_)) => Ok(args[0]),
         Value::Number(number) => {
             let rounded = number.to_f64(&vm.heap).round_ties_even();
-            match num_bigint::BigInt::from_f64(rounded) {
+            match BigInt::from_f64(rounded) {
                 Some(big) => match i64::try_from(&big) {
                     Ok(integer) => Ok(integer.into()),
                     Err(_) => Ok(vm.heap.add_big_int(big)),

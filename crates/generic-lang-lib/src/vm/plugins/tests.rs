@@ -979,9 +979,9 @@ fn is_instance_matches_value_type_proxy_classes() {
     let rational_class = builtin_value(&mut vm, "Rational");
     let module_class = builtin_value(&mut vm, "Module");
     let module_name = vm.heap.string_id(&"proxy_probe".to_string());
-    let module = vm.heap.add_module(crate::value::Module::new(
+    let module = vm.heap.add_module(Module::new(
         module_name,
-        std::path::PathBuf::from("<module:proxy_probe>"),
+        PathBuf::from("<module:proxy_probe>"),
         None,
         module_name,
         false,
