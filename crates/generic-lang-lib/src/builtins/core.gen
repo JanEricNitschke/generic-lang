@@ -49,17 +49,19 @@ fun sum(iterable, start=0) {
     return total;
 }
 
-fun min(iterable) {
+fun min(iterable, key=nil) {
     var result = nil;
+    var result_key = nil;
     var seen = false;
     foreach (var item in iterable) {
-        if (!seen) {
+        var item_key = item;
+        if (!(key is nil)) {
+            item_key = key(item);
+        }
+        if (!seen or item_key < result_key) {
             result = item;
+            result_key = item_key;
             seen = true;
-        } else {
-            if (item < result) {
-                result = item;
-            }
         }
     }
     if (!seen) {
@@ -68,17 +70,19 @@ fun min(iterable) {
     return result;
 }
 
-fun max(iterable) {
+fun max(iterable, key=nil) {
     var result = nil;
+    var result_key = nil;
     var seen = false;
     foreach (var item in iterable) {
-        if (!seen) {
+        var item_key = item;
+        if (!(key is nil)) {
+            item_key = key(item);
+        }
+        if (!seen or item_key > result_key) {
             result = item;
+            result_key = item_key;
             seen = true;
-        } else {
-            if (item > result) {
-                result = item;
-            }
         }
     }
     if (!seen) {
