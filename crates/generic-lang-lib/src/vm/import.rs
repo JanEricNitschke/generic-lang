@@ -37,13 +37,16 @@ impl VM {
         };
         let name_id = self.heap.string_id(&name);
 
+        // A file-backed module that was already imported binds its cached
+        // object without reading the file from disk again.
+        if let Some(cached) =
+            self.bind_if_cached(&file_path, names_to_import.as_deref(), alias, local_import)
+        {
+            return cached;
+        }
+
         // User defined generic module
         if let Ok(contents) = std::fs::read_to_string(&file_path) {
-            if let Some(cached) =
-                self.bind_if_cached(&file_path, names_to_import.as_deref(), alias, local_import)
-            {
-                return cached;
-            }
             // Check for circular imports only for user-defined modules
             // Skip stdlib modules since they're under our control and can't have circular imports
             if self.modules.iter().any(|module| {
