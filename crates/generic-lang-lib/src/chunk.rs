@@ -44,96 +44,99 @@ impl TryFrom<ConstantLongIndex> for ConstantIndex {
 )]
 #[repr(u8)]
 pub enum OpCode {
-    Constant,
-    ConstantLong,
-
-    DefineGlobal,
-    DefineGlobalLong,
-    DefineGlobalConst,
-    DefineGlobalConstLong,
-
-    GetGlobal,
-    GetGlobalLong,
-    SetGlobal,
-    SetGlobalLong,
-
-    GetUpvalue,
-    SetUpvalue,
-    CloseUpvalue,
-
-    GetLocal,
-    GetLocalLong,
-    SetLocal,
-    SetLocalLong,
-
-    Jump,
-    JumpIfFalse,
-    JumpIfTrue,
-    PopJumpIfFalse,
-    PopJumpIfTrue,
-    JumpIfTrueOrPop,
-    JumpIfFalseOrPop,
-    JumpIfNil,
-    Loop,
-    Call,
-
+    // Literals and constants.
     Nil,
     True,
     False,
     StopIteration,
-
-    Equal,
-    NotEqual,
-    Is,
-
-    Greater,
-    GreaterEqual,
-    Less,
-    LessEqual,
-
+    LoadZero,
     LoadOne,
     LoadTwo,
-    LoadZero,
-    LoadOnef,
-    LoadZerof,
     LoadMinusOne,
-    // CompZero
-    // AddOne
-    // SubOne
-    Negate,
-    Not,
+    LoadZerof,
+    LoadOnef,
+    Constant,
+    ConstantLong,
 
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    BitXor,
-    BitOr,
-    BitAnd,
-    Mod,
-    Exp,
-    FloorDiv,
-
+    // Stack manipulation.
     Pop,
     Dup,
     DupN,
     Swap,
 
-    Invoke,
-    Method,
-    ClassVariable,
+    // Variables: locals, globals, upvalues.
+    GetLocal,
+    GetLocalLong,
+    SetLocal,
+    SetLocalLong,
+    GetGlobal,
+    GetGlobalLong,
+    SetGlobal,
+    SetGlobalLong,
+    DefineGlobal,
+    DefineGlobalLong,
+    DefineGlobalConst,
+    DefineGlobalConstLong,
+    GetUpvalue,
+    SetUpvalue,
+    CloseUpvalue,
+
+    // Control flow.
+    Jump,
+    JumpIfNil,
+    JumpIfFalse,
+    JumpIfTrue,
+    PopJumpIfFalse,
+    PopJumpIfTrue,
+    JumpIfFalseOrPop,
+    JumpIfTrueOrPop,
+    Loop,
+
+    // Calls and returns.
     Closure,
+    Call,
+    CallUnpack,
+    Invoke,
+    InvokeUnpack,
+    SuperInvoke,
+    SuperInvokeUnpack,
     Return,
     ReturnGenerator,
     Yield,
 
-    Class,
-    SetProperty,
-    GetProperty,
-    Inherit,
-    GetSuper,
-    SuperInvoke,
+    // Unary, arithmetic, and bit operators.
+    Negate,
+    Not,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    FloorDiv,
+    Mod,
+    Exp,
+    BitAnd,
+    BitOr,
+    BitXor,
 
+    // Comparison.
+    Is,
+    Equal,
+    NotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+
+    // Classes and properties.
+    Class,
+    Inherit,
+    Method,
+    ClassVariable,
+    GetProperty,
+    SetProperty,
+    GetSuper,
+
+    // Collection, numeric, and string builders.
     BuildList,
     BuildTuple,
     BuildSet,
@@ -145,21 +148,17 @@ pub enum OpCode {
     BuildInterpolation,
     BuildTemplate,
 
+    // Imports.
     Import,
-    ImportFrom,
     ImportAs,
+    ImportFrom,
 
+    // Exception handling.
     RegisterCatches,
     PopHandler,
     CompareException,
-    Reraise,
     Throw,
-
-    // Argument unpacking (`f(*xs)`). Each carries a segment count followed by
-    // a spread bitmap marking which segments are spreads.
-    CallUnpack,
-    InvokeUnpack,
-    SuperInvokeUnpack,
+    Reraise,
 }
 
 #[cfg(test)]
@@ -347,27 +346,28 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
         let opcode = OpCode::try_from_primitive(self.chunk.code[offset]).unwrap();
         std::mem::size_of::<OpCode>()
             + match opcode {
-                Add | Subtract | Multiply | Divide | Mod | Exp | FloorDiv | BitAnd | BitOr
-                | BitXor | Equal | Greater | Less | LessEqual | GreaterEqual | NotEqual | Is
-                | Not | Negate | BuildRational | BuildRangeExclusive | BuildRangeInclusive
-                | BuildInterpolation | BuildTemplate | Nil | True | False | StopIteration
-                | LoadOne | LoadTwo | LoadZero | LoadMinusOne | LoadOnef | LoadZerof
-                | CloseUpvalue | Inherit | Return | ReturnGenerator | Yield | PopHandler
-                | CompareException | Throw | Reraise | Pop | Dup | Swap => 0,
-                Constant | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
-                | DefineGlobalConst | Call | GetUpvalue | SetUpvalue | Class | GetProperty
-                | SetProperty | Method | GetSuper | BuildList | BuildTuple | BuildSet
-                | BuildDict | BuildFstring | DupN => 1,
-                Jump | JumpIfFalse | JumpIfTrue | PopJumpIfFalse | PopJumpIfTrue
-                | JumpIfTrueOrPop | JumpIfFalseOrPop | JumpIfNil | RegisterCatches | Loop
-                | Invoke | Import | SuperInvoke | ClassVariable => 2,
+                Nil | True | False | StopIteration | LoadZero | LoadOne | LoadTwo
+                | LoadMinusOne | LoadZerof | LoadOnef | Pop | Dup | Swap | CloseUpvalue
+                | Return | ReturnGenerator | Yield | Negate | Not | Add | Subtract | Multiply
+                | Divide | FloorDiv | Mod | Exp | BitAnd | BitOr | BitXor | Is | Equal
+                | NotEqual | Less | LessEqual | Greater | GreaterEqual | Inherit
+                | BuildRational | BuildRangeExclusive | BuildRangeInclusive
+                | BuildInterpolation | BuildTemplate | PopHandler | CompareException | Throw
+                | Reraise => 0,
+                Constant | DupN | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
+                | DefineGlobalConst | GetUpvalue | SetUpvalue | Call | Class | Method
+                | GetProperty | SetProperty | GetSuper | BuildList | BuildTuple | BuildSet
+                | BuildDict | BuildFstring => 1,
+                Jump | JumpIfNil | JumpIfFalse | JumpIfTrue | PopJumpIfFalse | PopJumpIfTrue
+                | JumpIfFalseOrPop | JumpIfTrueOrPop | Loop | Invoke | SuperInvoke
+                | ClassVariable | Import | RegisterCatches => 2,
                 ConstantLong
+                | GetLocalLong
+                | SetLocalLong
                 | GetGlobalLong
                 | SetGlobalLong
                 | DefineGlobalLong
                 | DefineGlobalConstLong
-                | GetLocalLong
-                | SetLocalLong
                 | ImportAs => 3,
                 Closure => 1 + self.upvalue_code_len(offset, heap),
                 ImportFrom => 2 + self.import_from_len(offset),
