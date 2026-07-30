@@ -1,5 +1,7 @@
 //! Example module exporting math functionality.
 
+use std::f64::consts::PI;
+
 use crate::value::{ModuleContents, ModuleExport, Number, Value};
 use crate::vm::ExceptionKind::TypeError;
 use crate::vm::VM;
@@ -39,7 +41,7 @@ fn module() -> ModuleContents {
         },
         ModuleExport::Value {
             name: "pi".into(),
-            create: |_vm, _context| std::f64::consts::PI.into(),
+            create: |_vm, _context| PI.into(),
         },
     ]
 }
