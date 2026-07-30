@@ -7,14 +7,15 @@ use crate::{
     heap::Heap,
     types::InjectedKind,
     value::{
-        BoundMethod, GenericInt, Module, NativeClass, Number, Value, class_of_value,
-        is_subclass_of, value_isinstance,
+        BoundMethod, GenericInt, GenericRational, Module, NativeClass, Number, Value,
+        class_of_value, is_subclass_of, value_isinstance,
     },
     vm::{Global, VM, errors::VmResult},
 };
 use num_bigint::BigInt;
-use num_traits::FromPrimitive;
+use num_traits::{Euclid, FromPrimitive};
 use rand::RngExt;
+use std::cmp::Ordering;
 use std::io;
 use std::path::PathBuf;
 use std::thread;
@@ -23,14 +24,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Get the time since the `UNIX_EPOCH` in seconds.
 /// Useful for timing durations by calling this twice and subtracting the results.
-pub fn clock_native(_vm: &mut VM, _args: &[Value]) -> VmResult<Value> {
-    Ok(Value::Number(
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs_f64()
-            .into(),
-    ))
+pub fn clock_native(vm: &mut VM, _args: &[Value]) -> VmResult<Value> {
+    let Ok(since_epoch) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+        return Err(vm
+            .throw(ValueError, "system clock is set before the Unix epoch")
+            .unwrap_err());
+    };
+    Ok(Value::Number(since_epoch.as_secs_f64().into()))
 }
 
 /// Sleep for a non-negative number of seconds.
@@ -903,11 +903,45 @@ pub(super) fn hash_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
 }
 
 /// `round(x)` - the nearest integer to a number, ties to even.
+/// The nearest integer to a rational, ties to even, by exact integer
+/// arithmetic. The denominator of a reduced rational is positive, so the
+/// floor quotient and non-negative remainder come straight from Euclidean
+/// division.
+fn round_rational_to_even(rational: &GenericRational, heap: &Heap) -> BigInt {
+    let numerator = rational.numerator().to_bigint(heap);
+    let denominator = rational.denominator().to_bigint(heap);
+    let quotient = numerator.div_euclid(&denominator);
+    let remainder = numerator.rem_euclid(&denominator);
+    let round_up = match (remainder * BigInt::from(2)).cmp(&denominator) {
+        Ordering::Less => false,
+        Ordering::Greater => true,
+        // Exactly halfway: round up only when that lands on the even neighbour,
+        // i.e. when the floor quotient is odd.
+        Ordering::Equal => quotient.bit(0),
+    };
+    if round_up {
+        quotient + BigInt::from(1)
+    } else {
+        quotient
+    }
+}
+
 pub(super) fn round_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     match &args[0] {
         Value::Number(Number::Integer(_)) => Ok(args[0]),
-        Value::Number(number) => {
-            let rounded = number.to_f64(&vm.heap).round_ties_even();
+        // A rational is rounded by exact integer arithmetic, so the result is
+        // correct even when the exact value differs from its nearest f64
+        // across an integer boundary, and a rational too large for f64 still
+        // rounds instead of being rejected as non-finite.
+        Value::Number(Number::Rational(rational)) => {
+            let rounded = round_rational_to_even(rational, &vm.heap);
+            match i64::try_from(&rounded) {
+                Ok(integer) => Ok(integer.into()),
+                Err(_) => Ok(vm.heap.add_big_int(rounded)),
+            }
+        }
+        Value::Number(Number::Float(float)) => {
+            let rounded = float.round_ties_even();
             match BigInt::from_f64(rounded) {
                 Some(big) => match i64::try_from(&big) {
                     Ok(integer) => Ok(integer.into()),
