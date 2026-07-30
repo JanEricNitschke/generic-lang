@@ -203,3 +203,32 @@ jobs:
         make jlox
     - name: Run benchmarks
       run: make benchmark-ci
+
+  downstream-tictactoe:
+    # A real program in the language: the generic TicTacToe and its test
+    # suite must keep passing against the interpreter at this revision.
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Set up Rust
+      uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+      with:
+        toolchain: stable
+    - name: Build the interpreter
+      run: cargo build
+    - name: Checkout TicTacToe
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: JanEricNitschke/TicTacToe
+        path: downstream/TicTacToe
+    - name: Run the TicTacToe test suite
+      working-directory: downstream/TicTacToe/tictactoe_generic
+      run: $GITHUB_WORKSPACE/target/debug/generic --test tests/
+    - name: Play a winning and a drawing game
+      # The move sequences mirror the assembly version's input files; the
+      # greps assert the outcomes.
+      working-directory: downstream/TicTacToe/tictactoe_generic
+      run: |
+        printf 'n\n0\n1\n2\n3\n4\n5\n6\n' | $GITHUB_WORKSPACE/target/debug/generic tictactoe_generic.gen | grep "Player X wins the game!"
+        printf 'n\n0\n4\n8\n1\n7\n6\n2\n5\n3\n' | $GITHUB_WORKSPACE/target/debug/generic tictactoe_generic.gen | grep "Match Draw!"
