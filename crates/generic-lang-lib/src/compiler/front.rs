@@ -86,8 +86,8 @@ impl Compiler<'_, '_> {
         } else if self.check(TK::At) {
             self.decorated_declaration();
         } else if self.check(TK::Fun) || self.check(TK::Gen) {
-            // `check` instead of `match_`: `fun_declaration` consumes the
-            // keyword itself to know which function type it declares.
+            // `fun_declaration` consumes the keyword itself to know which
+            // function type it declares, so the keyword is only peeked here.
             self.fun_declaration();
         } else if self.match_(TK::Class) {
             self.class_declaration();

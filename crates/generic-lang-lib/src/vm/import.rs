@@ -186,8 +186,7 @@ impl VM {
         local_import: bool,
     ) -> VmResult {
         if let Some(names_to_import) = names_to_import {
-            // A `from` import binds every name into the one defining module;
-            // resolve it once rather than per name.
+            // A `from` import binds every name into the one defining module.
             let defining_module = (!local_import).then(|| self.defining_module());
             for name in names_to_import {
                 let Some(global) = module_id.to_value(&self.heap).globals.get(name).copied() else {

@@ -64,8 +64,8 @@ fn sleep_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     };
     match seconds {
         Some(seconds) if seconds >= 0.0 && seconds.is_finite() => {
-            // Rejects durations beyond what `Duration` represents
-            // (u64 seconds) instead of panicking.
+            // A duration beyond what `Duration` represents (u64 seconds) is a
+            // `ValueError`; the plain `Duration` constructor would panic on it.
             let Ok(duration) = Duration::try_from_secs_f64(seconds) else {
                 return Err(vm
                     .throw(
