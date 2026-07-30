@@ -139,7 +139,27 @@ impl VM {
         }
     }
 
-    /// Collects all items from an object that implements the `__iter__` / `__next__` protocol.
+    /// Expand `value`'s items directly onto the top of the VM stack and leave
+    /// them there, returning `false` when `value` is not iterable. The items
+    /// stay stack-rooted, so a caller building an argument list across the
+    /// re-entrant `__iter__`/`__next__` calls never has to copy them off and
+    /// back on.
+    pub(crate) fn extend_stack_from_iterable(&mut self, value: Value) -> VmResult<bool> {
+        let Some(iter) = self.invoke_method_by_name(&[value], "__iter__")? else {
+            return Ok(false);
+        };
+        loop {
+            let next = self.invoke_method_by_name_with_attribute_error(iter, "__next__")?;
+            if next == Value::StopIteration {
+                break;
+            }
+            self.stack.push(next);
+        }
+        Ok(true)
+    }
+
+    /// Collect all items from an object that implements the `__iter__` /
+    /// `__next__` protocol.
     ///
     /// Returns:
     /// - `Ok(Some(Vec<Value>))` if the object is iterable and yielded values.
@@ -150,20 +170,9 @@ impl VM {
         value: Value,
     ) -> VmResult<Option<Vec<Value>>> {
         let items_start = self.stack.len();
-        let Some(iter) = self.invoke_method_by_name(&[value], "__iter__")? else {
+        if !self.extend_stack_from_iterable(value)? {
             return Ok(None);
-        };
-
-        loop {
-            let next = self.invoke_method_by_name_with_attribute_error(iter, "__next__")?;
-            if next == Value::StopIteration {
-                break;
-            }
-            // We put them onto the stack so that the GC is aware of them for the next iteration
-            // This works because otherwise all used methods here are stack neutral
-            self.stack.push(next);
         }
-
         Ok(Some(self.stack.drain(items_start..).collect()))
     }
 

@@ -555,17 +555,14 @@ impl VM {
             let value = self.stack[segment_base + index];
             if bitmap[index / 8] & (1u8 << (index % 8)) == 0 {
                 self.stack.push(value);
-            } else {
-                let Some(items) = self.collect_items_from_iterable(value)? else {
-                    let rendered = value.to_string(&self.heap);
-                    return Err(self
-                        .throw(
-                            TypeError,
-                            &format!("Cannot unpack non-iterable {rendered}."),
-                        )
-                        .unwrap_err());
-                };
-                self.stack.extend_from_slice(&items);
+            } else if !self.extend_stack_from_iterable(value)? {
+                let rendered = value.to_string(&self.heap);
+                return Err(self
+                    .throw(
+                        TypeError,
+                        &format!("Cannot unpack non-iterable {rendered}."),
+                    )
+                    .unwrap_err());
             }
         }
         let total = self.stack.len() - result_base;
