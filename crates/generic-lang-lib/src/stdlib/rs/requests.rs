@@ -378,9 +378,32 @@ mod tests {
         let url = format!("http://{}/", listener.local_addr().unwrap());
         thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            let mut buffer = [0_u8; 2048];
-            let read = stream.read(&mut buffer).unwrap();
-            let request = String::from_utf8_lossy(&buffer[..read]);
+            // Read the whole request, headers and any declared body, before
+            // replying. Closing the socket with the request body still unread
+            // makes Windows send an RST, which fails the client's read of the
+            // response.
+            let mut buffer = Vec::new();
+            let mut chunk = [0_u8; 2048];
+            loop {
+                let read = stream.read(&mut chunk).unwrap();
+                if read == 0 {
+                    break;
+                }
+                buffer.extend_from_slice(&chunk[..read]);
+                let text = String::from_utf8_lossy(&buffer);
+                if let Some(header_end) = text.find("\r\n\r\n") {
+                    let content_length = text[..header_end]
+                        .lines()
+                        .filter_map(|line| line.split_once(':'))
+                        .find(|(name, _)| name.trim().eq_ignore_ascii_case("content-length"))
+                        .and_then(|(_, value)| value.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    if buffer.len() >= header_end + 4 + content_length {
+                        break;
+                    }
+                }
+            }
+            let request = String::from_utf8_lossy(&buffer);
             let method = request.split_whitespace().next().unwrap_or("");
             let probe = request
                 .lines()
