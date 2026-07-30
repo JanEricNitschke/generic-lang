@@ -36,9 +36,9 @@ calls:
 
 ```generic
 var base = 100;
-fun offset(x, from=base) { return x + from; }
+fun offset(x, origin=base) { return x + origin; }
 base = 999;
-print(offset(1));   # 101 - `from` captured 100 at definition
+print(offset(1));   # 101 - `origin` captured 100 at definition
 
 fun collect(item, into=[]) {
     into.append(item);
