@@ -35,11 +35,12 @@ fn nanoseconds_value(vm: &mut VM, nanoseconds: u128) -> Value {
 
 /// `time_ns()` - integer nanoseconds since the Unix epoch.
 fn time_ns_native(vm: &mut VM, _args: &[Value]) -> VmResult<Value> {
-    let nanoseconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock before the Unix epoch")
-        .as_nanos();
-    Ok(nanoseconds_value(vm, nanoseconds))
+    let Ok(since_epoch) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+        return Err(vm
+            .throw(ValueError, "system clock is set before the Unix epoch")
+            .unwrap_err());
+    };
+    Ok(nanoseconds_value(vm, since_epoch.as_nanos()))
 }
 
 /// `monotonic()` - float seconds since an arbitrary fixed origin;
@@ -89,14 +90,12 @@ fn sleep_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
 }
 
 /// Current UTC time split into date and time-of-day parts, ignoring
-/// leap seconds (the Unix time convention).
-fn utc_now() -> (i64, u64) {
-    let since_epoch = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock before the Unix epoch")
-        .as_secs();
+/// leap seconds (the Unix time convention). `None` when the wall clock is
+/// set before the Unix epoch.
+fn utc_now() -> Option<(i64, u64)> {
+    let since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
     let days = i64::try_from(since_epoch / 86_400).expect("days fit i64");
-    (days, since_epoch % 86_400)
+    Some((days, since_epoch % 86_400))
 }
 
 /// Gregorian civil date from days since the Unix epoch
@@ -126,7 +125,11 @@ fn civil_from_days(days_since_epoch: i64) -> (i64, u8, u8) {
 
 /// `utc_date()` - the current UTC date as `YYYY-MM-DD`.
 fn utc_date_native(vm: &mut VM, _args: &[Value]) -> VmResult<Value> {
-    let (days, _) = utc_now();
+    let Some((days, _)) = utc_now() else {
+        return Err(vm
+            .throw(ValueError, "system clock is set before the Unix epoch")
+            .unwrap_err());
+    };
     let (year, month, day) = civil_from_days(days);
     let date = format!("{year:04}-{month:02}-{day:02}");
     Ok(vm.heap.string_id(&date).into())
@@ -134,7 +137,11 @@ fn utc_date_native(vm: &mut VM, _args: &[Value]) -> VmResult<Value> {
 
 /// `utc_time()` - the current UTC time of day as `HH:MM:SS` (24h).
 fn utc_time_native(vm: &mut VM, _args: &[Value]) -> VmResult<Value> {
-    let (_, seconds_of_day) = utc_now();
+    let Some((_, seconds_of_day)) = utc_now() else {
+        return Err(vm
+            .throw(ValueError, "system clock is set before the Unix epoch")
+            .unwrap_err());
+    };
     let time = format!(
         "{:02}:{:02}:{:02}",
         seconds_of_day / 3600,
