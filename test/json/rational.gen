@@ -1,0 +1,9 @@
+import "json";
+
+# Rationals serialize like the float of the same value (JSON has no rational
+# type). Rational literals reduce, so 4:2 is the whole rational 2:1.
+print(json.dumps(1:2)); # expect: 0.5
+print(json.dumps(4:2)); # expect: 2.0
+
+# Nested inside a container as well.
+print(json.dumps([1:2, 4:2])); # expect: [0.5, 2.0]
