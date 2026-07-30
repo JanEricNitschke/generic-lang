@@ -32,7 +32,9 @@ class Namespace {}
 fun _basename(path) {
     var parts = path.split("/");
     var last = parts[len(parts) - 1];
-    parts = last.split("\\");
+    # Split on the Windows separator. String literals have no escape sequences,
+    # so "\" is a single backslash (not an escaped quote).
+    parts = last.split("\");
     return parts[len(parts) - 1];
 }
 

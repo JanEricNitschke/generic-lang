@@ -1,0 +1,10 @@
+# The program name in the usage line is the basename of the program path.
+# String literals contain no escape sequences, so every backslash below is a
+# literal single backslash, i.e. a Windows-style path separator.
+from "argparse" import _basename;
+
+print(_basename("plain.gen")); # expect: plain.gen
+print(_basename("/unix/style/path.gen")); # expect: path.gen
+print(_basename("C:\folder\app.gen")); # expect: app.gen
+print(_basename("relative\name.gen")); # expect: name.gen
+print(_basename("C:\mixed/sep\file.gen")); # expect: file.gen
