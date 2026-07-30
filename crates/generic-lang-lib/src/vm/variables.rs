@@ -4,7 +4,7 @@ use crate::{chunk::OpCode, types::NumberEncoding, value::Value};
 
 impl VM {
     pub(super) fn set_local(&mut self, op: OpCode) {
-        let slot = if op == OpCode::GetLocalLong {
+        let slot = if op == OpCode::SetLocalLong {
             self.read_24bit_number()
         } else {
             usize::from(self.read_byte())
