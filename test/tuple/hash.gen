@@ -1,0 +1,25 @@
+# Tuples hash by content, consistently with `__eq__`, so they work as
+# dict keys and set members.
+from "dataclasses" import dataclass;
+
+print(hash((1, 2)) == hash((1, 2))); # expect: true
+print(hash(()) == hash(())); # expect: true
+print(hash((1, (2, "three"))) == hash((1, (2, "three")))); # expect: true
+
+# Equal contents collapse in a set; distinct contents do not.
+var seen = {(1, 2), (1, 2), (2, 1)};
+print(len(seen)); # expect: 2
+
+# Dict lookup by an equal (not identical) key.
+var distances = {(0, 0): 0, (3, 4): 5};
+print(distances[(3, 4)]); # expect: 5
+distances[(3, 4)] = 25;
+print(distances[(3, 4)]); # expect: 25
+print(len(distances)); # expect: 2
+
+# Element hashing dispatches user `__hash__` (re-entry).
+@dataclass
+class Point {
+    var x;
+}
+print(hash((Point(1),)) == hash((Point(1),))); # expect: true
