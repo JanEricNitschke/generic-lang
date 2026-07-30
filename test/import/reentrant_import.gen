@@ -1,0 +1,18 @@
+# The debug-only `reentrant_import` module's `probe` export re-enters the VM
+# while its exports are being built. Under the stress-GC suite that runs a
+# collection part-way through the import, so every export built before `probe`
+# (the `answer` function, the `Path` class, and the `sentinel` value, each with
+# its name) must survive.
+import "reentrant_import" as reentrant;
+
+# The function export survives and is callable.
+print(reentrant.answer()); # expect: 42
+
+# The class export survives and constructs instances.
+print(reentrant.Path("foo/bar")); # expect: Path(foo/bar)
+
+# The plain value export and its name survive the mid-import collection.
+print(reentrant.sentinel); # expect: sentinel-value
+
+# The re-entrant export itself produced its value.
+print(reentrant.probe); # expect: 2
