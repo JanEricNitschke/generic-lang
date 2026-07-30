@@ -3,6 +3,7 @@
 # here; `reduce` and `cmp_to_key` are pure generic.
 
 from "_functools" import partial;
+from "collections" import OrderedDict;
 
 # A private sentinel distinguishing "no initial value given" from an
 # explicit `nil` initial. A fresh `object` compared by identity, so a
@@ -60,4 +61,80 @@ fun cmp_to_key(cmp) {
         }
     }
     return Key;
+}
+
+# A private sentinel: a cached result can be any value including nil,
+# so misses are detected by identity against a fresh object a caller
+# can never produce.
+var _miss = object();
+
+# A memoizing wrapper around a callable: results are cached by the
+# positional-argument tuple. `maxsize` of nil means unbounded; an
+# integer bounds the cache with least-recently-used eviction. Arguments
+# must hash by content for repeat calls to hit (numbers, strings,
+# tuples of those, ...); arguments that hash by identity (lists, plain
+# instances) key by identity instead.
+class _CachedFunction {
+    __init__(function, maxsize) {
+        this.function = function;
+        this.maxsize = maxsize;
+        this.results = this._fresh_results();
+        this.hits = 0;
+        this.misses = 0;
+    }
+
+    _fresh_results() {
+        if (this.maxsize is nil) {
+            return {:};
+        }
+        return OrderedDict();
+    }
+
+    __call__(*args) {
+        var value = this.results.get(args, _miss);
+        if (!(value is _miss)) {
+            this.hits += 1;
+            if (!(this.maxsize is nil)) {
+                this.results.move_to_end(args);
+            }
+            return value;
+        }
+        this.misses += 1;
+        value = this.function(*args);
+        this.results[args] = value;
+        if (!(this.maxsize is nil) and len(this.results) > this.maxsize) {
+            this.results.popstart();
+        }
+        return value;
+    }
+
+    # `(hits, misses, maxsize, current size)`.
+    cache_info() {
+        return (this.hits, this.misses, this.maxsize, len(this.results));
+    }
+
+    cache_clear() {
+        this.results = this._fresh_results();
+        this.hits = 0;
+        this.misses = 0;
+    }
+
+    __str__() {
+        var function = this.function;
+        return f"cache(${function})";
+    }
+}
+
+# Memoize `function` without bounds.
+fun cache(function) {
+    return _CachedFunction(function, nil);
+}
+
+# A decorator factory: memoize keeping at most `maxsize` results,
+# evicting the least recently used entry beyond that.
+fun lru_cache(maxsize) {
+    if (!isinstance(maxsize, Integer) or maxsize < 1) {
+        throw ValueError(f"'lru_cache' expects a positive integer maxsize, got: ${maxsize}");
+    }
+    return ->(function) _CachedFunction(function, maxsize);
 }

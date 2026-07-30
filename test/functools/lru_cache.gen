@@ -1,0 +1,45 @@
+# Bounded memoization with least-recently-used eviction. Each real
+# invocation prints its argument as `n=...`; the order list is noted as
+# oldest..newest.
+from "functools" import lru_cache;
+
+@lru_cache(2)
+fun square(n) {
+    print(f"n=${n}");
+    return n * n;
+}
+
+print(square(1));
+# expect: n=1
+# expect: 1
+print(square(2));
+# expect: n=2
+# expect: 4
+
+# Hits compute nothing and refresh recency: [1, 2] -> [2, 1] -> [1, 2].
+print(square(1)); # expect: 1
+print(square(2)); # expect: 4
+
+# A third value evicts the least recently used (1): [2, 3].
+print(square(3));
+# expect: n=3
+# expect: 9
+print(square(2)); # expect: 4
+
+# 1 was evicted and recomputes, evicting 3: [2, 1].
+print(square(1));
+# expect: n=1
+# expect: 1
+print(square(2)); # expect: 4
+print(square.cache_info()); # expect: (4, 4, 2, 2)
+
+try {
+    lru_cache(0);
+} catch ValueError as e {
+    print(e.message()); # expect: 'lru_cache' expects a positive integer maxsize, got: 0
+}
+try {
+    lru_cache(2.5);
+} catch ValueError as e {
+    print(e.message()); # expect: 'lru_cache' expects a positive integer maxsize, got: 2.5
+}
