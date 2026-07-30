@@ -133,9 +133,10 @@ pub enum ModuleExport {
     /// `heap.native_classes` are permanent GC roots, so the export can
     /// never dangle.
     Class { name: &'static str },
-    /// An arbitrary value, built by `create` at import time. `create`
-    /// must not execute bytecode: imports run between instructions and
-    /// rely on allocation never collecting.
+    /// An arbitrary value, built by `create` at import time. `create` may
+    /// re-enter the VM and trigger a collection; `import_rust_stdlib` keeps
+    /// every already-built export (name and value) rooted on the VM stack
+    /// across the remaining creators, so prior exports survive.
     Value {
         /// Owned when the export is built dynamically at registration
         /// (the `builtins` module loops the live namespace).

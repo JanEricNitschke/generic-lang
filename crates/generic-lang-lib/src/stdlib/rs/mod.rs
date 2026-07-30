@@ -9,6 +9,8 @@ mod math;
 mod os;
 mod pathlib;
 mod random;
+#[cfg(debug_assertions)]
+mod reentrant_import;
 mod requests;
 mod string;
 mod time;
@@ -28,4 +30,6 @@ pub fn register(vm: &mut VM) {
     keyword::register(vm);
     builtins::register(vm);
     time::register(vm);
+    #[cfg(debug_assertions)]
+    reentrant_import::register(vm);
 }

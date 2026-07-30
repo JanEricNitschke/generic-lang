@@ -227,15 +227,18 @@ impl VM {
         names_to_import: Option<&[StringId]>,
         local_import: bool,
     ) -> VmResult {
-        // A value creator may re-enter the VM and collect, so every export
-        // built before it is rooted on the VM stack while the remaining
-        // ones run; the batch is unrooted once the module took ownership.
+        // A value creator may re-enter the VM and collect. Root both the name
+        // and the value of every export on the VM stack until the module takes
+        // ownership: the name is rooted the moment it is interned (before the
+        // creator that could collect runs), so a plain value that does not
+        // reference its own name string still cannot have that name swept.
         let exports_base = self.stack.len();
         let mut exports: Vec<(StringId, Value)> = Vec::with_capacity(stdlib_exports.len());
         for export in stdlib_exports {
-            let entry = match export {
+            let (name_id, value) = match export {
                 ModuleExport::Function { name, arity, fun } => {
                     let name_id = self.heap.string_id(name);
+                    self.stack.push(name_id.into());
                     let value = self.heap.add_native_function(NativeFunction {
                         name: name_id,
                         arity,
@@ -246,18 +249,21 @@ impl VM {
                     (name_id, value)
                 }
                 ModuleExport::Class { name } => {
+                    let name_id = self.heap.string_id(name);
+                    self.stack.push(name_id.into());
                     let class_id = *self.heap.native_classes.get(*name).unwrap_or_else(|| {
                         unreachable!("Stdlib module exports unregistered native class `{name}`.")
                     });
-                    (self.heap.string_id(name), class_id.into())
+                    (name_id, class_id.into())
                 }
                 ModuleExport::Value { name, create } => {
                     let name_id = self.heap.string_id(name);
+                    self.stack.push(name_id.into());
                     (name_id, create(self, &CreatorContext { name }))
                 }
             };
-            self.stack.push(entry.1);
-            exports.push(entry);
+            self.stack.push(value);
+            exports.push((name_id, value));
         }
         let result = self.install_native_module(
             string_id,
@@ -267,10 +273,11 @@ impl VM {
             names_to_import,
             local_import,
         );
-        // Drop the rooted batch from under whatever `install_native_module`
-        // left on top (locally imported values, or a pending exception).
+        // Drop the rooted name/value pairs from under whatever
+        // `install_native_module` left on top (locally imported values, or a
+        // pending exception).
         self.stack
-            .drain(exports_base..exports_base + stdlib_exports.len());
+            .drain(exports_base..exports_base + 2 * stdlib_exports.len());
         result
     }
 
