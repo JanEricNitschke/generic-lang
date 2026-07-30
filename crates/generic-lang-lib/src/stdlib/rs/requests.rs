@@ -16,7 +16,9 @@ use std::time::Duration;
 use ureq::{Agent, RequestBuilder};
 
 use crate::stdlib::rs::json::parse_json_source;
-use crate::value::{Dict, Instance, ModuleContents, ModuleExport, NativeClass, Response, Value};
+use crate::value::{
+    Dict, Instance, ModuleContents, ModuleExport, NativeClass, Number, Response, Value,
+};
 use crate::vm::ExceptionKind::{IoError, TypeError};
 use crate::vm::VM;
 use crate::vm::errors::{VmErrorKind, VmResult};
@@ -282,7 +284,7 @@ fn response_json_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmRes
 /// `Response` methods without a network. Not part of the public surface
 /// (the leading underscore marks it internal).
 fn make_response_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
-    let Value::Number(crate::value::Number::Integer(status)) = args[0] else {
+    let Value::Number(Number::Integer(status)) = args[0] else {
         return Err(vm
             .throw(
                 TypeError,
