@@ -4,3 +4,4 @@
 # statement because recovery stops at the keyword and parses it cleanly.
 var a = 1 gen g() { yield a; }  # Error at 'gen': Expect ';' after variable declaration.
 var b = 2 import "math";  # Error at 'import': Expect ';' after variable declaration.
+var c = 3 from "math" import pi;  # Error at 'from': Expect ';' after variable declaration.
