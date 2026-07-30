@@ -359,6 +359,16 @@ impl Heap {
             Value::Upvalue(id) => self.blacken_upvalue(*id),
             Value::String(id) => self.blacken_string(*id),
             Value::Number(Number::Integer(GenericInt::Big(id))) => self.blacken_big_int(*id),
+            // A rational reachable directly from a root (e.g. on the stack)
+            // must mark its big-integer components, matching `gray_value!`.
+            Value::Number(Number::Rational(rational)) => {
+                if let GenericInt::Big(id) = rational.numerator() {
+                    self.blacken_big_int(id);
+                }
+                if let GenericInt::Big(id) = rational.denominator() {
+                    self.blacken_big_int(id);
+                }
+            }
             Value::Function(id) => self.blacken_function(*id),
             Value::NativeFunction(id) => self.blacken_native_function(*id),
             Value::NativeMethod(id) => self.blacken_native_method(*id),
