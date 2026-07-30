@@ -63,6 +63,21 @@ impl Number {
     pub(crate) fn from_usize(n: usize, heap: &mut Heap) -> Self {
         Self::Integer(GenericInt::from_usize(n, heap))
     }
+
+    /// Hash an `f64` the way numeric keys bucket floats: `-0.0` is normalized to
+    /// `0.0`, a whole-valued float hashes by its integer value (so `2.0` shares
+    /// a bucket with the integer `2`), and every other float hashes by its bits.
+    /// Shared by `VM::hash_number` (in `vm/dunder.rs`) and
+    /// `GenericRational::hash` so the float-bucketing rule lives in one place.
+    pub(crate) fn hash_f64<H: Hasher>(value: f64, state: &mut H) {
+        let value = if value == 0.0 { 0.0 } else { value };
+        if value.fract() == 0.0 {
+            #[allow(clippy::cast_possible_truncation)]
+            BigInt::from(value as i64).hash(state);
+        } else {
+            value.to_bits().hash(state);
+        }
+    }
 }
 
 // Arithmethics
@@ -376,6 +391,17 @@ impl GenericInt {
         match self {
             Self::Small(n) => BigInt::from(*n),
             Self::Big(n) => n.to_value(heap).clone(),
+        }
+    }
+
+    /// Hash by integer value so that the `Small` and `Big` representations of
+    /// the same integer share a bucket, matching the integer arm of
+    /// `VM::hash_number` (in `vm/dunder.rs`) and [`GenericInt::eq`], which
+    /// compares integers by value.
+    pub(crate) fn hash<H: Hasher>(&self, state: &mut H, heap: &Heap) {
+        match self {
+            Self::Small(n) => BigInt::from(*n).hash(state),
+            Self::Big(n) => n.to_value(heap).hash(state),
         }
     }
 
@@ -800,15 +826,27 @@ impl GenericRational {
         )
     }
 
+    /// Hash consistently with `Number::eq`: a rational compares equal to the
+    /// integer it reduces to (the `Rational`/`Integer` arms of `Number::eq`
+    /// compare exactly through `from_int`) and to the float with the same value
+    /// (the `Rational`/`Float` arms compare through `to_f64`). Equal values
+    /// must hash equally, so a whole-valued rational hashes like that integer
+    /// via `GenericInt::hash`, and every other rational hashes like the float
+    /// it equals via `Number::hash_f64`. `VM::hash_number` (in `vm/dunder.rs`)
+    /// hashes plain integers and floats through those same two helpers, so the
+    /// three number kinds share a bucket whenever they are equal.
+    ///
+    /// The denominator of a reduced rational is `Small(1)` for a whole number;
+    /// `GenericInt::eq` compares by value, so a stray `Big(1)` is caught too.
+    /// A non-whole rational is never equal to an integer (integer equality is
+    /// exact), but its `to_f64` can still round to a whole number, in which case
+    /// it equals that whole float and `Number::hash_f64` buckets it as the
+    /// integer that float represents.
     pub fn hash<H: Hasher>(&self, state: &mut H, heap: &Heap) {
-        match self.numerator {
-            GenericInt::Small(n) => n.hash(state),
-            GenericInt::Big(n) => n.to_value(heap).hash(state),
-        }
-
-        match self.denominator {
-            GenericInt::Small(n) => n.hash(state),
-            GenericInt::Big(n) => n.to_value(heap).hash(state),
+        if self.denominator.eq(&GenericInt::Small(1), heap) {
+            self.numerator.hash(state, heap);
+        } else {
+            Number::hash_f64(self.to_f64(heap), state);
         }
     }
 

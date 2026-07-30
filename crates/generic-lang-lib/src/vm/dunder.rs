@@ -2,10 +2,9 @@ use super::VM;
 use crate::vm::ExceptionKind::{AttributeError, TypeError};
 use crate::{
     heap::{Heap, InstanceId, StringId},
-    value::{GenericInt, NativeClass, Number, Value},
+    value::{NativeClass, Number, Value},
     vm::errors::VmResult,
 };
-use num_bigint::BigInt;
 use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 use unicode_normalization::UnicodeNormalization;
@@ -258,22 +257,14 @@ impl VM {
     /// Bucket hash for a numeric value - used both when a `Number` is a key
     /// directly and for the integer a user `__hash__` returns, so equal numbers
     /// (`5`, a big-integer-typed `5`, `5.0`, and an instance hashing as `5`)
-    /// share a bucket. Integers hash by their `BigInt` value, so the `Small`
-    /// and `Big` representations of the same integer agree.
+    /// share a bucket. Each kind hashes through the same helpers the others use
+    /// (`GenericInt::hash`, `Number::hash_f64`, `GenericRational::hash`), so
+    /// values that `Number::eq` considers equal always hash equally.
     fn hash_number(&self, number: Number) -> u64 {
         let mut state = FxHasher::default();
         match number {
-            Number::Float(f) => {
-                let f = if f == 0.0 { 0.0 } else { f };
-                if f.fract() == 0.0 {
-                    #[allow(clippy::cast_possible_truncation)]
-                    BigInt::from(f as i64).hash(&mut state);
-                } else {
-                    f.to_bits().hash(&mut state);
-                }
-            }
-            Number::Integer(GenericInt::Small(n)) => BigInt::from(n).hash(&mut state),
-            Number::Integer(GenericInt::Big(n)) => n.to_value(&self.heap).hash(&mut state),
+            Number::Float(f) => Number::hash_f64(f, &mut state),
+            Number::Integer(int) => int.hash(&mut state, &self.heap),
             Number::Rational(rational) => rational.hash(&mut state, &self.heap),
         }
         state.finish()

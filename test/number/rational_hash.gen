@@ -1,0 +1,19 @@
+# A rational compares equal to the integer it reduces to and to the float with
+# the same value, so it must hash the same way those do. Integer division
+# produces a rational, so `4 / 2` is the rational 2:1 (equal to the int 2) and
+# `1 / 2` is 1:2 (equal to the float 0.5).
+
+# Direct hash agreement.
+print(hash(4 / 2) == hash(2)); # expect: true
+print(hash(1 / 2) == hash(0.5)); # expect: true
+
+# Equal keys must collapse in a set.
+print(len({2, 4 / 2})); # expect: 1
+print(len({0.5, 1 / 2})); # expect: 1
+
+# And find each other on dict lookup by an equal (not identical) key.
+var by_int = {2: "two"};
+print(by_int[4 / 2]); # expect: two
+
+var by_float = {0.5: "half"};
+print(by_float[1 / 2]); # expect: half
