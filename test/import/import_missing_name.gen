@@ -1,0 +1,32 @@
+# A missing name in a `from` import raises ImportError, consistently across
+# module kinds and regardless of whether the module is already cached.
+
+# A `.gen` stdlib module executes on first import, so the missing name is
+# reported by the module-end binding path.
+try {
+    from "itertools" import not_a_real_name;
+} catch ImportError as e {
+    print(e.message()); # expect: Could not find name to import `not_a_real_name`.
+}
+
+# The failed import still cached the module; the cache-hit path must raise the
+# same exception kind.
+try {
+    from "itertools" import not_a_real_name;
+} catch ImportError as e {
+    print(e.message()); # expect: Could not find name to import `not_a_real_name`.
+}
+
+# A native (Rust) stdlib module binds through the cached-module path from the
+# start and must agree, on both the first import and a later cached one.
+try {
+    from "math" import not_a_real_name;
+} catch ImportError as e {
+    print(e.message()); # expect: Could not find name to import `not_a_real_name`.
+}
+
+try {
+    from "math" import not_a_real_name;
+} catch ImportError as e {
+    print(e.message()); # expect: Could not find name to import `not_a_real_name`.
+}

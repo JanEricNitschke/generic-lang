@@ -4,7 +4,7 @@ use crate::value::NativeClass;
 #[cfg(feature = "plugins")]
 use crate::value::{ClassKind, PluginInstance};
 use crate::vm::ExceptionKind::{
-    AttributeError, ConstReassignmentError, NameError, RecursionError, TypeError, ValueError,
+    AttributeError, ConstReassignmentError, ImportError, RecursionError, TypeError, ValueError,
 };
 use crate::vm::arithmetics::IntoResultValue;
 use crate::vm::errors::{Return, VmErrorKind, VmResult};
@@ -866,7 +866,7 @@ impl VM {
                         "Could not find name to import `{}`.",
                         name.to_value(&self.heap)
                     );
-                    return Err(self.throw(NameError, &message).unwrap_err());
+                    return Err(self.throw(ImportError, &message).unwrap_err());
                 };
                 if was_local_import {
                     self.stack_push(value.value);
