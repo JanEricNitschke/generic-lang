@@ -457,7 +457,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             following: None,
         };
         if let Some(bitmap) = spreads {
-            self.emit_bytes(OpCode::UnpackCall, arg_count, location);
+            self.emit_bytes(OpCode::CallUnpack, arg_count, location);
             self.emit_spread_bitmap(&bitmap, arg_count, location);
         } else {
             self.emit_bytes(OpCode::Call, arg_count, location);

@@ -444,7 +444,7 @@ macro_rules! run_instruction {
                 let arg_count = $self.read_byte();
                 $self.invoke(method_name, arg_count)
             }
-            OpCode::UnpackCall => $self.unpack_call(),
+            OpCode::CallUnpack => $self.call_unpack(),
             OpCode::InvokeUnpack => {
                 let method_name = $self.read_string("OP_INVOKE_UNPACK");
                 $self.invoke_unpack(method_name)
