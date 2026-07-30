@@ -11,113 +11,97 @@ use crate::types::Location;
 )]
 #[repr(u8)]
 pub enum TokenKind {
-    // Character Tokens.
+    // Delimiters.
     LeftParen,
     RightParen,
     LeftBrace,
     RightBrace,
     LeftBracket,
     RightBracket,
-
-    Colon,
     Comma,
     Dot,
+    Semicolon,
 
+    // Operators.
+    Plus,
+    PlusEqual,
+    Minus,
+    MinusEqual,
+    Star,
+    StarEqual,
+    StarStar,
+    Slash,
+    SlashEqual,
+    SlashSlash,
+    Percent,
+    PercentEqual,
+    Amper,
+    AmperEqual,
+    Pipe,
+    PipeEqual,
+    Hat,
+    HatEqual,
+    DotDotLess,
+    DotDotEqual,
+    Colon,
+    Bang,
+    Equal,
     QuestionMark,
     QuestionDot,
     QuestionBracket,
 
-    Minus,
-    MinusEqual,
-    Plus,
-    PlusEqual,
-    Semicolon,
-    Slash,
-    SlashEqual,
-    Star,
-    StarEqual,
-    Percent,
-    PercentEqual,
-    Pipe,
-    PipeEqual,
-    Amper,
-    AmperEqual,
-    Hat,
-    HatEqual,
-    StarStar,
-    SlashSlash,
-    Bang,
-    BangEqual,
-    Equal,
-    EqualEqual,
-    Greater,
-    GreaterEqual,
-    Less,
-    LessEqual,
+    // Comparison.
     #[strum(props(keyword = "is"))]
     Is,
+    EqualEqual,
+    BangEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
 
-    // Literals.
-    Identifier,
-    String,
-    Float,
-    Integer,
-    #[strum(props(keyword = "false"))]
-    False,
-    #[strum(props(keyword = "true"))]
-    True,
-    #[strum(props(keyword = "nil"))]
-    Nil,
-    #[strum(props(keyword = "StopIteration"))]
-    StopIteration,
-
-    // Keywords.
+    // Logical operators.
     #[strum(props(keyword = "and"))]
     And,
     #[strum(props(keyword = "or"))]
     Or,
-    #[strum(props(keyword = "if"))]
-    If,
-    #[strum(props(keyword = "unless"))]
-    Unless,
-    #[strum(props(keyword = "else"))]
-    Else,
-    #[strum(props(keyword = "for"))]
-    For,
-    #[strum(props(keyword = "foreach"))]
-    ForEach,
-    #[strum(props(keyword = "while"))]
-    While,
-    Apostrophe,
-    #[strum(props(keyword = "until"))]
-    Until,
-    #[strum(props(keyword = "continue"))]
-    Continue,
-    #[strum(props(keyword = "break"))]
-    Break,
-    #[strum(props(keyword = "switch"))]
-    Switch,
-    #[strum(props(keyword = "default"))]
-    Default,
-    #[strum(props(keyword = "case"))]
-    Case,
-
     #[strum(props(keyword = "in"))]
     In,
 
-    #[strum(props(keyword = "const"))]
-    Const,
+    // Literals and string machinery.
+    Identifier,
+    String,
+    Integer,
+    Float,
+    FstringStart,
+    TstringStart,
+    InterpolationStringPart,
+    InterpolationStart,
+    InterpolationEnd,
+    InterpolationStringEnd,
+
+    // Value keywords.
+    #[strum(props(keyword = "nil"))]
+    Nil,
+    #[strum(props(keyword = "true"))]
+    True,
+    #[strum(props(keyword = "false"))]
+    False,
+    #[strum(props(keyword = "StopIteration"))]
+    StopIteration,
+
+    // Declarations, functions, and objects.
     #[strum(props(keyword = "var"))]
     Var,
-
+    #[strum(props(keyword = "const"))]
+    Const,
+    At,
     #[strum(props(keyword = "class"))]
     Class,
     #[strum(props(keyword = "this"))]
     This,
     #[strum(props(keyword = "super"))]
     Super,
-
-    At,
     #[strum(props(keyword = "fun"))]
     Fun,
     #[strum(props(keyword = "gen"))]
@@ -125,10 +109,37 @@ pub enum TokenKind {
     RightArrow,
     #[strum(props(keyword = "return"))]
     Return,
+    #[strum(props(keyword = "yield"))]
+    Yield,
 
-    Error,
-    Eof,
+    // Control flow.
+    #[strum(props(keyword = "if"))]
+    If,
+    #[strum(props(keyword = "unless"))]
+    Unless,
+    #[strum(props(keyword = "else"))]
+    Else,
+    #[strum(props(keyword = "switch"))]
+    Switch,
+    #[strum(props(keyword = "case"))]
+    Case,
+    #[strum(props(keyword = "default"))]
+    Default,
+    #[strum(props(keyword = "for"))]
+    For,
+    #[strum(props(keyword = "foreach"))]
+    ForEach,
+    #[strum(props(keyword = "while"))]
+    While,
+    #[strum(props(keyword = "until"))]
+    Until,
+    #[strum(props(keyword = "break"))]
+    Break,
+    #[strum(props(keyword = "continue"))]
+    Continue,
+    Apostrophe,
 
+    // Imports.
     #[strum(props(keyword = "import"))]
     Import,
     #[strum(props(keyword = "from"))]
@@ -136,13 +147,7 @@ pub enum TokenKind {
     #[strum(props(keyword = "as"))]
     As,
 
-    #[strum(props(keyword = "yield"))]
-    Yield,
-    #[strum(props(keyword = "async"))]
-    Async,
-    #[strum(props(keyword = "await"))]
-    Await,
-
+    // Exception handling.
     #[strum(props(keyword = "try"))]
     Try,
     #[strum(props(keyword = "catch"))]
@@ -152,15 +157,15 @@ pub enum TokenKind {
     #[strum(props(keyword = "throw"))]
     Throw,
 
-    DotDotLess,
-    DotDotEqual,
+    // Reserved.
+    #[strum(props(keyword = "async"))]
+    Async,
+    #[strum(props(keyword = "await"))]
+    Await,
 
-    FstringStart,
-    TstringStart,
-    InterpolationStringEnd,
-    InterpolationStringPart,
-    InterpolationStart,
-    InterpolationEnd,
+    // Synthetic.
+    Error,
+    Eof,
 }
 #[cfg(test)]
 #[test]

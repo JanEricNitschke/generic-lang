@@ -13,6 +13,75 @@ macro_rules! run_instruction {
 
         $self.collect_garbage();
         match OpCode::try_from($self.read_byte()).expect("Internal error: unrecognized opcode") {
+            OpCode::Nil => {
+                $self.stack_push(Value::Nil);
+                Ok(None)
+            }
+            OpCode::True => {
+                $self.stack_push(Value::Bool(true));
+                Ok(None)
+            }
+            OpCode::False => {
+                $self.stack_push(Value::Bool(false));
+                Ok(None)
+            }
+            OpCode::StopIteration => {
+                $self.stack_push(Value::StopIteration);
+                Ok(None)
+            }
+            OpCode::LoadZero => {
+                $self.stack.push(0.into());
+                Ok(None)
+            }
+            OpCode::LoadOne => {
+                $self.stack.push(1.into());
+                Ok(None)
+            }
+            OpCode::LoadTwo => {
+                $self.stack.push(2.into());
+                Ok(None)
+            }
+            OpCode::LoadMinusOne => {
+                $self.stack.push((-1).into());
+                Ok(None)
+            }
+            OpCode::LoadZerof => {
+                $self.stack.push((0.0).into());
+                Ok(None)
+            }
+            OpCode::LoadOnef => {
+                $self.stack.push((1.0).into());
+                Ok(None)
+            }
+            op @ (OpCode::GetLocal | OpCode::GetLocalLong) => {
+                $self.get_local(op);
+                Ok(None)
+            }
+            op @ (OpCode::SetLocal | OpCode::SetLocalLong) => {
+                $self.set_local(op);
+                Ok(None)
+            }
+            op @ (OpCode::GetGlobal | OpCode::GetGlobalLong) => $self.get_global(op),
+            op @ (OpCode::SetGlobal | OpCode::SetGlobalLong) => $self.set_global(op),
+            op @ (OpCode::DefineGlobal
+            | OpCode::DefineGlobalLong
+            | OpCode::DefineGlobalConst
+            | OpCode::DefineGlobalConstLong) => {
+                $self.define_global(op);
+                Ok(None)
+            }
+            // Index of the constant is the operand, value is in the constants table
+            OpCode::Constant => {
+                let value = $self.read_constant(NumberEncoding::Short);
+                $self.stack_push(value);
+                Ok(None)
+            }
+            OpCode::ConstantLong => {
+                let value = $self.read_constant(NumberEncoding::Long);
+                $self.stack_push(value);
+                Ok(None)
+            }
+
             OpCode::Pop => {
                 $self.stack.pop().expect("Stack underflow in OP_POP.");
                 Ok(None)
@@ -40,134 +109,70 @@ macro_rules! run_instruction {
                 $self.stack.swap(len - 1, len - 2);
                 Ok(None)
             }
-            OpCode::LoadOne => {
-                $self.stack.push(1.into());
+            // Upvalue index is the operand
+            // Closure is the one on the callstack
+            OpCode::GetUpvalue => {
+                let upvalue_index = usize::from($self.read_byte());
+                let closure = $self.callstack.closure();
+                let upvalue_location =
+                    closure.to_value(&$self.heap).upvalues[upvalue_index].to_value(&$self.heap);
+                match *upvalue_location {
+                    Upvalue::Open(absolute_local_index) => {
+                        $self.stack_push($self.stack[absolute_local_index]);
+                    }
+                    Upvalue::Closed(value) => $self.stack_push(value),
+                }
                 Ok(None)
             }
-            OpCode::LoadTwo => {
-                $self.stack.push(2.into());
+            // Upvalue index is the operand, closure is one the callstack,
+            // value to set is on the stack
+            OpCode::SetUpvalue => {
+                let upvalue_index = usize::from($self.read_byte());
+                let closure = $self.callstack.closure();
+                let upvalue_location = closure.to_value(&$self.heap).upvalues[upvalue_index]
+                    .clone()
+                    .to_value_mut(&mut $self.heap);
+                let new_value = $self
+                    .stack
+                    .last()
+                    .copied()
+                    .expect("Stack underflow in OP_SET_UPVALUE");
+                match *upvalue_location {
+                    Upvalue::Open(absolute_local_index) => {
+                        $self.stack[absolute_local_index] = new_value;
+                    }
+                    Upvalue::Closed(ref mut value) => {
+                        *value = new_value;
+                    }
+                }
                 Ok(None)
             }
-            OpCode::LoadZero => {
-                $self.stack.push(0.into());
+            // CLose the upvalue on top of the stack
+            OpCode::CloseUpvalue => {
+                $self.close_upvalue($self.stack.len() - 1);
+                $self.stack.pop();
                 Ok(None)
             }
-            OpCode::LoadMinusOne => {
-                $self.stack.push((-1).into());
-                Ok(None)
-            }
-            OpCode::LoadZerof => {
-                $self.stack.push((0.0).into());
-                Ok(None)
-            }
-            OpCode::LoadOnef => {
-                $self.stack.push((1.0).into());
-                Ok(None)
-            }
-            // Grabs index (into the stack) as the operand (next bytecode)
-            op @ (OpCode::GetLocal | OpCode::GetLocalLong) => {
-                $self.get_local(op);
-                Ok(None)
-            }
-            // Index is the operand again, value to set is on the stack
-            op @ (OpCode::SetLocal | OpCode::SetLocalLong) => {
-                $self.set_local(op);
-                Ok(None)
-            }
-            // Global to get passed as operand
-            op @ (OpCode::GetGlobal | OpCode::GetGlobalLong) => $self.get_global(op),
-            // Global whose value to set is operand, value to use is on the stack
-            op @ (OpCode::SetGlobal | OpCode::SetGlobalLong) => $self.set_global(op),
-            // Name of the global to define comes from the operand, value
-            op @ (OpCode::DefineGlobal
-            | OpCode::DefineGlobalLong
-            | OpCode::DefineGlobalConst
-            | OpCode::DefineGlobalConstLong) => {
-                $self.define_global(op);
-                Ok(None)
-            }
-            OpCode::JumpIfFalse => $self.jump_conditional(JumpCondition::IfFalse),
-            OpCode::JumpIfTrue => $self.jump_conditional(JumpCondition::IfTrue),
-            OpCode::PopJumpIfFalse => $self.pop_jump_conditional(JumpCondition::IfFalse),
-            OpCode::PopJumpIfTrue => $self.pop_jump_conditional(JumpCondition::IfTrue),
-            OpCode::JumpIfTrueOrPop => $self.jump_if_or_pop(JumpCondition::IfTrue),
-            OpCode::JumpIfFalseOrPop => $self.jump_if_or_pop(JumpCondition::IfFalse),
-            OpCode::JumpIfNil => {
-                $self.jump_if_nil();
-                Ok(None)
-            }
-            // Arg count is passed as the operand
-            // The function to call is on the stack followed by all arguments
-            // in order from left to right.
-            OpCode::Call => $self.call(),
-            // Value to return is on the stack
-            OpCode::Return => match $self.return_() {
-                Ok(Return::Program(frame)) => return Ok(Some(frame)),
-                Ok(Return::Function(frame)) => Ok(Some(frame)),
-                Err(err) => Err(err),
-            },
-            OpCode::Yield => $self.yield_().into(),
-            OpCode::ReturnGenerator => {
-                $self.create_generator();
-                Ok(None)
-            }
-            // Index of the constant is the operand, value is in the constants table
-            OpCode::Constant => {
-                let value = $self.read_constant(NumberEncoding::Short);
-                $self.stack_push(value);
-                Ok(None)
-            }
-            OpCode::ConstantLong => {
-                let value = $self.read_constant(NumberEncoding::Long);
-                $self.stack_push(value);
-                Ok(None)
-            }
-            // `Negate` and `Not` work on the stack value
-            OpCode::Negate => $self.negate(),
-            OpCode::Not => $self.not_(),
-            OpCode::Nil => {
-                $self.stack_push(Value::Nil);
-                Ok(None)
-            }
-            OpCode::True => {
-                $self.stack_push(Value::Bool(true));
-                Ok(None)
-            }
-            OpCode::False => {
-                $self.stack_push(Value::Bool(false));
-                Ok(None)
-            }
-            OpCode::StopIteration => {
-                $self.stack_push(Value::StopIteration);
-                Ok(None)
-            }
-            OpCode::Equal => $self.equal(EqualityMode::Equal),
-            OpCode::NotEqual => $self.equal(EqualityMode::NotEqual),
-            OpCode::Is => {
-                $self.identical();
-                Ok(None)
-            }
-            // All of these work on the top two stack values.
-            // Top most is right operand, second is left.
-            OpCode::Add => $self.add(),
-            OpCode::Subtract => binary_op!($self, sub, "__sub__", false, mut_heap),
-            OpCode::Multiply => $self.mul(),
-            OpCode::Divide => binary_op!($self, div, "__div__", false, mut_heap),
-            OpCode::BitXor => binary_op!($self, bitxor, "__bitxor__", true, mut_heap),
-            OpCode::BitAnd => binary_op!($self, bitand, "__bitand__", true, mut_heap),
-            OpCode::BitOr => binary_op!($self, bitor, "__bitor__", true, mut_heap),
-            OpCode::Exp => binary_op!($self, pow, "__pow__", false, mut_heap),
-            OpCode::Mod => binary_op!($self, rem, "__mod__", false, mut_heap),
-            OpCode::FloorDiv => binary_op!($self, floor_div, "__floor_div__", false, mut_heap),
-            OpCode::Greater => $self.compare(Comparison::Greater),
-            OpCode::Less => $self.compare(Comparison::Less),
-            OpCode::GreaterEqual => $self.compare(Comparison::GreaterEqual),
-            OpCode::LessEqual => $self.compare(Comparison::LessEqual),
             OpCode::Jump => {
                 let offset = $self.read_16bit_number();
                 $self.callstack.current_mut().ip += offset;
                 Ok(None)
             }
+            OpCode::JumpIfNil => {
+                $self.jump_if_nil();
+                Ok(None)
+            }
+            // Grabs index (into the stack) as the operand (next bytecode)
+            // Index is the operand again, value to set is on the stack
+            // Global to get passed as operand
+            // Global whose value to set is operand, value to use is on the stack
+            // Name of the global to define comes from the operand, value
+            OpCode::JumpIfFalse => $self.jump_conditional(JumpCondition::IfFalse),
+            OpCode::JumpIfTrue => $self.jump_conditional(JumpCondition::IfTrue),
+            OpCode::PopJumpIfFalse => $self.pop_jump_conditional(JumpCondition::IfFalse),
+            OpCode::PopJumpIfTrue => $self.pop_jump_conditional(JumpCondition::IfTrue),
+            OpCode::JumpIfFalseOrPop => $self.jump_if_or_pop(JumpCondition::IfFalse),
+            OpCode::JumpIfTrueOrPop => $self.jump_if_or_pop(JumpCondition::IfTrue),
             // Offset to jump backwards is the operand(s)
             OpCode::Loop => {
                 let offset = $self.read_16bit_number();
@@ -224,50 +229,75 @@ macro_rules! run_instruction {
                 $self.stack_push(closure_id);
                 Ok(None)
             }
-            // Upvalue index is the operand
-            // Closure is the one on the callstack
-            OpCode::GetUpvalue => {
-                let upvalue_index = usize::from($self.read_byte());
-                let closure = $self.callstack.closure();
-                let upvalue_location =
-                    closure.to_value(&$self.heap).upvalues[upvalue_index].to_value(&$self.heap);
-                match *upvalue_location {
-                    Upvalue::Open(absolute_local_index) => {
-                        $self.stack_push($self.stack[absolute_local_index]);
-                    }
-                    Upvalue::Closed(value) => $self.stack_push(value),
-                }
-                Ok(None)
+            // Arg count is passed as the operand
+            // The function to call is on the stack followed by all arguments
+            // in order from left to right.
+            OpCode::Call => $self.call(),
+            OpCode::CallUnpack => $self.call_unpack(),
+            // Operands are method name to invoke as well as the number of arguments
+            // Stack contains the instance followed by the arguments.
+            // (... --- Instance --- arg1 --- arg2 --- ... --- argN)
+            OpCode::Invoke => {
+                let method_name = $self.read_string("OP_INVOKE");
+                let arg_count = $self.read_byte();
+                $self.invoke(method_name, arg_count)
             }
-            // Upvalue index is the operand, closure is one the callstack,
-            // value to set is on the stack
-            OpCode::SetUpvalue => {
-                let upvalue_index = usize::from($self.read_byte());
-                let closure = $self.callstack.closure();
-                let upvalue_location = closure.to_value(&$self.heap).upvalues[upvalue_index]
-                    .clone()
-                    .to_value_mut(&mut $self.heap);
-                let new_value = $self
+            OpCode::InvokeUnpack => {
+                let method_name = $self.read_string("OP_INVOKE_UNPACK");
+                $self.invoke_unpack(method_name)
+            }
+            // Invoke a method from the superclass
+            // Operands are the name of the method and number of arguments
+            // Stack has the superclass followed by the arguments
+            OpCode::SuperInvoke => {
+                let method_name = $self.read_string("OP_SUPER_INVOKE");
+                let arg_count = $self.read_byte();
+                let superclass = $self
                     .stack
-                    .last()
-                    .copied()
-                    .expect("Stack underflow in OP_SET_UPVALUE");
-                match *upvalue_location {
-                    Upvalue::Open(absolute_local_index) => {
-                        $self.stack[absolute_local_index] = new_value;
-                    }
-                    Upvalue::Closed(ref mut value) => {
-                        *value = new_value;
-                    }
-                }
+                    .pop()
+                    .expect("Stack underflow in OP_SUPER_INVOKE");
+                $self.invoke_from_class(*superclass.as_class(), method_name, arg_count)
+            }
+            OpCode::SuperInvokeUnpack => {
+                let method_name = $self.read_string("OP_SUPER_INVOKE_UNPACK");
+                $self.super_invoke_unpack(method_name)
+            }
+            // Value to return is on the stack
+            OpCode::Return => match $self.return_() {
+                Ok(Return::Program(frame)) => return Ok(Some(frame)),
+                Ok(Return::Function(frame)) => Ok(Some(frame)),
+                Err(err) => Err(err),
+            },
+            OpCode::ReturnGenerator => {
+                $self.create_generator();
                 Ok(None)
             }
-            // CLose the upvalue on top of the stack
-            OpCode::CloseUpvalue => {
-                $self.close_upvalue($self.stack.len() - 1);
-                $self.stack.pop();
+            OpCode::Yield => $self.yield_().into(),
+            // `Negate` and `Not` work on the stack value
+            OpCode::Negate => $self.negate(),
+            OpCode::Not => $self.not_(),
+            // All of these work on the top two stack values.
+            // Top most is right operand, second is left.
+            OpCode::Add => $self.add(),
+            OpCode::Subtract => binary_op!($self, sub, "__sub__", false, mut_heap),
+            OpCode::Multiply => $self.mul(),
+            OpCode::Divide => binary_op!($self, div, "__div__", false, mut_heap),
+            OpCode::FloorDiv => binary_op!($self, floor_div, "__floor_div__", false, mut_heap),
+            OpCode::Mod => binary_op!($self, rem, "__mod__", false, mut_heap),
+            OpCode::Exp => binary_op!($self, pow, "__pow__", false, mut_heap),
+            OpCode::BitAnd => binary_op!($self, bitand, "__bitand__", true, mut_heap),
+            OpCode::BitOr => binary_op!($self, bitor, "__bitor__", true, mut_heap),
+            OpCode::BitXor => binary_op!($self, bitxor, "__bitxor__", true, mut_heap),
+            OpCode::Is => {
+                $self.identical();
                 Ok(None)
             }
+            OpCode::Equal => $self.equal(EqualityMode::Equal),
+            OpCode::NotEqual => $self.equal(EqualityMode::NotEqual),
+            OpCode::Less => $self.compare(Comparison::Less),
+            OpCode::LessEqual => $self.compare(Comparison::LessEqual),
+            OpCode::Greater => $self.compare(Comparison::Greater),
+            OpCode::GreaterEqual => $self.compare(Comparison::GreaterEqual),
             // Classname is the operand, create a new class and push it onto the stack
             OpCode::Class => {
                 let class_name = $self.read_string("OP_CLASS");
@@ -275,6 +305,45 @@ macro_rules! run_instruction {
                     .heap
                     .add_class(Class::new(class_name, crate::value::ClassKind::User));
                 $self.stack_push(class);
+                Ok(None)
+            }
+            // Stack has (... --- Superclass --- Class)
+            OpCode::Inherit => {
+                let superclass_id = *$self.peek(1).expect("Stack underflow in OP_INHERIT");
+                if let Value::Class(superclass) = &superclass_id {
+                    let methods = superclass.to_value(&$self.heap).methods.clone();
+                    let variables = superclass.to_value(&$self.heap).variables.clone();
+                    let subclass = $self
+                        .stack
+                        .pop()
+                        .expect("Stack underflow in OP_INHERIT")
+                        .as_class()
+                        .to_value_mut(&mut $self.heap);
+                    subclass.methods.extend(methods);
+                    // The subclass body has not run yet, so this copy-down
+                    // seeds it with the inherited declarations (mirroring
+                    // the method copy above); its own declarations append
+                    // or overwrite in place.
+                    subclass.variables = variables;
+                    subclass.superclass = Some(*superclass);
+                    Ok(None)
+                } else {
+                    $self.throw(TypeError, "Superclass must be a class.")
+                }
+            }
+            // Name of the method is the operand, actual method to is on the stack
+            // together with the class (... --- Class --- Method)
+            OpCode::Method => {
+                let method_name = $self.read_string("OP_METHOD");
+                $self.define_method(method_name);
+                Ok(None)
+            }
+            // Operands are the variable name and a has-default flag; the
+            // stack holds the class, the annotation, and the default.
+            OpCode::ClassVariable => {
+                let variable_name = $self.read_string("OP_CLASS_VARIABLE");
+                let has_default = $self.read_byte() != 0;
+                $self.define_class_variable(variable_name, has_default);
                 Ok(None)
             }
             // Property to get is the operand, instance/module is on the stack
@@ -421,62 +490,6 @@ macro_rules! run_instruction {
                 }
                 result
             }
-            // Name of the method is the operand, actual method to is on the stack
-            // together with the class (... --- Class --- Method)
-            OpCode::Method => {
-                let method_name = $self.read_string("OP_METHOD");
-                $self.define_method(method_name);
-                Ok(None)
-            }
-            // Operands are the variable name and a has-default flag; the
-            // stack holds the class, the annotation, and the default.
-            OpCode::ClassVariable => {
-                let variable_name = $self.read_string("OP_CLASS_VARIABLE");
-                let has_default = $self.read_byte() != 0;
-                $self.define_class_variable(variable_name, has_default);
-                Ok(None)
-            }
-            // Operands are method name to invoke as well as the number of arguments
-            // Stack contains the instance followed by the arguments.
-            // (... --- Instance --- arg1 --- arg2 --- ... --- argN)
-            OpCode::Invoke => {
-                let method_name = $self.read_string("OP_INVOKE");
-                let arg_count = $self.read_byte();
-                $self.invoke(method_name, arg_count)
-            }
-            OpCode::CallUnpack => $self.call_unpack(),
-            OpCode::InvokeUnpack => {
-                let method_name = $self.read_string("OP_INVOKE_UNPACK");
-                $self.invoke_unpack(method_name)
-            }
-            OpCode::SuperInvokeUnpack => {
-                let method_name = $self.read_string("OP_SUPER_INVOKE_UNPACK");
-                $self.super_invoke_unpack(method_name)
-            }
-            // Stack has (... --- Superclass --- Class)
-            OpCode::Inherit => {
-                let superclass_id = *$self.peek(1).expect("Stack underflow in OP_INHERIT");
-                if let Value::Class(superclass) = &superclass_id {
-                    let methods = superclass.to_value(&$self.heap).methods.clone();
-                    let variables = superclass.to_value(&$self.heap).variables.clone();
-                    let subclass = $self
-                        .stack
-                        .pop()
-                        .expect("Stack underflow in OP_INHERIT")
-                        .as_class()
-                        .to_value_mut(&mut $self.heap);
-                    subclass.methods.extend(methods);
-                    // The subclass body has not run yet, so this copy-down
-                    // seeds it with the inherited declarations (mirroring
-                    // the method copy above); its own declarations append
-                    // or overwrite in place.
-                    subclass.variables = variables;
-                    subclass.superclass = Some(*superclass);
-                    Ok(None)
-                } else {
-                    $self.throw(TypeError, "Superclass must be a class.")
-                }
-            }
             // Grab and bind a method from the superclass
             // Operand is the name of the method to get and the stack has the superclass
             OpCode::GetSuper => {
@@ -490,18 +503,6 @@ macro_rules! run_instruction {
                     $self.throw(AttributeError, &message)
                 }
             }
-            // Invoke a method from the superclass
-            // Operands are the name of the method and number of arguments
-            // Stack has the superclass followed by the arguments
-            OpCode::SuperInvoke => {
-                let method_name = $self.read_string("OP_SUPER_INVOKE");
-                let arg_count = $self.read_byte();
-                let superclass = $self
-                    .stack
-                    .pop()
-                    .expect("Stack underflow in OP_SUPER_INVOKE");
-                $self.invoke_from_class(*superclass.as_class(), method_name, arg_count)
-            }
             OpCode::BuildList => {
                 $self.build_list();
                 Ok(None)
@@ -512,9 +513,9 @@ macro_rules! run_instruction {
             }
             OpCode::BuildSet => $self.build_set(),
             OpCode::BuildDict => $self.build_dict(),
+            OpCode::BuildRational => $self.build_rational(),
             OpCode::BuildRangeExclusive => $self.build_range(RangeType::Exclusive),
             OpCode::BuildRangeInclusive => $self.build_range(RangeType::Inclusive),
-            OpCode::BuildRational => $self.build_rational(),
             OpCode::BuildFstring => $self.build_fstring(),
             OpCode::BuildInterpolation => {
                 $self.build_interpolation();
@@ -576,11 +577,11 @@ macro_rules! run_instruction {
                     .expect("Exception handler underflow in OP_POP_HANDLER");
                 Ok(None)
             }
+            // Layout is Stack Top: [exception_class_to_catch, exception_value_raised]
+            OpCode::CompareException => $self.compare_exception(),
             // Throw the exception on the top of the stack: mark it pending
             // (it stays on the stack) and let the dispatch loop resolve it.
             OpCode::Throw => $self.raise_pending_from_stack(),
-            // Layout is Stack Top: [exception_class_to_catch, exception_value_raised]
-            OpCode::CompareException => $self.compare_exception(),
             //  We expect either the exception at the stop of the stack that should be reraised
             // or nil if we handled the exception.
             OpCode::Reraise => $self.reraise_exception(),
