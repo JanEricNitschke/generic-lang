@@ -82,9 +82,9 @@ use template::{
 
 use tuple::{
     tuple_add_native, tuple_bool_native, tuple_contains_native, tuple_eq_native, tuple_ge_native,
-    tuple_get_native, tuple_gt_native, tuple_init_native, tuple_iter_iter_native,
-    tuple_iter_native, tuple_iter_next_native, tuple_iter_str_native, tuple_le_native,
-    tuple_len_native, tuple_lt_native, tuple_reversed_native, tuple_str_native,
+    tuple_get_native, tuple_gt_native, tuple_hash_native, tuple_init_native,
+    tuple_iter_iter_native, tuple_iter_native, tuple_iter_next_native, tuple_iter_str_native,
+    tuple_le_native, tuple_len_native, tuple_lt_native, tuple_reversed_native, tuple_str_native,
 };
 
 use value_constructors::{
@@ -184,6 +184,7 @@ pub fn define(vm: &mut VM) {
     vm.define_native_method(&"Tuple", &"contains", &[1], tuple_contains_native);
     vm.define_native_method(&"Tuple", &"__str__", &[0], tuple_str_native);
     vm.define_native_method(&"Tuple", &"__eq__", &[1], tuple_eq_native);
+    vm.define_native_method(&"Tuple", &"__hash__", &[0], tuple_hash_native);
     vm.define_native_method(&"Tuple", &"__lt__", &[1], tuple_lt_native);
     vm.define_native_method(&"Tuple", &"__le__", &[1], tuple_le_native);
     vm.define_native_method(&"Tuple", &"__gt__", &[1], tuple_gt_native);

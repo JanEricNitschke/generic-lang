@@ -7,7 +7,9 @@ use crate::{
     value::{Instance, NativeClass, Number, Tuple, TupleIterator, Value},
     vm::{VM, errors::VmResult},
 };
+use rustc_hash::FxHasher;
 use std::cmp::Ordering;
+use std::hash::Hasher;
 
 /// Whether `value` is (backed by) a `Tuple`.
 fn is_tuple(value: Value, heap: &Heap) -> bool {
@@ -250,6 +252,22 @@ pub(super) fn tuple_eq_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> 
         index += 1;
     }
     Ok(true.into())
+}
+
+/// `hash(tuple)`: combine the element hashes in order (respecting each
+/// element's `__hash__`), so tuples that compare equal per `__eq__` hash
+/// equal and tuples work as dict keys and set members. Elements are
+/// re-fetched by index per step: computing an element's hash may
+/// re-enter the interpreter.
+pub(super) fn tuple_hash_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
+    let mut hasher = FxHasher::default();
+    let mut index = 0;
+    while index < receiver.as_tuple(&vm.heap).items().len() {
+        let element = receiver.as_tuple(&vm.heap).items()[index];
+        hasher.write_u64(vm.compute_hash(element)?);
+        index += 1;
+    }
+    Ok(hasher.finish().cast_signed().into())
 }
 
 /// Lexicographic ordering of `receiver` against `other`, or `None` when `other`
