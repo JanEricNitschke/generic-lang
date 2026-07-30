@@ -1,11 +1,13 @@
 //! A debug-only stdlib module that exercises re-entrant value creation at
 //! import time. `probe`'s creator re-enters the VM, so under the stress-GC
-//! suite a collection runs part-way through building the module's exports;
-//! every earlier export (a function, a class, and a plain value, each with
-//! its name string) must stay rooted across that collection. The class is
-//! `Path`, a non-builtin native class, so it is not reachable outside this
-//! module's binding. Gated to debug builds so it never reaches the release
-//! stdlib namespace.
+//! suite a collection runs part-way through building the module's exports.
+//! The meaningful roots are the earlier `answer` function (a fresh native
+//! function) and the `sentinel` value (with a name string the value does
+//! not itself reference): both must survive that collection or their heap
+//! ids dangle. The `Path` class export covers the `Class` import arm too,
+//! but its survival is not a real test - native classes are permanent GC
+//! roots regardless of the import machinery. Gated to debug builds so it
+//! never reaches the release stdlib namespace.
 
 #![allow(clippy::unnecessary_wraps)]
 
