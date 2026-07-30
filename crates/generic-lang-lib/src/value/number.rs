@@ -2,9 +2,11 @@ use crate::heap::{BigIntId, Heap};
 
 use derive_more::From;
 use num_bigint::BigInt;
+use num_traits::FromPrimitive;
 use num_traits::Pow;
 use num_traits::Signed;
 use num_traits::identities::Zero;
+use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Rem, Sub};
 
@@ -71,9 +73,13 @@ impl Number {
     /// `GenericRational::hash` so the float-bucketing rule lives in one place.
     pub(crate) fn hash_f64<H: Hasher>(value: f64, state: &mut H) {
         let value = if value == 0.0 { 0.0 } else { value };
-        if value.fract() == 0.0 {
-            #[allow(clippy::cast_possible_truncation)]
-            BigInt::from(value as i64).hash(state);
+        // A finite whole float has an exact integer value; hash it as that
+        // integer so it buckets with the equal `Integer`. NaN and infinities
+        // have a NaN `fract`, so they fall through to the bit pattern.
+        if value.fract() == 0.0
+            && let Some(integer) = BigInt::from_f64(value)
+        {
+            integer.hash(state);
         } else {
             value.to_bits().hash(state);
         }
@@ -292,13 +298,53 @@ impl Number {
         }
     }
 
+    /// Order an integer against a float. A whole float compares by exact
+    /// integer value (the bucket [`Self::hash_f64`] uses, so equal values also
+    /// hash equally); a non-whole float can never equal an integer, so `to_f64`
+    /// settles the ordering without ever reporting a spurious `Equal`. NaN is
+    /// unordered.
+    fn int_float_cmp(int: &GenericInt, float: f64, heap: &Heap) -> Option<Ordering> {
+        if float.is_nan() {
+            None
+        } else if float.fract() == 0.0
+            && let Some(whole) = BigInt::from_f64(float)
+        {
+            Some(int.to_bigint(heap).cmp(&whole))
+        } else {
+            int.to_f64(heap).partial_cmp(&float)
+        }
+    }
+
+    /// Order a rational against a float. A whole float compares by the exact
+    /// sign of `numerator - whole * denominator` (the denominator of a reduced
+    /// rational is positive), which is `Equal` only for the integer the rational
+    /// reduces to; a non-whole float falls back to `to_f64` (so a rational still
+    /// equals the float it rounds to). NaN is unordered.
+    fn rational_float_cmp(rational: &GenericRational, float: f64, heap: &Heap) -> Option<Ordering> {
+        if float.is_nan() {
+            None
+        } else if float.fract() == 0.0
+            && let Some(whole) = BigInt::from_f64(float)
+        {
+            let numerator = rational.numerator().to_bigint(heap);
+            let denominator = rational.denominator().to_bigint(heap);
+            Some((numerator - whole * denominator).cmp(&BigInt::zero()))
+        } else {
+            rational.to_f64(heap).partial_cmp(&float)
+        }
+    }
+
     pub(crate) fn eq(&self, other: &Self, heap: &Heap) -> bool {
         match (self, other) {
             (Self::Integer(a), Self::Integer(b)) => a.eq(b, heap),
             (Self::Float(a), Self::Float(b)) => a == b,
             (Self::Rational(a), Self::Rational(b)) => a.eq(b, heap),
-            (Self::Integer(a), Self::Float(b)) => a.to_f64(heap) == *b,
-            (Self::Float(a), Self::Integer(b)) => *a == b.to_f64(heap),
+            (Self::Integer(a), Self::Float(b)) => {
+                Self::int_float_cmp(a, *b, heap) == Some(Ordering::Equal)
+            }
+            (Self::Float(a), Self::Integer(b)) => {
+                Self::int_float_cmp(b, *a, heap) == Some(Ordering::Equal)
+            }
             (Self::Integer(a), Self::Rational(b)) => {
                 let a_rat = GenericRational::from_int(*a);
                 a_rat.eq(b, heap)
@@ -307,18 +353,24 @@ impl Number {
                 let b_rat = GenericRational::from_int(*b);
                 a.eq(&b_rat, heap)
             }
-            (Self::Float(a), Self::Rational(b)) => *a == b.to_f64(heap),
-            (Self::Rational(a), Self::Float(b)) => a.to_f64(heap) == *b,
+            (Self::Float(a), Self::Rational(b)) => {
+                Self::rational_float_cmp(b, *a, heap) == Some(Ordering::Equal)
+            }
+            (Self::Rational(a), Self::Float(b)) => {
+                Self::rational_float_cmp(a, *b, heap) == Some(Ordering::Equal)
+            }
         }
     }
 
-    fn partial_cmp(&self, other: &Self, heap: &Heap) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self, heap: &Heap) -> Option<Ordering> {
         match (self, other) {
             (Self::Integer(a), Self::Integer(b)) => a.partial_cmp(b, heap),
             (Self::Float(a), Self::Float(b)) => a.partial_cmp(b),
             (Self::Rational(a), Self::Rational(b)) => a.partial_cmp(b, heap),
-            (Self::Integer(a), Self::Float(b)) => a.to_f64(heap).partial_cmp(b),
-            (Self::Float(a), Self::Integer(b)) => a.partial_cmp(&b.to_f64(heap)),
+            (Self::Integer(a), Self::Float(b)) => Self::int_float_cmp(a, *b, heap),
+            (Self::Float(a), Self::Integer(b)) => {
+                Self::int_float_cmp(b, *a, heap).map(Ordering::reverse)
+            }
             (Self::Integer(a), Self::Rational(b)) => {
                 let a_rat = GenericRational::from_int(*a);
                 a_rat.partial_cmp(b, heap)
@@ -327,8 +379,10 @@ impl Number {
                 let b_rat = GenericRational::from_int(*b);
                 a.partial_cmp(&b_rat, heap)
             }
-            (Self::Float(a), Self::Rational(b)) => a.partial_cmp(&b.to_f64(heap)),
-            (Self::Rational(a), Self::Float(b)) => a.to_f64(heap).partial_cmp(b),
+            (Self::Float(a), Self::Rational(b)) => {
+                Self::rational_float_cmp(b, *a, heap).map(Ordering::reverse)
+            }
+            (Self::Rational(a), Self::Float(b)) => Self::rational_float_cmp(a, *b, heap),
         }
     }
 
@@ -826,22 +880,19 @@ impl GenericRational {
         )
     }
 
-    /// Hash consistently with `Number::eq`: a rational compares equal to the
-    /// integer it reduces to (the `Rational`/`Integer` arms of `Number::eq`
-    /// compare exactly through `from_int`) and to the float with the same value
-    /// (the `Rational`/`Float` arms compare through `to_f64`). Equal values
-    /// must hash equally, so a whole-valued rational hashes like that integer
-    /// via `GenericInt::hash`, and every other rational hashes like the float
-    /// it equals via `Number::hash_f64`. `VM::hash_number` (in `vm/dunder.rs`)
-    /// hashes plain integers and floats through those same two helpers, so the
-    /// three number kinds share a bucket whenever they are equal.
+    /// Hash consistently with `Number::eq`: a whole rational compares equal to
+    /// the integer it reduces to and to that integer's whole float (both
+    /// through the exact-integer comparison in `Number::int_float_cmp` /
+    /// `rational_float_cmp`), so it hashes like that integer via
+    /// `GenericInt::hash`. A non-whole rational is never equal to an integer or
+    /// a whole float; it equals only the non-whole float it rounds to, so it
+    /// hashes like that float via `Number::hash_f64`. `VM::hash_number` (in
+    /// `vm/dunder.rs`) hashes plain integers and floats through those same two
+    /// helpers, so the three number kinds share a bucket whenever they are
+    /// equal.
     ///
     /// The denominator of a reduced rational is `Small(1)` for a whole number;
     /// `GenericInt::eq` compares by value, so a stray `Big(1)` is caught too.
-    /// A non-whole rational is never equal to an integer (integer equality is
-    /// exact), but its `to_f64` can still round to a whole number, in which case
-    /// it equals that whole float and `Number::hash_f64` buckets it as the
-    /// integer that float represents.
     pub fn hash<H: Hasher>(&self, state: &mut H, heap: &Heap) {
         if self.denominator.eq(&GenericInt::Small(1), heap) {
             self.numerator.hash(state, heap);

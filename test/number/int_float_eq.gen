@@ -1,0 +1,43 @@
+# A whole float compares and hashes by its exact integer value, so it agrees
+# with the equal integer even past 2**53 where a float and its neighbouring
+# integers become distinguishable. A non-whole float never equals an integer.
+
+# 2**63 is exactly representable as a float and as a (big) integer.
+var big_int = 9223372036854775808;
+var big_float = 9223372036854775808.0;
+print(big_int == big_float); # expect: true
+print(big_float == big_int); # expect: true
+
+# The next integer up is not representable, so it is not equal to that float,
+# and it orders above it (equality and ordering agree).
+var one_more = 9223372036854775809;
+print(one_more == big_float); # expect: false
+print(one_more > big_float); # expect: true
+print(big_float < one_more); # expect: true
+
+# Equal whole float and integer share a hash bucket, so a set holds one member
+# and finds it through the other kind.
+print(hash(big_int) == hash(big_float)); # expect: true
+var seen = {big_int};
+print(big_float in seen); # expect: true
+
+# A whole rational reduces to its integer and equals the int and whole float.
+print((4:2) == 2); # expect: true
+print((4:2) == 2.0); # expect: true
+
+# A non-whole rational still equals the float it reduces to, but no integer.
+print((1:2) == 0.5); # expect: true
+print((1:2) == 1); # expect: false
+
+# Rationals with big-integer components compare exactly too. 2**64 : 2 reduces
+# to the whole big integer 2**63, matching that int and its whole float.
+var big_whole_rational = 18446744073709551616 : 2;
+print(big_whole_rational == 9223372036854775808); # expect: true
+print(big_whole_rational == 9223372036854775808.0); # expect: true
+print(big_whole_rational == 9223372036854775809); # expect: false
+
+# (2**64 + 1) : 2 is 2**63 + 1/2: not whole, so unequal to the whole float, and
+# ordering above it, decided by the exact big-integer comparison.
+var big_half_rational = 18446744073709551617 : 2;
+print(big_half_rational == 9223372036854775808.0); # expect: false
+print(big_half_rational > 9223372036854775808.0); # expect: true
