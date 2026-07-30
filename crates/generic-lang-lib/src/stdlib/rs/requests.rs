@@ -258,15 +258,11 @@ fn response_text_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmRes
 /// lowercased, as delivered).
 fn response_headers_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult<Value> {
     let headers = receiver.as_response(&vm.heap).headers.clone();
-    let instance = Instance::new(
-        *vm.heap.native_classes.get("Dict").unwrap(),
-        Some(Dict::default().into()),
-    );
     // The dict need not be rooted while it is filled: the keys are
     // strings, whose `__hash__`/`__eq__` are native and never re-enter
     // the VM, and allocation never collects within a single native
     // call.
-    let dict = vm.heap.add_instance(instance);
+    let dict = vm.new_dict();
     for (name, value) in headers {
         let key = vm.heap.string_id(&name).into();
         let value = vm.heap.string_id(&value).into();
@@ -423,11 +419,7 @@ mod tests {
         let body_value = Value::String(vm.heap.string_id(&"payload".to_string()));
         // headers dict: {"X-Probe": "yes"}
         let headers = {
-            let instance = Instance::new(
-                *vm.heap.native_classes.get("Dict").unwrap(),
-                Some(Dict::default().into()),
-            );
-            let dict = vm.heap.add_instance(instance);
+            let dict = vm.new_dict();
             let key = Value::String(vm.heap.string_id(&"X-Probe".to_string()));
             let value = Value::String(vm.heap.string_id(&"yes".to_string()));
             Dict::add(&mut vm, &dict, key, value).unwrap();

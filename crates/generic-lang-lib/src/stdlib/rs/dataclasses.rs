@@ -15,7 +15,7 @@ use crate::heap::{ClassId, Heap, InstanceId, StringId};
 use crate::natives::VARIADIC_0_PLUS;
 use crate::value::{
     Field, Instance, ModuleContents, ModuleExport, NativeClass, NativeMethod, NativeMethodImpl,
-    Tuple, Value,
+    Value,
 };
 use crate::vm::ExceptionKind::{AttributeError, TypeError};
 use crate::vm::VM;
@@ -120,10 +120,7 @@ fn dataclass_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     }
 
     let items: Vec<Value> = field_names.iter().map(|&name_id| name_id.into()).collect();
-    let snapshot = vm.heap.add_instance(Instance::new(
-        *vm.heap.native_classes.get("Tuple").unwrap(),
-        Some(Tuple::new(items).into()),
-    ));
+    let snapshot = vm.new_tuple(items);
     class_id
         .to_value_mut(&mut vm.heap)
         .set_class_variable_value(fields_name, snapshot);

@@ -78,6 +78,26 @@ impl VM {
         self.heap.add_instance(instance)
     }
 
+    /// Build a `List` instance from `items` and return it (nothing is pushed).
+    pub(crate) fn new_list(&mut self, items: Vec<Value>) -> Value {
+        let instance = Instance::new(
+            *self.heap.native_classes.get("List").unwrap(),
+            Some(List::new(items).into()),
+        );
+        self.heap.add_instance(instance)
+    }
+
+    /// Build an empty `Dict` instance and return it (nothing is pushed). The
+    /// caller fills it; if that runs `__hash__`/`__eq__` (re-entering the VM)
+    /// the returned value must be rooted first so the dict stays reachable.
+    pub(crate) fn new_dict(&mut self) -> Value {
+        let instance = Instance::new(
+            *self.heap.native_classes.get("Dict").unwrap(),
+            Some(Dict::default().into()),
+        );
+        self.heap.add_instance(instance)
+    }
+
     /// Build a tuple. The number of items is the operand.
     ///
     /// Items are on the stack in order from left to right

@@ -7,9 +7,7 @@
 //! flags. Only string escaping is delegated to `serde_json`.
 
 use crate::config::JSON_MAX_DEPTH;
-use crate::value::{
-    Dict, GenericInt, Instance, List, ModuleContents, ModuleExport, NativeClass, Number, Value,
-};
+use crate::value::{Dict, GenericInt, ModuleContents, ModuleExport, NativeClass, Number, Value};
 use crate::vm::ExceptionKind::{TypeError, ValueError};
 use crate::vm::VM;
 use crate::vm::errors::VmResult;
@@ -57,18 +55,10 @@ fn to_generic(vm: &mut VM, json: &serde_json::Value) -> VmResult<Value> {
             for item in items {
                 list_items.push(to_generic(vm, item)?);
             }
-            let instance = Instance::new(
-                *vm.heap.native_classes.get("List").unwrap(),
-                Some(List::new(list_items).into()),
-            );
-            vm.heap.add_instance(instance)
+            vm.new_list(list_items)
         }
         serde_json::Value::Object(entries) => {
-            let instance = Instance::new(
-                *vm.heap.native_classes.get("Dict").unwrap(),
-                Some(Dict::default().into()),
-            );
-            let dict = vm.heap.add_instance(instance);
+            let dict = vm.new_dict();
             for (key, value) in entries {
                 let key = vm.heap.string_id(key).into();
                 let value = to_generic(vm, value)?;

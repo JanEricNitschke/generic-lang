@@ -4,7 +4,7 @@
 //! [`keywords`]: crate::scanner::keywords
 
 use crate::scanner::keywords;
-use crate::value::{CreatorContext, Instance, List, ModuleContents, ModuleExport, Value};
+use crate::value::{CreatorContext, ModuleContents, ModuleExport, Value};
 use crate::vm::ExceptionKind::TypeError;
 use crate::vm::VM;
 use crate::vm::errors::VmResult;
@@ -15,11 +15,7 @@ fn make_kwlist(vm: &mut VM, _context: &CreatorContext) -> Value {
         .iter()
         .map(|keyword| vm.heap.string_id(keyword).into())
         .collect();
-    let instance = Instance::new(
-        *vm.heap.native_classes.get("List").unwrap(),
-        Some(List::new(items).into()),
-    );
-    vm.heap.add_instance(instance)
+    vm.new_list(items)
 }
 
 /// `iskeyword(name)` - whether `name` is a reserved word.

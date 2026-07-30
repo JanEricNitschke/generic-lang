@@ -1,7 +1,7 @@
 //! The `os` stdlib module: environment variables, system information,
 //! and the script's command line arguments.
 
-use crate::value::{CreatorContext, Dict, Instance, List, ModuleContents, ModuleExport, Value};
+use crate::value::{CreatorContext, Dict, ModuleContents, ModuleExport, Value};
 use crate::vm::ExceptionKind::TypeError;
 use crate::vm::VM;
 use crate::vm::errors::VmResult;
@@ -35,10 +35,7 @@ fn create_name(vm: &mut VM, _context: &CreatorContext) -> Value {
 /// A `Dict` snapshot of the environment at import time. Entries whose
 /// name or value is not valid UTF-8 are skipped.
 fn create_environ(vm: &mut VM, _context: &CreatorContext) -> Value {
-    let dict_class = *vm.heap.native_classes.get("Dict").unwrap();
-    let dict = vm
-        .heap
-        .add_instance(Instance::new(dict_class, Some(Dict::default().into())));
+    let dict = vm.new_dict();
     for (key, value) in std::env::vars_os() {
         let (Ok(key), Ok(value)) = (key.into_string(), value.into_string()) else {
             continue;
@@ -61,9 +58,7 @@ fn create_argv(vm: &mut VM, _context: &CreatorContext) -> Value {
         .iter()
         .map(|arg| vm.heap.string_id(arg).into())
         .collect();
-    let list_class = *vm.heap.native_classes.get("List").unwrap();
-    vm.heap
-        .add_instance(Instance::new(list_class, Some(List::new(items).into())))
+    vm.new_list(items)
 }
 
 /// Register the `os` module.
