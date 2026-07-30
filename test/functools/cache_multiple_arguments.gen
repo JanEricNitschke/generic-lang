@@ -1,0 +1,27 @@
+# `cache` keys on the whole positional-argument tuple, so calls that differ
+# in any argument, including argument order, are distinct cache entries. Each
+# real invocation prints, so cached calls stay silent.
+from "functools" import cache;
+
+@cache
+fun add(a, b) {
+    print(f"compute ${a}+${b}");
+    return a + b;
+}
+
+print(add(1, 2)); # a fresh key computes
+# expect: compute 1+2
+# expect: 3
+
+print(add(1, 2)); # the same tuple hits the cache
+# expect: 3
+
+print(add(2, 1)); # a different argument order is a different key
+# expect: compute 2+1
+# expect: 3
+
+print(add(1, 2)); # still cached
+# expect: 3
+
+# (hits, misses, maxsize, size): two hits, two distinct keys stored.
+print(add.cache_info()); # expect: (2, 2, nil, 2)

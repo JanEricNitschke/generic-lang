@@ -1,0 +1,37 @@
+# `lru_cache` keys on the full positional-argument tuple and evicts the least
+# recently used entry past `maxsize`. Recency order is noted oldest..newest.
+from "functools" import lru_cache;
+
+@lru_cache(2)
+fun combine(a, b) {
+    print(f"compute ${a},${b}");
+    return f"${a}-${b}";
+}
+
+print(combine(1, 2)); # [(1,2)]
+# expect: compute 1,2
+# expect: 1-2
+print(combine(3, 4)); # [(1,2), (3,4)]
+# expect: compute 3,4
+# expect: 3-4
+
+# A hit on (1,2) refreshes it to newest: [(3,4), (1,2)].
+print(combine(1, 2)); # expect: 1-2
+
+# A third key evicts the least recently used (3,4): [(1,2), (5,6)].
+print(combine(5, 6));
+# expect: compute 5,6
+# expect: 5-6
+
+# (3,4) was evicted and recomputes, evicting (1,2): [(5,6), (3,4)].
+print(combine(3, 4));
+# expect: compute 3,4
+# expect: 3-4
+
+# (1,2) was evicted too and recomputes.
+print(combine(1, 2));
+# expect: compute 1,2
+# expect: 1-2
+
+# (hits, misses, maxsize, size): one hit, five misses, bound of two.
+print(combine.cache_info()); # expect: (1, 5, 2, 2)
