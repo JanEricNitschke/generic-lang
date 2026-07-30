@@ -144,6 +144,11 @@ fn perform(
             )
         })
         .collect();
+    // The body is decoded as UTF-8 text. A non-UTF-8 (binary) or
+    // over-size-limit body therefore raises `IoError` even though the HTTP
+    // exchange itself succeeded, and the caller cannot inspect the status or
+    // headers of such a response. This is a known limitation: the module
+    // exposes text bodies only for now.
     let body = match response.body_mut().read_to_string() {
         Ok(body) => body,
         Err(error) => {
