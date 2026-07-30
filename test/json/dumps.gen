@@ -73,6 +73,14 @@ try {
     print(e.message()); # expect: 'dumps' indent must not be negative.
 }
 
+# An indent large enough to overflow the padding computation is rejected
+# instead of panicking or attempting a huge allocation.
+try {
+    json.dumps([[[1]]], 9000000000000000000);
+} catch TypeError as e {
+    print(e.message()); # expect: 'dumps' indent is unreasonably large.
+}
+
 # Circular references are detected.
 var cyclic = [1];
 cyclic.append(cyclic);
