@@ -53,16 +53,21 @@ macro_rules! run_instruction {
                 $self.stack.push((1.0).into());
                 Ok(None)
             }
+            // The stack index is the operand.
             op @ (OpCode::GetLocal | OpCode::GetLocalLong) => {
                 $self.get_local(op);
                 Ok(None)
             }
+            // The stack index is the operand; the value to set is on the stack.
             op @ (OpCode::SetLocal | OpCode::SetLocalLong) => {
                 $self.set_local(op);
                 Ok(None)
             }
+            // The global's name is the operand.
             op @ (OpCode::GetGlobal | OpCode::GetGlobalLong) => $self.get_global(op),
+            // The global's name is the operand; the value to set is on the stack.
             op @ (OpCode::SetGlobal | OpCode::SetGlobalLong) => $self.set_global(op),
+            // The global's name is the operand; the value to bind is on the stack.
             op @ (OpCode::DefineGlobal
             | OpCode::DefineGlobalLong
             | OpCode::DefineGlobalConst
@@ -162,11 +167,6 @@ macro_rules! run_instruction {
                 $self.jump_if_nil();
                 Ok(None)
             }
-            // Grabs index (into the stack) as the operand (next bytecode)
-            // Index is the operand again, value to set is on the stack
-            // Global to get passed as operand
-            // Global whose value to set is operand, value to use is on the stack
-            // Name of the global to define comes from the operand, value
             OpCode::JumpIfFalse => $self.jump_conditional(JumpCondition::IfFalse),
             OpCode::JumpIfTrue => $self.jump_conditional(JumpCondition::IfTrue),
             OpCode::PopJumpIfFalse => $self.pop_jump_conditional(JumpCondition::IfFalse),

@@ -105,14 +105,14 @@ impl Class {
         }
     }
 
-    /// The current value of a class variable, if it is declared and has a
-    /// default.
     /// Remove a class variable; the remaining declaration order is
     /// preserved (`shift_remove`), which dataclass field order relies on.
     pub(crate) fn remove_class_variable(&mut self, name: StringId) -> Option<ClassVariable> {
         self.variables.shift_remove(&name)
     }
 
+    /// The current value of a class variable, if it is declared and has a
+    /// default.
     pub(crate) fn class_variable_value(&self, name: StringId) -> Option<Value> {
         self.variables
             .get(&name)
