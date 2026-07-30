@@ -11,6 +11,7 @@ use crate::value::{Dict, GenericInt, ModuleContents, ModuleExport, NativeClass, 
 use crate::vm::ExceptionKind::{TypeError, ValueError};
 use crate::vm::VM;
 use crate::vm::errors::VmResult;
+use num_bigint::BigInt;
 use rustc_hash::FxHashSet as HashSet;
 
 use crate::heap::InstanceId;
@@ -25,7 +26,7 @@ fn to_generic(vm: &mut VM, json: &serde_json::Value) -> VmResult<Value> {
             if let Some(integer) = number.as_i64() {
                 integer.into()
             } else if let Some(unsigned) = number.as_u64() {
-                vm.heap.add_big_int(num_bigint::BigInt::from(unsigned))
+                vm.heap.add_big_int(BigInt::from(unsigned))
             } else {
                 // Beyond i64/u64. `arbitrary_precision` keeps the original
                 // literal: a plain integer literal is an exact big int,
@@ -43,7 +44,7 @@ fn to_generic(vm: &mut VM, json: &serde_json::Value) -> VmResult<Value> {
                         .into()
                 } else {
                     let big = literal
-                        .parse::<num_bigint::BigInt>()
+                        .parse::<BigInt>()
                         .expect("serde validated the integer literal");
                     vm.heap.add_big_int(big)
                 }
@@ -123,6 +124,13 @@ impl Dumper {
             Value::Number(Number::Float(float)) => {
                 if !float.is_finite() {
                     return Self::type_error(vm, "a non-finite float");
+                }
+                out.push_str(&serde_json::to_string(&float).expect("finite floats serialize"));
+            }
+            Value::Number(Number::Rational(rational)) => {
+                let float = rational.to_f64(&vm.heap);
+                if !float.is_finite() {
+                    return Self::type_error(vm, "a non-finite rational");
                 }
                 out.push_str(&serde_json::to_string(&float).expect("finite floats serialize"));
             }
