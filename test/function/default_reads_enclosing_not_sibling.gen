@@ -1,0 +1,17 @@
+# A default expression resolves in the scope enclosing the function, so a
+# name in a default binds the enclosing variable, never a sibling parameter
+# of the same name. Here `width`'s default reads the outer `span` captured at
+# definition time, not the `span` parameter.
+var span = 100;
+fun measure(span, width=span) {
+    return (span, width);
+}
+
+# `width` takes the enclosing `span` (100), independent of the argument.
+print(measure(7)); # expect: (7, 100)
+print(measure(7, 3)); # expect: (7, 3)
+
+# The default is captured once at definition; reassigning the outer name
+# afterwards does not change it.
+span = 999;
+print(measure(7)); # expect: (7, 100)
