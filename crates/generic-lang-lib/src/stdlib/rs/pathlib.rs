@@ -14,7 +14,7 @@ use std::path::{Component, Path as StdPath, PathBuf};
 
 use rustc_hash::FxHasher;
 
-use crate::value::{Instance, List, ModuleContents, ModuleExport, NativeClass, Path, Value};
+use crate::value::{Instance, ModuleContents, ModuleExport, NativeClass, Path, Value};
 use crate::vm::ExceptionKind::{IoError, TypeError};
 use crate::vm::VM;
 use crate::vm::errors::VmResult;
@@ -216,11 +216,7 @@ fn path_iterdir_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResu
             }
         }
     }
-    let instance = Instance::new(
-        *vm.heap.native_classes.get("List").unwrap(),
-        Some(List::new(children).into()),
-    );
-    Ok(vm.heap.add_instance(instance))
+    Ok(vm.new_list(children))
 }
 
 /// `p.parts()` - the path components as a list of strings, the root (if
@@ -239,11 +235,7 @@ fn path_parts_native(vm: &mut VM, receiver: &Value, _args: &[Value]) -> VmResult
         .iter()
         .map(|text| vm.heap.string_id(text).into())
         .collect();
-    let instance = Instance::new(
-        *vm.heap.native_classes.get("List").unwrap(),
-        Some(List::new(parts).into()),
-    );
-    Ok(vm.heap.add_instance(instance))
+    Ok(vm.new_list(parts))
 }
 
 /// `p.mkdir()` - create the directory, including any missing parents;

@@ -11,9 +11,7 @@ use rand::seq::{IndexedRandom, SliceRandom};
 use rand::{RngExt, SeedableRng};
 
 use crate::heap::InstanceId;
-use crate::value::{
-    GenericInt, Instance, List, ModuleContents, ModuleExport, NativeClass, Number, Value,
-};
+use crate::value::{GenericInt, ModuleContents, ModuleExport, NativeClass, Number, Value};
 use crate::vm::ExceptionKind::{TypeError, ValueError};
 use crate::vm::VM;
 use crate::vm::errors::VmResult;
@@ -175,11 +173,7 @@ fn sample_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
         };
         list.items.sample(&mut vm.rng, k).copied().collect()
     };
-    let instance = Instance::new(
-        *vm.heap.native_classes.get("List").unwrap(),
-        Some(List::new(chosen).into()),
-    );
-    Ok(vm.heap.add_instance(instance))
+    Ok(vm.new_list(chosen))
 }
 
 /// `seed(n)` - reseed the VM's generator for reproducible sequences.
