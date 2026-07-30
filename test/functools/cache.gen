@@ -1,0 +1,69 @@
+# Memoization through `cache`: each real invocation prints its argument
+# as `n=...`, so computed calls and return values are distinguishable in
+# the expected output. The same body is defined twice, plain and
+# decorated, and both run n = 5.
+from "functools" import cache;
+
+fun fib(n) {
+    print(f"n=${n}");
+    if (n < 2) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+@cache
+fun fib_cached(n) {
+    print(f"n=${n}");
+    if (n < 2) {
+        return n;
+    }
+    return fib_cached(n - 1) + fib_cached(n - 2);
+}
+
+# The plain recursion recomputes everything: 15 calls for n = 5.
+print(fib(5));
+# expect: n=5
+# expect: n=4
+# expect: n=3
+# expect: n=2
+# expect: n=1
+# expect: n=0
+# expect: n=1
+# expect: n=2
+# expect: n=1
+# expect: n=0
+# expect: n=3
+# expect: n=2
+# expect: n=1
+# expect: n=0
+# expect: n=1
+# expect: 5
+
+# Decorated, recursion resolves through the binding: every level is
+# memoized, so each n computes exactly once.
+print(fib_cached(5));
+# expect: n=5
+# expect: n=4
+# expect: n=3
+# expect: n=2
+# expect: n=1
+# expect: n=0
+# expect: 5
+
+# The same arguments hit the cache: nothing computes.
+print(fib_cached(5)); # expect: 5
+
+print(fib_cached.cache_info()); # expect: (4, 6, nil, 6)
+fib_cached.cache_clear();
+print(fib_cached.cache_info()); # expect: (0, 0, nil, 0)
+
+# Cleared: the memoized chain computes again.
+print(fib_cached(5));
+# expect: n=5
+# expect: n=4
+# expect: n=3
+# expect: n=2
+# expect: n=1
+# expect: n=0
+# expect: 5

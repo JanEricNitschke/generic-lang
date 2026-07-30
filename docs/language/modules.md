@@ -173,7 +173,11 @@ The bundled modules:
   `reduce(f, iterable, initial)` folds an iterable with `f(acc, item)`;
   `partial(f, args...)` returns a callable with the leading arguments
   bound; `cmp_to_key(cmp)` turns a two-argument comparator into a key
-  function for `sorted` / `list.sort`.
+  function for `sorted` / `list.sort`; `cache(f)` memoizes by the
+  positional-argument tuple without bounds and `lru_cache(n)` with
+  least-recently-used eviction beyond `n` entries - both return a
+  callable wrapper carrying `cache_info()` (hits, misses, maxsize,
+  current size) and `cache_clear()`.
 - **`itertools`** - lazy building blocks for iterables:
   `accumulate(iterable, func=nil)` (running fold, omitted/`nil` func adds),
   `batched(iterable, n)`, `chain(iterables)`, `cycle(iterable)`,
