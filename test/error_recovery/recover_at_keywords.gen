@@ -1,0 +1,6 @@
+# After a syntax error, recovery must resume at a statement-starting keyword
+# rather than skip past it and cascade a second error. A missing ';' before
+# each keyword is the trigger; only the one marked error is reported per
+# statement because recovery stops at the keyword and parses it cleanly.
+var a = 1 gen g() { yield a; }  # Error at 'gen': Expect ';' after variable declaration.
+var b = 2 import "math";  # Error at 'import': Expect ';' after variable declaration.
