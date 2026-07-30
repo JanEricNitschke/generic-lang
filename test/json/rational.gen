@@ -7,3 +7,16 @@ print(json.dumps(4:2)); # expect: 2.0
 
 # Nested inside a container as well.
 print(json.dumps([1:2, 4:2])); # expect: [0.5, 2.0]
+
+# Rationals with big-integer components serialize by their true value. A big
+# denominator must not collapse the result to 0.0: the round-tripped float
+# equals the original rational exactly (with the old lossy to_f64 it was 0.0,
+# which the rational never equals).
+var tiny = json.loads(json.dumps(1 : 10000000000000000000));
+print((1 : 10000000000000000000) == tiny); # expect: true
+
+# A big numerator must not be rejected as non-finite; it serializes to its true
+# magnitude ~3.3333e18 (a whole float at that scale), pinned to a narrow window.
+var large = json.loads(json.dumps(10000000000000000000 : 3));
+print(large > 3333333333333333000.0); # expect: true
+print(large < 3333333333333334000.0); # expect: true

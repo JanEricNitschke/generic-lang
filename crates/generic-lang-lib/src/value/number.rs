@@ -5,6 +5,7 @@ use num_bigint::BigInt;
 use num_traits::FromPrimitive;
 use num_traits::Pow;
 use num_traits::Signed;
+use num_traits::ToPrimitive;
 use num_traits::identities::Zero;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
@@ -726,10 +727,9 @@ impl GenericInt {
     pub(crate) fn to_f64(&self, heap: &Heap) -> f64 {
         match self {
             Self::Small(n) => *n as f64,
-            Self::Big(n) => match i64::try_from((n.to_value(heap)).clone()) {
-                Ok(n) => n as f64,
-                Err(_) => f64::INFINITY, // Or f64::MAX?
-            },
+            // Round to the nearest `f64` by value; only genuinely
+            // out-of-range magnitudes (beyond `f64::MAX`) become infinity.
+            Self::Big(n) => n.to_value(heap).to_f64().unwrap_or(f64::INFINITY),
         }
     }
 
