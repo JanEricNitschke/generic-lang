@@ -263,6 +263,10 @@ impl Dumper {
     }
 }
 
+/// Upper bound on the per-level indent width, keeping `indent * depth` well
+/// within `usize` and the emitted padding to a sane size.
+const MAX_INDENT: usize = 128;
+
 /// `dumps(value)` / `dumps(value, indent)` - serialize to JSON. Lists
 /// and tuples become arrays, dicts (string keys only) become objects.
 fn dumps_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
@@ -270,7 +274,12 @@ fn dumps_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
         None => None,
         Some(&Value::Number(Number::Integer(GenericInt::Small(small)))) => {
             match usize::try_from(small) {
-                Ok(indent) => Some(indent),
+                Ok(indent) if indent <= MAX_INDENT => Some(indent),
+                Ok(_) => {
+                    return Err(vm
+                        .throw(TypeError, "'dumps' indent is unreasonably large.")
+                        .unwrap_err());
+                }
                 Err(_) => {
                     return Err(vm
                         .throw(TypeError, "'dumps' indent must not be negative.")
