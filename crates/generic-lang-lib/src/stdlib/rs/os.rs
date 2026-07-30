@@ -1,6 +1,8 @@
 //! The `os` stdlib module: environment variables, system information,
 //! and the script's command line arguments.
 
+use std::env;
+
 use crate::value::{CreatorContext, Dict, ModuleContents, ModuleExport, Value};
 use crate::vm::ExceptionKind::TypeError;
 use crate::vm::VM;
@@ -22,21 +24,21 @@ fn getenv_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             .unwrap_err());
     };
     let name = name_id.to_value(&vm.heap).clone();
-    match std::env::var(&name) {
+    match env::var(&name) {
         Ok(value) => Ok(vm.heap.string_id(&value).into()),
         Err(_) => Ok(args.get(1).copied().unwrap_or(Value::Nil)),
     }
 }
 
 fn create_name(vm: &mut VM, _context: &CreatorContext) -> Value {
-    vm.heap.string_id(&std::env::consts::OS).into()
+    vm.heap.string_id(&env::consts::OS).into()
 }
 
 /// A `Dict` snapshot of the environment at import time. Entries whose
 /// name or value is not valid UTF-8 are skipped.
 fn create_environ(vm: &mut VM, _context: &CreatorContext) -> Value {
     let dict = vm.new_dict();
-    for (key, value) in std::env::vars_os() {
+    for (key, value) in env::vars_os() {
         let (Ok(key), Ok(value)) = (key.into_string(), value.into_string()) else {
             continue;
         };
