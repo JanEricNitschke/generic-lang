@@ -460,8 +460,8 @@ generic_lang_api::export_module![
 ```
 
 ```generic
-import "my_plugin";
-print(my_plugin.answer);   # 42
+import "demo";
+print(demo.answer);   # 42
 ```
 
 A creator may use any host callback, including re-entering ones (the
