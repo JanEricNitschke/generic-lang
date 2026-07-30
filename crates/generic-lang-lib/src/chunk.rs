@@ -157,7 +157,7 @@ pub enum OpCode {
 
     // Argument unpacking (`f(*xs)`). Each carries a segment count followed by
     // a spread bitmap marking which segments are spreads.
-    UnpackCall,
+    CallUnpack,
     InvokeUnpack,
     SuperInvokeUnpack,
 }
@@ -372,7 +372,7 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
                 Closure => 1 + self.upvalue_code_len(offset, heap),
                 ImportFrom => 2 + self.import_from_len(offset),
                 // segment-count byte + a ceil(segments / 8)-byte spread bitmap.
-                UnpackCall => 1 + self.spread_bitmap_len(offset + 1),
+                CallUnpack => 1 + self.spread_bitmap_len(offset + 1),
                 // method-name byte + segment count + the spread bitmap.
                 InvokeUnpack | SuperInvokeUnpack => 2 + self.spread_bitmap_len(offset + 2),
             }
@@ -716,7 +716,7 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
     }
 
     /// `OP_UNPACK_CALL`: a segment count followed by the spread bitmap.
-    fn debug_unpack_call_opcode(
+    fn debug_call_unpack_opcode(
         &self,
         f: &mut std::fmt::Formatter,
         name: &str,
@@ -922,7 +922,7 @@ impl Debug for InstructionDisassembler<'_, '_> {
                 Throw,
                 Reraise
             ),
-            unpack_call(UnpackCall),
+            call_unpack(CallUnpack),
             invoke_unpack(InvokeUnpack, SuperInvokeUnpack),
         )?;
         Ok(())

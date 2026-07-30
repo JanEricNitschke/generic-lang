@@ -444,7 +444,7 @@ impl VM {
 
     /// `OP_UNPACK_CALL`: flatten the argument segments and call the callee
     /// sitting below them.
-    pub(super) fn unpack_call(&mut self) -> VmResult {
+    pub(super) fn call_unpack(&mut self) -> VmResult {
         let arg_count = self.gather_unpacked_arguments()?;
         let callee = *self
             .peek(usize::from(arg_count))
