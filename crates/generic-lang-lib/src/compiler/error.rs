@@ -59,13 +59,21 @@ impl Compiler<'_, '_> {
             if let Some(
                 TK::Class
                 | TK::Fun
+                | TK::Gen
                 | TK::At
                 | TK::Const
                 | TK::Var
                 | TK::For
+                | TK::ForEach
                 | TK::If
+                | TK::Unless
                 | TK::While
-                | TK::Return,
+                | TK::Until
+                | TK::Switch
+                | TK::Return
+                | TK::Try
+                | TK::Throw
+                | TK::Import,
             ) = self.current_token_kind()
             {
                 #[cfg(feature = "debug_parser")]
