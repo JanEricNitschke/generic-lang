@@ -333,6 +333,7 @@ cargo hack clippy --each-feature --no-dev-deps -p generic-lang-lib -- -W clippy:
 make check-plugin-header   # regenerate the header, fail on drift (it is purely cbindgen output)
 make plugin-lint   # clang-format + cpplint (C/C++), zig fmt (Zig), rustfmt+clippy (Rust) on plugin-examples/
 make plugin-std-check   # C/C++ examples must compile at the oldest supported standards (C99/C++11)
+make downstream-test   # the downstream TicTacToe suite and two piped games against the built interpreter (network: clones the repo)
 make dart-lint     # dart analyze + format check on the test runner in tool/
 RUSTDOCFLAGS="-D warnings" cargo doc -p generic-lang-api --no-deps   # public ABI fully documented
 cargo test

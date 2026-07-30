@@ -290,3 +290,13 @@ more-benchmark-ci: $(REL_BIN)
 fib-benchmark-ci: $(REL_BIN)
 	hyperfine --reference "./target/release/generic benchmark/fib/fib.gen" --warmup 1 "./reference/craftinginterpreters/clox benchmark/fib/fib.lox.nom"   \
 	"python benchmark/fib/fib.py" "ruby benchmark/fib/fib.rb" "./reference/craftinginterpreters/jlox benchmark/fib/fib.lox.nom" \
+
+# A real downstream program: clone the generic TicTacToe and run its test
+# suite and two full piped games against the freshly built interpreter.
+.PHONY: downstream-test
+downstream-test: $(DEBUG_BIN)
+	rm -rf target/downstream/TicTacToe
+	git clone --depth 1 https://github.com/JanEricNitschke/TicTacToe target/downstream/TicTacToe
+	cd target/downstream/TicTacToe/tictactoe_generic && $(CURDIR)/$(DEBUG_BIN) --test tests/
+	cd target/downstream/TicTacToe/tictactoe_generic && printf 'n\n0\n1\n2\n3\n4\n5\n6\n' | $(CURDIR)/$(DEBUG_BIN) tictactoe_generic.gen | grep "Player X wins the game!"
+	cd target/downstream/TicTacToe/tictactoe_generic && printf 'n\n0\n4\n8\n1\n7\n6\n2\n5\n3\n' | $(CURDIR)/$(DEBUG_BIN) tictactoe_generic.gen | grep "Match Draw!"
