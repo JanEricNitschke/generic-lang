@@ -3,11 +3,7 @@
 
 # Turn any iterable into a tuple of its items.
 fun _to_tuple(iterable) {
-    var result = Tuple();
-    foreach (var item in iterable) {
-        result = result + Tuple(item);
-    }
-    return result;
+    return Tuple(*iterable);
 }
 
 # Yield the running results of folding the iterable with `func`, starting
@@ -120,11 +116,11 @@ gen product(iterables) {
         indices.append(0);
     }
     while (true) {
-        var combination = Tuple();
+        var items = [];
         foreach (var slot in 0..<len(pools)) {
-            combination = combination + Tuple(pools[slot][indices[slot]]);
+            items.append(pools[slot][indices[slot]]);
         }
-        yield combination;
+        yield Tuple(*items);
 
         var cursor = len(pools) - 1;
         while (cursor >= 0) {
