@@ -48,3 +48,54 @@ print(left == same_order); # expect: true
 print(left == other_order); # expect: false
 print(left == {"b": 2, "a": 1}); # expect: true
 print(left == {"a": 1}); # expect: false
+
+# Recency and end access: moves in both directions, pops at both ends.
+var moved = OrderedDict();
+moved["a"] = 1;
+moved["b"] = 2;
+moved["c"] = 3;
+
+moved.move_to_start("c");
+print(List(moved.keys())); # expect: [c, a, b]
+moved.move_to_end("c");
+print(List(moved.keys())); # expect: [a, b, c]
+
+# Moving a key already at the target end changes nothing.
+moved.move_to_end("c");
+print(List(moved.keys())); # expect: [a, b, c]
+moved.move_to_start("a");
+print(List(moved.keys())); # expect: [a, b, c]
+
+print(moved.popend()); # expect: (c, 3)
+print(moved.popstart()); # expect: (a, 1)
+print(List(moved.keys())); # expect: [b]
+
+# A moved key keeps its value, and iteration follows the new order.
+moved["e"] = 5;
+moved.move_to_start("e");
+print(List(moved.items())); # expect: [(e, 5), (b, 2)]
+
+try {
+    moved.move_to_end("missing");
+} catch KeyError as e {
+    print(e.message()); # expect: Key `missing` not found.
+}
+
+moved.pop("e");
+moved.pop("b");
+try {
+    moved.popend();
+} catch KeyError as e {
+    print(e.message()); # expect: popend from an empty OrderedDict
+}
+try {
+    moved.popstart();
+} catch KeyError as e {
+    print(e.message()); # expect: popstart from an empty OrderedDict
+}
+
+# A single-element dict survives moves in both directions.
+moved["solo"] = 0;
+moved.move_to_end("solo");
+moved.move_to_start("solo");
+print(moved.popstart()); # expect: (solo, 0)

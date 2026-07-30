@@ -266,14 +266,34 @@ class OrderedDict < Dict {
         return super.__eq__(other);
     }
 
+    # Detach `link` from the order list.
+    _unlink(link) {
+        link.previous.next = link.next;
+        link.next.previous = link.previous;
+    }
+
+    # Attach `link` in front of the sentinel: the newest position.
+    _append_link(link) {
+        var newest = this.sentinel.previous;
+        link.previous = newest;
+        link.next = this.sentinel;
+        newest.next = link;
+        this.sentinel.previous = link;
+    }
+
+    # Attach `link` behind the sentinel: the oldest position.
+    _prepend_link(link) {
+        var oldest = this.sentinel.next;
+        link.next = oldest;
+        link.previous = this.sentinel;
+        oldest.previous = link;
+        this.sentinel.next = link;
+    }
+
     __setitem__(key, value) {
         if (!this.contains(key)) {
             var link = _Link(key);
-            var newest = this.sentinel.previous;
-            link.previous = newest;
-            link.next = this.sentinel;
-            newest.next = link;
-            this.sentinel.previous = link;
+            this._append_link(link);
             this.links[key] = link;
         }
         super.__setitem__(key, value);
@@ -282,10 +302,41 @@ class OrderedDict < Dict {
     pop(key) {
         # Throws KeyError for a missing key before the order changes.
         var value = super.pop(key);
-        var link = this.links.pop(key);
-        link.previous.next = link.next;
-        link.next.previous = link.previous;
+        this._unlink(this.links.pop(key));
         return value;
+    }
+
+    # Relink `key` at the newest end of the order; a missing key throws
+    # KeyError (through the `links` lookup, like `pop`).
+    move_to_end(key) {
+        var link = this.links[key];
+        this._unlink(link);
+        this._append_link(link);
+    }
+
+    # Relink `key` at the oldest end of the order.
+    move_to_start(key) {
+        var link = this.links[key];
+        this._unlink(link);
+        this._prepend_link(link);
+    }
+
+    # Remove and return the newest `(key, value)` entry.
+    popend() {
+        if (len(this) == 0) {
+            throw KeyError("popend from an empty OrderedDict");
+        }
+        var key = this.sentinel.previous.key;
+        return (key, this.pop(key));
+    }
+
+    # Remove and return the oldest `(key, value)` entry.
+    popstart() {
+        if (len(this) == 0) {
+            throw KeyError("popstart from an empty OrderedDict");
+        }
+        var key = this.sentinel.next.key;
+        return (key, this.pop(key));
     }
 
     clear() {
