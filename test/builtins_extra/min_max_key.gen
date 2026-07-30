@@ -1,0 +1,30 @@
+# min/max with a key: elements are compared by key(element), the extremal
+# element itself is returned, and ties keep the first candidate.
+
+# A key can invert the ordering; the ELEMENT is returned, not its key.
+print(min([1, 2, 3, 4], ->(x) -x)); # expect: 4
+print(max([1, 2, 3, 4], ->(x) -x)); # expect: 1
+
+# The extremum is chosen by the key value.
+print(min([1, 2, 3, 4], ->(x) x % 3)); # expect: 3
+print(max([1, 2, 3, 4], ->(x) x % 3)); # expect: 2
+
+# On equal keys the first candidate wins, for both min and max.
+print(min([2, 4, 1, 3], ->(x) x % 2)); # expect: 2
+print(max([2, 4, 1, 3], ->(x) x % 2)); # expect: 1
+
+# An explicit nil key compares the elements directly, as if omitted.
+print(min([3, 1, 2], nil)); # expect: 1
+print(max([3, 1, 2], nil)); # expect: 3
+
+# A keyed min/max of an empty sequence still raises ValueError.
+try {
+    min([], ->(x) x);
+} catch ValueError as e {
+    print(e.message()); # expect: min() arg is an empty sequence
+}
+try {
+    max([], ->(x) x);
+} catch ValueError as e {
+    print(e.message()); # expect: max() arg is an empty sequence
+}
