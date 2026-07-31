@@ -1,23 +1,27 @@
 from "pathlib" import Path;
 
+fun show(path) {
+    return str(path).replace("\", "/");
+}
+
 # A path renders as Path(...), including through interpolation.
 var p = Path("foo/bar/baz.txt");
-print(p); # expect: Path(foo/bar/baz.txt)
-print(f"at ${p}"); # expect: at Path(foo/bar/baz.txt)
+print(show(p)); # expect: Path(foo/bar/baz.txt)
+print(show(f"at ${p}")); # expect: at Path(foo/bar/baz.txt)
 
 # to_str() gives the raw path text (the one place it is needed).
-print(p.to_str()); # expect: foo/bar/baz.txt
+print(show(p.to_str())); # expect: foo/bar/baz.txt
 
 # Components: name/stem/suffix return plain strings.
 print(p.name()); # expect: baz.txt
 print(p.stem()); # expect: baz
 print(p.suffix()); # expect: .txt
-print(p.parent()); # expect: Path(foo/bar)
+print(show(p.parent())); # expect: Path(foo/bar)
 
 # Joining with the operator and the method, and chaining.
-print(p / "extra"); # expect: Path(foo/bar/baz.txt/extra)
-print(p.join("extra")); # expect: Path(foo/bar/baz.txt/extra)
-print(Path("a") / "b" / "c"); # expect: Path(a/b/c)
+print(show(p / "extra")); # expect: Path(foo/bar/baz.txt/extra)
+print(show(p.join("extra"))); # expect: Path(foo/bar/baz.txt/extra)
+print(show(Path("a") / "b" / "c")); # expect: Path(a/b/c)
 
 # A path with no extension has an empty suffix.
 print(Path("README").suffix()); # expect:
@@ -31,23 +35,30 @@ print(Path("a/b") == 5); # expect: false
 print(isinstance(p, Path)); # expect: true
 
 # Path accepts another path.
-print(Path(Path("x/y"))); # expect: Path(x/y)
+print(show(Path(Path("x/y")))); # expect: Path(x/y)
 
 # Paths are lexically normalized at creation (drop `.`, redundant and
 # trailing separators; keep `..` since folding it is unsound under
 # symlinks) - the familiar PurePath behavior.
-print(Path("a/./b")); # expect: Path(a/b)
-print(Path("a//b")); # expect: Path(a/b)
-print(Path("a/b/")); # expect: Path(a/b)
-print(Path("./a")); # expect: Path(a)
-print(Path("a/../b")); # expect: Path(a/../b)
-print(Path("")); # expect: Path(.)
+
+
+
+print(show(Path("a/./b"))); # expect: Path(a/b)
+print(show(Path("a//b"))); # expect: Path(a/b)
+print(show(Path("a/b/"))); # expect: Path(a/b)
+print(show(Path("./a"))); # expect: Path(a)
+print(show(Path("a/../b"))); # expect: Path(a/../b)
+print(show(Path(""))); # expect: Path(.)
 print(Path("a/./b") == Path("a/b")); # expect: true
 print(Path("a/../b") == Path("b")); # expect: false
 
 # parts lists the components as strings (root included).
 print(Path("a/b/c").parts()); # expect: [a, b, c]
-print(Path("/a/b").parts()); # expect: [/, a, b]
+foreach (var part in Path("/a/b").parts()) {
+    print(part.replace("\", "/"));  # expect: /
+                                    # expect: a
+                                    # expect: b
+}
 print(Path("a").parts()); # expect: [a]
 
 # A non-path, non-string argument raises.

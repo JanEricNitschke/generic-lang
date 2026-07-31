@@ -340,6 +340,8 @@ impl_from_for_native_class!(
     Interpolation,
     Partial,
     Field,
+    Path,
+    Response,
 );
 
 /// Backing of the `partial` class of the `functools` stdlib module: the
@@ -400,12 +402,6 @@ pub struct Path {
 impl Path {
     fn to_string(&self, _heap: &Heap, _depth: usize) -> String {
         format!("Path({})", self.path.to_string_lossy())
-    }
-}
-
-impl From<Path> for NativeClass {
-    fn from(path: Path) -> Self {
-        Self::Path(path)
     }
 }
 
@@ -1471,11 +1467,5 @@ pub struct Response {
 impl Response {
     fn to_string(&self, _heap: &Heap, _depth: usize) -> String {
         format!("<Response [{}]>", self.status)
-    }
-}
-
-impl From<Response> for NativeClass {
-    fn from(response: Response) -> Self {
-        Self::Response(response)
     }
 }
