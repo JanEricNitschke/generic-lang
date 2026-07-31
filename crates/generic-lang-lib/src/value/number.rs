@@ -1006,7 +1006,28 @@ impl GenericRational {
 
     // Conversion operations
     pub fn to_f64(&self, heap: &Heap) -> f64 {
-        self.numerator.to_f64(heap) / self.denominator.to_f64(heap)
+        let num = self.numerator.to_f64(heap);
+        let den = self.denominator.to_f64(heap);
+        // A component past `f64::MAX` becomes infinity. That divides correctly
+        // unless *both* overflow: then `inf / den` or `num / inf` still gives
+        // the right answer, but `inf / inf` is `NaN` even when the true ratio
+        // is finite (two huge coprime components).
+        if num.is_finite() || den.is_finite() {
+            return num / den;
+        }
+        // Both overflow, so scale them down by the same power of two, keeping
+        // the ratio, until each fits `f64` (which overflows past `2^1024`). The
+        // shifted-off bits sit far below `f64`'s 53-bit precision, so the
+        // quotient is unchanged.
+        let numerator = self.numerator.to_bigint(heap);
+        let denominator = self.denominator.to_bigint(heap);
+        let shift = numerator
+            .bits()
+            .max(denominator.bits())
+            .saturating_sub(1000);
+        let num = (numerator >> shift).to_f64().unwrap_or(f64::INFINITY);
+        let den = (denominator >> shift).to_f64().unwrap_or(f64::INFINITY);
+        num / den
     }
 
     pub fn is_zero(&self, heap: &Heap) -> bool {

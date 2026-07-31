@@ -20,3 +20,22 @@ print((1 : 10000000000000000000) == tiny); # expect: true
 var large = json.loads(json.dumps(10000000000000000000 : 3));
 print(large > 3333333333333333000.0); # expect: true
 print(large < 3333333333333334000.0); # expect: true
+
+# When BOTH components exceed the f64 range the naive divide is inf / inf (NaN),
+# which used to be rejected as non-finite even though the value is finite. A
+# coprime numerator and denominator that both overflow f64 still serialize by
+# their true, finite ratio (here exactly one half). Repeated squaring builds
+# 2^2048 (far past the f64 range); an odd numerator keeps the fraction reduced.
+var power = 2;
+power = power * power;
+power = power * power;
+power = power * power;
+power = power * power;
+power = power * power;
+power = power * power;
+power = power * power;
+power = power * power;
+power = power * power;
+power = power * power;
+power = power * power;
+print(json.dumps((power + 1) : (power * 2))); # expect: 0.5
