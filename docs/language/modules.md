@@ -68,7 +68,7 @@ These are always in scope (no import needed):
 | `iter(x)`, `next(x[, default])` | The iterator protocol; `next` returns `default` (instead of `StopIteration`) once the iterator is spent. |
 | `all(iter)`, `any(iter)` | Boolean reductions. |
 | `abs(x)`, `round(x)` | Absolute value; nearest integer (ties to even). |
-| `min(iter)`, `max(iter)`, `sum(iter[, start])` | Reductions over an iterable; `sum` adds onto `start` (default `0`). |
+| `min(iter[, key])`, `max(iter[, key])`, `sum(iter[, start])` | Reductions over an iterable; `min`/`max` compare by `key(element)` when a key is given and return the element itself (first wins on ties); `sum` adds onto `start` (default `0`). |
 | `bool(x)`, `ord(s)`, `chr(n)`, `hash(x)` | Truthiness; code point of a 1-char string and back; hash of a value. |
 | `map(f, iter)`, `filter(f, iter)` | Lazy generators. |
 | `zip(a, b)` | Lazy generator of pairs, stopping at the shorter. |
