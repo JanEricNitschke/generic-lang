@@ -90,7 +90,7 @@ fn randint_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             )
             .unwrap_err());
     };
-    let (GenericInt::Small(low), GenericInt::Small(high)) = (low, high) else {
+    let (Ok(low), Ok(high)) = (low.try_to_i64(&vm.heap), high.try_to_i64(&vm.heap)) else {
         return Err(vm
             .throw(ValueError, "'randint' bounds must fit in a 64-bit integer")
             .unwrap_err());
@@ -103,7 +103,7 @@ fn randint_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             )
             .unwrap_err());
     }
-    Ok(vm.rng.random_range(*low..=*high).into())
+    Ok(vm.rng.random_range(low..=high).into())
 }
 
 /// `choice(list)` - a random element of a non-empty list.
