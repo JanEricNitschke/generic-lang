@@ -29,7 +29,7 @@ print(time.monotonic_ns() - before_ns >= 10000000); # expect: true
 
 try {
     time.sleep(-1);
-} catch TypeError as e {
+} catch ValueError as e {
     print(e.message()); # expect: 'sleep' expects a non-negative number of seconds, got: -1
 }
 try {
