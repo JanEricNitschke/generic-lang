@@ -19,6 +19,9 @@ path = "src/main.rs"
 clap             = { workspace = true }
 generic-lang-lib = { workspace = true }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [features]
 default                 = ["plugins"]
 plugins                 = ["generic-lang-lib/plugins"]

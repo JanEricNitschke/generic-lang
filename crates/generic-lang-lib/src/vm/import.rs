@@ -53,12 +53,18 @@ impl VM {
                 let module_path = &module.to_value(&self.heap).path;
 
                 // Check if this is NOT a stdlib module
-                let is_not_stdlib = module_path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_none_or(|filename| GENERIC_STDLIB_DIR.get_file(filename).is_none());
+                let is_not_stdlib =
+                    module_path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .is_none_or(|filename| {
+                            GENERIC_STDLIB_DIR
+                                .get_file(format!("{filename}.gen"))
+                                .is_none()
+                        });
 
-                is_not_stdlib && module_path.canonicalize().unwrap() == file_path
+                is_not_stdlib
+                    && module_path.canonicalize().ok().as_deref() == Some(file_path.as_path())
             }) {
                 let message = format!(
                     "Circular import of module `{}` detected.",

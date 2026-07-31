@@ -294,6 +294,7 @@ version = "2.1.0"
 dependencies = [
  "clap",
  "generic-lang-lib",
+ "tempfile",
 ]
 
 [[package]]
