@@ -9,7 +9,7 @@ import "reentrant_import" as reentrant;
 print(reentrant.answer()); # expect: 42
 
 # The class export survives and constructs instances.
-print(reentrant.Path("foo/bar")); # expect: Path(foo/bar)
+print(str(reentrant.Path("foo/bar")).replace("\", "/")); # expect: Path(foo/bar)
 
 # The plain value export and its name survive the mid-import collection.
 print(reentrant.sentinel); # expect: sentinel-value

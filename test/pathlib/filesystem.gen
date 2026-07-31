@@ -29,10 +29,10 @@ try {
 } catch IoError as e {
     # Our wrapping (action + path) is deterministic; the OS error tail
     # is not, so only the prefix is pinned.
-    print(e.message().startswith("Could not read `does/not/exist.txt`:")); # expect: true
+    print(e.message().replace("\", "/").startswith("Could not read `does/not/exist.txt`:")); # expect: true
 }
 try {
     Path("does/not/exist").iterdir();
 } catch IoError as e {
-    print(e.message().startswith("Could not read directory `does/not/exist`:")); # expect: true
+    print(e.message().replace("\", "/").startswith("Could not read directory `does/not/exist`:")); # expect: true
 }
