@@ -7,7 +7,7 @@
 //! flags. Only string escaping is delegated to `serde_json`.
 
 use crate::config::JSON_MAX_DEPTH;
-use crate::value::{Dict, GenericInt, ModuleContents, ModuleExport, NativeClass, Number, Value};
+use crate::value::{Dict, ModuleContents, ModuleExport, NativeClass, Number, Value};
 use crate::vm::ExceptionKind::{TypeError, ValueError};
 use crate::vm::VM;
 use crate::vm::errors::VmResult;
@@ -270,25 +270,20 @@ const MAX_INDENT: usize = 128;
 fn dumps_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     let indent = match args.get(1) {
         None => None,
-        Some(&Value::Number(Number::Integer(GenericInt::Small(small)))) => {
-            match usize::try_from(small) {
+        Some(&Value::Number(Number::Integer(integer))) => {
+            if integer.is_negative(&vm.heap) {
+                return Err(vm
+                    .throw(ValueError, "'dumps' indent must not be negative.")
+                    .unwrap_err());
+            }
+            match integer.try_to_usize(&vm.heap) {
                 Ok(indent) if indent <= MAX_INDENT => Some(indent),
-                Ok(_) => {
+                _ => {
                     return Err(vm
-                        .throw(TypeError, "'dumps' indent is unreasonably large.")
-                        .unwrap_err());
-                }
-                Err(_) => {
-                    return Err(vm
-                        .throw(TypeError, "'dumps' indent must not be negative.")
+                        .throw(ValueError, "'dumps' indent is unreasonably large.")
                         .unwrap_err());
                 }
             }
-        }
-        Some(&Value::Number(Number::Integer(GenericInt::Big(_)))) => {
-            return Err(vm
-                .throw(TypeError, "'dumps' indent is unreasonably large.")
-                .unwrap_err());
         }
         Some(x) => {
             return Err(vm

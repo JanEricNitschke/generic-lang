@@ -69,7 +69,7 @@ try {
 # A negative indent is rejected.
 try {
     json.dumps([1], -1);
-} catch TypeError as e {
+} catch ValueError as e {
     print(e.message()); # expect: 'dumps' indent must not be negative.
 }
 
@@ -77,9 +77,17 @@ try {
 # instead of panicking or attempting a huge allocation.
 try {
     json.dumps([[[1]]], 9000000000000000000);
-} catch TypeError as e {
+} catch ValueError as e {
     print(e.message()); # expect: 'dumps' indent is unreasonably large.
 }
+
+# A big-int value that still fits the indent bound is honored, not rejected
+# for being stored as a big integer. Subtracting two big literals keeps the
+# wide representation even though the result (2) fits a machine integer.
+var wide = 10000000000000000000 - 9999999999999999998;
+print(json.dumps([1], wide)); # expect: [
+# expect:   1
+# expect: ]
 
 # Circular references are detected.
 var cyclic = [1];
