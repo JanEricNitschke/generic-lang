@@ -1017,28 +1017,54 @@ impl GenericRational {
 
     // Conversion operations
     pub fn to_f64(&self, heap: &Heap) -> f64 {
+        const GUARD_BITS: i64 = 54;
         let num = self.numerator.to_f64(heap);
         let den = self.denominator.to_f64(heap);
-        // A component past `f64::MAX` becomes infinity. That divides correctly
-        // unless *both* overflow: then `inf / den` or `num / inf` still gives
-        // the right answer, but `inf / inf` is `NaN` even when the true ratio
-        // is finite (two huge coprime components).
-        if num.is_finite() || den.is_finite() {
+        if num.is_finite() && den.is_finite() {
             return num / den;
         }
-        // Both overflow, so scale them down by the same power of two, keeping
-        // the ratio, until each fits `f64` (which overflows past `2^1024`). The
-        // shifted-off bits sit far below `f64`'s 53-bit precision, so the
-        // quotient is unchanged.
+        // At least one component is past `f64::MAX`, so no `f64` division can
+        // recover the ratio. Rebuild it as `mantissa * 2^shift`. The ratio is
+        // about `bits(num) - bits(den)` bits wide, so scaling by `2^-shift`
+        // with `shift = bits(num) - bits(den) - 54` leaves a quotient of about
+        // 54 significant bits: wide enough to fill an `f64` mantissa, narrow
+        // enough for one integer division to capture exactly. Scaling by
+        // `2^-shift` enlarges the *smaller* side (the denominator when the
+        // ratio is at least 1, the numerator when it is below 1); a right
+        // shift would instead round a small component down to zero and lose the
+        // ratio. `shift` is signed precisely so a below-1 ratio can enlarge the
+        // numerator.
         let numerator = self.numerator.to_bigint(heap);
         let denominator = self.denominator.to_bigint(heap);
-        let shift = numerator
-            .bits()
-            .max(denominator.bits())
-            .saturating_sub(1000);
-        let num = (numerator >> shift).to_f64().unwrap_or(f64::INFINITY);
-        let den = (denominator >> shift).to_f64().unwrap_or(f64::INFINITY);
-        num / den
+        // An integer wide enough to overflow `i64` here (`bits()` past
+        // `i64::MAX`, roughly 1.15 EB for one number) cannot be allocated, so
+        // these conversions always succeed. `to_f64` feeds hashing and ordering
+        // and returns a bare `f64`, so there is no error channel to raise on
+        // instead: an unreachable invariant, not a catchable value error.
+        let num_bits = i64::try_from(numerator.bits()).expect("bit length fits i64");
+        let den_bits = i64::try_from(denominator.bits()).expect("bit length fits i64");
+        let shift = num_bits - den_bits - GUARD_BITS;
+        // `unsigned_abs` is infallible; the shift amount is bounded by the bit
+        // lengths of numbers already in memory, so it allocates nothing larger.
+        let mantissa = if shift >= 0 {
+            numerator / (denominator << shift.unsigned_abs())
+        } else {
+            (numerator << shift.unsigned_abs()) / denominator
+        };
+        // `mantissa` is about `GUARD_BITS` wide by construction, so it is always
+        // finite; the fallback is never taken.
+        let mantissa = mantissa.to_f64().unwrap_or(f64::INFINITY);
+        // Apply the scale in two multiplies so a standalone `2^shift` cannot
+        // over/underflow a result that is itself representable (a subnormal).
+        // The clamp keeps the `i32` conversion infallible and makes a `shift`
+        // past `f64`'s exponent range saturate the result to inf or 0.0, the
+        // correct limit for a genuinely oversized or undersized ratio; any
+        // representable value needs a half-exponent well inside +/-1100.
+        let scale = |exp: i64| {
+            2f64.powi(i32::try_from(exp.clamp(-1100, 1100)).expect("clamped exponent fits i32"))
+        };
+        let half = shift / 2;
+        mantissa * scale(half) * scale(shift - half)
     }
 
     pub fn is_zero(&self, heap: &Heap) -> bool {
