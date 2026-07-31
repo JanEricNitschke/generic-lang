@@ -298,9 +298,9 @@ unloaded. Code: `src/vm/plugins/` (mod/host_api/loader/trampolines/tests).
 11. The GC `traverse` callback must report every `GenericValue` a plugin
     instance holds; failure is a use-after-free (mark-and-sweep, so `traverse`
     is load-bearing for all liveness of held values, not just cycles).
-12. The plugin export cache (`plugins.loaded`) interns function, class, and
-    method names as `StringId`s that a cache-hit re-import feeds into module
-    setup; `collect_garbage` marks all three categories as roots.
+12. The plugin export cache (`plugins.loaded`) interns function, class,
+    method, and value names as `StringId`s that a cache-hit re-import feeds
+    into module setup; `collect_garbage` marks all four categories as roots.
 
 ## Testing and CI
 
