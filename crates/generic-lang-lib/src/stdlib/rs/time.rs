@@ -58,26 +58,8 @@ fn monotonic_ns_native(vm: &mut VM, _args: &[Value]) -> VmResult<Value> {
 /// `sleep(seconds)` - sleep for a non-negative integer or float number
 /// of seconds; fractional durations are honored.
 fn sleep_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
-    let seconds = match args[0] {
-        Value::Number(number) => Some(number.to_f64(&vm.heap)),
-        _ => None,
-    };
-    match seconds {
-        Some(seconds) if seconds >= 0.0 && seconds.is_finite() => {
-            // A duration beyond what `Duration` represents (u64 seconds) is a
-            // `ValueError`; the plain `Duration` constructor would panic on it.
-            let Ok(duration) = Duration::try_from_secs_f64(seconds) else {
-                return Err(vm
-                    .throw(
-                        ValueError,
-                        &format!("'sleep' duration is too large: {seconds}"),
-                    )
-                    .unwrap_err());
-            };
-            thread::sleep(duration);
-            Ok(Value::Nil)
-        }
-        _ => Err(vm
+    let Value::Number(number) = args[0] else {
+        return Err(vm
             .throw(
                 TypeError,
                 &format!(
@@ -85,8 +67,32 @@ fn sleep_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
                     args[0].to_string(&vm.heap)
                 ),
             )
-            .unwrap_err()),
+            .unwrap_err());
+    };
+    let seconds = number.to_f64(&vm.heap);
+    if !(seconds >= 0.0 && seconds.is_finite()) {
+        return Err(vm
+            .throw(
+                ValueError,
+                &format!(
+                    "'sleep' expects a non-negative number of seconds, got: {}",
+                    args[0].to_string(&vm.heap)
+                ),
+            )
+            .unwrap_err());
     }
+    // A duration beyond what `Duration` represents (u64 seconds) is a
+    // `ValueError`; the plain `Duration` constructor would panic on it.
+    let Ok(duration) = Duration::try_from_secs_f64(seconds) else {
+        return Err(vm
+            .throw(
+                ValueError,
+                &format!("'sleep' duration is too large: {seconds}"),
+            )
+            .unwrap_err());
+    };
+    thread::sleep(duration);
+    Ok(Value::Nil)
 }
 
 /// Current UTC time split into date and time-of-day parts, ignoring
