@@ -748,6 +748,17 @@ impl GenericInt {
     }
 
     #[allow(clippy::option_if_let_else)]
+    pub(crate) fn try_to_i64(&self, heap: &Heap) -> Result<i64, String> {
+        match self {
+            Self::Small(n) => Ok(*n),
+            Self::Big(n) => match i64::try_from((n.to_value(heap)).clone()) {
+                Ok(n) => Ok(n),
+                Err(_) => Err("Number too large to fit in i64".to_string()),
+            },
+        }
+    }
+
+    #[allow(clippy::option_if_let_else)]
     pub(crate) fn try_to_u64(&self, heap: &Heap) -> Result<u64, String> {
         match self {
             Self::Small(n) => match u64::try_from(*n) {

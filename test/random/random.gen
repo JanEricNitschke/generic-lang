@@ -91,6 +91,12 @@ try {
     print(e.message()); # expect: 'randint' bounds must fit in a 64-bit integer
 }
 
+# A bound that fits i64 but is stored as a big integer (subtracting two big
+# literals keeps the wide representation) is accepted by value, not rejected
+# for its representation.
+var wide_five = 10000000000000000000 - 9999999999999999995;
+print(random.randint(wide_five, wide_five)); # expect: 5
+
 # seed accepts a big-int seed and stays deterministic.
 random.seed(123456789012345678901234567890);
 var x = random.random();
