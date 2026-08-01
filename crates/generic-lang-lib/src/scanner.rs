@@ -194,7 +194,8 @@ pub struct Token<'a> {
 #[cfg(test)]
 #[test]
 fn test_token_size() {
-    assert_eq!(std::mem::size_of::<Token<'_>>(), 64);
+    // 64 on 64-bit (str is 16 bytes), 32 on 32-bit (str is 8 bytes).
+    assert!(std::mem::size_of::<Token<'_>>() <= 64);
 }
 
 impl<'a> Token<'a> {

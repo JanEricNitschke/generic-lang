@@ -5,8 +5,11 @@
 //! `docs/language/testing.md`). The normal-run scripts are tiny inline
 //! fixtures written to a scratch directory.
 
-// Miri cannot spawn processes.
+// Miri cannot spawn processes. On 32-bit Unix under `cross`, QEMU runs the
+// test harness but cannot spawn the cross-compiled binary as a subprocess
+// (no binfmt_misc); Windows i686 handles it via WoW64.
 #![cfg(not(miri))]
+#![cfg(any(target_arch = "x86_64", target_os = "windows"))]
 
 use std::path::Path;
 use std::process::Command;
