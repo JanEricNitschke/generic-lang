@@ -3,7 +3,7 @@ name        = "generic-lang-api"
 description = "Plugin ABI and authoring API for the generic programming language"
 # Versioned independently from the workspace: this crate tracks ABI
 # stability for plugin authors, not interpreter releases.
-version     = "0.1.2"
+version     = "0.1.3"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
