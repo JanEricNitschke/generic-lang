@@ -23,7 +23,7 @@ categories = ["parser-implementations", "compilers"]
 # explicitly - that is what makes `--no-default-features` builds of the
 # binary actually disable plugins.
 generic-lang-lib = { version = "3.0.0", path = "crates/generic-lang-lib", default-features = false }
-generic-lang-api = { version = "0.1.0", path = "crates/generic-lang-api" }
+generic-lang-api = { version = "0.1.1", path = "crates/generic-lang-api" }
 
 clap         = { version = "4.6.1", features = ["derive"] }
 convert_case = "0.11.0"
