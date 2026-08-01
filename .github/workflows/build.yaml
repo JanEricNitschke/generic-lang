@@ -64,6 +64,28 @@ jobs:
       # Both wheels track the latest stable releases; no version pins.
       run: pip install clang-format cpplint
 
+    - name: Check version sync
+      # The workspace package version must match the generic-lang-lib dep pin
+      # in [workspace.dependencies], and the generic-lang-api dep pin must
+      # match the crate's own version. cargo-release keeps these in sync on
+      # releases; this guard catches manual drift.
+      if: runner.os == 'Linux'
+      run: |
+        set -euo pipefail
+        LIB_VER=$(cargo metadata --format-version=1 --no-deps |
+          jq -r '.packages[] | select(.name == "generic-lang-lib") | .version')
+        LIB_DEP=$(grep 'generic-lang-lib = {' Cargo.toml | grep -oP 'version = "\K[^"]+')
+        [ "$LIB_VER" = "$LIB_DEP" ] || {
+          echo "::error::generic-lang-lib version ($LIB_VER) != workspace dep pin ($LIB_DEP)"
+          exit 1
+        }
+        API_VER=$(cargo metadata --format-version=1 --no-deps |
+          jq -r '.packages[] | select(.name == "generic-lang-api") | .version')
+        API_DEP=$(grep 'generic-lang-api = {' Cargo.toml | grep -oP 'version = "\K[^"]+')
+        [ "$API_VER" = "$API_DEP" ] || {
+          echo "::error::generic-lang-api version ($API_VER) != workspace dep pin ($API_DEP)"
+          exit 1
+        }
     - name: Build
       run: cargo build --verbose
     - name: Check Rust formatting

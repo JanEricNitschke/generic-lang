@@ -1,43 +1,209 @@
 name: Publish
 
+# Dispatch-driven release workflow. A maintainer picks bump levels for the
+# interpreter and/or the API crate; the workflow bumps versions, tags,
+# builds, publishes, and creates GitHub Releases.
+#
+# The two version tracks are independent:
+# - Interpreter (generic-lang + generic-lang-lib, shared workspace version):
+#   full pipeline — crates.io, binaries, wheels, sdist, GitHub Release.
+# - API crate (generic-lang-api, version 0.<abi>.<patch>): crates.io +
+#   GitHub Release only.
+#
+# Tags use per-crate prefixes:
+# - Interpreter:  vX.Y.Z                    (e.g. v3.0.0)
+# - API crate:     generic-lang-api-vX.Y.Z   (e.g. generic-lang-api-v0.1.0)
+#
+# The `manual` option (both tracks) tags and publishes the current version
+# without bumping — for crates already at their target version but not yet
+# published.
+
 on:
-  push:
-    tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:
+    inputs:
+      interpreter_bump:
+        description: "Interpreter version bump (manual = first publish of current version)"
+        required: true
+        type: choice
+        options: [none, manual, patch, minor, major]
+      api_bump:
+        description: "API crate version bump (minor = ABI bump; manual = first publish of current version)"
+        required: true
+        type: choice
+        options: [none, manual, patch, minor]
 
 permissions:
   contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 env:
   BIN_NAME: generic
 
 jobs:
-  crates-io:
+  # ---------------------------------------------------------------------------
+  # Bump jobs: compute new version(s), commit, tag, and push.
+  # ---------------------------------------------------------------------------
+  bump-api:
+    name: Bump API crate version
+    if: inputs.api_bump != 'none'
     runs-on: ubuntu-latest
-    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    environment: release
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Checkout repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
+
+      # Tag the current (already-correct) version without running
+      # cargo-release. Used for the first publish of a crate whose version
+      # was bumped manually but never tagged.
+      - name: Tag and push current version (manual)
+        if: inputs.api_bump == 'manual'
+        run: |
+          VERSION=$(cargo metadata --format-version=1 --no-deps |
+            jq -r '.packages[] | select(.name == "generic-lang-api") | .version')
+          git tag "generic-lang-api-v${VERSION}"
+          git push origin "generic-lang-api-v${VERSION}"
+
+      # Bump the API crate version via cargo-release. For a minor (ABI) bump,
+      # also increment GENERIC_PLUGIN_ABI_VERSION in abi.rs before
+      # cargo-release runs, then regenerate generic.h and verify the
+      # crate_version_encodes_the_abi_version test still passes.
+      # --no-push so the post-bump steps (header regen, test) happen before
+      # the commit and tag are pushed.
+      - name: Bump version (auto)
+        if: inputs.api_bump != 'manual'
+        env:
+          GIT_AUTHOR_NAME: ${{ github.actor }}
+          GIT_AUTHOR_ID: ${{ github.actor_id }}
+        run: |
+          git config user.name "$GIT_AUTHOR_NAME"
+          git config user.email "${GIT_AUTHOR_ID}+${GIT_AUTHOR_NAME}@users.noreply.github.com"
+          cargo install cargo-release --locked
+          if [ "${{ inputs.api_bump }}" = "minor" ]; then
+            sudo apt-get update && sudo apt-get install -y make
+            cargo install cbindgen --locked
+            CURRENT_MINOR=$(cargo metadata --format-version=1 --no-deps |
+              jq -r '.packages[] | select(.name == "generic-lang-api") | .version' |
+              cut -d. -f2)
+            NEW_ABI=$((CURRENT_MINOR + 1))
+            sed -i -E "s/pub const GENERIC_PLUGIN_ABI_VERSION: u32 = [0-9]+;/pub const GENERIC_PLUGIN_ABI_VERSION: u32 = ${NEW_ABI};/" \
+              crates/generic-lang-api/src/abi.rs
+          fi
+          cargo release ${{ inputs.api_bump }} -p generic-lang-api --no-publish --no-push --no-confirm --execute
+          if [ "${{ inputs.api_bump }}" = "minor" ]; then
+            make generate-plugin-header
+            cargo test -p generic-lang-api crate_version_encodes_the_abi_version
+          fi
+          git add -A
+          git commit --amend --no-edit
+          git push origin "HEAD:${{ github.ref_name }}" --tags
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(cargo metadata --format-version=1 --no-deps |
+            jq -r '.packages[] | select(.name == "generic-lang-api") | .version')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=generic-lang-api-v$VERSION" >> "$GITHUB_OUTPUT"
+
+
+  bump-interpreter:
+    name: Bump interpreter version
+    needs: [bump-api]
+    if: ${{ !cancelled() && inputs.interpreter_bump != 'none' && needs.bump-api.result != 'failure' }}
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      # Tag the current (already-correct) version without running
+      # cargo-release. Used for the first publish of a crate whose version
+      # was bumped manually but never tagged.
+      - name: Tag and push current version (manual)
+        if: inputs.interpreter_bump == 'manual'
+        run: |
+          VERSION=$(cargo metadata --format-version=1 --no-deps |
+            jq -r '.packages[] | select(.name == "generic-lang-lib") | .version')
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
+
+      # Bump the workspace version via cargo-release, which also syncs the
+      # generic-lang-lib dep pin in [workspace.dependencies], updates
+      # Cargo.lock, commits, tags, and pushes.
+      - name: Bump version (auto)
+        if: inputs.interpreter_bump != 'manual'
+        env:
+          GIT_AUTHOR_NAME: ${{ github.actor }}
+          GIT_AUTHOR_ID: ${{ github.actor_id }}
+        run: |
+          git config user.name "$GIT_AUTHOR_NAME"
+          git config user.email "${GIT_AUTHOR_ID}+${GIT_AUTHOR_NAME}@users.noreply.github.com"
+          cargo install cargo-release --locked
+          cargo release ${{ inputs.interpreter_bump }} --workspace --exclude generic-lang-api --no-publish --no-confirm --execute
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(cargo metadata --format-version=1 --no-deps |
+            jq -r '.packages[] | select(.name == "generic-lang-lib") | .version')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # crates.io publishing (both tracks share this job).
+  # ---------------------------------------------------------------------------
+  crates-io:
+    name: Publish to crates.io
+    needs: [bump-api, bump-interpreter]
+    if: always() && (needs.bump-api.result == 'success' || needs.bump-interpreter.result == 'success')
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
       - name: Login to crates.io
         run: cargo login ${{ secrets.CRATES_IO_API_TOKEN }}
 
       - name: Publish changed crates
-        # Publish every crate whose local version is not on crates.io yet, in
-        # dependency order: api -> lib -> bin (cargo waits for index
-        # propagation in between). The lib and bin move in lockstep with the
-        # release tag; the api crate is versioned separately and only
-        # publishes when its version was bumped. Skipping instead of failing
-        # also makes the job safe to re-run.
         run: |
           for crate in generic-lang-api generic-lang-lib generic-lang; do
             version=$(cargo metadata --format-version=1 --no-deps |
               jq -r --arg name "$crate" '.packages[] | select(.name == $name) | .version')
-            # The sparse index lists published versions as JSON lines under
-            # <first two>/<next two letters of the name>/<name>.
-            # 404 (never published) falls through to the publish branch
             if curl -fsSL "https://index.crates.io/${crate:0:2}/${crate:2:2}/$crate" 2>/dev/null |
                 jq -e --arg v "$version" 'select(.vers == $v)' >/dev/null; then
               echo "$crate $version is already on crates.io, skipping"
@@ -46,8 +212,12 @@ jobs:
             fi
           done
 
+  # ---------------------------------------------------------------------------
+  # Binary builds (interpreter releases only).
+  # ---------------------------------------------------------------------------
   build-binaries:
     name: Build Binaries
+    needs: [bump-interpreter]
     continue-on-error: true
     strategy:
       matrix:
@@ -81,6 +251,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.bump-interpreter.outputs.tag }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -88,8 +260,6 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
 
-      # Only install cross if we need it
-      # Install via cargo-binstall which I found faster
       - name: Install Cross
         if: matrix.command == 'cross'
         shell: bash
@@ -118,11 +288,14 @@ jobs:
 
   build-package:
     name: Package Crate
+    needs: [bump-interpreter]
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.bump-interpreter.outputs.tag }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -139,6 +312,7 @@ jobs:
           path: target/package/*.crate
 
   linux:
+    needs: [bump-interpreter]
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -157,12 +331,14 @@ jobs:
             target: ppc64le
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.bump-interpreter.outputs.tag }}
       - name: Build wheels
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist
-          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          sccache: true
           manylinux: auto
       - name: Upload wheels
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -171,6 +347,7 @@ jobs:
           path: dist
 
   musllinux:
+    needs: [bump-interpreter]
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -185,12 +362,14 @@ jobs:
             target: armv7
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.bump-interpreter.outputs.tag }}
       - name: Build wheels
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist
-          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          sccache: true
           manylinux: musllinux_1_2
       - name: Upload wheels
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -199,6 +378,7 @@ jobs:
           path: dist
 
   windows:
+    needs: [bump-interpreter]
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -209,12 +389,14 @@ jobs:
             target: x86
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.bump-interpreter.outputs.tag }}
       - name: Build wheels
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist
-          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          sccache: true
       - name: Upload wheels
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -222,6 +404,7 @@ jobs:
           path: dist
 
   macos:
+    needs: [bump-interpreter]
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -230,12 +413,14 @@ jobs:
             target: aarch64
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.bump-interpreter.outputs.tag }}
       - name: Build wheels
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist
-          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          sccache: true
       - name: Upload wheels
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -243,9 +428,12 @@ jobs:
           path: dist
 
   sdist:
+    needs: [bump-interpreter]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.bump-interpreter.outputs.tag }}
       - name: Build sdist
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with:
@@ -257,25 +445,40 @@ jobs:
           name: wheels-sdist
           path: dist
 
-
-  release:
-    name: Release
+  # ---------------------------------------------------------------------------
+  # PyPI upload (interpreter releases only).
+  # ---------------------------------------------------------------------------
+  pypi:
+    name: Publish to PyPI
+    needs: [bump-interpreter, linux, musllinux, windows, macos, sdist]
     runs-on: ubuntu-latest
-    if: ${{ startsWith(github.ref, 'refs/tags/') }}
-    needs: [linux, musllinux, windows, macos, sdist, build-package, build-binaries]
+    environment: release
     permissions:
-      # Use to sign the release artifacts
       id-token: write
-      # Used to upload release artifacts
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - name: Publish to PyPI
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          command: upload
+          args: --non-interactive --skip-existing wheels-*/*
+
+  # ---------------------------------------------------------------------------
+  # GitHub Release (interpreter).
+  # ---------------------------------------------------------------------------
+  github-release-interpreter:
+    name: GitHub Release (interpreter)
+    needs: [bump-interpreter, build-binaries, build-package, linux, musllinux, windows, macos, sdist]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
       contents: write
-      # Used to generate artifact attestation
       attestations: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Derive version from the tag
-        # Env vars do not cross jobs, so derive it here from the vX.Y.Z tag.
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+        with:
+          ref: ${{ needs.bump-interpreter.outputs.tag }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
@@ -285,24 +488,46 @@ jobs:
             binary-*/*
             crate/*
             crates/generic-lang-api/include/generic.h
-      - name: Publish to PyPI
-        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
-        env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-        with:
-          command: upload
-          args: --non-interactive --skip-existing wheels-*/*
-      - name: Upload to GitHub Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           fail_on_unmatched_files: true
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ env.VERSION }}
-          body: "Automated release for version ${{ env.VERSION }}"
+          tag_name: ${{ needs.bump-interpreter.outputs.tag }}
+          name: Release ${{ needs.bump-interpreter.outputs.version }}
+          generate_release_notes: true
           files: |
             wheels-*/*
             binary-*/*
             crate/*
             crates/generic-lang-api/include/generic.h
           draft: false
-          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
+          prerelease: ${{ contains(needs.bump-interpreter.outputs.tag, 'alpha') || contains(needs.bump-interpreter.outputs.tag, 'beta') }}
+
+  # ---------------------------------------------------------------------------
+  # GitHub Release (API crate).
+  # ---------------------------------------------------------------------------
+  github-release-api:
+    name: GitHub Release (API crate)
+    needs: [bump-api, crates-io]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.bump-api.outputs.tag }}
+      - name: Package API crate
+        run: cargo package -p generic-lang-api
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          fail_on_unmatched_files: true
+          tag_name: ${{ needs.bump-api.outputs.tag }}
+          name: generic-lang-api ${{ needs.bump-api.outputs.version }}
+          generate_release_notes: true
+          files: |
+            target/package/generic-lang-api-*.crate
+            crates/generic-lang-api/include/generic.h
+          draft: false
+          prerelease: ${{ contains(needs.bump-api.outputs.tag, 'alpha') || contains(needs.bump-api.outputs.tag, 'beta') }}
