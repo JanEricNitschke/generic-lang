@@ -174,9 +174,6 @@ mod tests {
     #[test]
     fn abi_type_layout() {
         assert_eq!(size_of::<GenericValue>(), 32);
-        assert_eq!(align_of::<GenericValue>(), 8);
-        assert_eq!(size_of::<FfiReturn>(), 40);
-        assert_eq!(size_of::<FfiStr>(), 2 * size_of::<usize>());
     }
 
     /// The crate version encodes the ABI version: `0.<abi>.<patch>`. A

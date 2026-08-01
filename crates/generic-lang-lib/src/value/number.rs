@@ -412,6 +412,12 @@ impl Number {
 
 // These could probably be individual entries in the enum tbh.
 /// Enum summarizing all of the generic number types.
+//
+// `repr(align(8))` keeps this 16 bytes on 32-bit targets (where `i64` is
+// only 4-aligned), so `Value` stays 32 bytes to match `GenericValue`'s
+// size. Only size must match, not alignment (arg buffers are copied
+// element-wise, not aliased).
+#[repr(align(8))]
 #[derive(Debug, Clone, From, Copy, PartialEq, Eq)]
 pub enum GenericInt {
     Small(i64),

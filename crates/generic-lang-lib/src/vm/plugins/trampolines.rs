@@ -43,7 +43,8 @@ pub(super) fn plugin_trampoline(vm: &mut VM, args: &[Value]) -> VmResult<Value> 
 ///
 /// The `&[Value]` buffer lives in the dispatch frame (see
 /// `execute_native_function_call`) and outlives the call, so its pointer is
-/// handed to the plugin directly, cast to the layout-asserted [`GenericValue`].
+/// handed to the plugin directly, cast to [`GenericValue`] (same size;
+/// `Value`'s alignment satisfies `GenericValue`'s).
 pub(super) fn call_plugin(
     vm: &mut VM,
     fun: PluginFn,

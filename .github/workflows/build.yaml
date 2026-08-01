@@ -124,6 +124,16 @@ jobs:
     - name: Test with MIRI
       run: |
         cargo +nightly miri test --verbose
+    - name: Test with MIRI (i686)
+      # `-Zmiri-symbolic-alignment-check` treats allocations as maximally
+      # misaligned, catching pointer casts that assume stronger alignment
+      # than the source type guarantees (i686: GenericValue is 4-aligned,
+      # Value is 8-aligned).
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update && sudo apt-get install -y gcc-multilib
+        rustup target add i686-unknown-linux-gnu --toolchain nightly
+        MIRIFLAGS=-Zmiri-symbolic-alignment-check cargo +nightly miri test --target i686-unknown-linux-gnu --verbose
     - name: Run an example with MIRI
       run: |
         MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri run -- test/overloading/overloading_for_in.gen
@@ -192,6 +202,59 @@ jobs:
       run: cargo hack build --feature-powerset --skip print_code_builtin,trace_execution_builtin,debug_parser_builtin,debug_scanner_builtin --no-dev-deps -p generic-lang-lib
     - name: Clippy per feature
       run: cargo hack clippy --each-feature --no-dev-deps -p generic-lang-lib -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
+
+  cross-test:
+    name: Cross test (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - i686-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabihf
+          - s390x-unknown-linux-gnu
+          - powerpc64le-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
+          - i686-unknown-linux-musl
+          - aarch64-unknown-linux-musl
+          - armv7-unknown-linux-musleabihf
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install cross
+        run: cargo install cross --locked
+      - name: Set CFLAGS for aarch64
+        # ring's ARM asm needs __ARM_ARCH, which the cross container's gcc doesn't define.
+        if: startsWith(matrix.target, 'aarch64')
+        run: |
+          echo "CFLAGS_aarch64_unknown_linux_gnu=-D__ARM_ARCH=8" >> "$GITHUB_ENV"
+          echo "CFLAGS_aarch64_unknown_linux_musl=-D__ARM_ARCH=8" >> "$GITHUB_ENV"
+      - name: Cross test
+        run: cross test --target ${{ matrix.target }} --workspace
+
+  windows-cross-test:
+    name: Windows test (${{ matrix.target }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - i686-pc-windows-msvc
+          - x86_64-pc-windows-gnu
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Test
+        run: cargo test --target ${{ matrix.target }} --workspace
 
   benchmark:
     runs-on: ubuntu-latest

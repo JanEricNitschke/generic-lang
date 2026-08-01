@@ -34,17 +34,13 @@ use crate::value::{
 use crate::vm::errors::{VmErrorKind, VmResult};
 use crate::vm::{ExceptionKind, VM};
 
-// The opaque-blob bridge is a bit-copy of the whole `Value`; these asserts
-// fail the build (not the runtime) if `Value` ever stops matching the ABI.
-// Size and alignment must agree exactly: buffers of one type are read
-// through pointers to the other in both directions.
+// The opaque-blob bridge is a bit-copy of `Value`. Only size must match,
+// not alignment: `transmute` copies by value, and plugin argument buffers
+// are copied element-wise via `extend_args`, never aliased as `&[Value]`
+// (which on i686 would need 8-byte alignment the 4-aligned buffer lacks).
 const _: () = assert!(
     size_of::<Value>() == size_of::<GenericValue>(),
     "Value size drifted from the plugin ABI"
-);
-const _: () = assert!(
-    align_of::<Value>() == align_of::<GenericValue>(),
-    "Value alignment drifted from the plugin ABI"
 );
 // Bit-copies are handed to foreign code: Value must stay trivially
 // copyable (no owning payloads).
@@ -741,7 +737,7 @@ extern "C" fn cb_call_value(
     let callee = from_ffi(callee);
     let mut values = Vec::with_capacity(nargs + 1);
     values.push(callee);
-    values.extend(args_slice(args, nargs).iter().copied());
+    extend_args(&mut values, args, nargs);
     reenter_call(vm, &values, |vm| vm.call_value(callee, arg_count))
 }
 
@@ -771,20 +767,20 @@ extern "C" fn cb_invoke_method(
     let name_id = vm.heap.string_id(&name);
     let mut values = Vec::with_capacity(nargs + 1);
     values.push(from_ffi(receiver));
-    values.extend(args_slice(args, nargs).iter().copied());
+    extend_args(&mut values, args, nargs);
     reenter_call(vm, &values, |vm| vm.invoke(name_id, arg_count))
 }
 
-/// The argument buffer of a re-entering callback as a `Value` slice.
-fn args_slice<'a>(args: *const GenericValue, nargs: usize) -> &'a [Value] {
+/// Copy plugin args into `values` element-wise via `from_ffi`, not by
+/// aliasing the buffer as `&[Value]` (which needs `Value`'s 8-byte
+/// alignment the plugin's buffer may lack on i686).
+fn extend_args(values: &mut Vec<Value>, args: *const GenericValue, nargs: usize) {
     if nargs == 0 {
-        &[]
-    } else {
-        // SAFETY: the plugin passes `nargs` contiguous values valid for the
-        // call (ABI contract); `GenericValue` and `Value` share layout
-        // (const asserts above).
-        unsafe { std::slice::from_raw_parts(args.cast::<Value>(), nargs) }
+        return;
     }
+    // SAFETY: the plugin passes `nargs` contiguous values valid for the call.
+    let slice = unsafe { std::slice::from_raw_parts(args, nargs) };
+    values.extend(slice.iter().copied().map(from_ffi));
 }
 
 extern "C" fn cb_value_str(ctx: *mut c_void, value: GenericValue) -> FfiReturn {

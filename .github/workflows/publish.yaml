@@ -335,6 +335,9 @@ jobs:
           ref: ${{ needs.bump-interpreter.outputs.tag }}
       - name: Build wheels
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        env:
+          # ring's ARM asm needs __ARM_ARCH, which the manylinux gcc doesn't define.
+          CFLAGS_aarch64_unknown_linux_gnu: "-D__ARM_ARCH=8"
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist
@@ -366,6 +369,9 @@ jobs:
           ref: ${{ needs.bump-interpreter.outputs.tag }}
       - name: Build wheels
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        env:
+          # ring's ARM asm needs __ARM_ARCH, which the musllinux gcc doesn't define.
+          CFLAGS_aarch64_unknown_linux_musl: "-D__ARM_ARCH=8"
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist
