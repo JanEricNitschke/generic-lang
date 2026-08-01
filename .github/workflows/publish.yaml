@@ -103,7 +103,7 @@ jobs:
             sed -i -E "s/pub const GENERIC_PLUGIN_ABI_VERSION: u32 = [0-9]+;/pub const GENERIC_PLUGIN_ABI_VERSION: u32 = ${NEW_ABI};/" \
               crates/generic-lang-api/src/abi.rs
           fi
-          cargo release ${{ inputs.api_bump }} -p generic-lang-api --no-publish --no-push --no-confirm --execute
+          cargo release ${{ inputs.api_bump }} -p generic-lang-api --no-publish --no-push --no-confirm --config release-api.toml --execute
           if [ "${{ inputs.api_bump }}" = "minor" ]; then
             make generate-plugin-header
             cargo test -p generic-lang-api crate_version_encodes_the_abi_version
