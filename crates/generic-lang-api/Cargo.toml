@@ -18,6 +18,7 @@ categories.workspace = true
 # the interpreter releases. See release.toml for the workspace defaults this
 # overrides.
 tag-prefix = "generic-lang-api-"
+shared-version = true
 pre-release-commit-message = "Bump generic-lang-api to {{version}}"
 
 [dependencies]
