@@ -8,7 +8,7 @@ members = ["crates/generic-lang", "crates/generic-lang-lib", "crates/generic-lan
 exclude = ["plugin-examples/rust"]
 
 [workspace.package]
-version      = "2.1.0"
+version      = "3.0.0"
 edition      = "2024"
 rust-version = "1.88"
 authors    = ["Jan-Eric <janericnitschke@gmail.com"]
@@ -22,7 +22,7 @@ categories = ["parser-implementations", "compilers"]
 # default-features off so dependents (the bin) control the lib's features
 # explicitly - that is what makes `--no-default-features` builds of the
 # binary actually disable plugins.
-generic-lang-lib = { version = "2.1.0", path = "crates/generic-lang-lib", default-features = false }
+generic-lang-lib = { version = "3.0.0", path = "crates/generic-lang-lib", default-features = false }
 generic-lang-api = { version = "0.1.0", path = "crates/generic-lang-api" }
 
 clap         = { version = "4.6.1", features = ["derive"] }
