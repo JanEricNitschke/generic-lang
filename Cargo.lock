@@ -290,7 +290,7 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "generic-lang"
-version = "2.1.0"
+version = "3.0.0"
 dependencies = [
  "clap",
  "generic-lang-lib",
@@ -303,7 +303,7 @@ version = "0.1.0"
 
 [[package]]
 name = "generic-lang-lib"
-version = "2.1.0"
+version = "3.0.0"
 dependencies = [
  "convert_case",
  "derivative",
