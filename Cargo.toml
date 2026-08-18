@@ -18,14 +18,75 @@ license    = "MIT"
 keywords   = ["programming-language", "generic"]
 categories = ["parser-implementations", "compilers"]
 
+# Lints every member inherits via `[lints] workspace = true`, kept on even where
+# they currently report nothing - that is what catches regressions. rustc has no
+# `pedantic`-style group for these, so most are listed one by one.
 [workspace.lints.rust]
+# Unsafe discipline.
 unsafe_op_in_unsafe_fn = "deny"
 unsafe_attr_outside_unsafe = "deny"
+ffi_unwind_calls = "warn"
+# Groups that are free here.
+keyword_idents = { level = "warn", priority = -1 }
+let_underscore = { level = "warn", priority = -1 }
+unused = { level = "warn", priority = -1 }
+# Published-API hygiene: all three crates go to crates.io.
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+# General hygiene.
+absolute_paths_not_starting_with_crate = "warn"
+explicit_outlives_requirements = "warn"
+macro_use_extern_crate = "warn"
+meta_variable_misuse = "warn"
+non_ascii_idents = "warn"
+redundant_lifetimes = "warn"
+single_use_lifetimes = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+unit_bindings = "warn"
+unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unstable_features = "warn"
+variant_size_differences = "warn"
 
 [workspace.lints.clippy]
+# Unsafe discipline. `multiple_unsafe_ops_per_block` is deliberately off.
 undocumented_unsafe_blocks = "warn"
 unnecessary_safety_comment = "warn"
 unnecessary_safety_doc = "warn"
+# Correctness traps.
+create_dir = "warn"
+float_cmp_const = "warn"
+fn_to_numeric_cast_any = "warn"
+lossy_float_literal = "warn"
+mem_forget = "warn"
+mixed_read_write_in_expression = "warn"
+mutex_atomic = "warn"
+rc_buffer = "warn"
+rc_mutex = "warn"
+# Placeholders and debugging leftovers.
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+exit = "warn"
+# Style, pinned so it cannot drift.
+assertions_on_result_states = "warn"
+clone_on_ref_ptr = "warn"
+deref_by_slicing = "warn"
+empty_drop = "warn"
+empty_structs_with_brackets = "warn"
+if_then_some_else_none = "warn"
+infinite_loop = "warn"
+missing_assert_message = "warn"
+needless_raw_strings = "warn"
+pathbuf_init_then_push = "warn"
+redundant_type_annotations = "warn"
+rest_pat_in_fully_bound_structs = "warn"
+self_named_module_files = "warn"
+try_err = "warn"
+unnecessary_self_imports = "warn"
+unneeded_field_pattern = "warn"
+verbose_file_reads = "warn"
 
 [workspace.dependencies]
 # default-features off so dependents (the bin) control the lib's features

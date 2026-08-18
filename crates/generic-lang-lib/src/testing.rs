@@ -195,15 +195,11 @@ fn find_test_files(dir: &PathBuf) -> Vec<PathBuf> {
         .filter_map(|e| {
             let path = e.path();
             let file_name = path.file_name()?.to_str()?;
-            if file_name.starts_with("test_")
+            (file_name.starts_with("test_")
                 && path
                     .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("gen"))
-            {
-                Some(path.to_path_buf())
-            } else {
-                None
-            }
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("gen")))
+            .then(|| path.to_path_buf())
         })
         .collect();
 

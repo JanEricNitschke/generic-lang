@@ -37,6 +37,7 @@ impl From<Return> for VmResult {
     }
 }
 
+#[derive(Debug)]
 pub enum Return {
     Function(CallFrame),
     Program(CallFrame),

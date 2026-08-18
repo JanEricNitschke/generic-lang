@@ -33,9 +33,6 @@ macro_rules! binary_op_invoke {
     ($self:ident, $a:ident, $b:ident, $method:ident, mut_heap) => {
         $a.$method(*$b, &mut $self.heap)
     };
-    ($self:ident, $a:ident, $b:ident, $method:ident, non_mut_heap) => {
-        $a.$method($b, &$self.heap)
-    };
 }
 
 /// Handle binary operations between numbers.

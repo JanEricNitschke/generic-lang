@@ -42,6 +42,7 @@ macro_rules! host_error_constructors {
 /// `api.ctx` its matching context, and both stay valid for `'a` - i.e. every
 /// callback in it may be called with `api.ctx` for as long as this `Host`
 /// exists, and answers per the [`HostApi`] protocol.
+#[derive(Debug)]
 pub struct Host<'a> {
     api: &'a HostApi,
 }
@@ -838,6 +839,7 @@ impl<'a> Host<'a> {
 ///
 /// `api` is a vtable satisfying [`Host`]'s invariant - guards are only ever
 /// created by [`Host::rooted`], which copies it out of a live [`Host`].
+#[derive(Debug)]
 pub struct Rooted<'a> {
     api: &'a HostApi,
     value: GenericValue,

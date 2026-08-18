@@ -28,7 +28,10 @@
 //!
 //! generic_lang_api::export_module![("add", &[2], add)];
 //! ```
-#![warn(missing_docs)]
+// Beyond the workspace lints: this crate's public types are what plugin authors
+// hold, so none of them may be unnameable. The interpreter crates leak internal
+// types through their APIs and would need an export pass first.
+#![warn(unnameable_types)]
 
 pub mod abi;
 mod export;

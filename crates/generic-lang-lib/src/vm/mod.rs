@@ -61,11 +61,16 @@ use crate::{
 use std::fmt::Write;
 use strum::IntoEnumIterator;
 
+/// How a call to [`VM::interpret`] finished; mapped to the process exit code
+/// by the binary.
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum InterpretResult {
+    /// The program ran to completion.
     Ok,
+    /// Scanning or compilation failed; nothing ran.
     CompileError,
+    /// The program started but raised an uncaught exception or a fatal error.
     RuntimeError,
 }
 
@@ -215,7 +220,7 @@ impl VM {
         };
 
         if result == InterpretResult::Ok {
-            assert_eq!(self.stack.len(), 0);
+            assert_eq!(self.stack.len(), 0, "a clean run must leave an empty stack");
         }
         result
     }

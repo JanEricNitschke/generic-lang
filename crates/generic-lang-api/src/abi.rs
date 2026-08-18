@@ -189,6 +189,7 @@ pub type PluginFn = unsafe extern "C" fn(
 
 /// Description of one exported plugin function.
 #[repr(C)]
+#[derive(Debug)]
 pub struct FunctionDesc {
     /// Function name as seen from generic code.
     pub name: FfiStr,
@@ -268,6 +269,7 @@ pub type PluginValueFn = unsafe extern "C" fn(host: *const HostApi) -> FfiReturn
 /// Description of one exported plugin module value (a module constant,
 /// built once at import time).
 #[repr(C)]
+#[derive(Debug)]
 pub struct ValueDesc {
     /// Value name as seen from generic code.
     pub name: FfiStr,
@@ -295,6 +297,7 @@ pub type PluginMethodFn = unsafe extern "C" fn(
 
 /// Description of one method of a plugin-defined class.
 #[repr(C)]
+#[derive(Debug)]
 pub struct MethodDesc {
     /// Method name as seen from generic code (e.g. `"__init__"`, `"value"`).
     pub name: FfiStr,
@@ -320,6 +323,7 @@ pub struct MethodDesc {
 /// Description of a plugin-defined class; one entry per class in
 /// [`ModuleDesc::classes`].
 #[repr(C)]
+#[derive(Debug)]
 pub struct ClassDesc {
     /// Class name as seen from generic code (e.g. `"Counter"`).
     pub name: FfiStr,
@@ -358,6 +362,7 @@ pub struct ClassDesc {
 /// const ModuleDesc *generic_plugin_init(void);
 /// ```
 #[repr(C)]
+#[derive(Debug)]
 pub struct ModuleDesc {
     /// ABI version the plugin was built against ([`GENERIC_PLUGIN_ABI_VERSION`]).
     pub abi_version: u32,
@@ -440,6 +445,7 @@ unsafe impl Sync for ModuleDesc {}
 /// - Calls are not re-entered from another thread; the interpreter is
 ///   single-threaded and a callback borrows the VM for its duration.
 #[repr(C)]
+#[derive(Debug)]
 pub struct HostApi {
     /// ABI version of the host ([`GENERIC_PLUGIN_ABI_VERSION`]).
     pub abi_version: u32,
