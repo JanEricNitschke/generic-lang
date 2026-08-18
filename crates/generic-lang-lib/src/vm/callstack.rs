@@ -10,7 +10,7 @@ use crate::value::Closure;
 /// Additionally, it contains a boolean indicating whether the closure is a module,
 /// in order to handle transferring globals on module end.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct CallFrame {
+pub(crate) struct CallFrame {
     pub closure: ClosureId,
     pub ip: usize,
     pub stack_base: usize,
@@ -18,11 +18,11 @@ pub struct CallFrame {
 }
 
 impl CallFrame {
-    pub fn closure<'a>(&self, heap: &'a Heap) -> &'a Closure {
+    pub(crate) fn closure<'a>(&self, heap: &'a Heap) -> &'a Closure {
         self.closure.to_value(heap)
     }
 
-    pub fn from_closure_id(closure: ClosureId) -> Self {
+    pub(crate) fn from_closure_id(closure: ClosureId) -> Self {
         Self {
             closure,
             ip: 0,
@@ -37,7 +37,7 @@ impl CallFrame {
 /// Contains stored references for the current closure and function,
 /// to not have to grab them from the vector every time.
 #[derive(Debug)]
-pub struct CallStack {
+pub(crate) struct CallStack {
     frames: Vec<CallFrame>,
     // Maybe this could either be a straight pointer or at least not an Option.
     current_closure: Option<ClosureId>,
@@ -62,12 +62,12 @@ impl CallStack {
         self.frames.is_empty()
     }
 
-    pub fn set_currents(&mut self, heap: &Heap) {
+    pub(crate) fn set_currents(&mut self, heap: &Heap) {
         self.current_closure = self.frames.last().map(|f| f.closure);
         self.current_function = self.current_closure.map(|c| c.to_value(heap).function);
     }
 
-    pub fn pop(&mut self, heap: &Heap) -> Option<CallFrame> {
+    pub(crate) fn pop(&mut self, heap: &Heap) -> Option<CallFrame> {
         let retval = self.frames.pop();
         self.set_currents(heap);
         retval

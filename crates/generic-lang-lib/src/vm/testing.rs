@@ -6,20 +6,20 @@ use crate::value::Value;
 
 /// Result of running test functions
 #[derive(Default)]
-pub struct TestResult {
+pub(crate) struct TestResult {
     pub passed: usize,
     pub failed: usize,
     pub errors: usize,
 }
 
 impl TestResult {
-    pub fn total(&self) -> usize {
+    pub(crate) fn total(&self) -> usize {
         self.passed + self.failed + self.errors
     }
 }
 
 /// Outcome of a single test function execution
-pub enum TestOutcome {
+pub(super) enum TestOutcome {
     Passed,
     Failed(String),
     Error(String),
@@ -31,7 +31,7 @@ impl VM {
     /// Test functions are those whose names start with "test_".
     /// Each test function is run in isolation, with exceptions caught
     /// and reported. Returns a summary of test results.
-    pub fn run_tests(&mut self) -> TestResult {
+    pub(crate) fn run_tests(&mut self) -> TestResult {
         let mut results = TestResult::default();
 
         // Get all global functions that start with "test_"

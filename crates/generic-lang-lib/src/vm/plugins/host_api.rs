@@ -59,7 +59,7 @@ const _: () = {
 };
 
 /// Bit-copy a `Value` into the opaque FFI blob.
-pub fn to_ffi(value: Value) -> GenericValue {
+pub(crate) fn to_ffi(value: Value) -> GenericValue {
     // SAFETY: same size (asserted above). `GenericValue`'s limbs are
     // `MaybeUninit`, so this copy never asserts that `Value`'s
     // uninitialized bytes (small variants leave most of the 32 unwritten)
@@ -75,7 +75,7 @@ pub fn to_ffi(value: Value) -> GenericValue {
 /// `value` must be a blob this host produced with [`to_ffi`] and got back
 /// unmodified. Nothing about it is checkable - it is 32 opaque bytes - and a
 /// fabricated one materializes a `Value` that never existed.
-pub unsafe fn from_ffi(value: GenericValue) -> Value {
+pub(crate) unsafe fn from_ffi(value: GenericValue) -> Value {
     // SAFETY: same size (asserted above), and the caller guarantees the bytes
     // are a bit-copy of a real `Value`.
     unsafe { mem::transmute::<GenericValue, Value>(value) }

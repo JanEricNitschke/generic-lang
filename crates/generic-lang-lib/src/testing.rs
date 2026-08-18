@@ -42,7 +42,7 @@ pub fn run_tests(path: &PathBuf) -> TestRunResult {
 }
 
 /// Result of running tests in a single file
-pub struct FileTestResult {
+pub(crate) struct FileTestResult {
     pub test_results: TestResult,
     pub had_error: bool,
 }
@@ -228,7 +228,7 @@ fn print_file_test_summary(results: &TestResult, file: &Path) {
 }
 
 /// Print a summary of test results
-pub fn print_test_summary(results: &TestResult) {
+pub(crate) fn print_test_summary(results: &TestResult) {
     println!("=== Test Results ===");
 
     if results.total() == 0 {

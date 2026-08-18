@@ -4,35 +4,36 @@ mod classes;
 mod functions;
 mod natives;
 mod number;
-pub mod utils;
+pub(crate) mod utils;
 
 use crate::heap::{
     BigIntId, BoundMethodId, ClassId, ClosureId, FunctionId, Heap, InstanceId, ModuleId,
     NativeFunctionId, NativeMethodId, StringId, UpvalueId,
 };
 #[cfg(feature = "plugins")]
-pub use classes::PluginClassInfo;
-pub use classes::{
+pub(crate) use classes::PluginClassInfo;
+pub(crate) use classes::{
     BoundMethod, Class, ClassKind, Instance, class_of_value, get_native_class_id,
     is_exception_subclass, is_subclass_of, value_isinstance,
 };
-pub use functions::{Closure, Function, Module, Upvalue};
+pub(crate) use functions::Closure;
+pub(crate) use functions::{Function, Module, Upvalue};
 #[cfg(feature = "plugins")]
-pub use natives::PluginInstance;
-pub use natives::{
+pub(crate) use natives::PluginInstance;
+pub(crate) use natives::{
     CreatorContext, Dict, DictIterMode, DictIterator, Exception, Field, Generator, GeneratorState,
     Interpolation, List, ListIterator, ModuleContents, ModuleExport, NativeClass, NativeFunction,
     NativeFunctionImpl, NativeMethod, NativeMethodImpl, Partial, Path, Range, RangeIterator,
     Response, Set, SetIterator, Template, TemplateIterator, Tuple, TupleIterator,
 };
-pub use number::{GenericInt, GenericRational, Number};
+pub(crate) use number::{GenericInt, GenericRational, Number};
 
 use paste::paste;
 use unicode_normalization::UnicodeNormalization;
 
 /// Central enum for the types of runtime values that exist in generic.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub enum Value {
+pub(crate) enum Value {
     Bool(bool),
     #[default]
     Nil,
@@ -138,7 +139,7 @@ impl Value {
         }
     }
 
-    pub fn to_string(&self, heap: &Heap) -> String {
+    pub(crate) fn to_string(&self, heap: &Heap) -> String {
         self.to_string_capped(heap, 0)
     }
 

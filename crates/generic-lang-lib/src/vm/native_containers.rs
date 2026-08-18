@@ -6,7 +6,7 @@ use crate::value::{
 };
 use crate::vm::ExceptionKind::TypeError;
 impl VM {
-    pub fn build_range(&mut self, range_type: RangeType) -> VmResult {
+    pub(crate) fn build_range(&mut self, range_type: RangeType) -> VmResult {
         let end = self.stack.pop().expect("Stack underflow in OP_BUILD_RANGE");
         let start = self.stack.pop().expect("Stack underflow in OP_BUILD_RANGE");
 

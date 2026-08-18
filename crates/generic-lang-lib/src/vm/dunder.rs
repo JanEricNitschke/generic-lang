@@ -28,7 +28,7 @@ impl VM {
     /// On `Err(Exception)` the thrown exception is pending on the stack top
     /// with the VM otherwise restored to the pre-call state: pop it to
     /// handle, or propagate with `?`.
-    pub fn invoke_method_by_name(
+    pub(crate) fn invoke_method_by_name(
         &mut self,
         values: &[Value],
         method_name: &str,
@@ -53,7 +53,7 @@ impl VM {
         }
     }
 
-    pub fn invoke_method_by_name_with_attribute_error(
+    pub(crate) fn invoke_method_by_name_with_attribute_error(
         &mut self,
         value: Value,
         method_name: &str,
@@ -79,7 +79,7 @@ impl VM {
     /// list, `(...)` for a tuple, `{...}` for a set or dict, and `...` for any
     /// other instance. Non-cyclic but very deep nesting is bounded separately
     /// by the re-entry depth guard in `invoke_and_run_function`.
-    pub fn value_to_string(&mut self, value: &Value) -> VmResult<StringId> {
+    pub(crate) fn value_to_string(&mut self, value: &Value) -> VmResult<StringId> {
         let Value::Instance(instance) = value else {
             return self.value_to_string_inner(value);
         };

@@ -35,7 +35,7 @@ const MAX_REPROBE: usize = 3;
 // Values related to natives
 #[derive(Derivative)]
 #[derivative(Debug, PartialEq, PartialOrd, Clone)]
-pub struct NativeFunction {
+pub(crate) struct NativeFunction {
     pub(crate) name: StringId,
     pub(crate) arity: &'static [u8],
 
@@ -73,7 +73,7 @@ impl std::fmt::Display for NativeFunction {
 
 #[derive(Derivative)]
 #[derivative(Debug, PartialEq, PartialOrd, Clone)]
-pub struct NativeMethod {
+pub(crate) struct NativeMethod {
     pub(crate) class: StringId,
     pub(crate) name: StringId,
     pub(crate) arity: &'static [u8],
@@ -119,13 +119,13 @@ impl std::fmt::Display for NativeMethod {
     }
 }
 
-pub type NativeFunctionImpl = fn(&mut VM, &[Value]) -> VmResult<Value>;
-pub type NativeMethodImpl = fn(&mut VM, &Value, &[Value]) -> VmResult<Value>;
+pub(crate) type NativeFunctionImpl = fn(&mut VM, &[Value]) -> VmResult<Value>;
+pub(crate) type NativeMethodImpl = fn(&mut VM, &Value, &[Value]) -> VmResult<Value>;
 
 /// One export of a rust native stdlib module, resolved to a `Value` at
 /// import time by `VM::import_rust_stdlib`.
 #[derive(Debug, Clone)]
-pub enum ModuleExport {
+pub(crate) enum ModuleExport {
     /// A native function, allocated on the heap at import time.
     Function {
         name: &'static str,
@@ -154,16 +154,16 @@ pub enum ModuleExport {
 /// list of its "captures". A plain `fn` pointer cannot close over
 /// anything (in particular not over heap `Value`s, which the GC could
 /// not trace), so any input a creator needs is threaded through here.
-pub struct CreatorContext<'a> {
+pub(crate) struct CreatorContext<'a> {
     /// The export's own name.
     pub name: &'a str,
 }
 
-pub type ModuleContents = Vec<ModuleExport>;
+pub(crate) type ModuleContents = Vec<ModuleExport>;
 
 // Actual Natives
 #[derive(Debug, Clone, PartialEq)]
-pub enum NativeClass {
+pub(crate) enum NativeClass {
     List(List),
     ListIterator(ListIterator),
     Set(Set),
@@ -211,7 +211,7 @@ pub enum NativeClass {
 /// `NativeClass` is `Clone` (and is cloned during marking under `log_gc`).
 #[cfg(feature = "plugins")]
 #[derive(Debug, Clone, Copy)]
-pub struct PluginInstance {
+pub(crate) struct PluginInstance {
     pub(crate) ptr: *mut c_void,
 }
 
@@ -357,7 +357,7 @@ impl_from_for_native_class!(
 /// wrapped callable and the bound leading arguments. Calling the instance
 /// calls `func` with the bound arguments followed by the call's own.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct Partial {
+pub(crate) struct Partial {
     pub(crate) func: Value,
     pub(crate) args: Vec<Value>,
 }
@@ -384,7 +384,7 @@ impl std::fmt::Display for Partial {
 /// module: a per-instance default factory. A dataclass `__init__` calls
 /// the factory for each new instance instead of sharing the default.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct Field {
+pub(crate) struct Field {
     pub(crate) factory: Value,
 }
 
@@ -404,7 +404,7 @@ impl std::fmt::Display for Field {
 /// filesystem path as a plain string, no heap values. Path arithmetic
 /// and filesystem access live in the module's natives.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Path {
+pub(crate) struct Path {
     pub(crate) path: std::path::PathBuf,
 }
 
@@ -422,7 +422,7 @@ impl From<PluginInstance> for NativeClass {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct List {
+pub(crate) struct List {
     pub(crate) items: Vec<Value>,
 }
 
@@ -451,7 +451,7 @@ impl std::fmt::Display for List {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Default)]
-pub struct ListIterator {
+pub(crate) struct ListIterator {
     pub(crate) list: InstanceId,
     pub(crate) index: usize,
 }
@@ -484,7 +484,7 @@ impl std::fmt::Display for ListIterator {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Set {
+pub(crate) struct Set {
     pub(crate) items: HashTable<(Value, u64)>,
 }
 
@@ -581,7 +581,7 @@ impl PartialEq for Set {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct SetIterator {
+pub(crate) struct SetIterator {
     pub(crate) set: InstanceId,
     /// The next physical slot the scan should examine in the backing table.
     pub(crate) bucket: usize,
@@ -626,7 +626,7 @@ impl PartialEq for SetIterator {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Dict {
+pub(crate) struct Dict {
     pub(crate) items: HashTable<(Value, Value, u64)>,
 }
 
@@ -801,7 +801,7 @@ fn hash_table_equal<T: PartialEq>(table1: &HashTable<T>, table2: &HashTable<T>) 
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DictIterMode {
+pub(crate) enum DictIterMode {
     #[default]
     Keys,
     Values,
@@ -809,7 +809,7 @@ pub enum DictIterMode {
 }
 
 impl DictIterMode {
-    pub fn as_str(&self) -> &str {
+    pub(crate) fn as_str(&self) -> &str {
         match self {
             Self::Items => "items",
             Self::Values => "values",
@@ -819,7 +819,7 @@ impl DictIterMode {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct DictIterator {
+pub(crate) struct DictIterator {
     pub(crate) dict: InstanceId,
     /// The next physical slot the scan should examine in the backing table.
     pub(crate) bucket: usize,
@@ -868,13 +868,13 @@ impl PartialEq for DictIterator {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Range {
+pub(crate) struct Range {
     start: GenericInt,
     end: GenericInt,
 }
 
 impl Range {
-    pub fn new(start: GenericInt, end: GenericInt) -> Self {
+    pub(crate) fn new(start: GenericInt, end: GenericInt) -> Self {
         Self { start, end }
     }
 
@@ -890,7 +890,7 @@ impl Range {
         self.start
     }
 
-    pub fn end(&self) -> GenericInt {
+    pub(crate) fn end(&self) -> GenericInt {
         self.end
     }
 
@@ -931,7 +931,7 @@ impl PartialEq for Range {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct RangeIterator {
+pub(crate) struct RangeIterator {
     pub(crate) range: InstanceId,
     pub(crate) offset: GenericInt,
 }
@@ -974,7 +974,7 @@ impl PartialEq for RangeIterator {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct Tuple {
+pub(crate) struct Tuple {
     items: Vec<Value>,
 }
 
@@ -984,7 +984,7 @@ impl Tuple {
         Self { items }
     }
 
-    pub fn items(&self) -> &[Value] {
+    pub(crate) fn items(&self) -> &[Value] {
         &self.items
     }
 
@@ -1010,7 +1010,7 @@ impl std::fmt::Display for Tuple {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Default)]
-pub struct TupleIterator {
+pub(crate) struct TupleIterator {
     tuple: InstanceId,
     pub index: usize,
 }
@@ -1047,7 +1047,7 @@ impl std::fmt::Display for TupleIterator {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Exception {
+pub(crate) struct Exception {
     message: Option<StringId>,
     pub stack_trace: Option<StringId>,
 }
@@ -1077,7 +1077,7 @@ impl std::fmt::Display for Exception {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum GeneratorState {
+pub(crate) enum GeneratorState {
     /// Created but never resumed. The saved stack holds the closure and its
     /// arguments; the callframe points at the first instruction.
     #[default]
@@ -1098,7 +1098,7 @@ pub enum GeneratorState {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct Generator {
+pub(crate) struct Generator {
     pub(crate) callframe: CallFrame,
     /// Handlers registered inside the generator, in suspended
     /// (generator-relative) form; rebased on every resume/suspension.
@@ -1325,7 +1325,7 @@ impl std::fmt::Display for Generator {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Template {
+pub(crate) struct Template {
     interpolations: Vec<InstanceId>,
     strings: Vec<StringId>,
 }
@@ -1388,7 +1388,7 @@ impl std::fmt::Display for Template {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct TemplateIterator {
+pub(crate) struct TemplateIterator {
     pub(crate) template: InstanceId,
     pub(crate) index: usize,
 }
@@ -1421,7 +1421,7 @@ impl std::fmt::Display for TemplateIterator {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Interpolation {
+pub(crate) struct Interpolation {
     value: Value,
     expression: StringId,
 }
@@ -1467,7 +1467,7 @@ impl std::fmt::Display for Interpolation {
 /// Backing of the `Response` native class of the `requests` stdlib
 /// module: a finished HTTP exchange. Plain Rust data, no heap values.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Response {
+pub(crate) struct Response {
     pub(crate) status: u16,
     pub(crate) headers: Vec<(String, String)>,
     pub(crate) body: String,

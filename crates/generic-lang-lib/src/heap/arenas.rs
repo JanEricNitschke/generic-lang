@@ -25,7 +25,7 @@ impl<T> Item<T> {
     }
 }
 
-pub trait ArenaValue: Debug + Display + PartialEq {}
+pub(crate) trait ArenaValue: Debug + Display + PartialEq {}
 impl<T> ArenaValue for T where T: Debug + Display + PartialEq {}
 
 // Define separate key types for each `Value` variant to ensure
@@ -49,17 +49,17 @@ macro_rules! impl_to_value {
         paste! {
             $(
                 impl $id {
-                    pub fn to_value<'a>(&self, heap: &'a Heap) -> &'a $value_ty {
+                    pub(crate) fn to_value<'a>(&self, heap: &'a Heap) -> &'a $value_ty {
                         heap.[<get_$slot_name>](*self)
                     }
 
                     #[allow(dead_code)]
-                    pub fn to_value_mut<'a>(&self, heap: &'a mut Heap) -> &'a mut $value_ty {
+                    pub(crate) fn to_value_mut<'a>(&self, heap: &'a mut Heap) -> &'a mut $value_ty {
                         heap.[<get_mut_$slot_name>](*self)
                     }
 
                     #[allow(dead_code)]
-                    pub fn marked(&self, heap: &Heap) -> bool {
+                    pub(crate) fn marked(&self, heap: &Heap) -> bool {
                         heap.[< $slot_name _marked>](*self)
                     }
                 }
@@ -85,7 +85,7 @@ impl_to_value!(
 
 impl StringId {
     /// Helper to get nfc normalized string
-    pub fn as_normalized_string(self, heap: &Heap) -> String {
+    pub(crate) fn as_normalized_string(self, heap: &Heap) -> String {
         self.to_value(heap).nfc().collect::<String>()
     }
 }
@@ -97,7 +97,7 @@ impl StringId {
 /// Additionally, they store their overall number of allocated bytes as well
 /// as a vector of items to process for `mark and sweep`.
 #[derive(Clone, Debug)]
-pub struct Arena<K: Key, V: ArenaValue> {
+pub(crate) struct Arena<K: Key, V: ArenaValue> {
     #[allow(dead_code)]
     name: &'static str,
 

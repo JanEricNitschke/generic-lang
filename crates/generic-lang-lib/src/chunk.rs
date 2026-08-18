@@ -15,10 +15,10 @@ use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
 #[derive(Shrinkwrap, Clone, Copy, Debug)]
 #[shrinkwrap(mutable)]
-pub struct CodeOffset(pub usize);
+pub(crate) struct CodeOffset(pub usize);
 
 #[derive(Shrinkwrap, Clone, Copy, Debug)]
-pub struct ConstantIndex(pub u8);
+pub(crate) struct ConstantIndex(pub u8);
 
 impl From<ConstantIndex> for u8 {
     fn from(index: ConstantIndex) -> Self {
@@ -27,7 +27,7 @@ impl From<ConstantIndex> for u8 {
 }
 
 #[derive(Shrinkwrap, Clone, Copy, Debug)]
-pub struct ConstantLongIndex(pub usize);
+pub(crate) struct ConstantLongIndex(pub usize);
 
 impl TryFrom<ConstantLongIndex> for ConstantIndex {
     type Error = <u8 as TryFrom<usize>>::Error;
@@ -43,7 +43,7 @@ impl TryFrom<ConstantLongIndex> for ConstantIndex {
     IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Debug, Clone, Copy, EnumIter, AsRefStr,
 )]
 #[repr(u8)]
-pub enum OpCode {
+pub(crate) enum OpCode {
     // Literals and constants.
     Nil,
     True,
@@ -199,7 +199,7 @@ impl OpCode {
 /// table for literal constants that appear in the chunk.
 #[derive(Derivative, Clone, Debug)]
 #[derivative(PartialEq)]
-pub struct Chunk {
+pub(crate) struct Chunk {
     name: StringId,
     code: Vec<u8>,
     #[derivative(PartialEq = "ignore")]
@@ -319,7 +319,7 @@ impl Chunk {
 
 /// Debug helper for disassembling a chunks code into
 /// a human readable format.
-pub struct InstructionDisassembler<'chunk, 'heap> {
+pub(crate) struct InstructionDisassembler<'chunk, 'heap> {
     chunk: &'chunk Chunk,
     pub(super) offset: CodeOffset,
     operand_alignment: usize,

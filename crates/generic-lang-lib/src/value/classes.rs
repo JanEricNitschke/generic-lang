@@ -20,7 +20,7 @@ use super::{NativeClass, Number, Value};
 /// discharges them in `heap::Heap` (the only caller).
 #[cfg(feature = "plugins")]
 #[derive(Debug, Clone, Copy)]
-pub struct PluginClassInfo {
+pub(crate) struct PluginClassInfo {
     pub(crate) drop: Option<unsafe extern "C" fn(*mut c_void)>,
     pub(crate) traverse: Option<PluginTraverseFn>,
 }
@@ -29,7 +29,7 @@ pub struct PluginClassInfo {
 /// an interpreter builtin (`List`, `Exception`, the value-type proxies, …);
 /// `Plugin` is defined by a native extension and carries its drop/traverse.
 #[derive(Debug, Clone, Copy)]
-pub enum ClassKind {
+pub(crate) enum ClassKind {
     User,
     Native,
     #[cfg(feature = "plugins")]
@@ -41,14 +41,14 @@ pub enum ClassKind {
 /// declaration, which reserves the name (and its position, for
 /// dataclasses) without providing a readable value.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ClassVariable {
+pub(crate) struct ClassVariable {
     pub(crate) annotation: Value,
     pub(crate) default: Option<Value>,
 }
 
 #[derive(Debug, Clone, Derivative)]
 #[derivative(PartialOrd)]
-pub struct Class {
+pub(crate) struct Class {
     pub(crate) name: StringId,
     /// The class's methods: `Closure`s for methods written in generic,
     /// `NativeMethod`s for native, plugin, and dataclass-generated ones -
@@ -157,7 +157,11 @@ impl Class {
 
 /// Check if the first class is the same as or a subclass of the second class.
 /// This is a standalone function that works with `ClassIds` directly.
-pub fn is_subclass_of(heap: &Heap, current_class_id: ClassId, superclass_id: ClassId) -> bool {
+pub(crate) fn is_subclass_of(
+    heap: &Heap,
+    current_class_id: ClassId,
+    superclass_id: ClassId,
+) -> bool {
     // Check if they are the same class
     if current_class_id == superclass_id {
         return true;
@@ -171,7 +175,7 @@ pub fn is_subclass_of(heap: &Heap, current_class_id: ClassId, superclass_id: Cla
     false
 }
 
-pub fn get_native_class_id(heap: &Heap, native_class: &str) -> ClassId {
+pub(crate) fn get_native_class_id(heap: &Heap, native_class: &str) -> ClassId {
     *heap
         .native_classes
         .get(native_class)
@@ -179,7 +183,7 @@ pub fn get_native_class_id(heap: &Heap, native_class: &str) -> ClassId {
 }
 
 /// Check if a class is a subclass of Exception
-pub fn is_exception_subclass(heap: &Heap, class_id: ClassId) -> bool {
+pub(crate) fn is_exception_subclass(heap: &Heap, class_id: ClassId) -> bool {
     is_subclass_of(heap, class_id, get_native_class_id(heap, "Exception"))
 }
 
@@ -187,7 +191,7 @@ pub fn is_exception_subclass(heap: &Heap, class_id: ClassId) -> bool {
 /// value types map to their proxy classes (`Bool`, `String`, `Integer`,
 /// `Float`, `Rational`). Everything else (nil, functions, classes, modules, …)
 /// has no class and yields `None`.
-pub fn class_of_value(heap: &Heap, value: Value) -> Option<ClassId> {
+pub(crate) fn class_of_value(heap: &Heap, value: Value) -> Option<ClassId> {
     match value {
         Value::Instance(instance) => Some(instance.to_value(heap).class),
         Value::Bool(_) => Some(get_native_class_id(heap, "Bool")),
@@ -207,7 +211,7 @@ pub fn class_of_value(heap: &Heap, value: Value) -> Option<ClassId> {
 /// proxy classes exactly (`Bool`, `String`, `Integer`, `Float`,
 /// `Rational`, `Module`); everything else that is not an instance is
 /// `false`.
-pub fn value_isinstance(heap: &Heap, value: Value, class_id: ClassId) -> bool {
+pub(crate) fn value_isinstance(heap: &Heap, value: Value, class_id: ClassId) -> bool {
     match value {
         Value::Instance(instance) => is_subclass_of(heap, instance.to_value(heap).class, class_id),
         Value::Bool(_) => class_id == get_native_class_id(heap, "Bool"),
@@ -239,7 +243,7 @@ impl Eq for Class {}
 
 #[derive(Derivative)]
 #[derivative(Debug, PartialOrd, Clone)]
-pub struct Instance {
+pub(crate) struct Instance {
     pub(crate) class: ClassId,
     #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
     pub(crate) fields: HashMap<String, Value>,
@@ -322,7 +326,7 @@ impl PartialEq for Instance {
 }
 
 #[derive(Debug, Clone)]
-pub struct BoundMethod {
+pub(crate) struct BoundMethod {
     // Probably could be an InstanceId now
     pub(crate) receiver: Value,
     // Has to be a general Value because it can be a NativeMethod or Closure

@@ -24,7 +24,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Get the time since the `UNIX_EPOCH` in seconds.
 /// Useful for timing durations by calling this twice and subtracting the results.
-pub fn clock_native(vm: &mut VM, _args: &[Value]) -> VmResult<Value> {
+pub(crate) fn clock_native(vm: &mut VM, _args: &[Value]) -> VmResult<Value> {
     let Ok(since_epoch) = SystemTime::now().duration_since(UNIX_EPOCH) else {
         return Err(vm
             .throw(ValueError, "system clock is set before the Unix epoch")

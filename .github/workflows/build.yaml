@@ -97,6 +97,9 @@ jobs:
         cargo clippy -- -D warnings
         # Pedantic set
         cargo clippy --all-targets -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo
+    - name: Check docs
+      # rustdoc's warn-by-default lints never fire unless cargo doc runs.
+      run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace
     - name: Check generated plugin header
       # Regenerates the header and fails on drift - the header is purely
       # cbindgen's output, nothing else.

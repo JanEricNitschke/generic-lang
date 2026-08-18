@@ -115,7 +115,7 @@ pub(super) unsafe fn call_plugin_value(
 /// As [`call_plugin`], for a [`PluginMethodFn`]; `receiver` must be a live
 /// value the host owns.
 #[allow(unsafe_code)]
-pub unsafe fn call_plugin_method(
+pub(crate) unsafe fn call_plugin_method(
     vm: &mut VM,
     fun: PluginMethodFn,
     receiver: Value,

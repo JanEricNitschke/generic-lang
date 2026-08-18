@@ -14,7 +14,7 @@ use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Rem, Sub};
 // These could probably be individual entries in the enum tbh.
 /// Enum summarizing all of the generic number types.
 #[derive(Debug, Clone, From, Copy, PartialEq)]
-pub enum Number {
+pub(crate) enum Number {
     Float(f64),
     Integer(GenericInt),
     Rational(GenericRational),
@@ -419,7 +419,7 @@ impl Number {
 // element-wise, not aliased).
 #[repr(align(8))]
 #[derive(Debug, Clone, From, Copy, PartialEq, Eq)]
-pub enum GenericInt {
+pub(crate) enum GenericInt {
     Small(i64),
     Big(BigIntId),
 }
@@ -436,10 +436,6 @@ fn test_generic_int_size() {
 
 // General handling and conversions
 impl GenericInt {
-    pub const fn new(value: i64) -> Self {
-        Self::Small(value)
-    }
-
     pub(crate) fn to_string(&self, heap: &Heap) -> String {
         match self {
             Self::Small(n) => format!("{n}"),
@@ -448,7 +444,7 @@ impl GenericInt {
     }
 
     #[allow(clippy::wrong_self_convention)]
-    pub fn to_bigint(&self, heap: &Heap) -> BigInt {
+    pub(crate) fn to_bigint(&self, heap: &Heap) -> BigInt {
         match self {
             Self::Small(n) => BigInt::from(*n),
             Self::Big(n) => n.to_value(heap).clone(),
@@ -470,29 +466,22 @@ impl GenericInt {
         (lhs.to_bigint(heap), rhs.to_bigint(heap))
     }
 
-    pub fn is_zero(&self, heap: &Heap) -> bool {
+    pub(crate) fn is_zero(&self, heap: &Heap) -> bool {
         match self {
             Self::Small(n) => n.is_zero(),
             Self::Big(n) => n.to_value(heap).is_zero(),
         }
     }
 
-    pub fn is_negative(&self, heap: &Heap) -> bool {
+    pub(crate) fn is_negative(&self, heap: &Heap) -> bool {
         match self {
             Self::Small(n) => n.is_negative(),
             Self::Big(n) => n.to_value(heap).is_negative(),
         }
     }
 
-    pub fn is_positive(&self, heap: &Heap) -> bool {
-        match self {
-            Self::Small(n) => n.is_positive(),
-            Self::Big(n) => n.to_value(heap).is_positive(),
-        }
-    }
-
     #[allow(clippy::option_if_let_else)]
-    pub fn from_usize(n: usize, heap: &mut Heap) -> Self {
+    pub(crate) fn from_usize(n: usize, heap: &mut Heap) -> Self {
         if let Ok(n) = i64::try_from(n) {
             Self::Small(n)
         } else {
@@ -653,7 +642,7 @@ impl GenericInt {
 // Comparisons for GenericInt against other GenericInt
 #[allow(dead_code)]
 impl GenericInt {
-    pub fn eq(&self, other: &Self, heap: &Heap) -> bool {
+    pub(crate) fn eq(&self, other: &Self, heap: &Heap) -> bool {
         match (self, other) {
             (Self::Small(a), Self::Small(b)) => a == b,
             (Self::Big(a), Self::Big(b)) => a == b || a.to_value(heap) == b.to_value(heap),
@@ -813,13 +802,13 @@ impl GenericInt {
 }
 
 #[derive(Debug, Clone, From, Copy, PartialEq, Eq)]
-pub struct GenericRational {
+pub(crate) struct GenericRational {
     numerator: GenericInt,
     denominator: GenericInt,
 }
 
 impl GenericRational {
-    pub fn new(
+    pub(crate) fn new(
         numerator: GenericInt,
         denominator: GenericInt,
         heap: &mut Heap,
@@ -834,15 +823,15 @@ impl GenericRational {
         })
     }
 
-    pub fn numerator(&self) -> GenericInt {
+    pub(crate) fn numerator(&self) -> GenericInt {
         self.numerator
     }
 
-    pub fn denominator(&self) -> GenericInt {
+    pub(crate) fn denominator(&self) -> GenericInt {
         self.denominator
     }
 
-    pub fn from_int(numerator: GenericInt) -> Self {
+    pub(crate) fn from_int(numerator: GenericInt) -> Self {
         Self {
             numerator,
             denominator: GenericInt::Small(1),
@@ -881,7 +870,7 @@ impl GenericRational {
         a
     }
 
-    pub fn to_int(&self, heap: &Heap) -> Result<GenericInt, String> {
+    pub(crate) fn to_int(&self, heap: &Heap) -> Result<GenericInt, String> {
         if self.denominator.eq(&GenericInt::Small(1), heap) {
             Ok(self.numerator)
         } else {
@@ -910,7 +899,7 @@ impl GenericRational {
     ///
     /// The denominator of a reduced rational is `Small(1)` for a whole number;
     /// `GenericInt::eq` compares by value, so a stray `Big(1)` is caught too.
-    pub fn hash<H: Hasher>(&self, state: &mut H, heap: &Heap) {
+    pub(crate) fn hash<H: Hasher>(&self, state: &mut H, heap: &Heap) {
         if self.denominator.eq(&GenericInt::Small(1), heap) {
             self.numerator.hash(state, heap);
         } else {
@@ -919,7 +908,7 @@ impl GenericRational {
     }
 
     // Arithmetic operations
-    pub fn add(self, rhs: Self, heap: &mut Heap) -> Self {
+    pub(crate) fn add(self, rhs: Self, heap: &mut Heap) -> Self {
         // a/b + c/d = (a*d + b*c) / (b*d)
         let num = self
             .numerator
@@ -929,7 +918,7 @@ impl GenericRational {
         Self::new(num, den, heap).expect("Failed to create rational")
     }
 
-    pub fn sub(self, rhs: Self, heap: &mut Heap) -> Self {
+    pub(crate) fn sub(self, rhs: Self, heap: &mut Heap) -> Self {
         // a/b - c/d = (a*d - b*c) / (b*d)
         let num = self
             .numerator
@@ -939,14 +928,14 @@ impl GenericRational {
         Self::new(num, den, heap).expect("Failed to create rational")
     }
 
-    pub fn mul(self, rhs: Self, heap: &mut Heap) -> Self {
+    pub(crate) fn mul(self, rhs: Self, heap: &mut Heap) -> Self {
         // a/b * c/d = (a*c) / (b*d)
         let num = self.numerator.mul(rhs.numerator, heap);
         let den = self.denominator.mul(rhs.denominator, heap);
         Self::new(num, den, heap).expect("Failed to create rational")
     }
 
-    pub fn div(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
+    pub(crate) fn div(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
         // a/b / c/d = (a*d) / (b*c)
         if rhs.numerator.is_zero(heap) {
             return Err("Division by zero".to_string());
@@ -956,7 +945,7 @@ impl GenericRational {
         Self::new(num, den, heap)
     }
 
-    pub fn neg(self, heap: &mut Heap) -> Self {
+    pub(crate) fn neg(self, heap: &mut Heap) -> Self {
         Self {
             numerator: self.numerator.neg(heap),
             denominator: self.denominator,
@@ -964,12 +953,12 @@ impl GenericRational {
     }
 
     // Comparison operations
-    pub fn eq(&self, other: &Self, heap: &Heap) -> bool {
+    pub(crate) fn eq(&self, other: &Self, heap: &Heap) -> bool {
         // Since rationals are always in reduced form, we can compare directly
         self.numerator.eq(&other.numerator, heap) && self.denominator.eq(&other.denominator, heap)
     }
 
-    pub fn partial_cmp(&self, other: &Self, heap: &Heap) -> Option<Ordering> {
+    pub(crate) fn partial_cmp(&self, other: &Self, heap: &Heap) -> Option<Ordering> {
         // a/b <=> c/d is equivalent to a*d <=> b*c
         if let (
             GenericInt::Small(a),
@@ -999,30 +988,8 @@ impl GenericRational {
         }
     }
 
-    pub fn lt(&self, other: &Self, heap: &Heap) -> bool {
-        self.partial_cmp(other, heap) == Some(Ordering::Less)
-    }
-
-    pub fn gt(&self, other: &Self, heap: &Heap) -> bool {
-        self.partial_cmp(other, heap) == Some(Ordering::Greater)
-    }
-
-    pub fn ge(&self, other: &Self, heap: &Heap) -> bool {
-        matches!(
-            self.partial_cmp(other, heap),
-            Some(Ordering::Greater | Ordering::Equal)
-        )
-    }
-
-    pub fn le(&self, other: &Self, heap: &Heap) -> bool {
-        matches!(
-            self.partial_cmp(other, heap),
-            Some(Ordering::Less | Ordering::Equal)
-        )
-    }
-
     // Conversion operations
-    pub fn to_f64(&self, heap: &Heap) -> f64 {
+    pub(crate) fn to_f64(&self, heap: &Heap) -> f64 {
         const GUARD_BITS: i64 = 54;
         let num = self.numerator.to_f64(heap);
         let den = self.denominator.to_f64(heap);
@@ -1073,11 +1040,7 @@ impl GenericRational {
         mantissa * scale(half) * scale(shift - half)
     }
 
-    pub fn is_zero(&self, heap: &Heap) -> bool {
-        self.numerator.is_zero(heap)
-    }
-
-    pub fn pow(self, exp: GenericInt, heap: &mut Heap) -> Result<Self, String> {
+    pub(crate) fn pow(self, exp: GenericInt, heap: &mut Heap) -> Result<Self, String> {
         if exp.lt_i64(0, heap) {
             // For negative exponents, return the reciprocal raised to the positive power
             let pos_exp = exp.neg(heap);

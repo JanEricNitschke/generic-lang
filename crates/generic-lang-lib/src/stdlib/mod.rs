@@ -2,4 +2,4 @@
 
 mod rs;
 
-pub use rs::register;
+pub(crate) use rs::register;

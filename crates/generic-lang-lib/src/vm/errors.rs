@@ -5,14 +5,14 @@ use crate::vm::callstack::CallFrame;
 // === Raw error types ===
 #[derive(Debug, Error, Clone, Copy)]
 #[error("Runtime error occurred")]
-pub struct RuntimeErrorKind;
+pub(crate) struct RuntimeErrorKind;
 
 #[derive(Debug, Error, Clone, Copy)]
 #[error("Exception was raised")]
-pub struct ExceptionRaisedKind;
+pub(crate) struct ExceptionRaisedKind;
 
 #[derive(Debug, Error, Clone, Copy)]
-pub enum VmErrorKind {
+pub(crate) enum VmErrorKind {
     /// A hard runtime error: fatal, always propagates.
     #[error(transparent)]
     Runtime(#[from] RuntimeErrorKind),
@@ -26,8 +26,8 @@ pub enum VmErrorKind {
     Exception(#[from] ExceptionRaisedKind),
 }
 
-pub type RuntimeResult<T = Option<CallFrame>> = Result<T, RuntimeErrorKind>;
-pub type VmResult<T = Option<CallFrame>> = Result<T, VmErrorKind>;
+pub(crate) type RuntimeResult<T = Option<CallFrame>> = Result<T, RuntimeErrorKind>;
+pub(crate) type VmResult<T = Option<CallFrame>> = Result<T, VmErrorKind>;
 
 impl From<Return> for VmResult {
     fn from(value: Return) -> Self {
@@ -38,7 +38,7 @@ impl From<Return> for VmResult {
 }
 
 #[derive(Debug)]
-pub enum Return {
+pub(crate) enum Return {
     Function(CallFrame),
     Program(CallFrame),
 }

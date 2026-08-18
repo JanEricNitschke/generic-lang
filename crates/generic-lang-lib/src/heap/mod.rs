@@ -16,7 +16,7 @@ use rustc_hash::FxHashMap as HashMap;
 use std::fmt::Debug;
 
 use crate::heap::arenas::Arena;
-pub use crate::heap::arenas::{
+pub(crate) use crate::heap::arenas::{
     BigIntId, BoundMethodId, ClassId, ClosureId, FunctionId, InstanceId, ModuleId,
     NativeFunctionId, NativeMethodId, StringId, UpvalueId,
 };
@@ -38,7 +38,7 @@ use crate::vm::plugins::host_api::from_ffi;
 /// Collection of all builtin constants that are needed in different parts
 /// of the heap or VM.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BuiltinConstants {
+pub(crate) struct BuiltinConstants {
     /// Name of the initializer, currently `__init__`
     pub(super) init_string: StringId,
     /// Identifier that contains the name of the current module.
@@ -173,7 +173,7 @@ macro_rules! gray_value {
 ///
 /// Heart is multiple arenas, one for each variant of `Value.`
 #[derive(Clone, Debug)]
-pub struct Heap {
+pub(crate) struct Heap {
     builtin_constants: Option<BuiltinConstants>,
     pub(super) strings_by_name: HashMap<String, StringId>,
     pub(super) native_classes: HashMap<String, ClassId>,

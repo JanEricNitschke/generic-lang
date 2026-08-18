@@ -25,7 +25,7 @@ macro_rules! host_error_constructors {
 ///
 /// Methods that run generic bytecode (and may therefore trigger garbage
 /// collection) take `&mut self`: the borrow checker then guarantees the
-/// rooting contract's string rule - any [`&str`](str) obtained from
+/// rooting contract's string rule - any [`&str`](prim@str) obtained from
 /// the host borrows `self` and cannot be held across a re-entering call.
 /// Values held across a re-entering call must be rooted, e.g.
 /// via [`Host::rooted`].

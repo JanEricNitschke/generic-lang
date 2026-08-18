@@ -7,7 +7,7 @@
 mod runtime_error;
 mod debug;
 mod dunder;
-pub mod errors;
+pub(crate) mod errors;
 mod garbage_collection;
 mod import;
 mod setup;
@@ -18,12 +18,12 @@ mod arithmetics;
 #[macro_use]
 mod run_instruction;
 mod bytecode;
-pub mod callstack;
+pub(crate) mod callstack;
 mod exception_handling;
 mod functions;
 mod native_containers;
 #[cfg(feature = "plugins")]
-pub mod plugins;
+pub(crate) mod plugins;
 mod state;
 mod testing;
 mod variables;
@@ -32,10 +32,11 @@ use arithmetics::IntoResultValue;
 use callstack::CallStack;
 use errors::RuntimeResult;
 use errors::{Return, VmErrorKind};
+pub(crate) use exception_handling::ExceptionKind;
 use exception_handling::ExceptionKind::{
     AttributeError, ConstReassignmentError, SyntaxError, TypeError, ValueError,
 };
-pub use exception_handling::{ExceptionHandler, ExceptionKind, SuspendedExceptionHandler};
+pub(crate) use exception_handling::{ExceptionHandler, SuspendedExceptionHandler};
 #[cfg(feature = "plugins")]
 use plugins::PluginState;
 
@@ -61,7 +62,7 @@ use crate::{
 use std::fmt::Write;
 use strum::IntoEnumIterator;
 
-/// How a call to [`VM::interpret`] finished; mapped to the process exit code
+/// How a call to `VM::interpret` finished; mapped to the process exit code
 /// by the binary.
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -74,7 +75,7 @@ pub enum InterpretResult {
     RuntimeError,
 }
 
-pub use testing::TestResult;
+pub(crate) use testing::TestResult;
 
 impl From<RuntimeResult> for InterpretResult {
     fn from(result: RuntimeResult) -> Self {
@@ -87,7 +88,7 @@ impl From<RuntimeResult> for InterpretResult {
 
 /// Wrapper around a global value to store whether it is mutable or not.
 #[derive(Debug, Clone, Copy)] // , PartialEq, Eq, PartialOrd
-pub struct Global {
+pub(crate) struct Global {
     pub(crate) value: Value,
     pub(crate) mutable: bool,
 }
@@ -117,7 +118,7 @@ impl std::fmt::Display for Global {
 /// The main struct for the virtual machine and heart of the interpreter.
 ///
 /// Contains the heap, stack, callstack, open upvalues, modules, builtins, and stdlib.
-pub struct VM {
+pub(crate) struct VM {
     pub(super) heap: Heap,
     pub(super) stack: Vec<Value>,
     pub(super) callstack: CallStack,

@@ -23,7 +23,7 @@ impl VM {
     }
 
     #[inline]
-    pub fn stack_push(&mut self, value_id: Value) {
+    pub(crate) fn stack_push(&mut self, value_id: Value) {
         self.stack.push(value_id);
         // This check has a pretty big performance overhead; disabled for now
         // TODO find a better way: keep the check and minimize overhead

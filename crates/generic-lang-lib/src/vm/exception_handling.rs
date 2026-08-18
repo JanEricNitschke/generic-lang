@@ -12,7 +12,7 @@ use self::ExceptionKind::TypeError;
 /// the name - see `every_exception_kind_has_a_builtin_class`).
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, IntoStaticStr)]
-pub enum ExceptionKind {
+pub(crate) enum ExceptionKind {
     /// The base exception class.
     Exception = 1,
     TypeError,
@@ -36,7 +36,7 @@ pub enum ExceptionKind {
 /// Captured when a region is entered (or a handler registered) and consumed
 /// by [`VM::unwind_region`], which cuts the VM back to it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct RegionSnapshot {
+pub(crate) struct RegionSnapshot {
     pub frames: usize,
     pub stack: usize,
     pub modules: usize,
@@ -49,7 +49,7 @@ pub struct RegionSnapshot {
 /// where the catch block starts. For the generator-relative form saved
 /// across suspensions see [`SuspendedExceptionHandler`].
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ExceptionHandler {
+pub(crate) struct ExceptionHandler {
     pub region: RegionSnapshot,
     pub ip: usize,
 }
@@ -72,7 +72,7 @@ pub struct ExceptionHandler {
 /// [`ExceptionHandler::suspend`] / [`Self::resume`], so a suspended handler
 /// can never be used as an absolute one by accident.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct SuspendedExceptionHandler {
+pub(crate) struct SuspendedExceptionHandler {
     frames_above_base: usize,
     ip: usize,
     stack_length: usize,
