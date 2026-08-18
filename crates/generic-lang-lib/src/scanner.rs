@@ -10,7 +10,7 @@ use crate::types::Location;
     IntoPrimitive, TryFromPrimitive, PartialEq, Eq, Clone, Copy, Debug, EnumIter, EnumProperty,
 )]
 #[repr(u8)]
-pub enum TokenKind {
+pub(crate) enum TokenKind {
     // Delimiters.
     LeftParen,
     RightParen,
@@ -185,7 +185,7 @@ impl std::fmt::Display for TokenKind {
 /// together with the raw characters that comprise it
 /// and the line that it originates from.
 #[derive(Clone, Debug)]
-pub struct Token<'a> {
+pub(crate) struct Token<'a> {
     pub(super) kind: TokenKind,
     pub(super) lexeme: &'a str,
     pub(super) location: Location,
@@ -213,7 +213,7 @@ enum ScannerMode {
 
 /// Main struct for parsing the source characters to tokens.
 #[derive(Debug, Clone)]
-pub struct Scanner<'a> {
+pub(crate) struct Scanner<'a> {
     source: &'a str,
     start: usize,
     /// Always points at the next character to be consumed.
@@ -238,7 +238,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn source_slice(&self, start: usize, end: usize) -> &'a str {
+    pub(crate) fn source_slice(&self, start: usize, end: usize) -> &'a str {
         &self.source[start..end]
     }
 
@@ -789,7 +789,7 @@ impl<'a> Scanner<'a> {
 /// properties on [`TokenKind`] (zero cost for the scanner itself, which
 /// never consults them). The scanner tests pin the tags against the
 /// keyword trie in both directions.
-pub fn keywords() -> &'static [&'static str] {
+pub(crate) fn keywords() -> &'static [&'static str] {
     static KEYWORDS: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| {
         let mut keywords: Vec<&'static str> = TokenKind::iter()
             .filter_map(|kind| kind.get_str("keyword"))

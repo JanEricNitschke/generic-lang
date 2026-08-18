@@ -3,12 +3,12 @@
 use include_dir::{Dir, include_dir};
 
 /// Maximum number of frames that can be active simultaneously.
-pub const FRAMES_MAX: usize = 64;
+pub(crate) const FRAMES_MAX: usize = 64;
 /// Bytes of spread bitmap needed to flag every argument of a call: one bit per
 /// argument, and a call takes at most 255 arguments (`ceil(255 / 8)`).
-pub const SPREAD_BITMAP_BYTES: usize = 32;
+pub(crate) const SPREAD_BITMAP_BYTES: usize = 32;
 /// Maximum size of the total stack.
-pub const STACK_MAX: usize = FRAMES_MAX * 256;
+pub(crate) const STACK_MAX: usize = FRAMES_MAX * 256;
 /// Maximum depth of nested native re-entry (dunder calls such as `__str__`,
 /// `__eq__`, `__lt__`, `__hash__`) before a `RecursionError` is raised. Each
 /// level is a real host-stack frame (unlike bytecode calls, which run in a
@@ -17,27 +17,28 @@ pub const STACK_MAX: usize = FRAMES_MAX * 256;
 /// frames in a debug build, so this sits below that with margin. Genuine cycles
 /// are elided by `value_to_string` at depth 1 and never approach this; it only
 /// bounds pathologically deep-but-finite nesting.
-pub const REENTRY_MAX: usize = 1024;
+pub(crate) const REENTRY_MAX: usize = 1024;
 /// Maximum depth to which the infallible, host-recursive `Value::to_string`
 /// (used for error messages and debug output) descends before eliding the
 /// rest as `...`, so a cyclic or very deep value cannot overflow the host
 /// stack while being formatted. Kept small: this only formats values inside
 /// error messages, where deep nesting is noise.
-pub const REPR_MAX_DEPTH: usize = 10;
+pub(crate) const REPR_MAX_DEPTH: usize = 10;
 /// Maximum nesting depth `json.dumps` serializes before raising. The
 /// dumper recurses on the host stack, so unbounded depth would overflow
 /// it; the cap matches the parser's (serde's) 128-level recursion limit,
 /// so every document `json.loads` accepts also serializes back.
-pub const JSON_MAX_DEPTH: usize = 128;
+pub(crate) const JSON_MAX_DEPTH: usize = 128;
 /// Garbage collection occurs whenever the heap has reached a certain size.
 /// To avoid constant collection at large sizes, the next collection
 /// is performed when the heap has grown by a constant factor compared
 /// to the last one.
-pub const GC_HEAP_GROW_FACTOR: usize = 2;
+pub(crate) const GC_HEAP_GROW_FACTOR: usize = 2;
 
-pub const LAMBDA_NAME: &str = "lambda";
+pub(crate) const LAMBDA_NAME: &str = "lambda";
 
 /// Embedded directory containing generic builtin modules.
-pub static GENERIC_BUILTINS_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/src/builtins");
+pub(crate) static GENERIC_BUILTINS_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/src/builtins");
 /// Embedded directory containing generic stdlib modules.
-pub static GENERIC_STDLIB_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/src/stdlib/generic");
+pub(crate) static GENERIC_STDLIB_DIR: Dir<'_> =
+    include_dir!("$CARGO_MANIFEST_DIR/src/stdlib/generic");

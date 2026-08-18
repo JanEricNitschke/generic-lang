@@ -173,7 +173,7 @@ impl ClassState {
 }
 
 /// Main compiler struct that turns tokens into bytecode.
-pub struct Compiler<'scanner, 'heap> {
+pub(crate) struct Compiler<'scanner, 'heap> {
     /// The VM heap. Already present here to store compiled functions.
     /// and cache strings.
     heap: &'heap mut Heap,

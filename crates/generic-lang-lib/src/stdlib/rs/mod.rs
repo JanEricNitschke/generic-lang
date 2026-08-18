@@ -17,7 +17,7 @@ mod time;
 
 use crate::vm::VM;
 
-pub fn register(vm: &mut VM) {
+pub(crate) fn register(vm: &mut VM) {
     math::register(vm);
     os::register(vm);
     functools::register(vm);

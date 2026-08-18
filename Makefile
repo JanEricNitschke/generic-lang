@@ -20,6 +20,11 @@ $(REL_BIN): $(sources)
 cargo-test:
 	cargo test
 
+# rustdoc's warn-by-default lints never fire unless cargo doc runs.
+.PHONY: docs-check
+docs-check:
+	RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace
+
 # Regenerate the C header from the plugin ABI types. The header is checked
 # in; CI fails if it is out of date. Requires `cargo install cbindgen`.
 .PHONY: generate-plugin-header

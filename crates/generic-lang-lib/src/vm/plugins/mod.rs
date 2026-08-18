@@ -16,9 +16,9 @@
 //! per-function in `loader` (dlopen + descriptor reads) and in
 //! `trampolines` (the three calls into plugin code).
 
-pub mod host_api;
+pub(crate) mod host_api;
 mod loader;
-pub mod trampolines;
+pub(crate) mod trampolines;
 
 #[cfg(test)]
 mod tests;

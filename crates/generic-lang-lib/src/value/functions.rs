@@ -23,7 +23,7 @@ use std::path::PathBuf;
 /// that function is also available for that resolution.
 #[derive(Debug, Clone, Derivative)]
 #[derivative(PartialOrd)]
-pub struct Closure {
+pub(crate) struct Closure {
     pub(crate) function: FunctionId,
     pub(crate) upvalues: Vec<UpvalueId>,
     pub(crate) upvalue_count: usize,
@@ -81,7 +81,7 @@ impl std::fmt::Display for Closure {
 ///
 /// Additionally hold the chunk of compiled bytecode.
 #[derive(Debug, Eq, Clone)]
-pub struct Function {
+pub(crate) struct Function {
     /// Number of fixed parameters (required plus optional), not counting a
     /// trailing `*rest`.
     pub(crate) arity: usize,
@@ -129,7 +129,7 @@ impl PartialEq for Function {
 
 #[derive(Debug, Clone, Derivative)]
 #[derivative(PartialOrd)]
-pub struct Module {
+pub(crate) struct Module {
     pub(crate) name: StringId,
     pub(crate) path: PathBuf,
     #[derivative(PartialOrd = "ignore", PartialEq = "ignore")]
@@ -180,7 +180,7 @@ impl PartialEq for Module {
 /// Uncaptured (open) upvalues point to the stack index of the value,
 /// while captured upvalues point to the value in the heap.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Upvalue {
+pub(crate) enum Upvalue {
     Open(usize),
     Closed(Value),
 }

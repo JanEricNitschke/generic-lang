@@ -5,7 +5,7 @@ use crate::vm::VM;
 
 #[cfg(feature = "trace_execution")]
 impl VM {
-    pub fn trace_execution(&self) {
+    pub(crate) fn trace_execution(&self) {
         // lightweight skip check
         if cfg!(feature = "trace_execution_builtin")
             || !self
@@ -45,7 +45,7 @@ impl VM {
     }
 
     #[cfg(feature = "trace_execution_verbose")]
-    pub fn print_verbose_state(&self) {
+    pub(crate) fn print_verbose_state(&self) {
         self.print_module_details();
         self.print_callstack_details();
         self.print_globals();

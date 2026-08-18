@@ -8,14 +8,14 @@ use strum_macros::{Display, EnumIter};
 
 #[derive(Shrinkwrap, PartialEq, Eq, Clone, Copy, Debug, PartialOrd)]
 #[shrinkwrap(mutable)]
-pub struct Line(pub usize);
+pub(crate) struct Line(pub usize);
 
 #[derive(Shrinkwrap, PartialEq, Eq, Clone, Copy, Debug, PartialOrd)]
 #[shrinkwrap(mutable)]
-pub struct Column(pub usize);
+pub(crate) struct Column(pub usize);
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, PartialOrd)]
-pub struct Location {
+pub(crate) struct Location {
     pub(super) start_line: Line,
     pub(super) start_column: Column,
     pub(super) end_line: Line,
@@ -36,7 +36,7 @@ impl Default for Location {
 }
 
 impl Location {
-    pub fn merge_ordered(&self, other: &Self) -> Self {
+    pub(crate) fn merge_ordered(&self, other: &Self) -> Self {
         debug_assert!(
             self.start_line < other.start_line
                 || (self.start_line == other.start_line && self.start_column <= other.start_column),
@@ -59,14 +59,14 @@ impl Location {
 }
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Default)]
-pub struct OpcodeLocation {
+pub(crate) struct OpcodeLocation {
     pub(super) preceding: Option<Location>,
     pub(super) source: Location,
     pub(super) following: Option<Location>,
 }
 
 impl OpcodeLocation {
-    pub fn new(source: Location) -> Self {
+    pub(crate) fn new(source: Location) -> Self {
         Self {
             preceding: None,
             source,
@@ -75,7 +75,7 @@ impl OpcodeLocation {
     }
 
     /// Returns a version where preceding/following are extended to touch the source
-    pub fn filled(&self) -> Self {
+    pub(crate) fn filled(&self) -> Self {
         let preceding = self.preceding.as_ref().map(|pre| Location {
             start_line: pre.start_line,
             start_column: pre.start_column,
@@ -102,28 +102,28 @@ impl OpcodeLocation {
 
 /// Enum for variable mutability
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mutability {
+pub(crate) enum Mutability {
     Mutable,
     Immutable,
 }
 
 /// Enum for conditional statement types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConditionType {
+pub(crate) enum ConditionType {
     If,
     Unless,
 }
 
 /// Enum for loop statement types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LoopType {
+pub(crate) enum LoopType {
     While,
     Until,
 }
 
 /// Enum for conditional jump directions
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum JumpCondition {
+pub(crate) enum JumpCondition {
     IfTrue,
     IfFalse,
 }
@@ -139,14 +139,14 @@ impl From<JumpCondition> for bool {
 
 /// Enum for number encoding types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NumberEncoding {
+pub(crate) enum NumberEncoding {
     Short,
     Long,
 }
 
 /// Which shape of injected source `eval`/`exec` compiles and runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumIter)]
-pub enum InjectedKind {
+pub(crate) enum InjectedKind {
     #[strum(serialize = "eval")]
     Eval,
     #[strum(serialize = "exec")]
@@ -156,35 +156,35 @@ pub enum InjectedKind {
 impl InjectedKind {
     /// The name the compiled function carries; also how injected frames
     /// are recognized in stack traces.
-    pub fn function_name(self) -> String {
+    pub(crate) fn function_name(self) -> String {
         format!("<{self}>")
     }
 }
 
 /// Enum for function return modes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReturnMode {
+pub(crate) enum ReturnMode {
     Normal,
     Raw,
 }
 
 /// Enum for collection types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CollectionType {
+pub(crate) enum CollectionType {
     Dict,
     Set,
 }
 
 /// Enum for equality comparison modes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EqualityMode {
+pub(crate) enum EqualityMode {
     Equal,
     NotEqual,
 }
 
 /// Enum for the ordering comparison operators (`<`, `<=`, `>`, `>=`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Comparison {
+pub(crate) enum Comparison {
     Less,
     LessEqual,
     Greater,
@@ -215,7 +215,7 @@ impl Comparison {
 
 /// Enum for range boundary types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RangeType {
+pub(crate) enum RangeType {
     Inclusive,
     Exclusive,
 }

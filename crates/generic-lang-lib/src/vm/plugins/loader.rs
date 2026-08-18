@@ -74,7 +74,7 @@ type ValidatedValue<'d> = (&'d str, PluginValueFn);
 /// Everything cached per loaded plugin path: functions, classes, and
 /// module values.
 #[derive(Default, Clone)]
-pub struct PluginModuleExports {
+pub(crate) struct PluginModuleExports {
     pub(in crate::vm) functions: Vec<PluginFunctionExport>,
     pub(in crate::vm) classes: Vec<PluginClassExport>,
     pub(in crate::vm) values: Vec<PluginValueExport>,
@@ -83,7 +83,7 @@ pub struct PluginModuleExports {
 /// Per-VM plugin state: the loaded libraries (kept alive for the VM's
 /// lifetime) and the per-path export cache.
 #[derive(Default)]
-pub struct PluginState {
+pub(crate) struct PluginState {
     /// Never dropped while the VM lives - unloading would dangle the
     /// `plugin_fn` pointers held by heap natives and the leaked descriptor
     /// memory.

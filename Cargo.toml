@@ -33,6 +33,8 @@ unused = { level = "warn", priority = -1 }
 # Published-API hygiene: all three crates go to crates.io.
 missing_docs = "warn"
 missing_debug_implementations = "warn"
+unnameable_types = "warn"
+unreachable_pub = "warn"
 # General hygiene.
 absolute_paths_not_starting_with_crate = "warn"
 explicit_outlives_requirements = "warn"
