@@ -410,14 +410,14 @@ unsafe extern "C" fn cb_string_get(
     if let Value::String(id) = value {
         // Interned string bytes are address-stable while the string lives;
         // the ABI limits the borrow to the next re-entering callback.
-        let s: &String = id.to_value(&vm.heap);
+        let s = id.to_value(&vm.heap);
         // SAFETY: a writable out-pointer, per the vtable contract.
         unsafe {
             *out = FfiStr {
                 ptr: s.as_ptr(),
                 len: s.len(),
             };
-        }
+        };
         true
     } else {
         false

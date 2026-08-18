@@ -241,7 +241,7 @@ impl Sorter<'_> {
         hint: usize,
         rightmost: bool,
     ) -> VmResult<usize> {
-        debug_assert!(hint < len);
+        debug_assert!(hint < len, "the gallop hint must be inside the run");
         let mut last_ofs = 0;
         let mut ofs = 1;
         let hinted = self.entry(side, base + hint);

@@ -538,12 +538,10 @@ impl Compiler<'_, '_> {
     }
 
     fn loop_label(&mut self) -> Option<String> {
-        if self.match_(TK::Apostrophe) {
+        self.match_(TK::Apostrophe).then(|| {
             self.consume(TK::Identifier, "Expect loop label after `'`.");
-            Some(self.previous.as_ref().unwrap().as_str().to_string())
-        } else {
-            None
-        }
+            self.previous.as_ref().unwrap().as_str().to_string()
+        })
     }
 
     fn check_duplicate_loop_label(&mut self, label: Option<&str>) {

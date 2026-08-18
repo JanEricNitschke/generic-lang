@@ -21,7 +21,7 @@ derive_more  = { workspace = true }
 generic-lang-api = { workspace = true, optional = true }
 hashbrown    = { workspace = true }
 indexmap     = { workspace = true }
-humansize    = { workspace = true }
+humansize    = { workspace = true, optional = true }
 include_dir  = { workspace = true }
 libloading   = { workspace = true, optional = true }
 num-bigint   = { workspace = true }
@@ -57,7 +57,7 @@ print_code_builtin      = ["print_code_verbose"]
 trace_execution         = []
 trace_execution_verbose = ["trace_execution"]
 trace_execution_builtin = ["trace_execution_verbose"]
-log_gc                  = []
+log_gc                  = ["dep:humansize"]
 stress_gc               = []
 debug_parser            = []
 debug_parser_builtin    = ["debug_parser"]

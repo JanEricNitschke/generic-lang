@@ -348,7 +348,10 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
     where
         F: Fn(&mut Self) -> R,
     {
-        assert!(self.has_enclosing());
+        assert!(
+            self.has_enclosing(),
+            "in_enclosing requires an enclosing compiler state"
+        );
         let state = self.nestable_state.pop().unwrap();
         let result = f(self);
         self.nestable_state.push(state);

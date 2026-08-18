@@ -157,7 +157,7 @@ impl<'scanner> Compiler<'scanner, '_> {
             lexeme: match kind {
                 TokenKind::Super => "super",
                 TokenKind::This => "this",
-                _ => unimplemented!(),
+                _ => unreachable!("synthetic tokens are only built for `super` and `this`"),
             },
             location: self.location(),
         }

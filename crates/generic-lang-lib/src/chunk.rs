@@ -17,7 +17,7 @@ use strum_macros::{AsRefStr, EnumIter};
 #[shrinkwrap(mutable)]
 pub struct CodeOffset(pub usize);
 
-#[derive(Shrinkwrap, Clone, Copy)]
+#[derive(Shrinkwrap, Clone, Copy, Debug)]
 pub struct ConstantIndex(pub u8);
 
 impl From<ConstantIndex> for u8 {
@@ -26,7 +26,7 @@ impl From<ConstantIndex> for u8 {
     }
 }
 
-#[derive(Shrinkwrap, Clone, Copy)]
+#[derive(Shrinkwrap, Clone, Copy, Debug)]
 pub struct ConstantLongIndex(pub usize);
 
 impl TryFrom<ConstantLongIndex> for ConstantIndex {

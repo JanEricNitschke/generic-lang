@@ -398,7 +398,7 @@ mod tests {
         let base = TempDir::new().unwrap();
         // Flat rmdir removes an empty directory but refuses a non-empty one.
         let empty = base.path().join("empty");
-        fs::create_dir(&empty).unwrap();
+        fs::create_dir_all(&empty).unwrap();
         let empty_path = new_path(&mut vm, &empty);
         assert_eq!(
             path_rmdir_native(&mut vm, &empty_path, &[]).unwrap(),
@@ -407,10 +407,10 @@ mod tests {
         assert!(!empty.exists());
 
         let full = base.path().join("full");
-        fs::create_dir(&full).unwrap();
+        fs::create_dir_all(&full).unwrap();
         fs::write(full.join("f.txt"), "x").unwrap();
         let full_path = new_path(&mut vm, &full);
-        assert!(path_rmdir_native(&mut vm, &full_path, &[]).is_err());
+        path_rmdir_native(&mut vm, &full_path, &[]).unwrap_err();
         // Recursive rmdir removes it and its contents.
         assert_eq!(
             path_rmdir_native(&mut vm, &full_path, &[Value::Bool(true)]).unwrap(),
@@ -423,6 +423,6 @@ mod tests {
     fn write_text_rejects_non_string() {
         let mut vm = VM::new();
         let file = new_path(&mut vm, StdPath::new("unused"));
-        assert!(path_write_text_native(&mut vm, &file, &[Value::Nil]).is_err());
+        path_write_text_native(&mut vm, &file, &[Value::Nil]).unwrap_err();
     }
 }

@@ -477,12 +477,12 @@ mod tests {
         let mut vm = VM::new();
         // Nothing listening on this port.
         let url_value = Value::String(vm.heap.string_id(&"http://127.0.0.1:1/".to_string()));
-        assert!(get_native(&mut vm, &[url_value]).is_err());
+        get_native(&mut vm, &[url_value]).unwrap_err();
     }
 
     #[test]
     fn non_string_url_is_a_type_error() {
         let mut vm = VM::new();
-        assert!(get_native(&mut vm, &[Value::Nil]).is_err());
+        get_native(&mut vm, &[Value::Nil]).unwrap_err();
     }
 }
