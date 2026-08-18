@@ -202,7 +202,7 @@ pub(super) fn dict_iter_next_native(
     receiver: &Value,
     _args: &[Value],
 ) -> VmResult<Value> {
-    // GC-safety: mem::take pattern, same as list/tuple/range iterators.
+    // GC invariant: mem::take pattern, same as list/tuple/range iterators.
     let mut iter = std::mem::take(receiver.as_dict_iterator_mut(&mut vm.heap));
     let dict = iter.get_dict(&vm.heap);
 

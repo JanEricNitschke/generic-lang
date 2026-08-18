@@ -30,7 +30,7 @@ fn test_number_size() {
     ];
     // GenericRational, because a GenericInt is 16 in size
     assert_eq!(sizes.iter().copied().max().unwrap(), 32);
-    assert_eq!(std::mem::size_of::<Number>(), 32);
+    assert_eq!(size_of::<Number>(), 32);
 }
 
 // Conversions
@@ -388,24 +388,24 @@ impl Number {
     }
 
     pub(crate) fn lt(&self, other: &Self, heap: &Heap) -> bool {
-        self.partial_cmp(other, heap) == Some(std::cmp::Ordering::Less)
+        self.partial_cmp(other, heap) == Some(Ordering::Less)
     }
 
     pub(crate) fn gt(&self, other: &Self, heap: &Heap) -> bool {
-        self.partial_cmp(other, heap) == Some(std::cmp::Ordering::Greater)
+        self.partial_cmp(other, heap) == Some(Ordering::Greater)
     }
 
     pub(crate) fn ge(&self, other: &Self, heap: &Heap) -> bool {
         matches!(
             self.partial_cmp(other, heap),
-            Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
+            Some(Ordering::Greater | Ordering::Equal)
         )
     }
 
     pub(crate) fn le(&self, other: &Self, heap: &Heap) -> bool {
         matches!(
             self.partial_cmp(other, heap),
-            Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+            Some(Ordering::Less | Ordering::Equal)
         )
     }
 }
@@ -431,7 +431,7 @@ fn test_generic_int_size() {
     // Because we dont have a niche for the i64.
     // The Ids actually have niches.
     assert_eq!(sizes.iter().copied().max().unwrap(), 8);
-    assert_eq!(std::mem::size_of::<GenericInt>(), 16);
+    assert_eq!(size_of::<GenericInt>(), 16);
 }
 
 // General handling and conversions
@@ -662,7 +662,7 @@ impl GenericInt {
         }
     }
 
-    fn partial_cmp(&self, other: &Self, heap: &Heap) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self, heap: &Heap) -> Option<Ordering> {
         match (self, other) {
             (Self::Small(a), Self::Small(b)) => a.partial_cmp(b),
             (Self::Big(a), Self::Big(b)) => a.to_value(heap).partial_cmp(b.to_value(heap)),
@@ -679,24 +679,24 @@ impl GenericInt {
     }
 
     pub(crate) fn lt(&self, other: &Self, heap: &Heap) -> bool {
-        self.partial_cmp(other, heap) == Some(std::cmp::Ordering::Less)
+        self.partial_cmp(other, heap) == Some(Ordering::Less)
     }
 
     fn gt(&self, other: &Self, heap: &Heap) -> bool {
-        self.partial_cmp(other, heap) == Some(std::cmp::Ordering::Greater)
+        self.partial_cmp(other, heap) == Some(Ordering::Greater)
     }
 
     fn ge(&self, other: &Self, heap: &Heap) -> bool {
         matches!(
             self.partial_cmp(other, heap),
-            Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
+            Some(Ordering::Greater | Ordering::Equal)
         )
     }
 
     pub(crate) fn le(&self, other: &Self, heap: &Heap) -> bool {
         matches!(
             self.partial_cmp(other, heap),
-            Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+            Some(Ordering::Less | Ordering::Equal)
         )
     }
 
@@ -707,7 +707,7 @@ impl GenericInt {
         }
     }
 
-    fn partial_cmp_i64(&self, other: i64, heap: &Heap) -> Option<std::cmp::Ordering> {
+    fn partial_cmp_i64(&self, other: i64, heap: &Heap) -> Option<Ordering> {
         match self {
             Self::Small(a) => a.partial_cmp(&other),
             Self::Big(a) => (a.to_value(heap)).partial_cmp(&BigInt::from(other)),
@@ -715,13 +715,13 @@ impl GenericInt {
     }
 
     pub(crate) fn lt_i64(&self, other: i64, heap: &Heap) -> bool {
-        self.partial_cmp_i64(other, heap) == Some(std::cmp::Ordering::Less)
+        self.partial_cmp_i64(other, heap) == Some(Ordering::Less)
     }
 
     pub(crate) fn ge_i64(&self, other: i64, heap: &Heap) -> bool {
         matches!(
             self.partial_cmp_i64(other, heap),
-            Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
+            Some(Ordering::Greater | Ordering::Equal)
         )
     }
 }
@@ -969,7 +969,7 @@ impl GenericRational {
         self.numerator.eq(&other.numerator, heap) && self.denominator.eq(&other.denominator, heap)
     }
 
-    pub fn partial_cmp(&self, other: &Self, heap: &Heap) -> Option<std::cmp::Ordering> {
+    pub fn partial_cmp(&self, other: &Self, heap: &Heap) -> Option<Ordering> {
         // a/b <=> c/d is equivalent to a*d <=> b*c
         if let (
             GenericInt::Small(a),
@@ -1000,24 +1000,24 @@ impl GenericRational {
     }
 
     pub fn lt(&self, other: &Self, heap: &Heap) -> bool {
-        self.partial_cmp(other, heap) == Some(std::cmp::Ordering::Less)
+        self.partial_cmp(other, heap) == Some(Ordering::Less)
     }
 
     pub fn gt(&self, other: &Self, heap: &Heap) -> bool {
-        self.partial_cmp(other, heap) == Some(std::cmp::Ordering::Greater)
+        self.partial_cmp(other, heap) == Some(Ordering::Greater)
     }
 
     pub fn ge(&self, other: &Self, heap: &Heap) -> bool {
         matches!(
             self.partial_cmp(other, heap),
-            Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
+            Some(Ordering::Greater | Ordering::Equal)
         )
     }
 
     pub fn le(&self, other: &Self, heap: &Heap) -> bool {
         matches!(
             self.partial_cmp(other, heap),
-            Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+            Some(Ordering::Less | Ordering::Equal)
         )
     }
 

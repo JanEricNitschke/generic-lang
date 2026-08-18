@@ -7,14 +7,16 @@
 //! pointers into it), and re-importing the same path rebuilds the module
 //! from the cached exports instead of re-loading the library.
 
+use core::ffi::c_void;
 use std::env::consts::{DLL_PREFIX, DLL_SUFFIX};
 use std::path::{Path, PathBuf};
+use std::{slice, str};
 
 use libloading::Library;
 use rustc_hash::FxHashMap as HashMap;
 
 use generic_lang_api::{
-    GENERIC_PLUGIN_ABI_VERSION, ModuleDesc, PluginFn, PluginMethodFn, PluginTraverseFn,
+    FfiStr, GENERIC_PLUGIN_ABI_VERSION, ModuleDesc, PluginFn, PluginMethodFn, PluginTraverseFn,
     PluginValueFn,
 };
 
@@ -29,8 +31,9 @@ use crate::vm::errors::{VmErrorKind, VmResult};
 /// load - bounded, plugins never unload), and the `extern "C"` pointer.
 type PluginFunctionExport = (StringId, &'static [u8], PluginFn);
 
-/// A plugin class's drop callback (frees the opaque state).
-type PluginDropFn = extern "C" fn(*mut core::ffi::c_void);
+/// A plugin class's drop callback (frees the opaque state). `unsafe` like
+/// every plugin-provided function pointer - see `ClassDesc::drop`.
+type PluginDropFn = unsafe extern "C" fn(*mut c_void);
 
 /// One method of a loaded plugin class: name, arity slice (excluding the
 /// receiver, leaked once at load), and the `extern "C"` pointer.
@@ -101,6 +104,7 @@ impl VM {
     /// through to the stdlib arms); `Some(result)` if one does - where
     /// loading errors (bad init symbol, ABI mismatch, malformed exports)
     /// are thrown `ImportError`s.
+    #[allow(unsafe_code)]
     pub(crate) fn try_import_plugin(
         &mut self,
         file_path: &Path,
@@ -130,20 +134,32 @@ impl VM {
             }
         };
 
-        Some(self.import_plugin_module(
-            name_id,
-            path,
-            alias,
-            &exports,
-            names_to_import,
-            local_import,
-        ))
+        // SAFETY: `exports` came from `load_plugin_library` or from the cache
+        // it fills, so every pointer in it belongs to a loaded, validated
+        // library.
+        Some(unsafe {
+            self.import_plugin_module(
+                name_id,
+                path,
+                alias,
+                &exports,
+                names_to_import,
+                local_import,
+            )
+        })
     }
 
     /// Register a plugin class: create a `Class` of `ClassKind::Plugin`, add its
     /// methods as `NativeMethod`s carrying `plugin_fn`, and return the class as
     /// a `Value::Class`.
-    fn add_plugin_class(
+    ///
+    /// # Safety
+    ///
+    /// `drop`, `traverse`, and the method pointers must come from a validated
+    /// descriptor of a loaded library: they are stored on the class and the GC
+    /// calls `drop`/`traverse` later, long after this returns.
+    #[allow(unsafe_code)]
+    unsafe fn add_plugin_class(
         &mut self,
         name: StringId,
         drop: Option<PluginDropFn>,
@@ -153,7 +169,9 @@ impl VM {
         let class = Class::new(name, ClassKind::Plugin(PluginClassInfo { drop, traverse }));
         let class_value = self.heap.add_class(class);
         for (method_name, arities, fun) in methods {
-            let method_value = self.add_plugin_method(name, *method_name, arities, *fun);
+            // SAFETY: by this function's contract the methods come from a
+            // validated descriptor.
+            let method_value = unsafe { self.add_plugin_method(name, *method_name, arities, *fun) };
             class_value
                 .as_class()
                 .to_value_mut(&mut self.heap)
@@ -166,7 +184,13 @@ impl VM {
     /// Register a plugin method as a `NativeMethod` carrying `plugin_fn`; its
     /// `fun` is the `plugin_method_sentinel` (dispatch branches on `plugin_fn`
     /// before ever calling `fun`).
-    fn add_plugin_method(
+    ///
+    /// # Safety
+    ///
+    /// `fun` must be a real plugin method from a loaded library, since the
+    /// stored pointer is called on every later dispatch.
+    #[allow(unsafe_code)]
+    unsafe fn add_plugin_method(
         &mut self,
         class_name: StringId,
         name: StringId,
@@ -216,9 +240,11 @@ impl VM {
         };
 
         // SAFETY: the symbol is declared with exactly this signature in the
-        // plugin ABI (`generic_plugin_init` in generic.h).
+        // plugin ABI (`generic_plugin_init` in generic.h). Nothing verifies
+        // that the loaded library agrees - asserting it is the point of this
+        // `unsafe`, and the reason the resolved pointer is an `unsafe fn`.
         let init = match unsafe {
-            library.get::<extern "C" fn() -> *const ModuleDesc>(b"generic_plugin_init")
+            library.get::<unsafe extern "C" fn() -> *const ModuleDesc>(b"generic_plugin_init")
         } {
             Ok(symbol) => symbol,
             Err(error) => import_error!(
@@ -228,7 +254,10 @@ impl VM {
             ),
         };
 
-        let desc = init();
+        // SAFETY: calling a function resolved out of a freshly loaded library,
+        // under the signature asserted above; the ABI says it takes no
+        // arguments and only hands back its static descriptor.
+        let desc = unsafe { init() };
         if desc.is_null() {
             import_error!(
                 "Plugin `{}` returned no module description.",
@@ -320,13 +349,17 @@ impl VM {
             }
             // SAFETY: non-null table of `functions_len` descriptors, valid for
             // the library's lifetime (ABI contract).
-            unsafe { std::slice::from_raw_parts(desc.functions, desc.functions_len) }
+            unsafe { slice::from_raw_parts(desc.functions, desc.functions_len) }
         };
 
         functions
             .iter()
             .map(|function| {
-                let Some(name) = read_ffi_name(function.name) else {
+                // SAFETY: a descriptor string, valid for the library's lifetime
+                // (ABI contract); `'d` comes from the `&'d ModuleDesc` and the
+                // library outlives it.
+                let decoded = unsafe { read_ffi_name(function.name) };
+                let Some(name) = decoded else {
                     import_error!(
                         "Plugin `{}` exports a function with an invalid name.",
                         path.display()
@@ -340,7 +373,7 @@ impl VM {
                 }
                 // SAFETY: non-null arity array of `arities_len` bytes (ABI contract).
                 let arities =
-                    unsafe { std::slice::from_raw_parts(function.arities, function.arities_len) };
+                    unsafe { slice::from_raw_parts(function.arities, function.arities_len) };
                 let Some(fun) = function.fun else {
                     import_error!(
                         "Plugin function `{name}` in `{}` has a null function pointer.",
@@ -377,13 +410,15 @@ impl VM {
             }
             // SAFETY: non-null table of `values_len` descriptors, valid for
             // the library's lifetime (ABI contract).
-            unsafe { std::slice::from_raw_parts(desc.values, desc.values_len) }
+            unsafe { slice::from_raw_parts(desc.values, desc.values_len) }
         };
 
         values
             .iter()
             .map(|value| {
-                let Some(name) = read_ffi_name(value.name) else {
+                // SAFETY: a descriptor string, as in `validate_plugin_functions`.
+                let decoded = unsafe { read_ffi_name(value.name) };
+                let Some(name) = decoded else {
                     import_error!(
                         "Plugin `{}` exports a value with an invalid name.",
                         path.display()
@@ -426,13 +461,15 @@ impl VM {
             }
             // SAFETY: non-null table of `classes_len` descriptors, valid for
             // the library's lifetime (ABI contract).
-            unsafe { std::slice::from_raw_parts(desc.classes, desc.classes_len) }
+            unsafe { slice::from_raw_parts(desc.classes, desc.classes_len) }
         };
 
         classes
             .iter()
             .map(|class| {
-                let Some(name) = read_ffi_name(class.name) else {
+                // SAFETY: a descriptor string, as in `validate_plugin_functions`.
+                let decoded = unsafe { read_ffi_name(class.name) };
+                let Some(name) = decoded else {
                     import_error!("Plugin `{}` exports a class with an invalid name.", path.display());
                 };
                 if class.methods.is_null() && class.methods_len != 0 {
@@ -446,12 +483,14 @@ impl VM {
                     &[]
                 } else {
                     // SAFETY: non-null table of `methods_len` descriptors (ABI contract).
-                    unsafe { std::slice::from_raw_parts(class.methods, class.methods_len) }
+                    unsafe { slice::from_raw_parts(class.methods, class.methods_len) }
                 };
                 let validated_methods = methods
                     .iter()
                     .map(|method| {
-                        let Some(mname) = read_ffi_name(method.name) else {
+                        // SAFETY: a descriptor string, as above.
+                        let decoded = unsafe { read_ffi_name(method.name) };
+                        let Some(mname) = decoded else {
                             import_error!(
                                 "Plugin class `{name}` in `{}` has a method with an invalid name.",
                                 path.display()
@@ -465,7 +504,7 @@ impl VM {
                         }
                         // SAFETY: non-null arity array of `arities_len` bytes.
                         let arities = unsafe {
-                            std::slice::from_raw_parts(method.arities, method.arities_len)
+                            slice::from_raw_parts(method.arities, method.arities_len)
                         };
                         let Some(fun) = method.fun else {
                             import_error!(
@@ -484,7 +523,14 @@ impl VM {
     /// Build each export's trampoline `NativeFunction` and hand them to
     /// `install_native_module`, which registers the module honoring
     /// `from`-imports, aliases, and local imports.
-    pub(super) fn import_plugin_module(
+    ///
+    /// # Safety
+    ///
+    /// Every pointer in `exports` must come from a validated descriptor of a
+    /// loaded library - the value creators run here, and the function, class,
+    /// and method pointers are stored for later dispatch and collection.
+    #[allow(unsafe_code)]
+    pub(super) unsafe fn import_plugin_module(
         &mut self,
         name_id: StringId,
         path: PathBuf,
@@ -499,12 +545,15 @@ impl VM {
             .map(|(fn_name_id, arity, fun)| {
                 (
                     *fn_name_id,
-                    self.add_plugin_native(*fn_name_id, arity, *fun),
+                    // SAFETY: validated exports, per this function's contract.
+                    unsafe { self.add_plugin_native(*fn_name_id, arity, *fun) },
                 )
             })
             .collect();
         for (class_name_id, drop, traverse, methods) in &exports.classes {
-            let class_value = self.add_plugin_class(*class_name_id, *drop, *traverse, methods);
+            // SAFETY: validated exports, per this function's contract.
+            let class_value =
+                unsafe { self.add_plugin_class(*class_name_id, *drop, *traverse, methods) };
             natives.push((*class_name_id, class_value));
         }
         // Module values are built by the plugin at import time. The
@@ -519,7 +568,8 @@ impl VM {
         }
         let values_base = self.stack.len();
         for (value_name_id, fun) in &exports.values {
-            match call_plugin_value(self, *fun, *value_name_id) {
+            // SAFETY: validated exports, per this function's contract.
+            match unsafe { call_plugin_value(self, *fun, *value_name_id) } {
                 Ok(value) => self.stack.push(value),
                 Err(error) => {
                     // Drop the partial batch from under a pending exception.
@@ -553,7 +603,13 @@ impl VM {
     /// Register a plugin function as a heap native: the shared
     /// [`plugin_trampoline`] dispatches every call, and the real `extern "C"`
     /// pointer rides in `plugin_fn`.
-    pub(super) fn add_plugin_native(
+    ///
+    /// # Safety
+    ///
+    /// `fun` must be a real plugin function from a loaded library, since the
+    /// stored pointer is called on every later dispatch.
+    #[allow(unsafe_code)]
+    pub(super) unsafe fn add_plugin_native(
         &mut self,
         name: StringId,
         arity: &'static [u8],
@@ -569,21 +625,25 @@ impl VM {
 }
 
 /// Read an `FfiStr` from a descriptor as a borrowed `&str`, or `None` on a null
-/// pointer or invalid UTF-8. The borrow is valid for the library's lifetime.
+/// pointer or invalid UTF-8.
 ///
-/// # Safety-ish
+/// # Safety
 ///
-/// Reads `s.len` bytes at `s.ptr`; sound under the ABI contract (descriptor
-/// strings are valid for the library's lifetime).
+/// Unless `s.ptr` is null, it must point to `s.len` initialized bytes that stay
+/// valid and unmutated for `'d` - which the caller must not choose freely: the
+/// ABI guarantees descriptor strings only for the lifetime of the loaded
+/// library. Callers pass a lifetime borrowed from the `&ModuleDesc`, which the
+/// library outlives (it is never unloaded). Null is the only part checkable
+/// here; a garbage pointer or an over-long length reads out of bounds.
 #[allow(unsafe_code)]
-fn read_ffi_name<'d>(s: generic_lang_api::FfiStr) -> Option<&'d str> {
+unsafe fn read_ffi_name<'d>(s: FfiStr) -> Option<&'d str> {
     if s.ptr.is_null() {
         return None;
     }
-    // SAFETY: non-null `FfiStr` of `len` bytes, valid for the library's
-    // lifetime (ABI contract).
-    let bytes = unsafe { std::slice::from_raw_parts(s.ptr, s.len) };
-    std::str::from_utf8(bytes).ok()
+    // SAFETY: non-null (just checked), and the caller guarantees `len`
+    // readable bytes for `'d`.
+    let bytes = unsafe { slice::from_raw_parts(s.ptr, s.len) };
+    str::from_utf8(bytes).ok()
 }
 
 /// Leak an arity slice as `&'static [u8]`. Bounded: one per exported

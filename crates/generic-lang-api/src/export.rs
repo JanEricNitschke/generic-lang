@@ -1,4 +1,9 @@
 //! The `export_module!` macro generating a plugin's `extern "C"` glue.
+//!
+//! The generated wrappers are `unsafe extern "C" fn`s carrying the ABI's
+//! contracts. Each carries `#[allow(unsafe_code)]` - not for this crate (which
+//! has no such policy), but for the *plugin author's*: the macro expands in
+//! their crate, and one that denies `unsafe_code` must still be able to export.
 
 /// Export the plugin's functions and classes to the generic interpreter.
 ///
@@ -9,6 +14,10 @@
 /// - A class: `class("Name") { (method, arities, fun), ... }`, optionally
 ///   followed by `drop: drop_fn,` and/or `traverse: traverse_fn,` (in that
 ///   order). Method `arities` count `self`; the receiver arrives as `args[0]`.
+///   Those two are the only callbacks a plugin writes by hand, and the host
+///   calls them across the C boundary, so they are `unsafe extern "C" fn`
+///   (see [`ClassDesc::drop`](crate::ClassDesc::drop) and
+///   [`PluginTraverseFn`](crate::PluginTraverseFn) for what they may assume).
 /// - A value: `value("name", creator)`, where `creator` is a
 ///   [`RustPluginValueFn`](crate::RustPluginValueFn) building one module
 ///   constant at import time.
@@ -32,7 +41,9 @@
 ///     host.set_opaque(this, ptr)?;
 ///     Ok(this) // like every __init__, return the receiver
 /// }
-/// extern "C" fn drop_counter(ptr: *mut core::ffi::c_void) {
+/// // The host calls this once per collected instance, with the pointer
+/// // installed above - see `ClassDesc::drop`.
+/// unsafe extern "C" fn drop_counter(ptr: *mut core::ffi::c_void) {
 ///     if !ptr.is_null() { unsafe { drop(Box::from_raw(ptr.cast::<CounterState>())) }; }
 /// }
 ///
@@ -66,6 +77,8 @@ macro_rules! export_module {
 macro_rules! __export_go {
     (@go [$($fa:tt)*] [$($ca:tt)*] [$($va:tt)*]) => {
         /// Entry point resolved by the generic interpreter's plugin loader.
+        // Scoped so a plugin crate can deny `unsafe_code` and still export.
+        #[allow(unsafe_code)]
         #[unsafe(no_mangle)]
         pub extern "C" fn generic_plugin_init() -> *const $crate::ModuleDesc {
             const FUNCTIONS: &[$crate::FunctionDesc] = &[ $($fa)* ];
@@ -118,13 +131,18 @@ macro_rules! __opt {
 #[macro_export]
 macro_rules! __function_desc {
     ($name:expr, $arities:expr, $fun:expr) => {{
-        extern "C" fn wrapper(
+        /// # Safety
+        ///
+        /// A [`PluginFn`](crate::PluginFn): the host must pass a valid vtable
+        /// and `nargs` contiguous argument values.
+        #[allow(unsafe_code)]
+        unsafe extern "C" fn wrapper(
             host: *const $crate::HostApi,
             args: *const $crate::GenericValue,
             nargs: usize,
         ) -> $crate::FfiReturn {
-            // SAFETY: the host passes a valid vtable and `nargs` contiguous
-            // argument values.
+            // SAFETY: discharged by this wrapper's own contract above - the
+            // obligation is the host's, not this glue's.
             unsafe { $crate::__invoke_plugin_fn($fun, host, args, nargs) }
         }
         const NAME: &str = $name;
@@ -146,8 +164,13 @@ macro_rules! __function_desc {
 #[macro_export]
 macro_rules! __value_desc {
     ($name:expr, $fun:expr) => {{
-        extern "C" fn wrapper(host: *const $crate::HostApi) -> $crate::FfiReturn {
-            // SAFETY: the host passes a valid vtable.
+        /// # Safety
+        ///
+        /// A [`PluginValueFn`](crate::PluginValueFn): the host must pass a
+        /// valid vtable.
+        #[allow(unsafe_code)]
+        unsafe extern "C" fn wrapper(host: *const $crate::HostApi) -> $crate::FfiReturn {
+            // SAFETY: discharged by this wrapper's own contract above.
             unsafe { $crate::__invoke_plugin_value_fn($fun, host) }
         }
         const NAME: &str = $name;
@@ -167,13 +190,18 @@ macro_rules! __value_desc {
 #[macro_export]
 macro_rules! __method_desc {
     ($name:expr, $arities:expr, $fun:expr) => {{
-        extern "C" fn wrapper(
+        /// # Safety
+        ///
+        /// A [`PluginMethodFn`](crate::PluginMethodFn): as
+        /// [`PluginFn`](crate::PluginFn), plus a host-issued `receiver`.
+        #[allow(unsafe_code)]
+        unsafe extern "C" fn wrapper(
             host: *const $crate::HostApi,
             receiver: $crate::GenericValue,
             args: *const $crate::GenericValue,
             nargs: usize,
         ) -> $crate::FfiReturn {
-            // SAFETY: as in `__function_desc!`.
+            // SAFETY: discharged by this wrapper's own contract above.
             unsafe { $crate::__invoke_plugin_method_fn($fun, host, receiver, args, nargs) }
         }
         const NAME: &str = $name;

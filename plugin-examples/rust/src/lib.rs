@@ -225,17 +225,30 @@ struct CounterState {
 
 /// Destructor for the opaque state; the host calls it when a `Counter` (or a
 /// user subclass of it) is garbage-collected.
-extern "C" fn counter_drop(ptr: *mut c_void) {
+///
+/// # Safety
+///
+/// Per `ClassDesc::drop`: `ptr` must be null or the pointer installed on a
+/// `Counter` instance by `counter_init`, freed exactly once. The host
+/// guarantees both.
+unsafe extern "C" fn counter_drop(ptr: *mut c_void) {
     if ptr.is_null() {
         return;
     }
-    // SAFETY: `ptr` was produced by `Box::into_raw` in `counter_init`.
+    // SAFETY: by the contract above, `ptr` was produced by `Box::into_raw` in
+    // `counter_init` and is being freed for the first time.
     drop(unsafe { Box::from_raw(ptr.cast::<CounterState>()) });
 }
 
 /// GC traversal: report the held `label` so it is not swept while the instance
 /// is alive. A struct holding no `GenericValue`s would set `traverse: None`.
-extern "C" fn counter_traverse(
+///
+/// # Safety
+///
+/// Per `PluginTraverseFn`: `ptr` must be null or a `CounterState` installed by
+/// `counter_init`, and `visit`/`visit_ctx` the host's marking function and its
+/// context, valid for this call.
+unsafe extern "C" fn counter_traverse(
     ptr: *mut c_void,
     visit: PluginVisitFn,
     visit_ctx: *mut c_void,
@@ -243,9 +256,13 @@ extern "C" fn counter_traverse(
     if ptr.is_null() {
         return 0;
     }
-    // SAFETY: `ptr` points at a live `CounterState` installed by counter_init.
-    let state = unsafe { &*ptr.cast::<CounterState>() };
-    visit(visit_ctx, state.label);
+    // SAFETY: by the contract above, `ptr` points at a live `CounterState`
+    // installed by `counter_init`, and `visit`/`visit_ctx` belong together and
+    // are live for this call.
+    unsafe {
+        let state = &*ptr.cast::<CounterState>();
+        visit(visit_ctx, state.label);
+    }
     0
 }
 
@@ -282,7 +299,10 @@ fn counter_init(
         count: 0,
         label: args[0],
     });
-    host.set_opaque(this, Box::into_raw(state).cast::<c_void>())?;
+    // SAFETY: a freshly boxed `CounterState`, leaked into the host's keeping -
+    // exactly what this class's `counter_drop` frees and `counter_traverse`
+    // reads. Nothing else holds it.
+    unsafe { host.set_opaque(this, Box::into_raw(state).cast::<c_void>()) }?;
     // A generic-side attribute set from native code; readable as `this.origin`.
     let origin = host.make_str("counter");
     host.attr_set(this, "origin", origin)?;
@@ -372,11 +392,15 @@ fn counter_add(
 
 struct TicketState;
 
-extern "C" fn ticket_drop(ptr: *mut c_void) {
+/// # Safety
+///
+/// As `counter_drop`, for a `Ticket` instance.
+unsafe extern "C" fn ticket_drop(ptr: *mut c_void) {
     if ptr.is_null() {
         return;
     }
-    // SAFETY: `ptr` was produced by `Box::into_raw` in `ticket_init`.
+    // SAFETY: by the contract above, `ptr` was produced by `Box::into_raw` in
+    // `ticket_init` and is being freed for the first time.
     drop(unsafe { Box::from_raw(ptr.cast::<TicketState>()) });
 }
 
@@ -387,7 +411,8 @@ fn ticket_init(
     this: GenericValue,
     _args: &[GenericValue],
 ) -> Result<GenericValue, PluginError> {
-    host.set_opaque(this, Box::into_raw(Box::new(TicketState)).cast::<c_void>())?;
+    // SAFETY: as in `counter_init`: a fresh box for `ticket_drop` to free.
+    unsafe { host.set_opaque(this, Box::into_raw(Box::new(TicketState)).cast::<c_void>()) }?;
     Ok(this)
 }
 

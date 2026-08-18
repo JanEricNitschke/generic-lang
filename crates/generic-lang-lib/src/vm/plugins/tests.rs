@@ -9,7 +9,8 @@
 //! miri cannot execute.
 //!
 //! Tests exercise the vtable exactly like a plugin would - raw pointers
-//! included.
+//! included - so every callback call is an `unsafe` block discharging the
+//! `HostApi` contract, and every blob decode one discharging `from_ffi`'s.
 //!
 //! Ordering invariant: `build_host_api` stashes a raw pointer to the `VM`
 //! in `ctx`, so a test must do all its `&mut vm` work (allocation, instance
@@ -23,8 +24,11 @@
 #[cfg(not(miri))]
 use std::env::consts::{DLL_PREFIX, DLL_SUFFIX};
 use std::path::PathBuf;
+use std::{env, fs, process, ptr, slice, str};
 
-use generic_lang_api::{FfiReturn, FfiStatus, FfiStr, GenericValue, HostApi, PluginFn, ValueKind};
+use generic_lang_api::{
+    FfiReturn, FfiStatus, FfiStr, GenericValue, HostApi, PluginFn, PluginVisitFn, ValueKind,
+};
 use num_bigint::BigInt;
 
 use crate::value::{
@@ -243,7 +247,8 @@ fn value_kind_covers_every_kind() {
 }
 
 fn message_string(vm: &VM, ret: FfiReturn) -> String {
-    match from_ffi(ret.value) {
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    match unsafe { from_ffi(ret.value) } {
         Value::String(id) => id.to_value(&vm.heap).clone(),
         other => panic!("expected a message string, got {other:?}"),
     }
@@ -252,7 +257,8 @@ fn message_string(vm: &VM, ret: FfiReturn) -> String {
 /// The ok value of a callback return; panics on a nonzero status.
 fn ok_value(ret: FfiReturn) -> Value {
     assert_eq!(ret.status, FfiStatus::Ok as u32, "expected a success");
-    from_ffi(ret.value)
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    unsafe { from_ffi(ret.value) }
 }
 
 /// Assert `ret` carries an exception and check its class like a plugin
@@ -267,9 +273,11 @@ fn assert_error(api: &HostApi, ret: FfiReturn, class_name: &str) {
         ptr: class_name.as_ptr(),
         len: class_name.len(),
     };
-    let class = (api.builtin_get)(api.ctx, name);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let class = unsafe { (api.builtin_get)(api.ctx, name) };
     assert_eq!(class.status, 0, "missing builtin `{class_name}`");
-    let is = (api.is_instance)(api.ctx, ret.value, class.value);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let is = unsafe { (api.is_instance)(api.ctx, ret.value, class.value) };
     assert_eq!(
         ok_value(is),
         Value::Bool(true),
@@ -282,7 +290,7 @@ fn read_ffi_str<'a>(s: FfiStr) -> &'a str {
     assert!(!s.ptr.is_null(), "expected a string, got the null FfiStr");
     // SAFETY: a non-null FfiStr from the host references `len` valid
     // bytes of interned UTF-8 (ABI contract).
-    unsafe { std::str::from_utf8(std::slice::from_raw_parts(s.ptr, s.len)).unwrap() }
+    unsafe { str::from_utf8(slice::from_raw_parts(s.ptr, s.len)).unwrap() }
 }
 
 #[test]
@@ -306,7 +314,9 @@ fn ffi_blob_round_trips() {
 
     // to_ffi then from_ffi is the identity for every one of them.
     for value in values {
-        assert_eq!(from_ffi(to_ffi(value)), value);
+        // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued
+        // blobs.
+        assert_eq!(unsafe { from_ffi(to_ffi(value)) }, value);
     }
 }
 
@@ -322,48 +332,71 @@ fn value_kind_and_scalar_accessors() {
     let api = build_host_api(&mut vm);
 
     // value_kind: the discriminator every plugin starts from.
-    assert_eq!((api.value_kind)(api.ctx, nil), ValueKind::Nil as u32);
+    assert_eq!(
+        // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+        unsafe { (api.value_kind)(api.ctx, nil) },
+        ValueKind::Nil as u32
+    );
 
     // bool_get: extracts the bool, false for anything else.
     // Success
     let mut target_bool = false;
-    let succeeded = (api.bool_get)(api.ctx, to_ffi(Value::Bool(true)), &raw mut target_bool);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the out-pointer is a live local.
+    let succeeded =
+        unsafe { (api.bool_get)(api.ctx, to_ffi(Value::Bool(true)), &raw mut target_bool) };
     assert!(succeeded);
     assert!(target_bool);
 
     // Failure
-    let succeeded = (api.bool_get)(api.ctx, nil, &raw mut target_bool);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the out-pointer is a live local.
+    let succeeded = unsafe { (api.bool_get)(api.ctx, nil, &raw mut target_bool) };
     assert!(!succeeded);
 
     // int_get: extracts the i64 (small ints and i64-sized bigints)...
     // Success int
     let mut n = 0i64;
-    let succeeded = (api.int_get)(api.ctx, to_ffi(Value::from(fourteetwo)), &raw mut n);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the out-pointer is a live local.
+    let succeeded = unsafe { (api.int_get)(api.ctx, to_ffi(Value::from(fourteetwo)), &raw mut n) };
     assert!(succeeded);
     assert_eq!(n, fourteetwo);
 
     // Success bigint
-    let succeeded = (api.int_get)(api.ctx, to_ffi(big_ok), &raw mut n);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the out-pointer is a live local.
+    let succeeded = unsafe { (api.int_get)(api.ctx, to_ffi(big_ok), &raw mut n) };
     assert!(succeeded);
     assert_eq!(n, seven);
 
     // ...and both its failures - oversized bigint and non-integer - are the
     // single `false` (a raw i64 payload needs the out-parameter).
-    let succeeded = (api.int_get)(api.ctx, to_ffi(big_overflow), &raw mut n);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the out-pointer is a live local.
+    let succeeded = unsafe { (api.int_get)(api.ctx, to_ffi(big_overflow), &raw mut n) };
     assert!(!succeeded);
 
-    let succeeded = (api.int_get)(api.ctx, nil, &raw mut n);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the out-pointer is a live local.
+    let succeeded = unsafe { (api.int_get)(api.ctx, nil, &raw mut n) };
     assert!(!succeeded);
 
     // float_get: extracts the f64, false for anything else.
     // Success
     let mut f = 0f64;
-    let succeeded = (api.float_get)(api.ctx, to_ffi(Value::from(one_point_five)), &raw mut f);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the out-pointer is a live local.
+    let succeeded =
+        unsafe { (api.float_get)(api.ctx, to_ffi(Value::from(one_point_five)), &raw mut f) };
     assert!(succeeded);
     assert!((f - one_point_five).abs() < f64::EPSILON);
 
     // Failure
-    let succeeded = (api.float_get)(api.ctx, to_ffi(Value::from(fourteetwo)), &raw mut f);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the out-pointer is a live local.
+    let succeeded =
+        unsafe { (api.float_get)(api.ctx, to_ffi(Value::from(fourteetwo)), &raw mut f) };
     assert!(!succeeded);
 }
 
@@ -380,13 +413,17 @@ fn string_interning_and_bytes() {
     let api = build_host_api(&mut vm);
 
     // Interning: creating the same string twice yields the same id.
-    let first = ok_value((api.string_new)(api.ctx, ffi));
-    let second = ok_value((api.string_new)(api.ctx, ffi));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let first = ok_value(unsafe { (api.string_new)(api.ctx, ffi) });
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let second = ok_value(unsafe { (api.string_new)(api.ctx, ffi) });
     assert_eq!(first, second);
 
     // Read-back: the interned bytes round-trip through `string_get`.
     let mut read_back = FfiStr::null();
-    let succeeded = (api.string_get)(api.ctx, to_ffi(first), &raw mut read_back);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the out-pointer is a live local.
+    let succeeded = unsafe { (api.string_get)(api.ctx, to_ffi(first), &raw mut read_back) };
     assert!(succeeded);
     assert_eq!(read_ffi_str(read_back), hello);
 
@@ -396,11 +433,18 @@ fn string_interning_and_bytes() {
         ptr: invalid.as_ptr(),
         len: invalid.len(),
     };
-    assert_error(&api, (api.string_new)(api.ctx, ffi), "ValueError");
+    assert_error(
+        &api,
+        // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+        unsafe { (api.string_new)(api.ctx, ffi) },
+        "ValueError",
+    );
 
     // `string_get` on a non-string signals "not a string".
     let mut scratch = FfiStr::null();
-    let succeeded = (api.string_get)(api.ctx, nil, &raw mut scratch);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the out-pointer is a live local.
+    let succeeded = unsafe { (api.string_get)(api.ctx, nil, &raw mut scratch) };
     assert!(!succeeded);
 }
 
@@ -411,54 +455,79 @@ fn list_construct_and_access() {
     let nil = to_ffi(Value::Nil);
     let api = build_host_api(&mut vm);
 
-    let list = (api.list_new)(api.ctx);
-    assert_eq!((api.value_kind)(api.ctx, list), ValueKind::List as u32);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let list = unsafe { (api.list_new)(api.ctx) };
+    assert_eq!(
+        // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+        unsafe { (api.value_kind)(api.ctx, list) },
+        ValueKind::List as u32
+    );
 
     // push: appends, nil on success; TypeError on a non-list receiver.
     // Success
     assert_eq!(
-        ok_value((api.list_push)(api.ctx, list, to_ffi(Value::from(1i64)))),
+        // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued
+        // blobs.
+        ok_value(unsafe { (api.list_push)(api.ctx, list, to_ffi(Value::from(1i64))) }),
         Value::Nil
     );
     assert_eq!(
-        ok_value((api.list_push)(api.ctx, list, to_ffi(Value::from(2i64)))),
+        // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued
+        // blobs.
+        ok_value(unsafe { (api.list_push)(api.ctx, list, to_ffi(Value::from(2i64))) }),
         Value::Nil
     );
     //Failure
-    assert_error(&api, (api.list_push)(api.ctx, nil, nil), "TypeError");
+    assert_error(
+        &api,
+        // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+        unsafe { (api.list_push)(api.ctx, nil, nil) },
+        "TypeError",
+    );
 
     // len: reflects the two pushes; false on a non-list.
     // Success
     let mut len = 0usize;
-    let succeeded = (api.list_len)(api.ctx, list, &raw mut len);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the out-pointer is a live local.
+    let succeeded = unsafe { (api.list_len)(api.ctx, list, &raw mut len) };
     assert!(succeeded);
     assert_eq!(len, 2);
     // Failure
-    let succeeded = (api.list_len)(api.ctx, nil, &raw mut len);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the out-pointer is a live local.
+    let succeeded = unsafe { (api.list_len)(api.ctx, nil, &raw mut len) };
     assert!(!succeeded);
 
     // get: the element; IndexError out of bounds, TypeError on a non-list.
     // Success
-    let ret = (api.list_get)(api.ctx, list, 1);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.list_get)(api.ctx, list, 1) };
     assert_eq!(ok_value(ret), Value::from(2i64));
     // Failure: Out of bounds
-    let ret = (api.list_get)(api.ctx, list, 2);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.list_get)(api.ctx, list, 2) };
     assert_error(&api, ret, "IndexError");
     // Failure: Wrong type
-    let ret = (api.list_get)(api.ctx, nil, 0);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.list_get)(api.ctx, nil, 0) };
     assert_error(&api, ret, "TypeError");
 
     // set: replaces in place; IndexError out of bounds, TypeError non-list.
     // Success
-    let ret = (api.list_set)(api.ctx, list, 0, to_ffi(Value::Bool(true)));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.list_set)(api.ctx, list, 0, to_ffi(Value::Bool(true))) };
     assert_eq!(ok_value(ret), Value::Nil);
-    let ret = (api.list_get)(api.ctx, list, 0);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.list_get)(api.ctx, list, 0) };
     assert_eq!(ok_value(ret), Value::Bool(true));
     // Failure: Out of bounds
-    let ret = (api.list_set)(api.ctx, list, 9, nil);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.list_set)(api.ctx, list, 9, nil) };
     assert_error(&api, ret, "IndexError");
     // Failure: Wrong type
-    let ret = (api.list_set)(api.ctx, nil, 0, nil);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.list_set)(api.ctx, nil, 0, nil) };
     assert_error(&api, ret, "TypeError");
 }
 
@@ -475,32 +544,44 @@ fn dict_and_set_operations() {
     let api = build_host_api(&mut vm);
 
     // dict: set, then get and contains observe it.
-    let ret = (api.dict_set)(api.ctx, to_ffi(dict), key, to_ffi(value_x));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.dict_set)(api.ctx, to_ffi(dict), key, to_ffi(value_x)) };
     assert_eq!(ret.status, 0);
-    let ret = (api.dict_get)(api.ctx, to_ffi(dict), key);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.dict_get)(api.ctx, to_ffi(dict), key) };
     assert_eq!(ret.status, 0);
-    assert_eq!(from_ffi(ret.value), value_x);
-    let ret = (api.dict_contains)(api.ctx, to_ffi(dict), key);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    assert_eq!(unsafe { from_ffi(ret.value) }, value_x);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.dict_contains)(api.ctx, to_ffi(dict), key) };
     assert_eq!(ret.status, 0);
-    assert_eq!(from_ffi(ret.value), Value::Bool(true));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    assert_eq!(unsafe { from_ffi(ret.value) }, Value::Bool(true));
 
     // dict errors: a missing key is a KeyError, a non-dict a TypeError -
     // both handed over, never left pending.
-    let ret = (api.dict_get)(api.ctx, to_ffi(dict), missing);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.dict_get)(api.ctx, to_ffi(dict), missing) };
     assert_error(&api, ret, "KeyError");
-    let ret = (api.dict_get)(api.ctx, nil, key);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.dict_get)(api.ctx, nil, key) };
     assert_error(&api, ret, "TypeError");
 
     // set: add, then contains is true for the item, false for another.
     let item = to_ffi(Value::from(9i64));
-    let ret = (api.set_add)(api.ctx, to_ffi(set), item);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.set_add)(api.ctx, to_ffi(set), item) };
     assert_eq!(ret.status, 0);
-    let ret = (api.set_contains)(api.ctx, to_ffi(set), item);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.set_contains)(api.ctx, to_ffi(set), item) };
     assert_eq!(ret.status, 0);
-    assert_eq!(from_ffi(ret.value), Value::Bool(true));
-    let ret = (api.set_contains)(api.ctx, to_ffi(set), missing);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    assert_eq!(unsafe { from_ffi(ret.value) }, Value::Bool(true));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.set_contains)(api.ctx, to_ffi(set), missing) };
     assert_eq!(ret.status, 0);
-    assert_eq!(from_ffi(ret.value), Value::Bool(false));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    assert_eq!(unsafe { from_ffi(ret.value) }, Value::Bool(false));
 
     // These re-entering callbacks must leave the VM stack as they found it.
     assert_eq!(vm.stack.len(), 0, "callbacks must be stack-neutral");
@@ -521,22 +602,29 @@ fn attribute_access() {
     let api = build_host_api(&mut vm);
 
     // A missing field is an AttributeError.
-    let ret = (api.attr_get)(api.ctx, to_ffi(instance), name);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.attr_get)(api.ctx, to_ffi(instance), name) };
     assert_error(&api, ret, "AttributeError");
 
     // set, then get and has observe the field.
-    let ret = (api.attr_set)(api.ctx, to_ffi(instance), name, to_ffi(value));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.attr_set)(api.ctx, to_ffi(instance), name, to_ffi(value)) };
     assert_eq!(ret.status, 0);
-    let ret = (api.attr_get)(api.ctx, to_ffi(instance), name);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.attr_get)(api.ctx, to_ffi(instance), name) };
     assert_eq!(ret.status, 0);
-    assert_eq!(from_ffi(ret.value), value);
-    let ret = (api.attr_has)(api.ctx, to_ffi(instance), name);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    assert_eq!(unsafe { from_ffi(ret.value) }, value);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.attr_has)(api.ctx, to_ffi(instance), name) };
     assert_eq!(ok_value(ret), Value::Bool(true));
 
     // Non-instances have no attributes - get and has both TypeError.
-    let ret = (api.attr_get)(api.ctx, nil, name);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.attr_get)(api.ctx, nil, name) };
     assert_error(&api, ret, "TypeError");
-    let ret = (api.attr_has)(api.ctx, nil, name);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.attr_has)(api.ctx, nil, name) };
     assert_error(&api, ret, "TypeError");
 }
 
@@ -548,15 +636,19 @@ fn display_is_raw_and_str_honors_dunder() {
     let api = build_host_api(&mut vm);
 
     // value_display: the raw repr - does NOT run `__str__`.
-    let displayed = (api.value_display)(api.ctx, to_ffi(exception));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let displayed = unsafe { (api.value_display)(api.ctx, to_ffi(exception)) };
     let mut ffi = FfiStr::null();
-    let succeeded = (api.string_get)(api.ctx, displayed, &raw mut ffi);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the out-pointer is a live local.
+    let succeeded = unsafe { (api.string_get)(api.ctx, displayed, &raw mut ffi) };
     assert!(succeeded);
     assert_eq!(read_ffi_str(ffi), "ValueError('boom')");
 
     // value_str: re-enters and runs `__str__`, which returns only the
     // message, and leaves the VM stack clean.
-    let ret = (api.value_str)(api.ctx, to_ffi(exception));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.value_str)(api.ctx, to_ffi(exception)) };
     assert_eq!(ret.status, 0);
     assert_eq!(message_string(&vm, ret), "boom");
     assert_eq!(vm.stack.len(), 0, "re-entering callback must clean up");
@@ -575,24 +667,37 @@ fn truthiness_equality_hash() {
     let api = build_host_api(&mut vm);
 
     // value_truthy: false is falsey, a nonzero int is truthy.
-    let ret = (api.value_truthy)(api.ctx, to_ffi(Value::Bool(false)));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.value_truthy)(api.ctx, to_ffi(Value::Bool(false))) };
     assert_eq!(ret.status, 0);
-    assert_eq!(from_ffi(ret.value), Value::Bool(false));
-    let ret = (api.value_truthy)(api.ctx, to_ffi(Value::from(1i64)));
-    assert_eq!(from_ffi(ret.value), Value::Bool(true));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    assert_eq!(unsafe { from_ffi(ret.value) }, Value::Bool(false));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.value_truthy)(api.ctx, to_ffi(Value::from(1i64))) };
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    assert_eq!(unsafe { from_ffi(ret.value) }, Value::Bool(true));
 
     // value_equals: the two distinct-but-equal bigints compare equal, an
     // unequal kind does not.
-    let ret = (api.value_equals)(api.ctx, to_ffi(a), to_ffi(b));
-    assert_eq!(from_ffi(ret.value), Value::Bool(true));
-    let ret = (api.value_equals)(api.ctx, to_ffi(a), nil);
-    assert_eq!(from_ffi(ret.value), Value::Bool(false));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.value_equals)(api.ctx, to_ffi(a), to_ffi(b)) };
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    assert_eq!(unsafe { from_ffi(ret.value) }, Value::Bool(true));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.value_equals)(api.ctx, to_ffi(a), nil) };
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    assert_eq!(unsafe { from_ffi(ret.value) }, Value::Bool(false));
 
     // value_hash: equal values hash equal.
-    let hash_a = (api.value_hash)(api.ctx, to_ffi(a));
-    let hash_b = (api.value_hash)(api.ctx, to_ffi(b));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let hash_a = unsafe { (api.value_hash)(api.ctx, to_ffi(a)) };
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let hash_b = unsafe { (api.value_hash)(api.ctx, to_ffi(b)) };
     assert_eq!(hash_a.status, 0);
-    assert_eq!(from_ffi(hash_a.value), from_ffi(hash_b.value));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    assert_eq!(unsafe { from_ffi(hash_a.value) }, unsafe {
+        from_ffi(hash_b.value)
+    });
 }
 
 #[test]
@@ -605,18 +710,24 @@ fn call_value_happy_and_error_paths() {
     let api = build_host_api(&mut vm);
 
     // Happy path: `str(42)` returns "42".
-    let ret = (api.call_value)(api.ctx, to_ffi(str_fn), args.as_ptr(), args.len());
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and `args` is a live slice.
+    let ret = unsafe { (api.call_value)(api.ctx, to_ffi(str_fn), args.as_ptr(), args.len()) };
     assert_eq!(ret.status, 0);
     assert_eq!(message_string(&vm, ret), "42");
 
     // Arity mismatch throws inside the VM and comes back as an exception.
     let two = [nil, nil];
-    let ret = (api.call_value)(api.ctx, to_ffi(str_fn), two.as_ptr(), two.len());
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and `args` is a live slice.
+    let ret = unsafe { (api.call_value)(api.ctx, to_ffi(str_fn), two.as_ptr(), two.len()) };
     assert_error(&api, ret, "TypeError");
 
     // Uncallable values throw TypeError; the exception is handed to the
     // plugin, not left pending, and the VM is left clean.
-    let ret = (api.call_value)(api.ctx, nil, args.as_ptr(), args.len());
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and `args` is a live slice.
+    let ret = unsafe { (api.call_value)(api.ctx, nil, args.as_ptr(), args.len()) };
     assert_error(&api, ret, "TypeError");
     assert_eq!(vm.stack.len(), 0);
     assert_eq!(vm.callstack.len(), 0);
@@ -641,15 +752,23 @@ fn invoke_method_on_native_receiver() {
     let api = build_host_api(&mut vm);
 
     // Happy path: `list.append(5)` runs and grows the list.
-    let ret = (api.invoke_method)(api.ctx, to_ffi(list), append, args.as_ptr(), args.len());
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and `args` is a live slice.
+    let ret =
+        unsafe { (api.invoke_method)(api.ctx, to_ffi(list), append, args.as_ptr(), args.len()) };
     assert_eq!(ret.status, 0);
     let mut len = 0usize;
-    let succeeded = (api.list_len)(api.ctx, to_ffi(list), &raw mut len);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the out-pointer is a live local.
+    let succeeded = unsafe { (api.list_len)(api.ctx, to_ffi(list), &raw mut len) };
     assert!(succeeded);
     assert_eq!(len, 1);
 
     // Unknown methods surface as AttributeError, VM left clean.
-    let ret = (api.invoke_method)(api.ctx, to_ffi(list), missing, args.as_ptr(), args.len());
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and `args` is a live slice.
+    let ret =
+        unsafe { (api.invoke_method)(api.ctx, to_ffi(list), missing, args.as_ptr(), args.len()) };
     assert_error(&api, ret, "AttributeError");
     assert_eq!(vm.stack.len(), 0);
 }
@@ -662,20 +781,28 @@ fn rooting_pushes_and_pops_the_vm_stack() {
     let api = build_host_api(&mut vm);
 
     // root pushes onto the VM stack; unroot pops.
-    (api.root)(api.ctx, to_ffi(value));
-    (api.root)(api.ctx, to_ffi(value));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    unsafe { (api.root)(api.ctx, to_ffi(value)) };
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    unsafe { (api.root)(api.ctx, to_ffi(value)) };
     assert_eq!(vm.stack.len(), 2);
-    (api.unroot)(api.ctx, 1);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    unsafe { (api.unroot)(api.ctx, 1) };
     assert_eq!(vm.stack.len(), 1);
 
     // Over-unrooting saturates at empty instead of panicking.
-    (api.unroot)(api.ctx, 5);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    unsafe { (api.unroot)(api.ctx, 5) };
     assert_eq!(vm.stack.len(), 0);
 }
 
 // --- trampolines and call_plugin result mapping ---
 
-extern "C" fn plugin_returns_seven(
+// The mock plugin functions below are `PluginFn`s, so they carry that
+// contract: the host passes a valid vtable and `nargs` contiguous argument
+// blobs. Each `unsafe` inside them is discharged by it.
+
+unsafe extern "C" fn plugin_returns_seven(
     _host: *const HostApi,
     _args: *const GenericValue,
     _nargs: usize,
@@ -686,16 +813,21 @@ extern "C" fn plugin_returns_seven(
     }
 }
 
-extern "C" fn plugin_adds_args(
+unsafe extern "C" fn plugin_adds_args(
     host: *const HostApi,
     args: *const GenericValue,
     nargs: usize,
 ) -> FfiReturn {
+    // SAFETY: a valid vtable, per the `PluginFn` contract.
     let api = unsafe { &*host };
     let mut sum = 0i64;
     for i in 0..nargs {
         let mut n = 0i64;
-        let succeeded = (api.int_get)(api.ctx, unsafe { *args.add(i) }, &raw mut n);
+        // SAFETY: `args` points to `nargs` contiguous blobs, per the contract.
+        let arg = unsafe { *args.add(i) };
+        // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued
+        // blobs, and the out-pointer is a live local.
+        let succeeded = unsafe { (api.int_get)(api.ctx, arg, &raw mut n) };
         assert!(succeeded);
         sum += n;
     }
@@ -707,20 +839,25 @@ extern "C" fn plugin_adds_args(
 
 /// Returns a plain string under `STATUS_EXCEPTION` - a plugin bug; used
 /// below to check the defensive `TypeError`.
-extern "C" fn plugin_invalid_exception_value(
+unsafe extern "C" fn plugin_invalid_exception_value(
     host: *const HostApi,
     _args: *const GenericValue,
     _nargs: usize,
 ) -> FfiReturn {
+    // SAFETY: a valid vtable, per the `PluginFn` contract.
     let api = unsafe { &*host };
     let message = "bad type";
-    let value = (api.string_new)(
-        api.ctx,
-        FfiStr {
-            ptr: message.as_ptr(),
-            len: message.len(),
-        },
-    );
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the `FfiStr` borrows a live `&str`, `args` is a live slice.
+    let value = unsafe {
+        (api.string_new)(
+            api.ctx,
+            FfiStr {
+                ptr: message.as_ptr(),
+                len: message.len(),
+            },
+        )
+    };
     assert_eq!(value.status, 0);
     FfiReturn {
         status: FfiStatus::Exception as u32,
@@ -728,30 +865,39 @@ extern "C" fn plugin_invalid_exception_value(
     }
 }
 
-extern "C" fn plugin_throws_type_error(
+unsafe extern "C" fn plugin_throws_type_error(
     host: *const HostApi,
     _args: *const GenericValue,
     _nargs: usize,
 ) -> FfiReturn {
+    // SAFETY: a valid vtable, per the `PluginFn` contract.
     let api = unsafe { &*host };
     let class_name = "TypeError";
-    let class = (api.builtin_get)(
-        api.ctx,
-        FfiStr {
-            ptr: class_name.as_ptr(),
-            len: class_name.len(),
-        },
-    );
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the `FfiStr` borrows a live `&str`, `args` is a live slice.
+    let class = unsafe {
+        (api.builtin_get)(
+            api.ctx,
+            FfiStr {
+                ptr: class_name.as_ptr(),
+                len: class_name.len(),
+            },
+        )
+    };
     assert_eq!(class.status, 0);
     let message = "bad type";
-    let exception = (api.exception_new)(
-        api.ctx,
-        class.value,
-        FfiStr {
-            ptr: message.as_ptr(),
-            len: message.len(),
-        },
-    );
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the `FfiStr` borrows a live `&str`, `args` is a live slice.
+    let exception = unsafe {
+        (api.exception_new)(
+            api.ctx,
+            class.value,
+            FfiStr {
+                ptr: message.as_ptr(),
+                len: message.len(),
+            },
+        )
+    };
     assert_eq!(exception.status, 0);
     FfiReturn {
         status: FfiStatus::Exception as u32,
@@ -761,18 +907,20 @@ extern "C" fn plugin_throws_type_error(
 
 /// Rethrows its first argument - how a plugin re-raises an exception it
 /// caught from a re-entering callback.
-extern "C" fn plugin_rethrows_arg(
+unsafe extern "C" fn plugin_rethrows_arg(
     _host: *const HostApi,
     args: *const GenericValue,
     _nargs: usize,
 ) -> FfiReturn {
     FfiReturn {
         status: FfiStatus::Exception as u32,
+        // SAFETY: per the `PluginFn` contract there are `nargs` contiguous
+        // blobs at `args`; every call site below passes exactly one.
         value: unsafe { *args },
     }
 }
 
-extern "C" fn plugin_unknown_code(
+unsafe extern "C" fn plugin_unknown_code(
     _host: *const HostApi,
     _args: *const GenericValue,
     _nargs: usize,
@@ -783,7 +931,7 @@ extern "C" fn plugin_unknown_code(
     }
 }
 
-extern "C" fn plugin_fatal(
+unsafe extern "C" fn plugin_fatal(
     _host: *const HostApi,
     _args: *const GenericValue,
     _nargs: usize,
@@ -811,7 +959,9 @@ fn pop_pending_exception_class(vm: &mut VM) -> String {
 /// the loader uses per export, so the two can't drift.
 fn plugin_native(vm: &mut VM, name: &str, arity: &'static [u8], fun: PluginFn) -> Value {
     let name_id = vm.heap.string_id(&name);
-    vm.add_plugin_native(name_id, arity, fun)
+    // SAFETY: `fun` is one of this file's mock plugin functions, which honor
+    // the `PluginFn` contract.
+    unsafe { vm.add_plugin_native(name_id, arity, fun) }
 }
 
 /// The trampoline's own job, in isolation. Given the dispatch-site layout
@@ -862,12 +1012,17 @@ fn plugin_native_dispatches_through_the_real_call_path() {
     // Happy path: the real dispatch places `adder` below its args, the
     // trampoline recovers the pointer, and `20 + 22` comes back as 42.
     let args = [to_ffi(Value::from(20i64)), to_ffi(Value::from(22i64))];
-    let ret = (api.call_value)(api.ctx, to_ffi(adder), args.as_ptr(), 2);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and `args` is a live slice.
+    let ret = unsafe { (api.call_value)(api.ctx, to_ffi(adder), args.as_ptr(), 2) };
     assert_eq!(ret.status, 0);
-    assert_eq!(from_ffi(ret.value), Value::from(42i64));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    assert_eq!(unsafe { from_ffi(ret.value) }, Value::from(42i64));
 
     // Wrong arity is caught by the dispatch site before the trampoline.
-    let ret = (api.call_value)(api.ctx, to_ffi(adder), args.as_ptr(), 1);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and `args` is a live slice.
+    let ret = unsafe { (api.call_value)(api.ctx, to_ffi(adder), args.as_ptr(), 1) };
     assert_error(&api, ret, "TypeError");
     assert_eq!(vm.stack.len(), 0);
 }
@@ -879,30 +1034,36 @@ fn call_plugin_maps_every_status() {
 
     // Ok → the returned value.
     assert_eq!(
-        call_plugin(&mut vm, plugin_returns_seven, &[], name).unwrap(),
+        // SAFETY: a mock plugin function honoring the ABI contract.
+        unsafe { call_plugin(&mut vm, plugin_returns_seven, &[], name) }.unwrap(),
         Value::from(7i64)
     );
 
     // A typed throw (instance built via `exception_new`) becomes a
     // pending exception of the matching class.
-    let error = call_plugin(&mut vm, plugin_throws_type_error, &[], name).unwrap_err();
+    // SAFETY: a mock plugin function honoring the ABI contract.
+    let error = unsafe { call_plugin(&mut vm, plugin_throws_type_error, &[], name) }.unwrap_err();
     assert!(matches!(error, VmErrorKind::Exception(_)));
     assert_eq!(pop_pending_exception_class(&mut vm), "TypeError");
 
     // A non-exception value under STATUS_EXCEPTION is a plugin bug and
     // surfaces as the raise-validation TypeError, not a crash.
-    let error = call_plugin(&mut vm, plugin_invalid_exception_value, &[], name).unwrap_err();
+    // SAFETY: a mock plugin function honoring the ABI contract.
+    let error =
+        unsafe { call_plugin(&mut vm, plugin_invalid_exception_value, &[], name) }.unwrap_err();
     assert!(matches!(error, VmErrorKind::Exception(_)));
     assert_eq!(pop_pending_exception_class(&mut vm), "TypeError");
 
     // Unknown statuses fall back to the base Exception.
-    let error = call_plugin(&mut vm, plugin_unknown_code, &[], name).unwrap_err();
+    // SAFETY: a mock plugin function honoring the ABI contract.
+    let error = unsafe { call_plugin(&mut vm, plugin_unknown_code, &[], name) }.unwrap_err();
     assert!(matches!(error, VmErrorKind::Exception(_)));
     assert_eq!(pop_pending_exception_class(&mut vm), "Exception");
 
     // STATUS_FATAL comes back as an uncatchable runtime error - no
     // pending exception is created.
-    let error = call_plugin(&mut vm, plugin_fatal, &[], name).unwrap_err();
+    // SAFETY: a mock plugin function honoring the ABI contract.
+    let error = unsafe { call_plugin(&mut vm, plugin_fatal, &[], name) }.unwrap_err();
     assert!(matches!(error, VmErrorKind::Runtime(_)));
     assert_eq!(vm.stack.len(), 0);
 }
@@ -931,30 +1092,39 @@ fn rethrown_exceptions_keep_their_identity() {
     // A plugin can catch it exactly like a generic `catch TypeError`
     // clause would...
     // Get TypeError
-    let type_error_class = (api.builtin_get)(
-        api.ctx,
-        FfiStr {
-            ptr: name.as_ptr(),
-            len: name.len(),
-        },
-    );
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the `FfiStr` borrows a live `&str`, `args` is a live slice.
+    let type_error_class = unsafe {
+        (api.builtin_get)(
+            api.ctx,
+            FfiStr {
+                ptr: name.as_ptr(),
+                len: name.len(),
+            },
+        )
+    };
     assert_eq!(type_error_class.status, 0);
 
     // Check if an instance of MyError is an instance of TypeError
-    let ret = (api.is_instance)(api.ctx, to_ffi(my_error_exception), type_error_class.value);
+    let ret =
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+        unsafe { (api.is_instance)(api.ctx, to_ffi(my_error_exception), type_error_class.value) };
     assert_eq!(ok_value(ret), Value::Bool(true));
 
     // ...while values of other kinds are simply not instances
-    let ret = (api.is_instance)(api.ctx, nil, type_error_class.value);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.is_instance)(api.ctx, nil, type_error_class.value) };
     assert_eq!(ok_value(ret), Value::Bool(false));
 
     // and a non-class second value throws.
-    let ret = (api.is_instance)(api.ctx, to_ffi(my_error_exception), nil);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.is_instance)(api.ctx, to_ffi(my_error_exception), nil) };
     assert_error(&api, ret, "TypeError");
 
     let name_id = vm.heap.string_id(&"plugin_rethrows_arg");
     let error =
-        call_plugin(&mut vm, plugin_rethrows_arg, &[my_error_exception], name_id).unwrap_err();
+        // SAFETY: a mock plugin function honoring the ABI contract.
+        unsafe { call_plugin(&mut vm, plugin_rethrows_arg, &[my_error_exception], name_id) }.unwrap_err();
     assert!(matches!(error, VmErrorKind::Exception(_)));
     let pending = *vm.stack.last().expect("pending exception missing");
     assert!(pending.is(&my_error_exception), "must be the same instance");
@@ -997,12 +1167,15 @@ fn is_instance_matches_value_type_proxy_classes() {
         (rational, rational_class),
         (module, module_class),
     ] {
-        let ret = (api.is_instance)(api.ctx, to_ffi(value), to_ffi(class));
+        // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued
+        // blobs.
+        let ret = unsafe { (api.is_instance)(api.ctx, to_ffi(value), to_ffi(class)) };
         assert_eq!(ok_value(ret), Value::Bool(true));
     }
 
     // The match is exact, not "any number": an int is not a Float.
-    let ret = (api.is_instance)(api.ctx, to_ffi(Value::from(5i64)), to_ffi(float_class));
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let ret = unsafe { (api.is_instance)(api.ctx, to_ffi(Value::from(5i64)), to_ffi(float_class)) };
     assert_eq!(ok_value(ret), Value::Bool(false));
 }
 
@@ -1012,9 +1185,8 @@ fn is_instance_matches_value_type_proxy_classes() {
 #[test]
 fn plugin_candidate_resolution() {
     // Arrange: an empty temp dir and the import path within it.
-    let dir =
-        std::env::temp_dir().join(format!("generic-plugin-candidates-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = env::temp_dir().join(format!("generic-plugin-candidates-{}", process::id()));
+    fs::create_dir_all(&dir).unwrap();
     let import_path = dir.join("demo");
 
     // No candidate file yet → no match.
@@ -1022,17 +1194,17 @@ fn plugin_candidate_resolution() {
 
     // The lib-prefixed candidate is found on platforms with a dylib prefix.
     let prefixed = dir.join(format!("{DLL_PREFIX}demo{DLL_SUFFIX}"));
-    std::fs::write(&prefixed, b"").unwrap();
+    fs::write(&prefixed, b"").unwrap();
     let found = find_plugin_candidate(&import_path, "demo");
     assert_eq!(found, Some(prefixed));
 
     // The unprefixed candidate is preferred once it also exists.
     let unprefixed = dir.join(format!("demo{DLL_SUFFIX}"));
-    std::fs::write(&unprefixed, b"").unwrap();
+    fs::write(&unprefixed, b"").unwrap();
     let found = find_plugin_candidate(&import_path, "demo");
     assert_eq!(found, Some(unprefixed));
 
-    std::fs::remove_dir_all(&dir).unwrap();
+    fs::remove_dir_all(&dir).unwrap();
 }
 
 // Real filesystem + `dlopen`: not runnable under miri.
@@ -1040,10 +1212,10 @@ fn plugin_candidate_resolution() {
 #[test]
 fn corrupt_dylib_is_an_import_error_not_a_crash() {
     // Arrange: a file with a plugin's name that is not a valid dylib.
-    let dir = std::env::temp_dir().join(format!("generic-plugin-corrupt-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = env::temp_dir().join(format!("generic-plugin-corrupt-{}", process::id()));
+    fs::create_dir_all(&dir).unwrap();
     let dylib = dir.join(format!("demo{DLL_SUFFIX}"));
-    std::fs::write(&dylib, b"this is not a shared library").unwrap();
+    fs::write(&dylib, b"this is not a shared library").unwrap();
 
     // Importing it claims the plugin arm (the candidate exists) but fails
     // to load - a catchable ImportError, not a crash.
@@ -1056,7 +1228,7 @@ fn corrupt_dylib_is_an_import_error_not_a_crash() {
     assert!(matches!(error, VmErrorKind::Exception(_)));
     assert_eq!(pop_pending_exception_class(&mut vm), "ImportError");
 
-    std::fs::remove_dir_all(&dir).unwrap();
+    fs::remove_dir_all(&dir).unwrap();
 }
 
 // --- plugin classes: opaque state, drop, and traverse -----------------------
@@ -1065,32 +1237,51 @@ use core::ffi::c_void;
 
 /// A drop callback that records the call by writing `true` through its pointer
 /// (which the test points at a stack `bool`).
-extern "C" fn record_drop(ptr: *mut c_void) {
-    // SAFETY: the test installs a pointer to a live `bool`.
+///
+/// # Safety
+///
+/// Per `ClassDesc::drop`, with this class's state being a `bool` that outlives
+/// the collection.
+unsafe extern "C" fn record_drop(ptr: *mut c_void) {
+    // SAFETY: by the contract above, the installed pointer is a live `bool`.
     unsafe { *ptr.cast::<bool>() = true };
 }
 
 /// A no-op drop; the opaque pointer here is a sentinel, never dereferenced.
-extern "C" fn noop_drop(_ptr: *mut c_void) {}
+unsafe extern "C" fn noop_drop(_ptr: *mut c_void) {}
 
 /// Free a `Box<GenericValue>` opaque state (used with `report_held`).
-extern "C" fn free_held(ptr: *mut c_void) {
+///
+/// # Safety
+///
+/// Per `ClassDesc::drop`, with this class's state being a
+/// `Box::into_raw(Box::<GenericValue>::new(..))`, freed once.
+unsafe extern "C" fn free_held(ptr: *mut c_void) {
     if !ptr.is_null() {
-        // SAFETY: `ptr` came from `Box::into_raw(Box::<GenericValue>::new(..))`.
+        // SAFETY: by the contract above, `ptr` came from `Box::into_raw` and is
+        // being freed for the first time.
         drop(unsafe { Box::from_raw(ptr.cast::<GenericValue>()) });
     }
 }
 
 /// A traverse callback reporting the single `GenericValue` in the opaque box.
-extern "C" fn report_held(
+///
+/// # Safety
+///
+/// Per `PluginTraverseFn`, with this class's state being a
+/// `Box<GenericValue>`.
+unsafe extern "C" fn report_held(
     ptr: *mut c_void,
-    visit: generic_lang_api::PluginVisitFn,
+    visit: PluginVisitFn,
     visit_ctx: *mut c_void,
 ) -> i32 {
     if !ptr.is_null() {
-        // SAFETY: `ptr` points at a live `GenericValue` installed by the test.
-        let held = unsafe { *ptr.cast::<GenericValue>() };
-        visit(visit_ctx, held);
+        // SAFETY: by the contract above, `ptr` points at a live `GenericValue`
+        // and `visit`/`visit_ctx` belong together and are live for this call.
+        unsafe {
+            let held = *ptr.cast::<GenericValue>();
+            visit(visit_ctx, held);
+        }
     }
     0
 }
@@ -1128,17 +1319,25 @@ fn instance_set_get_opaque_roundtrip_and_errors() {
     let sentinel = std::ptr::without_provenance_mut::<c_void>(0xABCD);
 
     // get before set -> null.
-    assert!((api.instance_get_opaque)(api.ctx, to_ffi(widget)).is_null());
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    assert!(unsafe { (api.instance_get_opaque)(api.ctx, to_ffi(widget)) }.is_null());
 
     // set then get -> the same pointer.
-    let set = (api.instance_set_opaque)(api.ctx, to_ffi(widget), sentinel);
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    let set = unsafe { (api.instance_set_opaque)(api.ctx, to_ffi(widget), sentinel) };
     assert_eq!(set.status, 0);
-    assert_eq!((api.instance_get_opaque)(api.ctx, to_ffi(widget)), sentinel);
+    assert_eq!(
+        // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+        unsafe { (api.instance_get_opaque)(api.ctx, to_ffi(widget)) },
+        sentinel
+    );
 
     // set on a non-plugin instance -> TypeError.
     assert_error(
         &api,
-        (api.instance_set_opaque)(api.ctx, to_ffi(plain), sentinel),
+        // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued
+        // blobs.
+        unsafe { (api.instance_set_opaque)(api.ctx, to_ffi(plain), sentinel) },
         "TypeError",
     );
 
@@ -1146,10 +1345,13 @@ fn instance_set_get_opaque_roundtrip_and_errors() {
     let non_instance = to_ffi(Value::Nil);
     assert_error(
         &api,
-        (api.instance_set_opaque)(api.ctx, non_instance, sentinel),
+        // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued
+        // blobs.
+        unsafe { (api.instance_set_opaque)(api.ctx, non_instance, sentinel) },
         "TypeError",
     );
-    assert!((api.instance_get_opaque)(api.ctx, non_instance).is_null());
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs.
+    assert!(unsafe { (api.instance_get_opaque)(api.ctx, non_instance) }.is_null());
 }
 
 #[test]
@@ -1167,7 +1369,7 @@ fn plugin_drop_runs_when_instance_is_collected() {
     vm.stack.push(class); // keep the class alive across the collection
 
     let mut dropped = false;
-    let flag: *mut c_void = std::ptr::from_mut(&mut dropped).cast::<c_void>();
+    let flag: *mut c_void = ptr::from_mut(&mut dropped).cast::<c_void>();
     // Not rooted anywhere -> unreachable -> swept on the next collection.
     vm.heap.add_instance(Instance::new(
         class_id,
@@ -1224,36 +1426,49 @@ fn plugin_traverse_keeps_held_value_alive_across_gc() {
 
 // --- module value creators -------------------------------------------------
 
-extern "C" fn value_creator_seven(host: *const HostApi) -> FfiReturn {
-    // SAFETY: the host passes a valid vtable for the duration of the call.
+// The value creators below are `PluginValueFn`s and carry that contract: a
+// valid vtable for the duration of the call.
+
+unsafe extern "C" fn value_creator_seven(host: *const HostApi) -> FfiReturn {
+    // SAFETY: a valid vtable, per the `PluginValueFn` contract.
     let api = unsafe { &*host };
     FfiReturn {
         status: FfiStatus::Ok as u32,
-        value: (api.int_new)(api.ctx, 7),
+        // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued
+        // blobs.
+        value: unsafe { (api.int_new)(api.ctx, 7) },
     }
 }
 
-extern "C" fn value_creator_throws(host: *const HostApi) -> FfiReturn {
+unsafe extern "C" fn value_creator_throws(host: *const HostApi) -> FfiReturn {
     // SAFETY: as above.
     let api = unsafe { &*host };
     let class_name = "ValueError";
     let message = "value creation failed";
-    let class = (api.builtin_get)(
-        api.ctx,
-        FfiStr {
-            ptr: class_name.as_ptr(),
-            len: class_name.len(),
-        },
-    );
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the `FfiStr` borrows a live `&str`, `args` is a live slice.
+    let class = unsafe {
+        (api.builtin_get)(
+            api.ctx,
+            FfiStr {
+                ptr: class_name.as_ptr(),
+                len: class_name.len(),
+            },
+        )
+    };
     assert_eq!(class.status, FfiStatus::Ok as u32);
-    let exception = (api.exception_new)(
-        api.ctx,
-        class.value,
-        FfiStr {
-            ptr: message.as_ptr(),
-            len: message.len(),
-        },
-    );
+    // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued blobs,
+    // and the `FfiStr` borrows a live `&str`, `args` is a live slice.
+    let exception = unsafe {
+        (api.exception_new)(
+            api.ctx,
+            class.value,
+            FfiStr {
+                ptr: message.as_ptr(),
+                len: message.len(),
+            },
+        )
+    };
     assert_eq!(exception.status, FfiStatus::Ok as u32);
     FfiReturn {
         status: FfiStatus::Exception as u32,
@@ -1266,7 +1481,8 @@ extern "C" fn value_creator_throws(host: *const HostApi) -> FfiReturn {
 fn value_creator_result_is_returned() {
     let mut vm = VM::new();
     let name = vm.heap.string_id(&"seven");
-    let result = call_plugin_value(&mut vm, value_creator_seven, name);
+    // SAFETY: a mock plugin function honoring the ABI contract.
+    let result = unsafe { call_plugin_value(&mut vm, value_creator_seven, name) };
     let value = result.expect("creator succeeds");
     assert_eq!(value, Value::from(7));
 }
@@ -1278,23 +1494,30 @@ fn value_creator_exception_is_pending() {
     let mut vm = VM::new();
     let depth = vm.stack.len();
     let name = vm.heap.string_id(&"broken");
-    let result = call_plugin_value(&mut vm, value_creator_throws, name);
+    // SAFETY: a mock plugin function honoring the ABI contract.
+    let result = unsafe { call_plugin_value(&mut vm, value_creator_throws, name) };
     assert!(matches!(result, Err(VmErrorKind::Exception(_))));
     assert_eq!(vm.stack.len(), depth + 1, "pending exception on the stack");
 }
 
-extern "C" fn value_creator_forces_gc(host: *const HostApi) -> FfiReturn {
-    // SAFETY: the host passes a valid vtable for the duration of the call;
-    // `ctx` is the VM, recovered the way the host callbacks do. The forced
-    // collection stands in for any re-entering creator that runs generic
-    // code, where every instruction may collect.
-    let api = unsafe { &*host };
-    let vm = unsafe { &mut *api.ctx.cast::<VM>() };
+unsafe extern "C" fn value_creator_forces_gc(host: *const HostApi) -> FfiReturn {
+    // SAFETY: a valid vtable, per the `PluginValueFn` contract, and `ctx` is
+    // the VM behind it - recovered the way the host callbacks do, which only
+    // this test may rely on (it is the host's own opaque pointer). No other
+    // borrow of the VM is live here. The forced collection stands in for any
+    // re-entering creator that runs generic code, where every instruction may
+    // collect.
+    let (api, vm) = unsafe {
+        let api = &*host;
+        (api, &mut *api.ctx.cast::<VM>())
+    };
     vm.heap.force_next_gc();
     vm.collect_garbage();
     FfiReturn {
         status: FfiStatus::Ok as u32,
-        value: (api.int_new)(api.ctx, 1),
+        // SAFETY: the vtable contract - `api` and `api.ctx` from `build_host_api`, host-issued
+        // blobs.
+        value: unsafe { (api.int_new)(api.ctx, 1) },
     }
 }
 
@@ -1336,7 +1559,9 @@ fn module_exports_survive_gc_during_value_creation() {
     // The loader caches the exports before building the module; the cached
     // names are GC roots, exactly as in a real import.
     vm.plugins.loaded.insert(path.clone(), exports.clone());
-    vm.import_plugin_module(plugin_name, path, None, &exports, None, false)
+    // SAFETY: the exports above hold this file's own mock plugin functions,
+    // which honor the ABI contract.
+    unsafe { vm.import_plugin_module(plugin_name, path, None, &exports, None, false) }
         .expect("import succeeds");
 
     // The module bound in the importer carries the function export built

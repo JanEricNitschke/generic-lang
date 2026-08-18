@@ -300,6 +300,39 @@ the loader-error `bad/` fixtures). Their `.gen` tests are in
 [`test/plugin/`](../test/plugin): the Rust ones run in the normal suite, the
 cross-language ones via `make plugin-lang-test`.
 
+## The safety boundary (Rust)
+
+Every function pointer in the ABI - the `HostApi` callbacks, `PluginFn`,
+`PluginMethodFn`, `PluginValueFn`, `PluginVisitFn`, `PluginTraverseFn`, and a
+class's `drop` - is an `unsafe extern "C" fn`, because crossing the boundary
+carries contracts no compiler can check: raw pointers whose validity only the
+other side knows, `GenericValue` blobs that must be host-issued and unmodified,
+and a call into foreign code. Each declaration in
+[`generic_lang_api::abi`](https://docs.rs/generic-lang-api/latest/generic_lang_api/abi/)
+documents its own contract in a `# Safety` section.
+
+In practice a Rust plugin still writes almost no `unsafe`:
+
+- `export_module!` generates the `extern "C"` entry points, and `Host` wraps
+  the whole vtable - both discharge the contract for you. Function, method,
+  and value bodies are ordinary safe Rust.
+- A `GenericValue` cannot be fabricated in safe Rust at all (its storage is
+  private), so passing values around and handing them to `Host` methods needs
+  no `unsafe` and cannot go wrong. In C/C++/Zig the struct is a plain
+  `uint64_t opaque[4]`: filling it yourself is undefined behavior, enforced
+  only by this rule.
+- What is left is your own opaque pointer, whose type only you know:
+  `Host::set_opaque`, `Host::opaque_ref`, and the `drop`/`traverse` callbacks.
+  See [Defining classes](#defining-classes).
+
+Importing a plugin runs arbitrary native code: `dlopen` executes the library's
+initializers before the host can check anything, and no ABI claim is verifiable.
+Only import plugins you trust, exactly as you would only run a binary you trust.
+
+Nothing here changes the C ABI: `unsafe` is a Rust-side obligation marker, not
+part of the calling convention, and the generated `generic.h` is identical.
+C, C++, and Zig plugins are unaffected.
+
 ## The value model
 
 A `GenericValue` is an **opaque 32-byte handle** to an interpreter value.
@@ -491,18 +524,25 @@ struct CounterState {
     label: GenericValue, // a held value the GC must be told about
 }
 
-extern "C" fn counter_drop(ptr: *mut c_void) {
+// `drop` and `traverse` are the only callbacks you write by hand, and the host
+// calls them across the C boundary - hence `unsafe extern "C" fn`. What the
+// host guarantees is documented on `ClassDesc::drop` and `PluginTraverseFn`:
+// `ptr` is null or the pointer you installed on an instance of this class.
+unsafe extern "C" fn counter_drop(ptr: *mut c_void) {
     if !ptr.is_null() {
-        // SAFETY: ptr came from Box::into_raw in __init__.
+        // SAFETY: ptr came from Box::into_raw in __init__, freed once.
         drop(unsafe { Box::from_raw(ptr.cast::<CounterState>()) });
     }
 }
 
-extern "C" fn counter_traverse(ptr: *mut c_void, visit: PluginVisitFn, visit_ctx: *mut c_void)
+unsafe extern "C" fn counter_traverse(ptr: *mut c_void, visit: PluginVisitFn, visit_ctx: *mut c_void)
     -> i32 {
     if !ptr.is_null() {
-        let state = unsafe { &*ptr.cast::<CounterState>() };
-        visit(visit_ctx, state.label); // report every held GenericValue
+        // SAFETY: ptr is our CounterState; visit/visit_ctx belong together.
+        unsafe {
+            let state = &*ptr.cast::<CounterState>();
+            visit(visit_ctx, state.label); // report every held GenericValue
+        }
     }
     0
 }
@@ -510,6 +550,8 @@ extern "C" fn counter_traverse(ptr: *mut c_void, visit: PluginVisitFn, visit_ctx
 // Recover the typed state once, so the one `unsafe` (asserting the opaque type)
 // lives in a single place.
 fn state<'h>(host: &'h Host, this: GenericValue) -> Result<&'h mut CounterState, PluginError> {
+    // SAFETY: every instance of this class holds a CounterState (see below on
+    // type-checking arguments before reading their opaque state).
     unsafe { host.opaque_ref::<CounterState>(this) }
         .ok_or_else(|| host.type_error("uninitialized Counter"))
 }
@@ -519,7 +561,8 @@ fn state<'h>(host: &'h Host, this: GenericValue) -> Result<&'h mut CounterState,
 fn counter_init(host: &mut Host, this: GenericValue, args: &[GenericValue])
     -> Result<GenericValue, PluginError> {
     let state = Box::new(CounterState { count: 0, label: args[0] });
-    host.set_opaque(this, Box::into_raw(state).cast())?;
+    // SAFETY: a fresh box, handed to the host for `counter_drop` to free.
+    unsafe { host.set_opaque(this, Box::into_raw(state).cast()) }?;
     Ok(this) // __init__ returns the receiver (see below)
 }
 
@@ -551,7 +594,9 @@ becomes the result of the construction expression.
 ### Per-instance native state: `set_opaque` / `get_opaque`
 
 Each instance carries one opaque `*mut c_void` you own. Install it (typically
-in `__init__`) with `host.set_opaque(receiver, ptr)` and recover it in any
+in `__init__`) with `host.set_opaque(receiver, ptr)` - `unsafe`, because
+installing hands the pointer to the garbage collector, which will later pass it
+to this class's `traverse` and `drop` - and recover it in any
 method with `host.get_opaque(receiver)` (or the typed `unsafe`
 `host.opaque_ref::<T>(receiver)`, as `state` above). The host never inspects
 it. The `drop` callback on the class is called with this pointer when the

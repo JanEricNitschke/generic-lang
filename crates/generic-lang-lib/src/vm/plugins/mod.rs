@@ -13,8 +13,8 @@
 //! The crate denies `unsafe_code` (and forbids it entirely without this
 //! feature). The exemptions: file-wide in `host_api` (the FFI boundary
 //! itself) and in `tests` (which drives the vtable like a plugin would),
-//! one function in `loader` (dlopen + descriptor reads). `trampolines`
-//! contains no unsafe at all.
+//! per-function in `loader` (dlopen + descriptor reads) and in
+//! `trampolines` (the three calls into plugin code).
 
 pub mod host_api;
 mod loader;

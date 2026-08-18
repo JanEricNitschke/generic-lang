@@ -38,7 +38,7 @@ pub(super) fn range_iter_next_native(
     receiver: &Value,
     _args: &[Value],
 ) -> VmResult<Value> {
-    // GC-safety: taking the iterator out of the heap hides it (including its
+    // GC invariant: taking the iterator out of the heap hides it (including its
     // `offset`, which may be a heap-allocated big integer) from the GC. This
     // is only sound because nothing below re-enters the interpreter (GC runs
     // exclusively from the instruction dispatch loop; plain heap allocation

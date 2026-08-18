@@ -17,6 +17,7 @@ use crate::{
     types::{Comparison, EqualityMode, JumpCondition, NumberEncoding, RangeType},
     value::{Class, Closure, Instance, Number, Upvalue, Value, get_native_class_id},
 };
+use std::mem;
 
 use tinyvec::TinyVec;
 
@@ -631,6 +632,8 @@ impl VM {
     /// Checks that the number of arguments matches to the arity of the method.
     /// After the call the stack is truncated to remove the arguments and the receiver
     /// and the result is pushed onto the stack.
+    // The allow covers the plugin-method dispatch below.
+    #[cfg_attr(feature = "plugins", allow(unsafe_code))]
     #[allow(clippy::branches_sharing_code)]
     fn execute_native_method_call(
         &mut self,
@@ -676,7 +679,10 @@ impl VM {
         // they are GC-rooted while a plugin re-enters.
         #[cfg(feature = "plugins")]
         let value = if let Some(plugin_fn) = plugin_fn {
-            call_plugin_method(self, plugin_fn, *receiver, &args, name)?
+            // SAFETY: `plugin_fn` came off a heap `NativeMethod` the loader
+            // built from a validated descriptor, so it is a real plugin method;
+            // `receiver` and `args` are live values from the dispatch frame.
+            unsafe { call_plugin_method(self, plugin_fn, *receiver, &args, name) }?
         } else {
             fun(self, receiver, &args)?
         };
@@ -853,7 +859,7 @@ impl VM {
             .insert(last_module.to_value(&self.heap).path.clone(), last_module);
         let last_module_alias = last_module.to_value(&self.heap).alias;
         let names_to_import =
-            std::mem::take(&mut last_module.to_value_mut(&mut self.heap).names_to_import);
+            mem::take(&mut last_module.to_value_mut(&mut self.heap).names_to_import);
         let was_local_import = last_module.to_value(&self.heap).local_import;
         if let Some(names) = names_to_import {
             for name in names {

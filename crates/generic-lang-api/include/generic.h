@@ -180,9 +180,19 @@ typedef uint32_t GenericValueKind;
  * An opaque generic runtime value.
  *
  * This is the host's 32-byte `Value` bit-copied - discriminant and payload
- * included. Plugins must never inspect or fabricate its bytes; values are
- * opaque handles to be passed back to host callbacks. Use
- * [`HostApi::value_kind`] to ask what a value holds.
+ * included. Never inspect or fabricate the bytes: a value is an opaque handle
+ * to be passed back to host callbacks, and decoding one is only sound for
+ * values that host issued. Ask [`HostApi::value_kind`] what a value holds.
+ *
+ * For Rust plugins the rule is enforced, not just stated: the storage is
+ * private, so safe code cannot produce a value at all - one can only come from
+ * the host, or from the `unsafe` `from_limbs` a Rust *host* implementation
+ * uses. That is what makes `as_int`, `attr_get` and the rest of
+ * [`Host`](crate::Host) safe functions.
+ *
+ * C, C++, and Zig plugins see a plain `uint64_t opaque[4]` and can fill it
+ * with anything; there the rule is only a rule, backed by the same trust you
+ * extend by loading the library at all.
  */
 typedef struct GenericValue {
   /**
@@ -258,6 +268,25 @@ typedef struct FfiReturn {
  *   failure whose class and message mirror what the equivalent generic
  *   operation would throw.
  * - Infallible callbacks return their value directly.
+ *
+ * # Safety
+ *
+ * Every callback is an `unsafe extern "C" fn`, and they share one contract
+ * the plugin must uphold on each call (the Rust wrapper [`Host`](crate::Host)
+ * discharges all of it):
+ * - `ctx` is this vtable's own `ctx` field, passed on unmodified. A pointer
+ *   from another vtable, or one the plugin invented, is undefined behavior.
+ * - Every [`GenericValue`] argument was issued by this host and is passed
+ *   back unmodified - the bytes are opaque, so fabricating or altering one
+ *   is undefined behavior (see [`GenericValue`]).
+ * - Every [`FfiStr`] argument points to `len` initialized bytes of UTF-8,
+ *   valid for the duration of the call (see [`FfiStr`]).
+ * - Every `out` pointer is non-null, well aligned, and writable for the size
+ *   of its type; the callback writes through it on success.
+ * - `args` points to `nargs` contiguous, initialized [`GenericValue`]s for
+ *   the duration of the call (`nargs == 0` allows any pointer).
+ * - Calls are not re-entered from another thread; the interpreter is
+ *   single-threaded and a callback borrows the VM for its duration.
  */
 typedef struct HostApi {
   /**
@@ -410,7 +439,7 @@ typedef struct HostApi {
   /**
    * The raw string representation of any value, as a new string value.
    * Does NOT honor a user class's `__str__` (use `value_str` for that),
-   * which makes it safe to call anywhere, including error paths.
+   * which makes it usable anywhere, including error paths.
    */
   struct GenericValue (*value_display)(void *ctx, struct GenericValue value);
   /**
@@ -489,6 +518,11 @@ typedef struct HostApi {
    * the host does not run `drop` on it, since it cannot know whether the plugin
    * still holds a copy elsewhere. To replace state, recover the old pointer
    * with `instance_get_opaque` and free it yourself first.
+   *
+   * Beyond the shared contract: the host stores `ptr` without ever reading
+   * through it, but hands it back to this class's `traverse` and `drop`, so
+   * it must be one those can soundly consume - see
+   * [`Host::set_opaque`](crate::Host::set_opaque).
    */
   struct FfiReturn (*instance_set_opaque)(void *ctx, struct GenericValue receiver, void *ptr);
   /**
@@ -559,6 +593,14 @@ typedef struct MethodDesc {
  * The host grays `value`; `ctx` is the `visit_ctx` passed to the enclosing
  * [`PluginTraverseFn`]. Called only from within a [`PluginTraverseFn`], never
  * directly.
+ *
+ * # Safety
+ *
+ * `ctx` must be the `visit_ctx` the host passed to the enclosing
+ * [`PluginTraverseFn`], unmodified, and `value` a [`GenericValue`] the host
+ * issued (fabricating or altering one is undefined behavior). Calling this
+ * outside that traversal - after it returned, or with another context - is
+ * undefined behavior.
  */
 typedef void (*PluginVisitFn)(void *ctx, struct GenericValue value);
 
@@ -584,6 +626,10 @@ typedef struct ClassDesc {
    * host with the `*mut c_void` installed via `instance_set_opaque` when a
    * plugin-backed instance is garbage-collected. May be null if the plugin
    * manages the lifetime itself (rare).
+   *
+   * Calling it requires what freeing an allocation always requires: the
+   * host must pass the pointer installed on an instance of this very class
+   * and must do so exactly once, after which the pointer is dangling.
    */
   void (*drop)(void *opaque_ptr);
   /**
@@ -591,7 +637,8 @@ typedef struct ClassDesc {
    * plugin-backed instance. May be null if the opaque struct holds no
    * [`GenericValue`]s. This is [`PluginTraverseFn`] spelled out inline -
    * cbindgen only renders a nullable C function pointer for an inline
-   * `Option<fn>`, not through the alias.
+   * `Option<fn>`, not through the alias - and carries that type's safety
+   * contract.
    */
   int32_t (*traverse)(void *opaque_ptr, PluginVisitFn visit, void *visit_ctx);
 } ClassDesc;
@@ -658,6 +705,14 @@ typedef struct ModuleDesc {
  *
  * `args` points at `nargs` contiguous values owned by the host; they stay
  * valid (and GC-rooted) for the whole call.
+ *
+ * # Safety
+ *
+ * Calling one is a call into foreign code, sound only if the callee upholds
+ * the ABI (which loading the library already trusts it to - see
+ * `generic_plugin_init`). The caller must pass a `host` pointing to a valid
+ * [`HostApi`] and an `args` pointing to `nargs` contiguous, initialized
+ * [`GenericValue`]s, both valid for the duration of the call.
  */
 typedef struct FfiReturn (*PluginFn)(const struct HostApi *host,
                                      const struct GenericValue *args,

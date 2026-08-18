@@ -123,7 +123,7 @@ impl<K: Key, V: ArenaValue> Arena<K, V> {
     /// Also update the total number of bytes allocated in this arena.
     pub(super) fn add(&mut self, value: V, black_value: bool) -> K {
         let id = self.data.insert(Item::new(value, !black_value));
-        self.bytes_allocated += std::mem::size_of::<V>();
+        self.bytes_allocated += size_of::<V>();
 
         #[cfg(feature = "log_gc")]
         {
@@ -169,7 +169,7 @@ impl<K: Key, V: ArenaValue> Arena<K, V> {
             }
             value.marked == black_value
         });
-        self.bytes_allocated = std::mem::size_of::<V>() * self.data.len();
+        self.bytes_allocated = size_of::<V>() * self.data.len();
     }
 
     pub(super) const fn bytes_allocated(&self) -> usize {

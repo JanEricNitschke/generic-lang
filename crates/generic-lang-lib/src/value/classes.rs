@@ -1,6 +1,11 @@
 use crate::heap::{ClassId, Heap, StringId};
 
+#[cfg(feature = "plugins")]
+use core::ffi::c_void;
+
 use derivative::Derivative;
+#[cfg(feature = "plugins")]
+use generic_lang_api::PluginTraverseFn;
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap as HashMap;
 
@@ -9,11 +14,15 @@ use super::{NativeClass, Number, Value};
 /// Plugin-specific class metadata, declared on the C ABI `ClassDesc` and stored
 /// on the class at load time. Reached through an instance's `class` during the
 /// GC mark and sweep phases.
+///
+/// Both callbacks are foreign code, hence `unsafe`; the contracts for calling
+/// them are documented on `ClassDesc::drop` and `PluginTraverseFn`, and the GC
+/// discharges them in `heap::Heap` (the only caller).
 #[cfg(feature = "plugins")]
 #[derive(Debug, Clone, Copy)]
 pub struct PluginClassInfo {
-    pub(crate) drop: Option<extern "C" fn(*mut core::ffi::c_void)>,
-    pub(crate) traverse: Option<generic_lang_api::PluginTraverseFn>,
+    pub(crate) drop: Option<unsafe extern "C" fn(*mut c_void)>,
+    pub(crate) traverse: Option<PluginTraverseFn>,
 }
 
 /// What a class is backed by. `User` is an ordinary generic class; `Native` is

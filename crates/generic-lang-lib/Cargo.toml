@@ -11,6 +11,9 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 convert_case = { workspace = true }
 derivative   = { workspace = true }

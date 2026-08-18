@@ -25,6 +25,12 @@ use crate::value::{
     NativeFunction, NativeMethod, Number, Upvalue, Value,
 };
 #[cfg(feature = "plugins")]
+use core::{ffi::c_void, ptr};
+
+#[cfg(feature = "plugins")]
+use generic_lang_api::{GenericValue, PluginTraverseFn, PluginVisitFn};
+
+#[cfg(feature = "plugins")]
 use crate::value::{ClassKind, PluginClassInfo};
 #[cfg(feature = "plugins")]
 use crate::vm::plugins::host_api::from_ffi;
@@ -550,6 +556,8 @@ impl Heap {
     ///
     /// If they represent an instance of a native class, then the data structure
     /// that handles the native functionality may itself reference more heap allocated data.
+    // The allow covers the plugin `traverse` dispatch at the end.
+    #[cfg_attr(feature = "plugins", allow(unsafe_code))]
     #[allow(clippy::cognitive_complexity, clippy::too_many_lines)]
     fn blacken_instance(&mut self, index: InstanceId) {
         let item = &mut self.instances.data[index];
@@ -697,7 +705,10 @@ impl Heap {
                 && let Some(info) = self.plugin_class_info(class_id)
                 && let Some(traverse) = info.traverse
             {
-                self.blacken_plugin_instance(ptr, traverse);
+                // SAFETY: `ptr` and `traverse` come from the same instance -
+                // the pointer off its backing, the callback off its class - and
+                // every borrow of `instance` ended above.
+                unsafe { self.blacken_plugin_instance(ptr, traverse) };
             }
         }
     }
@@ -717,24 +728,28 @@ impl Heap {
 
     /// Invoke a plugin instance's `traverse` callback so the collector reaches
     /// every `GenericValue` held in its opaque state.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` and `traverse` must belong to the same instance: `ptr` the opaque
+    /// pointer installed on it, `traverse` the callback of its class. Handing
+    /// one class's `traverse` another class's state is type confusion. No other
+    /// borrow into the heap may be live for the call, since the callback
+    /// reborrows `self` through `visit_ctx`.
     #[cfg(feature = "plugins")]
     #[allow(unsafe_code)]
-    fn blacken_plugin_instance(
-        &mut self,
-        ptr: *mut core::ffi::c_void,
-        traverse: generic_lang_api::PluginTraverseFn,
-    ) {
-        extern "C" fn cb_gray_value(
-            ctx: *mut core::ffi::c_void,
-            value: generic_lang_api::GenericValue,
-        ) {
-            // SAFETY: `ctx` is the `&mut Heap` handed to `traverse` below,
-            // reborrowed only for this call. No other borrow into the heap is
-            // live during the `traverse` call (`ptr` was copied out of the
-            // instance borrow first), and GC marking never re-enters bytecode,
-            // so this is the sole heap access in flight.
-            let heap = unsafe { &mut *(ctx.cast::<Heap>()) };
-            let value = from_ffi(value);
+    unsafe fn blacken_plugin_instance(&mut self, ptr: *mut c_void, traverse: PluginTraverseFn) {
+        /// # Safety
+        ///
+        /// A `PluginVisitFn`: `ctx` must be the `visit_ctx` handed to
+        /// `traverse` below (a `&mut Heap`), and `value` a blob this host
+        /// issued. Only called by the plugin, from inside that traversal.
+        unsafe extern "C" fn cb_gray_value(ctx: *mut c_void, value: GenericValue) {
+            // SAFETY: per this callback's contract, `ctx` is the `&mut Heap`
+            // handed to `traverse` below, reborrowed only for this call, and
+            // `value` is one of this host's blobs. GC marking never re-enters
+            // bytecode, so this is the sole heap access in flight.
+            let (heap, value) = unsafe { (&mut *(ctx.cast::<Heap>()), from_ffi(value)) };
             gray_value!(heap, &value);
         }
 
@@ -743,16 +758,12 @@ impl Heap {
             return;
         }
 
-        // Calling a safe `extern "C" fn` pointer is not `unsafe` (the trust
-        // boundary is dlopen at load). Contract: `traverse` is the plugin's own
-        // callback, `ptr` is the state it installed, and the host holds no live
-        // borrow into itself across this call, so the `cb_gray_value` reborrow
-        // of `self` through `ctx` is sound.
-        traverse(
-            ptr,
-            cb_gray_value,
-            std::ptr::from_mut(self).cast::<core::ffi::c_void>(),
-        );
+        let visit: PluginVisitFn = cb_gray_value;
+        // SAFETY: `PluginTraverseFn`'s contract, whose pairing requirement this
+        // function's own caller guarantees. `visit` and the `&mut Heap` behind
+        // `visit_ctx` are valid for the call, and no other borrow into the heap
+        // is live, so the reborrow inside `cb_gray_value` is sound.
+        unsafe { traverse(ptr, visit, ptr::from_mut(self).cast::<c_void>()) };
     }
 
     /// Run the plugin `drop` callback for plugin instances.
@@ -762,6 +773,7 @@ impl Heap {
     /// plugin instance (used at teardown). Each instance is finalized once: a
     /// swept instance is removed immediately after, and teardown runs once.
     #[cfg(feature = "plugins")]
+    #[allow(unsafe_code)]
     fn run_plugin_drops(&self, only_unmarked: bool) {
         for (_id, item) in &self.instances.data {
             if only_unmarked && item.marked == self.black_value {
@@ -776,11 +788,13 @@ impl Heap {
             if let Some(info) = self.plugin_class_info(item.item.class)
                 && let Some(drop) = info.drop
             {
-                // Calling a safe `extern "C" fn` pointer is not `unsafe`.
-                // `drop` is the plugin's own destructor for `ptr`, called once
-                // per instance: just before its slot is freed (sweep) or at
-                // heap teardown.
-                drop(pi.ptr);
+                // SAFETY: `ClassDesc::drop`'s contract. `drop` is the plugin's
+                // own destructor for the class of this very instance, and
+                // `pi.ptr` the non-null pointer installed on it (both read off
+                // the same instance). It runs exactly once per instance: just
+                // before the slot is freed (sweep) or at heap teardown, and
+                // each instance is finalized by only one of those.
+                unsafe { drop(pi.ptr) };
             }
         }
     }
