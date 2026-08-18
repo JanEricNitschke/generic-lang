@@ -261,7 +261,7 @@ pub(super) fn list_iter_next_native(
     receiver: &Value,
     _args: &[Value],
 ) -> VmResult<Value> {
-    // GC-safety: taking the iterator out of the heap hides it from the GC.
+    // GC invariant: taking the iterator out of the heap hides it from the GC.
     // This is only sound because nothing below re-enters the interpreter
     // (GC runs exclusively from the instruction dispatch loop) before the
     // iterator is restored. Do not add calls that execute bytecode here.

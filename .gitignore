@@ -62,6 +62,10 @@ test/plugin/**/*.exp
 plugin-examples/rust/target/
 plugin-examples/**/*.o
 plugin-examples/**/*.dSYM/
+# The fixture is workspace-excluded, so it carries its own lockfile - which
+# pins nothing (its one dependency is a path dep with no dependencies of its
+# own) and only ever drifts when the api crate is bumped. Not tracked.
+plugin-examples/rust/Cargo.lock
 
 # Zig build-system outputs for the zig example plugin
 plugin-examples/zig/zig-out/

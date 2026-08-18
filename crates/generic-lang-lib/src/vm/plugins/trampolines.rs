@@ -6,6 +6,12 @@
 //! callee itself, which the dispatch site keeps on the VM stack directly
 //! below the copied arguments - so `NativeFunctionImpl`, the dispatch
 //! sites, and the number of loadable plugin functions are all unconstrained.
+//!
+//! This is where the host calls *into* plugin code, which is `unsafe` for
+//! the obvious reason - the callee is foreign, and the trust for it was
+//! established at `dlopen`. Each of the three call sites below builds the
+//! vtable, hands over a live argument buffer, and decodes the returned blob;
+//! those obligations are what its `SAFETY` comment discharges.
 
 use generic_lang_api::{
     FfiReturn, FfiStatus, GenericValue, PluginFn, PluginMethodFn, PluginValueFn,
@@ -26,6 +32,7 @@ use crate::vm::errors::{RuntimeErrorKind, VmResult};
 /// `stack[len - argc - 1]` until its post-call truncate - every path that
 /// reaches it (`OP_CALL`, both `invoke` arms, the plugin `call_value`
 /// callback) places the callee in that slot first.
+#[allow(unsafe_code)]
 pub(super) fn plugin_trampoline(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     let callee = vm.stack[vm.stack.len() - args.len() - 1];
     let Value::NativeFunction(id) = callee else {
@@ -36,7 +43,10 @@ pub(super) fn plugin_trampoline(vm: &mut VM, args: &[Value]) -> VmResult<Value> 
         .plugin_fn
         .expect("plugin trampoline on a native without a plugin function");
     let name = native.name;
-    call_plugin(vm, fun, args, name)
+    // SAFETY: `fun` came off a heap `NativeFunction` the loader built from a
+    // validated descriptor, so it is a real plugin function; `args` is the live
+    // dispatch-frame slice.
+    unsafe { call_plugin(vm, fun, args, name) }
 }
 
 /// Call a plugin function with zero-copy arguments.
@@ -45,31 +55,53 @@ pub(super) fn plugin_trampoline(vm: &mut VM, args: &[Value]) -> VmResult<Value> 
 /// `execute_native_function_call`) and outlives the call, so its pointer is
 /// handed to the plugin directly, cast to [`GenericValue`] (same size;
 /// `Value`'s alignment satisfies `GenericValue`'s).
-pub(super) fn call_plugin(
+///
+/// # Safety
+///
+/// `fun` must be a real plugin function from a loaded library, honoring
+/// [`PluginFn`]'s contract - calling anything else is undefined behavior.
+#[allow(unsafe_code)]
+pub(super) unsafe fn call_plugin(
     vm: &mut VM,
     fun: PluginFn,
     args: &[Value],
     name: StringId,
 ) -> VmResult<Value> {
     let host = build_host_api(vm);
-    let ret: FfiReturn = fun(
-        &raw const host,
-        args.as_ptr().cast::<GenericValue>(),
-        args.len(),
-    );
-    map_plugin_return(vm, ret, name)
+    // SAFETY: `PluginFn`'s contract. `host` is the vtable just built, live for
+    // the whole call, and `args` is a live `&[Value]` slice reinterpreted as
+    // `nargs` contiguous `GenericValue`s - same size, and `Value`'s alignment
+    // is the stricter one. Calling the plugin itself is the trust established
+    // at dlopen.
+    let ret: FfiReturn = unsafe {
+        fun(
+            &raw const host,
+            args.as_ptr().cast::<GenericValue>(),
+            args.len(),
+        )
+    };
+    // SAFETY: `ret` is what the plugin just returned.
+    unsafe { map_plugin_return(vm, ret, name) }
 }
 
 /// Call a plugin value creator: no arguments, only the host vtable. Used
 /// once per exported module value at import time.
-pub(super) fn call_plugin_value(
+///
+/// # Safety
+///
+/// As [`call_plugin`], for a [`PluginValueFn`].
+#[allow(unsafe_code)]
+pub(super) unsafe fn call_plugin_value(
     vm: &mut VM,
     fun: PluginValueFn,
     name: StringId,
 ) -> VmResult<Value> {
     let host = build_host_api(vm);
-    let ret: FfiReturn = fun(&raw const host);
-    map_plugin_return(vm, ret, name)
+    // SAFETY: `PluginValueFn`'s contract - as in `call_plugin`, minus the
+    // arguments.
+    let ret: FfiReturn = unsafe { fun(&raw const host) };
+    // SAFETY: `ret` is what the plugin just returned.
+    unsafe { map_plugin_return(vm, ret, name) }
 }
 
 /// Call a plugin method: the receiver is passed as a separate value (the C ABI
@@ -77,7 +109,13 @@ pub(super) fn call_plugin_value(
 ///
 /// GC rooting is via the VM stack - `execute_native_method_call` keeps the
 /// receiver and args there for the whole call and truncates only afterward.
-pub fn call_plugin_method(
+///
+/// # Safety
+///
+/// As [`call_plugin`], for a [`PluginMethodFn`]; `receiver` must be a live
+/// value the host owns.
+#[allow(unsafe_code)]
+pub unsafe fn call_plugin_method(
     vm: &mut VM,
     fun: PluginMethodFn,
     receiver: Value,
@@ -85,13 +123,18 @@ pub fn call_plugin_method(
     name: StringId,
 ) -> VmResult<Value> {
     let host = build_host_api(vm);
-    let ret: FfiReturn = fun(
-        &raw const host,
-        to_ffi(receiver),
-        args.as_ptr().cast::<GenericValue>(),
-        args.len(),
-    );
-    map_plugin_return(vm, ret, name)
+    // SAFETY: `PluginMethodFn`'s contract - as in `call_plugin`, with the
+    // receiver handed over as a `to_ffi` blob of a real `Value`.
+    let ret: FfiReturn = unsafe {
+        fun(
+            &raw const host,
+            to_ffi(receiver),
+            args.as_ptr().cast::<GenericValue>(),
+            args.len(),
+        )
+    };
+    // SAFETY: `ret` is what the plugin just returned.
+    unsafe { map_plugin_return(vm, ret, name) }
 }
 
 /// Map a plugin's [`FfiReturn`] to the native calling convention (shared by
@@ -104,11 +147,23 @@ pub fn call_plugin_method(
 /// - [`FfiStatus::Fatal`] → a fatal runtime error (uncatchable, forwarded from
 ///   a re-entering host callback).
 /// - anything else is a plugin bug and becomes a base `Exception`.
-fn map_plugin_return(vm: &mut VM, ret: FfiReturn, name: StringId) -> VmResult<Value> {
+///
+/// # Safety
+///
+/// `ret` must be a return value a plugin produced, so that on the two statuses
+/// that carry a value it is a blob the host issued - what [`from_ffi`] needs.
+/// The other two never touch it.
+#[allow(unsafe_code)]
+unsafe fn map_plugin_return(vm: &mut VM, ret: FfiReturn, name: StringId) -> VmResult<Value> {
     match FfiStatus::from_u32(ret.status) {
-        Some(FfiStatus::Ok) => Ok(from_ffi(ret.value)),
+        // SAFETY: by this function's contract `ret` came from a plugin, so an
+        // `Ok` value is one this host issued.
+        Some(FfiStatus::Ok) => Ok(unsafe { from_ffi(ret.value) }),
         Some(FfiStatus::Exception) => {
-            vm.stack.push(from_ffi(ret.value));
+            // SAFETY: as above. `raise_pending_from_stack` then rejects any
+            // value that is not an exception instance, but that check is about
+            // semantics, not soundness.
+            vm.stack.push(unsafe { from_ffi(ret.value) });
             // Validates the value (anything but an instance of an Exception
             // subclass becomes a TypeError) and attaches a stack trace only
             // if it has none - a rethrown exception keeps its original one.

@@ -18,9 +18,18 @@
 //!
 //! This file is the FFI boundary itself - nearly every function reads
 //! through the opaque context or raw plugin-provided pointers.
+//!
+//! Which is why every callback here is an `unsafe extern "C" fn`: what they
+//! require of their inputs is exactly the safety contract documented on
+//! [`HostApi`] (a `ctx` from [`build_host_api`], host-issued
+//! [`GenericValue`] blobs, valid strings and out-pointers), and none of it is
+//! checkable. Each one discharges that contract once, in an `unsafe`
+//! prologue that decodes the raw inputs; everything after the prologue is
+//! ordinary safe code operating on a `&mut VM` and real `Value`s.
 #![allow(unsafe_code)]
 
 use core::ffi::c_void;
+use std::{mem, ptr, slice, str};
 
 use generic_lang_api::{
     FfiReturn, FfiStatus, FfiStr, GENERIC_PLUGIN_ABI_VERSION, GenericValue, HostApi, ValueKind,
@@ -56,17 +65,20 @@ pub fn to_ffi(value: Value) -> GenericValue {
     // uninitialized bytes (small variants leave most of the 32 unwritten)
     // are initialized - it is sound, not merely harmless in practice. The
     // plugin never inspects the bytes and only hands them back to `from_ffi`.
-    unsafe { std::mem::transmute::<Value, GenericValue>(value) }
+    unsafe { mem::transmute::<Value, GenericValue>(value) }
 }
 
 /// Reinterpret an opaque FFI blob as the `Value` it was created from.
 ///
-/// Soundness rests on the trust model: plugins receive blobs from `to_ffi`
-/// and must pass them back unmodified - fabricating or modifying one is
-/// undefined behavior.
-pub fn from_ffi(value: GenericValue) -> Value {
-    // SAFETY: `value` is a bit-copy of a real `Value` (see above).
-    unsafe { std::mem::transmute::<GenericValue, Value>(value) }
+/// # Safety
+///
+/// `value` must be a blob this host produced with [`to_ffi`] and got back
+/// unmodified. Nothing about it is checkable - it is 32 opaque bytes - and a
+/// fabricated one materializes a `Value` that never existed.
+pub unsafe fn from_ffi(value: GenericValue) -> Value {
+    // SAFETY: same size (asserted above), and the caller guarantees the bytes
+    // are a bit-copy of a real `Value`.
+    unsafe { mem::transmute::<GenericValue, Value>(value) }
 }
 
 /// Build the vtable for one plugin call. Cheap: a stack struct of fn
@@ -74,7 +86,7 @@ pub fn from_ffi(value: GenericValue) -> Value {
 pub(super) fn build_host_api(vm: &mut VM) -> HostApi {
     HostApi {
         abi_version: GENERIC_PLUGIN_ABI_VERSION,
-        ctx: std::ptr::from_mut(vm).cast::<c_void>(),
+        ctx: ptr::from_mut(vm).cast::<c_void>(),
         value_kind: cb_value_kind,
         bool_get: cb_bool_get,
         int_get: cb_int_get,
@@ -137,14 +149,22 @@ unsafe fn vm_from_ctx<'a>(ctx: *mut c_void) -> &'a mut VM {
 /// The returned borrow is tied to the caller's `FfiStr` so it cannot be
 /// made to outlive the callback frame that received the string (the bytes
 /// are only guaranteed valid for that call - ABI contract).
-fn str_from_ffi(s: &FfiStr) -> Option<&str> {
+///
+/// # Safety
+///
+/// Unless `s.ptr` is null, it must point to `s.len` initialized bytes that
+/// stay valid and unmutated for as long as the returned borrow lives - the
+/// [`FfiStr`] contract for a string passed *to* a callback. Only nullness can
+/// be checked here; a garbage pointer or a length past the end of the
+/// allocation reads out of bounds.
+unsafe fn str_from_ffi(s: &FfiStr) -> Option<&str> {
     if s.ptr.is_null() {
         return None;
     }
-    // SAFETY: a non-null `FfiStr` references `len` bytes valid for the
-    // duration of the callback (ABI contract).
-    let bytes = unsafe { std::slice::from_raw_parts(s.ptr, s.len) };
-    std::str::from_utf8(bytes).ok()
+    // SAFETY: non-null (just checked), and the caller guarantees `len`
+    // readable bytes for the lifetime of the borrow.
+    let bytes = unsafe { slice::from_raw_parts(s.ptr, s.len) };
+    str::from_utf8(bytes).ok()
 }
 
 fn ffi_ok(value: Value) -> FfiReturn {
@@ -332,15 +352,18 @@ pub(super) fn value_kind_of(heap: &Heap, value: Value) -> u32 {
 
 // --- inspect (never re-enter) ---
 
-extern "C" fn cb_value_kind(ctx: *mut c_void, value: GenericValue) -> u32 {
-    // SAFETY: ctx is the VM pointer from build_host_api (all callbacks).
-    let vm = unsafe { vm_from_ctx(ctx) };
-    value_kind_of(&vm.heap, from_ffi(value))
+unsafe extern "C" fn cb_value_kind(ctx: *mut c_void, value: GenericValue) -> u32 {
+    // SAFETY: the `HostApi` contract, which every callback in this file
+    // discharges the same way: `ctx` is the VM pointer `build_host_api`
+    // stored, and `value` is a blob this host issued via `to_ffi`.
+    let (vm, value) = unsafe { (vm_from_ctx(ctx), from_ffi(value)) };
+    value_kind_of(&vm.heap, value)
 }
 
-extern "C" fn cb_bool_get(_ctx: *mut c_void, value: GenericValue, out: *mut bool) -> bool {
-    if let Value::Bool(b) = from_ffi(value) {
-        // SAFETY: the plugin passes a valid out-pointer (ABI contract).
+unsafe extern "C" fn cb_bool_get(_ctx: *mut c_void, value: GenericValue, out: *mut bool) -> bool {
+    // SAFETY: a host-issued blob, per the vtable contract.
+    if let Value::Bool(b) = unsafe { from_ffi(value) } {
+        // SAFETY: a writable out-pointer, per the vtable contract.
         unsafe { *out = b };
         true
     } else {
@@ -348,10 +371,10 @@ extern "C" fn cb_bool_get(_ctx: *mut c_void, value: GenericValue, out: *mut bool
     }
 }
 
-extern "C" fn cb_int_get(ctx: *mut c_void, value: GenericValue, out: *mut i64) -> bool {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let n = match from_ffi(value) {
+unsafe extern "C" fn cb_int_get(ctx: *mut c_void, value: GenericValue, out: *mut i64) -> bool {
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, value) = unsafe { (vm_from_ctx(ctx), from_ffi(value)) };
+    let n = match value {
         Value::Number(Number::Integer(GenericInt::Small(n))) => n,
         Value::Number(Number::Integer(GenericInt::Big(id))) => {
             match i64::try_from(id.to_value(&vm.heap)) {
@@ -361,14 +384,15 @@ extern "C" fn cb_int_get(ctx: *mut c_void, value: GenericValue, out: *mut i64) -
         }
         _ => return false,
     };
-    // SAFETY: valid out-pointer (ABI contract).
+    // SAFETY: a writable out-pointer, per the vtable contract.
     unsafe { *out = n };
     true
 }
 
-extern "C" fn cb_float_get(_ctx: *mut c_void, value: GenericValue, out: *mut f64) -> bool {
-    if let Value::Number(Number::Float(f)) = from_ffi(value) {
-        // SAFETY: valid out-pointer (ABI contract).
+unsafe extern "C" fn cb_float_get(_ctx: *mut c_void, value: GenericValue, out: *mut f64) -> bool {
+    // SAFETY: a host-issued blob, per the vtable contract.
+    if let Value::Number(Number::Float(f)) = unsafe { from_ffi(value) } {
+        // SAFETY: a writable out-pointer, per the vtable contract.
         unsafe { *out = f };
         true
     } else {
@@ -376,14 +400,18 @@ extern "C" fn cb_float_get(_ctx: *mut c_void, value: GenericValue, out: *mut f64
     }
 }
 
-extern "C" fn cb_string_get(ctx: *mut c_void, value: GenericValue, out: *mut FfiStr) -> bool {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    if let Value::String(id) = from_ffi(value) {
+unsafe extern "C" fn cb_string_get(
+    ctx: *mut c_void,
+    value: GenericValue,
+    out: *mut FfiStr,
+) -> bool {
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, value) = unsafe { (vm_from_ctx(ctx), from_ffi(value)) };
+    if let Value::String(id) = value {
         // Interned string bytes are address-stable while the string lives;
         // the ABI limits the borrow to the next re-entering callback.
         let s: &String = id.to_value(&vm.heap);
-        // SAFETY: valid out-pointer (ABI contract).
+        // SAFETY: a writable out-pointer, per the vtable contract.
         unsafe {
             *out = FfiStr {
                 ptr: s.as_ptr(),
@@ -404,11 +432,11 @@ fn backing_of(heap: &Heap, value: Value) -> Option<&NativeClass> {
     }
 }
 
-extern "C" fn cb_list_len(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    if let Some(NativeClass::List(list)) = backing_of(&vm.heap, from_ffi(value)) {
-        // SAFETY: valid out-pointer (ABI contract).
+unsafe extern "C" fn cb_list_len(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool {
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, value) = unsafe { (vm_from_ctx(ctx), from_ffi(value)) };
+    if let Some(NativeClass::List(list)) = backing_of(&vm.heap, value) {
+        // SAFETY: a writable out-pointer, per the vtable contract.
         unsafe { *out = list.items.len() };
         true
     } else {
@@ -416,10 +444,10 @@ extern "C" fn cb_list_len(ctx: *mut c_void, value: GenericValue, out: *mut usize
     }
 }
 
-extern "C" fn cb_list_get(ctx: *mut c_void, value: GenericValue, index: usize) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(NativeClass::List(list)) = backing_of(&vm.heap, from_ffi(value)) else {
+unsafe extern "C" fn cb_list_get(ctx: *mut c_void, value: GenericValue, index: usize) -> FfiReturn {
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, value) = unsafe { (vm_from_ctx(ctx), from_ffi(value)) };
+    let Some(NativeClass::List(list)) = backing_of(&vm.heap, value) else {
         return ffi_error(vm, ExceptionKind::TypeError, "Target is not a list.");
     };
     if let Some(item) = list.items.get(index) {
@@ -430,11 +458,11 @@ extern "C" fn cb_list_get(ctx: *mut c_void, value: GenericValue, index: usize) -
     }
 }
 
-extern "C" fn cb_tuple_len(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    if let Some(NativeClass::Tuple(tuple)) = backing_of(&vm.heap, from_ffi(value)) {
-        // SAFETY: valid out-pointer (ABI contract).
+unsafe extern "C" fn cb_tuple_len(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool {
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, value) = unsafe { (vm_from_ctx(ctx), from_ffi(value)) };
+    if let Some(NativeClass::Tuple(tuple)) = backing_of(&vm.heap, value) {
+        // SAFETY: a writable out-pointer, per the vtable contract.
         unsafe { *out = tuple.items().len() };
         true
     } else {
@@ -442,10 +470,14 @@ extern "C" fn cb_tuple_len(ctx: *mut c_void, value: GenericValue, out: *mut usiz
     }
 }
 
-extern "C" fn cb_tuple_get(ctx: *mut c_void, value: GenericValue, index: usize) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(NativeClass::Tuple(tuple)) = backing_of(&vm.heap, from_ffi(value)) else {
+unsafe extern "C" fn cb_tuple_get(
+    ctx: *mut c_void,
+    value: GenericValue,
+    index: usize,
+) -> FfiReturn {
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, value) = unsafe { (vm_from_ctx(ctx), from_ffi(value)) };
+    let Some(NativeClass::Tuple(tuple)) = backing_of(&vm.heap, value) else {
         return ffi_error(vm, ExceptionKind::TypeError, "Target is not a tuple.");
     };
     if let Some(item) = tuple.items().get(index) {
@@ -456,11 +488,11 @@ extern "C" fn cb_tuple_get(ctx: *mut c_void, value: GenericValue, index: usize) 
     }
 }
 
-extern "C" fn cb_dict_len(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    if let Some(NativeClass::Dict(dict)) = backing_of(&vm.heap, from_ffi(value)) {
-        // SAFETY: valid out-pointer (ABI contract).
+unsafe extern "C" fn cb_dict_len(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool {
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, value) = unsafe { (vm_from_ctx(ctx), from_ffi(value)) };
+    if let Some(NativeClass::Dict(dict)) = backing_of(&vm.heap, value) {
+        // SAFETY: a writable out-pointer, per the vtable contract.
         unsafe { *out = dict.items.len() };
         true
     } else {
@@ -468,10 +500,11 @@ extern "C" fn cb_dict_len(ctx: *mut c_void, value: GenericValue, out: *mut usize
     }
 }
 
-extern "C" fn cb_builtin_get(ctx: *mut c_void, name: FfiStr) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(name) = str_from_ffi(&name) else {
+unsafe extern "C" fn cb_builtin_get(ctx: *mut c_void, name: FfiStr) -> FfiReturn {
+    // SAFETY: ctx per the vtable contract, and `name` is a valid `FfiStr` for
+    // the duration of the call - what `str_from_ffi` requires.
+    let (vm, decoded) = unsafe { (vm_from_ctx(ctx), str_from_ffi(&name)) };
+    let Some(name) = decoded else {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
@@ -487,37 +520,33 @@ extern "C" fn cb_builtin_get(ctx: *mut c_void, name: FfiStr) -> FfiReturn {
     }
 }
 
-extern "C" fn cb_is_instance(
+unsafe extern "C" fn cb_is_instance(
     ctx: *mut c_void,
     value: GenericValue,
     of_class: GenericValue,
 ) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let Value::Class(class_id) = from_ffi(of_class) else {
+    // SAFETY: ctx and both blobs per the vtable contract.
+    let (vm, value, of_class) = unsafe { (vm_from_ctx(ctx), from_ffi(value), from_ffi(of_class)) };
+    let Value::Class(class_id) = of_class else {
         return ffi_error(vm, ExceptionKind::TypeError, "Second value is not a class.");
     };
-    ffi_ok(Value::Bool(value_isinstance(
-        &vm.heap,
-        from_ffi(value),
-        class_id,
-    )))
+    ffi_ok(Value::Bool(value_isinstance(&vm.heap, value, class_id)))
 }
 
-extern "C" fn cb_class_of(ctx: *mut c_void, value: GenericValue) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    match class_of_value(&vm.heap, from_ffi(value)) {
+unsafe extern "C" fn cb_class_of(ctx: *mut c_void, value: GenericValue) -> FfiReturn {
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, value) = unsafe { (vm_from_ctx(ctx), from_ffi(value)) };
+    match class_of_value(&vm.heap, value) {
         Some(class_id) => ffi_ok(class_id.into()),
         None => ffi_error(vm, ExceptionKind::TypeError, "value has no class."),
     }
 }
 
-extern "C" fn cb_set_len(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    if let Some(NativeClass::Set(set)) = backing_of(&vm.heap, from_ffi(value)) {
-        // SAFETY: valid out-pointer (ABI contract).
+unsafe extern "C" fn cb_set_len(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool {
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, value) = unsafe { (vm_from_ctx(ctx), from_ffi(value)) };
+    if let Some(NativeClass::Set(set)) = backing_of(&vm.heap, value) {
+        // SAFETY: a writable out-pointer, per the vtable contract.
         unsafe { *out = set.items.len() };
         true
     } else {
@@ -527,17 +556,22 @@ extern "C" fn cb_set_len(ctx: *mut c_void, value: GenericValue, out: *mut usize)
 
 // --- attributes (never re-enter; generic fields are plain map entries) ---
 
-extern "C" fn cb_attr_get(ctx: *mut c_void, receiver: GenericValue, name: FfiStr) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(name) = str_from_ffi(&name) else {
+unsafe extern "C" fn cb_attr_get(
+    ctx: *mut c_void,
+    receiver: GenericValue,
+    name: FfiStr,
+) -> FfiReturn {
+    // SAFETY: ctx, blob, and string per the vtable contract.
+    let (vm, receiver, decoded) =
+        unsafe { (vm_from_ctx(ctx), from_ffi(receiver), str_from_ffi(&name)) };
+    let Some(name) = decoded else {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
             "Attribute name must be non-null UTF-8.",
         );
     };
-    let Value::Instance(id) = from_ffi(receiver) else {
+    let Value::Instance(id) = receiver else {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
@@ -552,22 +586,29 @@ extern "C" fn cb_attr_get(ctx: *mut c_void, receiver: GenericValue, name: FfiStr
     }
 }
 
-extern "C" fn cb_attr_set(
+unsafe extern "C" fn cb_attr_set(
     ctx: *mut c_void,
     receiver: GenericValue,
     name: FfiStr,
     value: GenericValue,
 ) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(name) = str_from_ffi(&name) else {
+    // SAFETY: ctx, both blobs, and string per the vtable contract.
+    let (vm, receiver, value, decoded) = unsafe {
+        (
+            vm_from_ctx(ctx),
+            from_ffi(receiver),
+            from_ffi(value),
+            str_from_ffi(&name),
+        )
+    };
+    let Some(name) = decoded else {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
             "Attribute name must be non-null UTF-8.",
         );
     };
-    let Value::Instance(id) = from_ffi(receiver) else {
+    let Value::Instance(id) = receiver else {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
@@ -575,23 +616,26 @@ extern "C" fn cb_attr_set(
         );
     };
     let name = name.to_owned();
-    id.to_value_mut(&mut vm.heap)
-        .fields
-        .insert(name, from_ffi(value));
+    id.to_value_mut(&mut vm.heap).fields.insert(name, value);
     ffi_ok(Value::Nil)
 }
 
-extern "C" fn cb_attr_has(ctx: *mut c_void, receiver: GenericValue, name: FfiStr) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(name) = str_from_ffi(&name) else {
+unsafe extern "C" fn cb_attr_has(
+    ctx: *mut c_void,
+    receiver: GenericValue,
+    name: FfiStr,
+) -> FfiReturn {
+    // SAFETY: ctx, blob, and string per the vtable contract.
+    let (vm, receiver, decoded) =
+        unsafe { (vm_from_ctx(ctx), from_ffi(receiver), str_from_ffi(&name)) };
+    let Some(name) = decoded else {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
             "Attribute name must be non-null UTF-8.",
         );
     };
-    let Value::Instance(id) = from_ffi(receiver) else {
+    let Value::Instance(id) = receiver else {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
@@ -603,26 +647,29 @@ extern "C" fn cb_attr_has(ctx: *mut c_void, receiver: GenericValue, name: FfiStr
 
 // --- construct (never re-enter; allocation never collects) ---
 
-extern "C" fn cb_nil_new(_ctx: *mut c_void) -> GenericValue {
+// These four take no raw input at all - `_ctx` goes unread and the scalars
+// are plain values - so they have nothing to discharge. They are still
+// `unsafe fn`s because the vtable's type says so.
+unsafe extern "C" fn cb_nil_new(_ctx: *mut c_void) -> GenericValue {
     to_ffi(Value::Nil)
 }
 
-extern "C" fn cb_bool_new(_ctx: *mut c_void, value: bool) -> GenericValue {
+unsafe extern "C" fn cb_bool_new(_ctx: *mut c_void, value: bool) -> GenericValue {
     to_ffi(Value::Bool(value))
 }
 
-extern "C" fn cb_int_new(_ctx: *mut c_void, value: i64) -> GenericValue {
+unsafe extern "C" fn cb_int_new(_ctx: *mut c_void, value: i64) -> GenericValue {
     to_ffi(value.into())
 }
 
-extern "C" fn cb_float_new(_ctx: *mut c_void, value: f64) -> GenericValue {
+unsafe extern "C" fn cb_float_new(_ctx: *mut c_void, value: f64) -> GenericValue {
     to_ffi(value.into())
 }
 
-extern "C" fn cb_string_new(ctx: *mut c_void, value: FfiStr) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(s) = str_from_ffi(&value) else {
+unsafe extern "C" fn cb_string_new(ctx: *mut c_void, value: FfiStr) -> FfiReturn {
+    // SAFETY: ctx and string per the vtable contract.
+    let (vm, decoded) = unsafe { (vm_from_ctx(ctx), str_from_ffi(&value)) };
+    let Some(s) = decoded else {
         return ffi_error(
             vm,
             ExceptionKind::ValueError,
@@ -633,36 +680,40 @@ extern "C" fn cb_string_new(ctx: *mut c_void, value: FfiStr) -> FfiReturn {
     ffi_ok(Value::String(id))
 }
 
-extern "C" fn cb_list_new(ctx: *mut c_void) -> GenericValue {
-    // SAFETY: ctx per build_host_api.
+unsafe extern "C" fn cb_list_new(ctx: *mut c_void) -> GenericValue {
+    // SAFETY: ctx per the vtable contract.
     let vm = unsafe { vm_from_ctx(ctx) };
     let class = get_native_class_id(&vm.heap, "List");
     let instance = Instance::new(class, Some(List::new(vec![]).into()));
     to_ffi(vm.heap.add_instance(instance))
 }
 
-extern "C" fn cb_list_push(ctx: *mut c_void, list: GenericValue, item: GenericValue) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    if let Value::Instance(id) = from_ffi(list)
+unsafe extern "C" fn cb_list_push(
+    ctx: *mut c_void,
+    list: GenericValue,
+    item: GenericValue,
+) -> FfiReturn {
+    // SAFETY: ctx and both blobs per the vtable contract.
+    let (vm, list, item) = unsafe { (vm_from_ctx(ctx), from_ffi(list), from_ffi(item)) };
+    if let Value::Instance(id) = list
         && let Some(NativeClass::List(list)) = &mut id.to_value_mut(&mut vm.heap).backing
     {
-        list.items.push(from_ffi(item));
+        list.items.push(item);
         ffi_ok(Value::Nil)
     } else {
         ffi_error(vm, ExceptionKind::TypeError, "Target is not a list.")
     }
 }
 
-extern "C" fn cb_list_set(
+unsafe extern "C" fn cb_list_set(
     ctx: *mut c_void,
     list: GenericValue,
     index: usize,
     value: GenericValue,
 ) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let Value::Instance(id) = from_ffi(list) else {
+    // SAFETY: ctx and both blobs per the vtable contract.
+    let (vm, list, value) = unsafe { (vm_from_ctx(ctx), from_ffi(list), from_ffi(value)) };
+    let Value::Instance(id) = list else {
         return ffi_error(vm, ExceptionKind::TypeError, "Target is not a list.");
     };
     let Some(NativeClass::List(list)) = &mut id.to_value_mut(&mut vm.heap).backing else {
@@ -670,7 +721,7 @@ extern "C" fn cb_list_set(
     };
     let len = list.items.len();
     if let Some(slot) = list.items.get_mut(index) {
-        *slot = from_ffi(value);
+        *slot = value;
         ffi_ok(Value::Nil)
     } else {
         let message = format!("Index {index} out of bounds ({len}).");
@@ -678,21 +729,22 @@ extern "C" fn cb_list_set(
     }
 }
 
-extern "C" fn cb_exception_new(
+unsafe extern "C" fn cb_exception_new(
     ctx: *mut c_void,
     of_class: GenericValue,
     message: FfiStr,
 ) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(message) = str_from_ffi(&message) else {
+    // SAFETY: ctx, blob, and string per the vtable contract.
+    let (vm, of_class, decoded) =
+        unsafe { (vm_from_ctx(ctx), from_ffi(of_class), str_from_ffi(&message)) };
+    let Some(message) = decoded else {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
             "Exception message must be non-null UTF-8.",
         );
     };
-    let Value::Class(class_id) = from_ffi(of_class) else {
+    let Value::Class(class_id) = of_class else {
         return ffi_error(vm, ExceptionKind::TypeError, "Value is not a class.");
     };
     if !is_exception_subclass(&vm.heap, class_id) {
@@ -709,24 +761,24 @@ extern "C" fn cb_exception_new(
 
 // --- display (never re-enters) ---
 
-extern "C" fn cb_value_display(ctx: *mut c_void, value: GenericValue) -> GenericValue {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let display = from_ffi(value).to_string(&vm.heap);
+unsafe extern "C" fn cb_value_display(ctx: *mut c_void, value: GenericValue) -> GenericValue {
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, value) = unsafe { (vm_from_ctx(ctx), from_ffi(value)) };
+    let display = value.to_string(&vm.heap);
     let id = vm.heap.string_id(&display);
     to_ffi(Value::String(id))
 }
 
 // --- re-entering (run generic bytecode; GC may occur) ---
 
-extern "C" fn cb_call_value(
+unsafe extern "C" fn cb_call_value(
     ctx: *mut c_void,
     callee: GenericValue,
     args: *const GenericValue,
     nargs: usize,
 ) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, callee) = unsafe { (vm_from_ctx(ctx), from_ffi(callee)) };
     let Ok(arg_count) = u8::try_from(nargs) else {
         return ffi_error(
             vm,
@@ -734,23 +786,25 @@ extern "C" fn cb_call_value(
             "Too many arguments (max 255).",
         );
     };
-    let callee = from_ffi(callee);
     let mut values = Vec::with_capacity(nargs + 1);
     values.push(callee);
-    extend_args(&mut values, args, nargs);
+    // SAFETY: `args`/`nargs` describe `nargs` contiguous host-issued blobs,
+    // per the vtable contract.
+    unsafe { extend_args(&mut values, args, nargs) };
     reenter_call(vm, &values, |vm| vm.call_value(callee, arg_count))
 }
 
-extern "C" fn cb_invoke_method(
+unsafe extern "C" fn cb_invoke_method(
     ctx: *mut c_void,
     receiver: GenericValue,
     name: FfiStr,
     args: *const GenericValue,
     nargs: usize,
 ) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let Some(name) = str_from_ffi(&name) else {
+    // SAFETY: ctx, blob, and string per the vtable contract.
+    let (vm, receiver, decoded) =
+        unsafe { (vm_from_ctx(ctx), from_ffi(receiver), str_from_ffi(&name)) };
+    let Some(name) = decoded else {
         return ffi_error(
             vm,
             ExceptionKind::TypeError,
@@ -766,37 +820,50 @@ extern "C" fn cb_invoke_method(
     };
     let name_id = vm.heap.string_id(&name);
     let mut values = Vec::with_capacity(nargs + 1);
-    values.push(from_ffi(receiver));
-    extend_args(&mut values, args, nargs);
+    values.push(receiver);
+    // SAFETY: `args`/`nargs` describe `nargs` contiguous host-issued blobs,
+    // per the vtable contract.
+    unsafe { extend_args(&mut values, args, nargs) };
     reenter_call(vm, &values, |vm| vm.invoke(name_id, arg_count))
 }
 
-/// Copy plugin args into `values` element-wise via `from_ffi`, not by
+/// Copy plugin args into `values` element-wise via [`from_ffi`], not by
 /// aliasing the buffer as `&[Value]` (which needs `Value`'s 8-byte
 /// alignment the plugin's buffer may lack on i686).
-fn extend_args(values: &mut Vec<Value>, args: *const GenericValue, nargs: usize) {
+///
+/// # Safety
+///
+/// Unless `nargs` is 0, `args` must point to `nargs` contiguous, initialized
+/// [`GenericValue`]s valid for the duration of the call, each of them one of
+/// this host's blobs as [`from_ffi`] requires.
+unsafe fn extend_args(values: &mut Vec<Value>, args: *const GenericValue, nargs: usize) {
     if nargs == 0 {
         return;
     }
-    // SAFETY: the plugin passes `nargs` contiguous values valid for the call.
-    let slice = unsafe { std::slice::from_raw_parts(args, nargs) };
-    values.extend(slice.iter().copied().map(from_ffi));
+    // SAFETY: the caller guarantees `nargs` contiguous readable blobs, each
+    // host-issued and so decodable by `from_ffi`.
+    unsafe {
+        let values_slice = slice::from_raw_parts(args, nargs);
+        values.extend(values_slice.iter().copied().map(|value| from_ffi(value)));
+    }
 }
 
-extern "C" fn cb_value_str(ctx: *mut c_void, value: GenericValue) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let value = from_ffi(value);
+unsafe extern "C" fn cb_value_str(ctx: *mut c_void, value: GenericValue) -> FfiReturn {
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, value) = unsafe { (vm_from_ctx(ctx), from_ffi(value)) };
     match rooted_dunder(vm, &[value], |vm| vm.value_to_string(&value)) {
         Ok(id) => ffi_ok(Value::String(id)),
         Err(error) => error,
     }
 }
 
-extern "C" fn cb_dict_get(ctx: *mut c_void, dict: GenericValue, key: GenericValue) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let (dict, key) = (from_ffi(dict), from_ffi(key));
+unsafe extern "C" fn cb_dict_get(
+    ctx: *mut c_void,
+    dict: GenericValue,
+    key: GenericValue,
+) -> FfiReturn {
+    // SAFETY: ctx and both blobs per the vtable contract.
+    let (vm, dict, key) = unsafe { (vm_from_ctx(ctx), from_ffi(dict), from_ffi(key)) };
     if !matches!(backing_of(&vm.heap, dict), Some(NativeClass::Dict(_))) {
         return ffi_error(vm, ExceptionKind::TypeError, "Target is not a dict.");
     }
@@ -810,15 +877,21 @@ extern "C" fn cb_dict_get(ctx: *mut c_void, dict: GenericValue, key: GenericValu
     }
 }
 
-extern "C" fn cb_dict_set(
+unsafe extern "C" fn cb_dict_set(
     ctx: *mut c_void,
     dict: GenericValue,
     key: GenericValue,
     value: GenericValue,
 ) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let (dict, key, value) = (from_ffi(dict), from_ffi(key), from_ffi(value));
+    // SAFETY: ctx and all three blobs per the vtable contract.
+    let (vm, dict, key, value) = unsafe {
+        (
+            vm_from_ctx(ctx),
+            from_ffi(dict),
+            from_ffi(key),
+            from_ffi(value),
+        )
+    };
     if !matches!(backing_of(&vm.heap, dict), Some(NativeClass::Dict(_))) {
         return ffi_error(vm, ExceptionKind::TypeError, "Target is not a dict.");
     }
@@ -830,14 +903,13 @@ extern "C" fn cb_dict_set(
     }
 }
 
-extern "C" fn cb_dict_contains(
+unsafe extern "C" fn cb_dict_contains(
     ctx: *mut c_void,
     dict: GenericValue,
     key: GenericValue,
 ) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let (dict, key) = (from_ffi(dict), from_ffi(key));
+    // SAFETY: ctx and both blobs per the vtable contract.
+    let (vm, dict, key) = unsafe { (vm_from_ctx(ctx), from_ffi(dict), from_ffi(key)) };
     if !matches!(backing_of(&vm.heap, dict), Some(NativeClass::Dict(_))) {
         return ffi_error(vm, ExceptionKind::TypeError, "Target is not a dict.");
     }
@@ -847,10 +919,13 @@ extern "C" fn cb_dict_contains(
     }
 }
 
-extern "C" fn cb_set_add(ctx: *mut c_void, set: GenericValue, item: GenericValue) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let (set, item) = (from_ffi(set), from_ffi(item));
+unsafe extern "C" fn cb_set_add(
+    ctx: *mut c_void,
+    set: GenericValue,
+    item: GenericValue,
+) -> FfiReturn {
+    // SAFETY: ctx and both blobs per the vtable contract.
+    let (vm, set, item) = unsafe { (vm_from_ctx(ctx), from_ffi(set), from_ffi(item)) };
     if !matches!(backing_of(&vm.heap, set), Some(NativeClass::Set(_))) {
         return ffi_error(vm, ExceptionKind::TypeError, "Target is not a set.");
     }
@@ -860,14 +935,13 @@ extern "C" fn cb_set_add(ctx: *mut c_void, set: GenericValue, item: GenericValue
     }
 }
 
-extern "C" fn cb_set_contains(
+unsafe extern "C" fn cb_set_contains(
     ctx: *mut c_void,
     set: GenericValue,
     item: GenericValue,
 ) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let (set, item) = (from_ffi(set), from_ffi(item));
+    // SAFETY: ctx and both blobs per the vtable contract.
+    let (vm, set, item) = unsafe { (vm_from_ctx(ctx), from_ffi(set), from_ffi(item)) };
     if !matches!(backing_of(&vm.heap, set), Some(NativeClass::Set(_))) {
         return ffi_error(vm, ExceptionKind::TypeError, "Target is not a set.");
     }
@@ -877,30 +951,31 @@ extern "C" fn cb_set_contains(
     }
 }
 
-extern "C" fn cb_value_truthy(ctx: *mut c_void, value: GenericValue) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let value = from_ffi(value);
+unsafe extern "C" fn cb_value_truthy(ctx: *mut c_void, value: GenericValue) -> FfiReturn {
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, value) = unsafe { (vm_from_ctx(ctx), from_ffi(value)) };
     match rooted_dunder(vm, &[value], |vm| vm.is_falsey(value)) {
         Ok(falsey) => ffi_ok(Value::Bool(!falsey)),
         Err(error) => error,
     }
 }
 
-extern "C" fn cb_value_equals(ctx: *mut c_void, a: GenericValue, b: GenericValue) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let (a, b) = (from_ffi(a), from_ffi(b));
+unsafe extern "C" fn cb_value_equals(
+    ctx: *mut c_void,
+    a: GenericValue,
+    b: GenericValue,
+) -> FfiReturn {
+    // SAFETY: ctx and both blobs per the vtable contract.
+    let (vm, a, b) = unsafe { (vm_from_ctx(ctx), from_ffi(a), from_ffi(b)) };
     match rooted_dunder(vm, &[a, b], |vm| vm.compare_values_eq(a, b)) {
         Ok(equal) => ffi_ok(Value::Bool(equal)),
         Err(error) => error,
     }
 }
 
-extern "C" fn cb_value_hash(ctx: *mut c_void, value: GenericValue) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let value = from_ffi(value);
+unsafe extern "C" fn cb_value_hash(ctx: *mut c_void, value: GenericValue) -> FfiReturn {
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, value) = unsafe { (vm_from_ctx(ctx), from_ffi(value)) };
     match rooted_dunder(vm, &[value], |vm| vm.compute_hash(value)) {
         #[allow(clippy::cast_possible_wrap)]
         Ok(hash) => ffi_ok(Value::from(hash as i64)),
@@ -910,14 +985,14 @@ extern "C" fn cb_value_hash(ctx: *mut c_void, value: GenericValue) -> FfiReturn 
 
 // --- rooting (never re-enter) ---
 
-extern "C" fn cb_root(ctx: *mut c_void, value: GenericValue) {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    vm.stack.push(from_ffi(value));
+unsafe extern "C" fn cb_root(ctx: *mut c_void, value: GenericValue) {
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, value) = unsafe { (vm_from_ctx(ctx), from_ffi(value)) };
+    vm.stack.push(value);
 }
 
-extern "C" fn cb_unroot(ctx: *mut c_void, n: usize) {
-    // SAFETY: ctx per build_host_api.
+unsafe extern "C" fn cb_unroot(ctx: *mut c_void, n: usize) {
+    // SAFETY: ctx per the vtable contract.
     let vm = unsafe { vm_from_ctx(ctx) };
     let len = vm.stack.len().saturating_sub(n);
     vm.stack.truncate(len);
@@ -925,14 +1000,16 @@ extern "C" fn cb_unroot(ctx: *mut c_void, n: usize) {
 
 // --- plugin instance state (never re-enter) ---
 
-extern "C" fn cb_instance_set_opaque(
+unsafe extern "C" fn cb_instance_set_opaque(
     ctx: *mut c_void,
     receiver: GenericValue,
     ptr: *mut c_void,
 ) -> FfiReturn {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    let Value::Instance(id) = from_ffi(receiver) else {
+    // SAFETY: ctx and blob per the vtable contract. `ptr` is only stored, not
+    // dereferenced - the plugin's own `drop`/`traverse` are the only code that
+    // ever reads through it.
+    let (vm, receiver) = unsafe { (vm_from_ctx(ctx), from_ffi(receiver)) };
+    let Value::Instance(id) = receiver else {
         return ffi_error(vm, ExceptionKind::TypeError, "Receiver is not an instance.");
     };
     if let Some(NativeClass::Plugin(pi)) = &mut id.to_value_mut(&mut vm.heap).backing {
@@ -946,10 +1023,13 @@ extern "C" fn cb_instance_set_opaque(
     )
 }
 
-extern "C" fn cb_instance_get_opaque(ctx: *mut c_void, receiver: GenericValue) -> *mut c_void {
-    // SAFETY: ctx per build_host_api.
-    let vm = unsafe { vm_from_ctx(ctx) };
-    if let Value::Instance(id) = from_ffi(receiver)
+unsafe extern "C" fn cb_instance_get_opaque(
+    ctx: *mut c_void,
+    receiver: GenericValue,
+) -> *mut c_void {
+    // SAFETY: ctx and blob per the vtable contract.
+    let (vm, receiver) = unsafe { (vm_from_ctx(ctx), from_ffi(receiver)) };
+    if let Value::Instance(id) = receiver
         && let Some(NativeClass::Plugin(pi)) = &id.to_value(&vm.heap).backing
     {
         return pi.ptr;

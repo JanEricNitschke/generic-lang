@@ -13,6 +13,9 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[lints]
+workspace = true
+
 [package.metadata.release]
 # The API crate has its own version, tag, and release history, decoupled from
 # the interpreter releases. See release.toml for the workspace defaults this

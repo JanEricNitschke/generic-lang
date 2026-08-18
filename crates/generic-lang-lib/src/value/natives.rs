@@ -8,8 +8,13 @@ use crate::{
         errors::{VmErrorKind, VmResult},
     },
 };
+#[cfg(feature = "plugins")]
+use core::{ffi::c_void, ptr};
 use std::borrow::Cow;
+use std::mem;
 
+#[cfg(feature = "plugins")]
+use generic_lang_api::{PluginFn, PluginMethodFn};
 use hashbrown::HashTable;
 use hashbrown::hash_table::Entry;
 use tinyvec::TinyVec;
@@ -51,7 +56,7 @@ pub struct NativeFunction {
         PartialEq(compare_with = "always_equals"),
         PartialOrd = "ignore"
     )]
-    pub(crate) plugin_fn: Option<generic_lang_api::PluginFn>,
+    pub(crate) plugin_fn: Option<PluginFn>,
 }
 
 impl NativeFunction {
@@ -91,7 +96,7 @@ pub struct NativeMethod {
         PartialEq(compare_with = "always_equals"),
         PartialOrd = "ignore"
     )]
-    pub(crate) plugin_fn: Option<generic_lang_api::PluginMethodFn>,
+    pub(crate) plugin_fn: Option<PluginMethodFn>,
 }
 
 const fn always_equals<T>(_: &T, _: &T) -> bool {
@@ -207,7 +212,7 @@ pub enum NativeClass {
 #[cfg(feature = "plugins")]
 #[derive(Debug, Clone, Copy)]
 pub struct PluginInstance {
-    pub(crate) ptr: *mut core::ffi::c_void,
+    pub(crate) ptr: *mut c_void,
 }
 
 #[cfg(feature = "plugins")]
@@ -217,14 +222,18 @@ impl PluginInstance {
     #[must_use]
     pub(crate) const fn empty() -> Self {
         Self {
-            ptr: core::ptr::null_mut(),
+            ptr: ptr::null_mut(),
         }
     }
 }
 
-// The interpreter is single-threaded; the plugin vouches for the pointer's
-// safety. Required because `*mut c_void` is not `Send` by default and `Value`
-// must stay `Send`.
+// SAFETY: `ptr` is never dereferenced by the interpreter - it is only stored,
+// handed back to the plugin that installed it, and passed to that plugin's own
+// `drop`/`traverse`. Sending the struct therefore transfers no access to the
+// pointee, and the interpreter is single-threaded anyway: nothing ever moves a
+// `Value` to another thread, so no two threads can reach the same state
+// concurrently. The impl is needed because a raw pointer is not `Send` and
+// `Value` must stay `Send`.
 #[cfg(feature = "plugins")]
 #[allow(unsafe_code)]
 unsafe impl Send for PluginInstance {}
@@ -498,7 +507,7 @@ impl Set {
     /// call: the probe re-enters the interpreter through
     /// `__hash__`/`__eq__`, which can allocate and collect.
     ///
-    /// GC-safety: see [`Dict::add`] - the set is never taken out of the
+    /// GC invariant: see [`Dict::add`] - the set is never taken out of the
     /// heap, and the table is never borrowed while the interpreter runs.
     pub(crate) fn add(vm: &mut VM, receiver: &Value, item: Value) -> VmResult {
         let hash = vm.compute_hash(item)?;
@@ -533,7 +542,7 @@ impl Set {
     }
 
     /// Find the stored item equal to `item` among the same-hash entries.
-    /// Retried like [`Dict::probe`]. GC safety: see [`probe_candidates`].
+    /// Retried like [`Dict::probe`]. GC invariant: see [`probe_candidates`].
     fn probe(vm: &mut VM, receiver: &Value, item: Value, hash: u64) -> VmResult<Option<Value>> {
         for _ in 0..MAX_REPROBE {
             let before: TinyVec<[Value; INLINE_PROBE_CANDIDATES]> = receiver
@@ -648,7 +657,7 @@ impl Dict {
     /// the call: the probe re-enters the interpreter through
     /// `__hash__`/`__eq__`, which can allocate and collect.
     ///
-    /// GC-safety: the dict is never taken out of the heap. `__hash__`/`__eq__`
+    /// GC invariant: the dict is never taken out of the heap. `__hash__`/`__eq__`
     /// re-enter the interpreter, which can trigger a GC (which must be able
     /// to see the dict's contents - they may not be rooted anywhere else) and
     /// can even mutate this very dict. So all interpreter re-entry happens
@@ -710,7 +719,7 @@ impl Dict {
     /// `__eq__` can re-enter and mutate the dict, so the probe is retried
     /// against a fresh snapshot until the same-hash bucket is identical before
     /// and after the comparison, so `matched` reflects a table unchanged during
-    /// the probe. Raises after [`MAX_REPROBE`] attempts. GC safety: see
+    /// the probe. Raises after [`MAX_REPROBE`] attempts. GC invariant: see
     /// [`probe_candidates`].
     fn probe(vm: &mut VM, receiver: &Value, key: Value, hash: u64) -> VmResult<Option<Value>> {
         for _ in 0..MAX_REPROBE {
@@ -740,7 +749,7 @@ impl Dict {
 /// Find the first of `candidates` that compares equal to `needle` - the
 /// shared `__eq__` probe loop behind [`Set::probe`] and [`Dict::probe`].
 ///
-/// GC safety: the candidates are a plain `TinyVec` snapshot of a container's
+/// GC invariant: the candidates are a plain `TinyVec` snapshot of a container's
 /// same-hash entries - not a GC root - and `__eq__` re-enters the
 /// interpreter: it can remove a sibling candidate from the container, drop
 /// its last external reference, and trigger a GC that sweeps the value while
@@ -1169,7 +1178,7 @@ impl Generator {
     /// the handlers rebased to their suspended (generator-relative) form so
     /// they survive being resumed at a different depth.
     ///
-    /// # GC safety
+    /// # GC invariant
     ///
     /// While a generator runs, the native methods have taken it out of the
     /// heap, so the GC cannot see it. Moving the saved value stack and
@@ -1186,17 +1195,17 @@ impl Generator {
         }
         let closure_id = self.closure();
         let mut callframe =
-            std::mem::replace(&mut self.callframe, CallFrame::from_closure_id(closure_id));
+            mem::replace(&mut self.callframe, CallFrame::from_closure_id(closure_id));
         callframe.stack_base = vm.stack.len();
         let frame_base = vm.callstack.len();
         let stack_base = callframe.stack_base;
         vm.callstack.push_callframe(callframe, &vm.heap);
         vm.resume_suspended_handlers(
-            std::mem::take(&mut self.exception_handlers),
+            mem::take(&mut self.exception_handlers),
             frame_base,
             stack_base,
         );
-        vm.stack.extend(std::mem::take(&mut self.stack));
+        vm.stack.extend(mem::take(&mut self.stack));
 
         self.state = GeneratorState::Running;
         let callframe = match f(vm) {

@@ -3,9 +3,14 @@
 //! Everything in this module is `#[repr(C)]` and mirrored in the generated
 //! `include/generic.h` for non-Rust plugins. Plugin authors normally
 //! use the safe wrapper in the crate root instead of these types directly.
+//!
+//! Every function pointer here is an `unsafe extern "C" fn` stating its
+//! contract in a `# Safety` section. The C representation is unaffected, so
+//! the generated header is identical.
 
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
+use core::ptr;
 
 /// Version of the plugin ABI described by this crate.
 ///
@@ -16,9 +21,19 @@ pub const GENERIC_PLUGIN_ABI_VERSION: u32 = 1;
 /// An opaque generic runtime value.
 ///
 /// This is the host's 32-byte `Value` bit-copied - discriminant and payload
-/// included. Plugins must never inspect or fabricate its bytes; values are
-/// opaque handles to be passed back to host callbacks. Use
-/// [`HostApi::value_kind`] to ask what a value holds.
+/// included. Never inspect or fabricate the bytes: a value is an opaque handle
+/// to be passed back to host callbacks, and decoding one is only sound for
+/// values that host issued. Ask [`HostApi::value_kind`] what a value holds.
+///
+/// For Rust plugins the rule is enforced, not just stated: the storage is
+/// private, so safe code cannot produce a value at all - one can only come from
+/// the host, or from the `unsafe` `from_limbs` a Rust *host* implementation
+/// uses. That is what makes `as_int`, `attr_get` and the rest of
+/// [`Host`](crate::Host) safe functions.
+///
+/// C, C++, and Zig plugins see a plain `uint64_t opaque[4]` and can fill it
+/// with anything; there the rule is only a rule, backed by the same trust you
+/// extend by loading the library at all.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct GenericValue {
@@ -28,7 +43,34 @@ pub struct GenericValue {
     /// are initialized (that would be undefined behavior). `u64` limbs give
     /// the type the host `Value`'s 8-byte alignment; it renders as
     /// `uint64_t opaque[4]` in C. Never inspect.
-    pub opaque: [MaybeUninit<u64>; 4],
+    opaque: [MaybeUninit<u64>; 4],
+}
+
+impl GenericValue {
+    /// Assemble a value from raw limbs.
+    ///
+    /// For *hosts*: an interpreter written in Rust builds values this way (the
+    /// generic interpreter itself bit-copies its `Value` instead). A plugin has
+    /// no reason to call this - values come from the host.
+    ///
+    /// # Safety
+    ///
+    /// `opaque` must be the bit pattern of a value the host that will receive
+    /// it issued. Handing a host limbs it did not produce makes every callback
+    /// taking the value undefined behavior.
+    #[must_use]
+    pub const unsafe fn from_limbs(opaque: [MaybeUninit<u64>; 4]) -> Self {
+        Self { opaque }
+    }
+
+    /// The raw limbs, for a host decoding a value it issued.
+    ///
+    /// Reading them is safe; interpreting them is not - which limbs are
+    /// initialized is up to the host that produced the value.
+    #[must_use]
+    pub const fn limbs(&self) -> &[MaybeUninit<u64>; 4] {
+        &self.opaque
+    }
 }
 
 impl core::fmt::Debug for GenericValue {
@@ -61,7 +103,7 @@ impl FfiStr {
     #[must_use]
     pub const fn null() -> Self {
         Self {
-            ptr: core::ptr::null(),
+            ptr: ptr::null(),
             len: 0,
         }
     }
@@ -131,8 +173,19 @@ pub struct FfiReturn {
 ///
 /// `args` points at `nargs` contiguous values owned by the host; they stay
 /// valid (and GC-rooted) for the whole call.
-pub type PluginFn =
-    extern "C" fn(host: *const HostApi, args: *const GenericValue, nargs: usize) -> FfiReturn;
+///
+/// # Safety
+///
+/// Calling one is a call into foreign code, sound only if the callee upholds
+/// the ABI (which loading the library already trusts it to - see
+/// `generic_plugin_init`). The caller must pass a `host` pointing to a valid
+/// [`HostApi`] and an `args` pointing to `nargs` contiguous, initialized
+/// [`GenericValue`]s, both valid for the duration of the call.
+pub type PluginFn = unsafe extern "C" fn(
+    host: *const HostApi,
+    args: *const GenericValue,
+    nargs: usize,
+) -> FfiReturn;
 
 /// Description of one exported plugin function.
 #[repr(C)]
@@ -148,7 +201,11 @@ pub struct FunctionDesc {
     /// a nullable C function pointer for an inline `Option<fn>`, not
     /// through the alias.
     pub fun: Option<
-        extern "C" fn(host: *const HostApi, args: *const GenericValue, nargs: usize) -> FfiReturn,
+        unsafe extern "C" fn(
+            host: *const HostApi,
+            args: *const GenericValue,
+            nargs: usize,
+        ) -> FfiReturn,
     >,
 }
 
@@ -157,7 +214,15 @@ pub struct FunctionDesc {
 /// The host grays `value`; `ctx` is the `visit_ctx` passed to the enclosing
 /// [`PluginTraverseFn`]. Called only from within a [`PluginTraverseFn`], never
 /// directly.
-pub type PluginVisitFn = extern "C" fn(ctx: *mut c_void, value: GenericValue);
+///
+/// # Safety
+///
+/// `ctx` must be the `visit_ctx` the host passed to the enclosing
+/// [`PluginTraverseFn`], unmodified, and `value` a [`GenericValue`] the host
+/// issued (fabricating or altering one is undefined behavior). Calling this
+/// outside that traversal - after it returned, or with another context - is
+/// undefined behavior.
+pub type PluginVisitFn = unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue);
 
 /// Per-class GC traversal callback, declared on [`ClassDesc::traverse`].
 ///
@@ -169,23 +234,36 @@ pub type PluginVisitFn = extern "C" fn(ctx: *mut c_void, value: GenericValue);
 ///
 /// Returns `0` on success; a non-zero return is reserved and currently ignored.
 ///
+/// The host already traces the instance's generic fields, so the plugin
+/// reports only the values held in its own opaque state.
+///
 /// # Safety
 ///
-/// `opaque_ptr` is the pointer installed via `instance_set_opaque`, or null if
-/// `__init__` has not run yet - the plugin must handle null gracefully. The
-/// host already traces the instance's generic fields, so the plugin reports
-/// only the values held in its own opaque state. `visit` and `visit_ctx` are
-/// the host-provided marking function and its context; pass them through to
-/// `visit` unchanged.
-pub type PluginTraverseFn =
-    extern "C" fn(opaque_ptr: *mut c_void, visit: PluginVisitFn, visit_ctx: *mut c_void) -> i32;
+/// The host must pass the `opaque_ptr` installed via `instance_set_opaque` on
+/// an instance of the very class this callback was declared on - a pointer
+/// from another class is type confusion - or null if `__init__` has not run
+/// yet (the plugin must handle null gracefully). `visit` and `visit_ctx` must
+/// be a valid marking function and its context, both valid for the duration
+/// of the call, and the plugin must pass them to `visit` unchanged. Calling
+/// this is a call into foreign code, sound only if the plugin upholds the ABI.
+pub type PluginTraverseFn = unsafe extern "C" fn(
+    opaque_ptr: *mut c_void,
+    visit: PluginVisitFn,
+    visit_ctx: *mut c_void,
+) -> i32;
 
 /// The signature of a plugin value creator.
 ///
 /// Builds one module constant at import time, using the host callbacks to
 /// construct the value. May use re-entering callbacks. Returning
 /// [`FfiStatus::Exception`] makes the import fail with that exception.
-pub type PluginValueFn = extern "C" fn(host: *const HostApi) -> FfiReturn;
+///
+/// # Safety
+///
+/// As [`PluginFn`], minus the arguments: the caller must pass a `host`
+/// pointing to a valid [`HostApi`] for the duration of the call, and calling
+/// into the plugin is sound only if it upholds the ABI.
+pub type PluginValueFn = unsafe extern "C" fn(host: *const HostApi) -> FfiReturn;
 
 /// Description of one exported plugin module value (a module constant,
 /// built once at import time).
@@ -197,13 +275,18 @@ pub struct ValueDesc {
     /// [`PluginValueFn`] spelled out inline - cbindgen only renders a
     /// nullable C function pointer for an inline `Option<fn>`, not through
     /// the alias.
-    pub fun: Option<extern "C" fn(host: *const HostApi) -> FfiReturn>,
+    pub fun: Option<unsafe extern "C" fn(host: *const HostApi) -> FfiReturn>,
 }
 
 /// The signature of a plugin method: like [`PluginFn`], but the receiver
 /// (`self`) arrives as a separate first value, not in `args`. `args`/`nargs`
 /// are the remaining arguments only.
-pub type PluginMethodFn = extern "C" fn(
+///
+/// # Safety
+///
+/// As [`PluginFn`]; `receiver` must additionally be a host-issued
+/// [`GenericValue`] passed on unmodified.
+pub type PluginMethodFn = unsafe extern "C" fn(
     host: *const HostApi,
     receiver: GenericValue,
     args: *const GenericValue,
@@ -225,7 +308,7 @@ pub struct MethodDesc {
     /// [`PluginMethodFn`] spelled out inline - cbindgen only renders a nullable
     /// C function pointer for an inline `Option<fn>`, not through the alias.
     pub fun: Option<
-        extern "C" fn(
+        unsafe extern "C" fn(
             host: *const HostApi,
             receiver: GenericValue,
             args: *const GenericValue,
@@ -248,14 +331,23 @@ pub struct ClassDesc {
     /// host with the `*mut c_void` installed via `instance_set_opaque` when a
     /// plugin-backed instance is garbage-collected. May be null if the plugin
     /// manages the lifetime itself (rare).
-    pub drop: Option<extern "C" fn(opaque_ptr: *mut c_void)>,
+    ///
+    /// Calling it requires what freeing an allocation always requires: the
+    /// host must pass the pointer installed on an instance of this very class
+    /// and must do so exactly once, after which the pointer is dangling.
+    pub drop: Option<unsafe extern "C" fn(opaque_ptr: *mut c_void)>,
     /// GC traversal callback, called during the mark phase for each live
     /// plugin-backed instance. May be null if the opaque struct holds no
     /// [`GenericValue`]s. This is [`PluginTraverseFn`] spelled out inline -
     /// cbindgen only renders a nullable C function pointer for an inline
-    /// `Option<fn>`, not through the alias.
+    /// `Option<fn>`, not through the alias - and carries that type's safety
+    /// contract.
     pub traverse: Option<
-        extern "C" fn(opaque_ptr: *mut c_void, visit: PluginVisitFn, visit_ctx: *mut c_void) -> i32,
+        unsafe extern "C" fn(
+            opaque_ptr: *mut c_void,
+            visit: PluginVisitFn,
+            visit_ctx: *mut c_void,
+        ) -> i32,
     >,
 }
 
@@ -297,8 +389,9 @@ pub struct ModuleDesc {
 //   bytes, and `fun` must be a function with the documented `PluginFn` ABI.
 //   Within each `ClassDesc`, `name` is as above and `methods` points to
 //   `methods_len` contiguous `MethodDesc` entries; `drop`/`traverse` are
-//   either null or valid `extern "C"` functions - all under the same
-//   immutability and lifetime requirements as above.
+//   either null or functions honoring the contracts documented on those
+//   fields - all under the same immutability and lifetime requirements as
+//   above.
 // The impl is required so a descriptor can live in a `static` (statics must
 // be `Sync`); `export_module!` discharges all of the above by building the
 // tables from `const` data.
@@ -327,6 +420,25 @@ unsafe impl Sync for ModuleDesc {}
 ///   failure whose class and message mirror what the equivalent generic
 ///   operation would throw.
 /// - Infallible callbacks return their value directly.
+///
+/// # Safety
+///
+/// Every callback is an `unsafe extern "C" fn`, and they share one contract
+/// the plugin must uphold on each call (the Rust wrapper [`Host`](crate::Host)
+/// discharges all of it):
+/// - `ctx` is this vtable's own `ctx` field, passed on unmodified. A pointer
+///   from another vtable, or one the plugin invented, is undefined behavior.
+/// - Every [`GenericValue`] argument was issued by this host and is passed
+///   back unmodified - the bytes are opaque, so fabricating or altering one
+///   is undefined behavior (see [`GenericValue`]).
+/// - Every [`FfiStr`] argument points to `len` initialized bytes of UTF-8,
+///   valid for the duration of the call (see [`FfiStr`]).
+/// - Every `out` pointer is non-null, well aligned, and writable for the size
+///   of its type; the callback writes through it on success.
+/// - `args` points to `nargs` contiguous, initialized [`GenericValue`]s for
+///   the duration of the call (`nargs == 0` allows any pointer).
+/// - Calls are not re-entered from another thread; the interpreter is
+///   single-threaded and a callback borrows the VM for its duration.
 #[repr(C)]
 pub struct HostApi {
     /// ABI version of the host ([`GENERIC_PLUGIN_ABI_VERSION`]).
@@ -337,58 +449,70 @@ pub struct HostApi {
 
     // --- inspect (never re-enter) ---
     /// Kind of the value, as a [`ValueKind`](crate::ValueKind) code.
-    pub value_kind: extern "C" fn(ctx: *mut c_void, value: GenericValue) -> u32,
+    pub value_kind: unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue) -> u32,
     /// `false` if the value is not a bool.
-    pub bool_get: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut bool) -> bool,
+    pub bool_get:
+        unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut bool) -> bool,
     /// Read an integer into `out`; `false` if the value is not an integer
     /// or does not fit in an `i64` (big integers - fall back to
     /// `value_display`).
-    pub int_get: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut i64) -> bool,
+    pub int_get: unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut i64) -> bool,
     /// `false` if the value is not a float.
-    pub float_get: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut f64) -> bool,
+    pub float_get:
+        unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut f64) -> bool,
     /// Read the interned bytes of a string value into `out` (valid until
     /// the next re-entering callback); `false` if the value is not a
     /// string.
-    pub string_get: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut FfiStr) -> bool,
+    pub string_get:
+        unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut FfiStr) -> bool,
     /// `false` if the value is not a list.
-    pub list_len: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool,
+    pub list_len:
+        unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool,
     /// The element at `index`. `TypeError` if the value is not a list;
     /// `IndexError` if the index is out of bounds.
-    pub list_get: extern "C" fn(ctx: *mut c_void, value: GenericValue, index: usize) -> FfiReturn,
+    pub list_get:
+        unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue, index: usize) -> FfiReturn,
     /// `false` if the value is not a tuple.
-    pub tuple_len: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool,
+    pub tuple_len:
+        unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool,
     /// The element at `index`. `TypeError` if the value is not a tuple;
     /// `IndexError` if the index is out of bounds.
-    pub tuple_get: extern "C" fn(ctx: *mut c_void, value: GenericValue, index: usize) -> FfiReturn,
+    pub tuple_get:
+        unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue, index: usize) -> FfiReturn,
     /// `false` if the value is not a dict.
-    pub dict_len: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool,
+    pub dict_len:
+        unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool,
     /// `false` if the value is not a set.
-    pub set_len: extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool,
+    pub set_len:
+        unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue, out: *mut usize) -> bool,
     /// Look up a builtin global by name (exception classes like
     /// `"TypeError"`, native classes, builtin functions). `NameError` if
     /// absent; `TypeError` if the name is invalid UTF-8.
-    pub builtin_get: extern "C" fn(ctx: *mut c_void, name: FfiStr) -> FfiReturn,
+    pub builtin_get: unsafe extern "C" fn(ctx: *mut c_void, name: FfiStr) -> FfiReturn,
     /// Whether `value` is an instance of `of_class` or of a subclass of it
     /// (a bool value on success) - the exact semantics of the `isinstance`
     /// builtin, value-type proxy classes included. `TypeError` if
     /// `of_class` is not a class.
-    pub is_instance:
-        extern "C" fn(ctx: *mut c_void, value: GenericValue, of_class: GenericValue) -> FfiReturn,
+    pub is_instance: unsafe extern "C" fn(
+        ctx: *mut c_void,
+        value: GenericValue,
+        of_class: GenericValue,
+    ) -> FfiReturn,
     /// The class of an instance, as a class value (callable to construct
     /// another instance of it - the analogue of `type(self)`). `TypeError` if
     /// `value` is not an instance. Lets a plugin method reach its own class
     /// from the receiver: e.g. to construct a result of the same class, or to
     /// `is_instance`-check another argument before reading its opaque state.
-    pub class_of: extern "C" fn(ctx: *mut c_void, value: GenericValue) -> FfiReturn,
+    pub class_of: unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue) -> FfiReturn,
 
     // --- attributes (never re-enter; generic fields are plain map entries) ---
     /// A field of an instance; `AttributeError` if absent, `TypeError` if
     /// the receiver is not an instance.
     pub attr_get:
-        extern "C" fn(ctx: *mut c_void, receiver: GenericValue, name: FfiStr) -> FfiReturn,
+        unsafe extern "C" fn(ctx: *mut c_void, receiver: GenericValue, name: FfiStr) -> FfiReturn,
     /// Set a field on an instance; `TypeError` if the receiver is not an
     /// instance (the ok value is nil).
-    pub attr_set: extern "C" fn(
+    pub attr_set: unsafe extern "C" fn(
         ctx: *mut c_void,
         receiver: GenericValue,
         name: FfiStr,
@@ -398,30 +522,30 @@ pub struct HostApi {
     /// `TypeError` if the receiver is not an instance or the name is
     /// invalid UTF-8.
     pub attr_has:
-        extern "C" fn(ctx: *mut c_void, receiver: GenericValue, name: FfiStr) -> FfiReturn,
+        unsafe extern "C" fn(ctx: *mut c_void, receiver: GenericValue, name: FfiStr) -> FfiReturn,
 
     // --- construct (never re-enter) ---
     /// A new nil value.
-    pub nil_new: extern "C" fn(ctx: *mut c_void) -> GenericValue,
+    pub nil_new: unsafe extern "C" fn(ctx: *mut c_void) -> GenericValue,
     /// A new bool value.
-    pub bool_new: extern "C" fn(ctx: *mut c_void, value: bool) -> GenericValue,
+    pub bool_new: unsafe extern "C" fn(ctx: *mut c_void, value: bool) -> GenericValue,
     /// A new integer value.
-    pub int_new: extern "C" fn(ctx: *mut c_void, value: i64) -> GenericValue,
+    pub int_new: unsafe extern "C" fn(ctx: *mut c_void, value: i64) -> GenericValue,
     /// A new float value.
-    pub float_new: extern "C" fn(ctx: *mut c_void, value: f64) -> GenericValue,
+    pub float_new: unsafe extern "C" fn(ctx: *mut c_void, value: f64) -> GenericValue,
     /// Interns the given UTF-8 bytes into a string value; `ValueError` on
     /// invalid UTF-8.
-    pub string_new: extern "C" fn(ctx: *mut c_void, value: FfiStr) -> FfiReturn,
+    pub string_new: unsafe extern "C" fn(ctx: *mut c_void, value: FfiStr) -> FfiReturn,
     /// A new, empty list.
-    pub list_new: extern "C" fn(ctx: *mut c_void) -> GenericValue,
+    pub list_new: unsafe extern "C" fn(ctx: *mut c_void) -> GenericValue,
     /// Append to a list (the ok value is nil); `TypeError` if the target is
     /// not a list.
     pub list_push:
-        extern "C" fn(ctx: *mut c_void, list: GenericValue, item: GenericValue) -> FfiReturn,
+        unsafe extern "C" fn(ctx: *mut c_void, list: GenericValue, item: GenericValue) -> FfiReturn,
     /// Replace the element at an index (the ok value is nil). `TypeError`
     /// if the target is not a list; `IndexError` if the index is out of
     /// bounds.
-    pub list_set: extern "C" fn(
+    pub list_set: unsafe extern "C" fn(
         ctx: *mut c_void,
         list: GenericValue,
         index: usize,
@@ -433,26 +557,29 @@ pub struct HostApi {
     /// bypassing the class's `__init__` - exactly like the VM's own throw;
     /// use `call_value` on the class for full construction semantics.
     /// Return the instance under [`FfiStatus::Exception`] to throw it.
-    pub exception_new:
-        extern "C" fn(ctx: *mut c_void, of_class: GenericValue, message: FfiStr) -> FfiReturn,
+    pub exception_new: unsafe extern "C" fn(
+        ctx: *mut c_void,
+        of_class: GenericValue,
+        message: FfiStr,
+    ) -> FfiReturn,
 
     // --- display (never re-enters) ---
     /// The raw string representation of any value, as a new string value.
     /// Does NOT honor a user class's `__str__` (use `value_str` for that),
-    /// which makes it safe to call anywhere, including error paths.
-    pub value_display: extern "C" fn(ctx: *mut c_void, value: GenericValue) -> GenericValue,
+    /// which makes it usable anywhere, including error paths.
+    pub value_display: unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue) -> GenericValue,
 
     // --- re-entering (run generic bytecode; GC may occur) ---
     /// Call a callable value (closure, native, class, …) with the given
     /// arguments. Generic exceptions come back as a nonzero status.
-    pub call_value: extern "C" fn(
+    pub call_value: unsafe extern "C" fn(
         ctx: *mut c_void,
         callee: GenericValue,
         args: *const GenericValue,
         nargs: usize,
     ) -> FfiReturn,
     /// Invoke a named method on a receiver.
-    pub invoke_method: extern "C" fn(
+    pub invoke_method: unsafe extern "C" fn(
         ctx: *mut c_void,
         receiver: GenericValue,
         name: FfiStr,
@@ -460,12 +587,12 @@ pub struct HostApi {
         nargs: usize,
     ) -> FfiReturn,
     /// String conversion honoring a user class's `__str__`.
-    pub value_str: extern "C" fn(ctx: *mut c_void, value: GenericValue) -> FfiReturn,
+    pub value_str: unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue) -> FfiReturn,
     /// Look up a key (`KeyError` if absent); re-enters for `__hash__`/`__eq__`.
     pub dict_get:
-        extern "C" fn(ctx: *mut c_void, dict: GenericValue, key: GenericValue) -> FfiReturn,
+        unsafe extern "C" fn(ctx: *mut c_void, dict: GenericValue, key: GenericValue) -> FfiReturn,
     /// Insert or replace a key (the ok value is nil).
-    pub dict_set: extern "C" fn(
+    pub dict_set: unsafe extern "C" fn(
         ctx: *mut c_void,
         dict: GenericValue,
         key: GenericValue,
@@ -473,29 +600,29 @@ pub struct HostApi {
     ) -> FfiReturn,
     /// Whether a dict contains a key (the ok value is a bool).
     pub dict_contains:
-        extern "C" fn(ctx: *mut c_void, dict: GenericValue, key: GenericValue) -> FfiReturn,
+        unsafe extern "C" fn(ctx: *mut c_void, dict: GenericValue, key: GenericValue) -> FfiReturn,
     /// Add an item to a set (the ok value is nil).
     pub set_add:
-        extern "C" fn(ctx: *mut c_void, set: GenericValue, item: GenericValue) -> FfiReturn,
+        unsafe extern "C" fn(ctx: *mut c_void, set: GenericValue, item: GenericValue) -> FfiReturn,
     /// Whether a set contains an item (the ok value is a bool).
     pub set_contains:
-        extern "C" fn(ctx: *mut c_void, set: GenericValue, item: GenericValue) -> FfiReturn,
+        unsafe extern "C" fn(ctx: *mut c_void, set: GenericValue, item: GenericValue) -> FfiReturn,
     /// Truthiness honoring `__bool__` (the ok value is a bool).
-    pub value_truthy: extern "C" fn(ctx: *mut c_void, value: GenericValue) -> FfiReturn,
+    pub value_truthy: unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue) -> FfiReturn,
     /// Equality honoring `__eq__` (the ok value is a bool).
     pub value_equals:
-        extern "C" fn(ctx: *mut c_void, a: GenericValue, b: GenericValue) -> FfiReturn,
+        unsafe extern "C" fn(ctx: *mut c_void, a: GenericValue, b: GenericValue) -> FfiReturn,
     /// Hash honoring `__hash__` (the ok value is an integer).
-    pub value_hash: extern "C" fn(ctx: *mut c_void, value: GenericValue) -> FfiReturn,
+    pub value_hash: unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue) -> FfiReturn,
 
     // --- rooting (never re-enter) ---
     /// Keep a value alive across re-entering callbacks. Roots are released
     /// automatically when the plugin function returns; `unroot` releases
     /// the `n` most recent roots early.
-    pub root: extern "C" fn(ctx: *mut c_void, value: GenericValue),
+    pub root: unsafe extern "C" fn(ctx: *mut c_void, value: GenericValue),
     /// Release the `n` most recently rooted values. Releasing more roots
     /// than were pushed corrupts interpreter state.
-    pub unroot: extern "C" fn(ctx: *mut c_void, n: usize),
+    pub unroot: unsafe extern "C" fn(ctx: *mut c_void, n: usize),
 
     // --- plugin instance state (never re-enter) ---
     /// Install the plugin's opaque pointer on a plugin-backed instance
@@ -507,10 +634,19 @@ pub struct HostApi {
     /// the host does not run `drop` on it, since it cannot know whether the plugin
     /// still holds a copy elsewhere. To replace state, recover the old pointer
     /// with `instance_get_opaque` and free it yourself first.
-    pub instance_set_opaque:
-        extern "C" fn(ctx: *mut c_void, receiver: GenericValue, ptr: *mut c_void) -> FfiReturn,
+    ///
+    /// Beyond the shared contract: the host stores `ptr` without ever reading
+    /// through it, but hands it back to this class's `traverse` and `drop`, so
+    /// it must be one those can soundly consume - see
+    /// [`Host::set_opaque`](crate::Host::set_opaque).
+    pub instance_set_opaque: unsafe extern "C" fn(
+        ctx: *mut c_void,
+        receiver: GenericValue,
+        ptr: *mut c_void,
+    ) -> FfiReturn,
     /// Recover the pointer installed by [`HostApi::instance_set_opaque`], or
     /// null if none was installed (e.g. before `__init__` ran) or `receiver`
     /// is not a plugin-backed instance. Never raises.
-    pub instance_get_opaque: extern "C" fn(ctx: *mut c_void, receiver: GenericValue) -> *mut c_void,
+    pub instance_get_opaque:
+        unsafe extern "C" fn(ctx: *mut c_void, receiver: GenericValue) -> *mut c_void,
 }

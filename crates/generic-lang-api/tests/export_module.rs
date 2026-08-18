@@ -8,7 +8,9 @@
 
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
+use core::{ptr, slice};
 use std::cell::RefCell;
+use std::panic;
 
 use generic_lang_api::{
     FfiReturn, FfiStatus, FfiStr, GENERIC_PLUGIN_ABI_VERSION, GenericValue, Host, HostApi,
@@ -17,14 +19,20 @@ use generic_lang_api::{
 
 /// A blob carrying `first` in its first opaque limb (the rest zeroed) - the
 /// tests build values this way to check bytes survive the FFI glue.
+///
+/// Fabricating one is exactly what a plugin may not do; these tests are the
+/// *host* side of the protocol (see the mock vtable below), which is the role
+/// [`GenericValue::from_limbs`] exists for.
 fn blob(first: u64) -> GenericValue {
-    GenericValue {
-        opaque: [
+    // SAFETY: this file's mock host issues and decodes only its own values, in
+    // this one representation: the payload in limb 0, the rest zeroed.
+    unsafe {
+        GenericValue::from_limbs([
             MaybeUninit::new(first),
             MaybeUninit::new(0),
             MaybeUninit::new(0),
             MaybeUninit::new(0),
-        ],
+        ])
     }
 }
 
@@ -36,7 +44,7 @@ fn blob(first: u64) -> GenericValue {
 /// mock echoing such a value.
 unsafe fn limb0(value: GenericValue) -> u64 {
     // SAFETY: guaranteed by the caller.
-    unsafe { value.opaque[0].assume_init() }
+    unsafe { value.limbs()[0].assume_init() }
 }
 
 fn add(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
@@ -59,7 +67,7 @@ fn forward_fatal(_host: &mut Host, _args: &[GenericValue]) -> Result<GenericValu
 }
 
 fn explode_any(_host: &mut Host, _args: &[GenericValue]) -> Result<GenericValue, PluginError> {
-    std::panic::panic_any(42);
+    panic::panic_any(42);
 }
 
 /// Multi-arity export: sums however many integers it receives.
@@ -84,9 +92,11 @@ fn widget_method(
     Ok(host.make_nil())
 }
 
-extern "C" fn widget_drop(_ptr: *mut c_void) {}
+// A class's `drop`/`traverse` are `unsafe extern "C" fn`s the host calls with
+// the instance's opaque pointer; these two ignore it entirely.
+unsafe extern "C" fn widget_drop(_ptr: *mut c_void) {}
 
-extern "C" fn widget_traverse(
+unsafe extern "C" fn widget_traverse(
     _ptr: *mut c_void,
     _visit: generic_lang_api::PluginVisitFn,
     _visit_ctx: *mut c_void,
@@ -129,27 +139,32 @@ thread_local! {
     static INTERNED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
+// Every mock below implements a `HostApi` callback, so each is an `unsafe
+// extern "C" fn` carrying that vtable's contract: `ctx` is the host's own (all
+// of these ignore it), `GenericValue`s are host-issued, `FfiStr`s reference
+// `len` bytes of live UTF-8, and out-pointers are writable. Every `unsafe`
+// inside them is discharged by it - `Host` upholds all of it, and the tests
+// that call the vtable directly build the arguments from live locals.
+
 // --- Mocks with real behavior: they read arguments, encode values, or
 // intern strings, so the tests can check data survives the FFI glue. ---
 
 // `int_get`/`int_new` carry integers in the first opaque limb, so the
 // tests verify values travel through the glue byte-exact.
 #[allow(clippy::cast_possible_wrap)]
-extern "C" fn mock_int_get(_ctx: *mut c_void, value: GenericValue, out: *mut i64) -> bool {
-    // SAFETY: the out-pointer is valid, and the first limb is initialized
-    // for the values the tests build with `blob` and pass in.
+unsafe extern "C" fn mock_int_get(_ctx: *mut c_void, value: GenericValue, out: *mut i64) -> bool {
+    // SAFETY: a writable out-pointer per the vtable contract, and the first
+    // limb is initialized for the values the tests build with `blob`.
     unsafe { *out = limb0(value) as i64 };
     true
 }
 #[allow(clippy::cast_sign_loss)]
-extern "C" fn mock_int_new(_ctx: *mut c_void, value: i64) -> GenericValue {
+unsafe extern "C" fn mock_int_new(_ctx: *mut c_void, value: i64) -> GenericValue {
     blob(value as u64)
 }
-extern "C" fn mock_string_new(_ctx: *mut c_void, value: FfiStr) -> FfiReturn {
-    // SAFETY: callers pass valid UTF-8 of the given length.
-    let s = unsafe {
-        core::str::from_utf8_unchecked(core::slice::from_raw_parts(value.ptr, value.len))
-    };
+unsafe extern "C" fn mock_string_new(_ctx: *mut c_void, value: FfiStr) -> FfiReturn {
+    // SAFETY: valid UTF-8 of the given length, per the vtable contract.
+    let s = unsafe { core::str::from_utf8_unchecked(slice::from_raw_parts(value.ptr, value.len)) };
     INTERNED.with_borrow_mut(|strings| strings.push(s.to_owned()));
     FfiReturn {
         status: 0,
@@ -159,10 +174,9 @@ extern "C" fn mock_string_new(_ctx: *mut c_void, value: FfiStr) -> FfiReturn {
 // `builtin_get`/`exception_new` intern class names and messages, and hand
 // back values echoing the class handle, so the tests can check both travel
 // through the glue.
-extern "C" fn mock_builtin_get(_ctx: *mut c_void, name: FfiStr) -> FfiReturn {
-    // SAFETY: callers pass valid UTF-8 of the given length.
-    let s =
-        unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(name.ptr, name.len)) };
+unsafe extern "C" fn mock_builtin_get(_ctx: *mut c_void, name: FfiStr) -> FfiReturn {
+    // SAFETY: valid UTF-8 of the given length, per the vtable contract.
+    let s = unsafe { core::str::from_utf8_unchecked(slice::from_raw_parts(name.ptr, name.len)) };
     INTERNED.with_borrow_mut(|strings| strings.push(s.to_owned()));
     // A fake class handle tagged by the name's length.
     FfiReturn {
@@ -170,15 +184,14 @@ extern "C" fn mock_builtin_get(_ctx: *mut c_void, name: FfiStr) -> FfiReturn {
         value: blob(name.len as u64),
     }
 }
-extern "C" fn mock_exception_new(
+unsafe extern "C" fn mock_exception_new(
     _ctx: *mut c_void,
     class: GenericValue,
     message: FfiStr,
 ) -> FfiReturn {
-    // SAFETY: callers pass valid UTF-8 of the given length.
-    let s = unsafe {
-        core::str::from_utf8_unchecked(core::slice::from_raw_parts(message.ptr, message.len))
-    };
+    // SAFETY: valid UTF-8 of the given length, per the vtable contract.
+    let s =
+        unsafe { core::str::from_utf8_unchecked(slice::from_raw_parts(message.ptr, message.len)) };
     INTERNED.with_borrow_mut(|strings| strings.push(s.to_owned()));
     // Echo the class handle so the test can see which class was used.
     FfiReturn {
@@ -190,40 +203,60 @@ extern "C" fn mock_exception_new(
 // --- Inert stubs: return a fixed placeholder regardless of input, present
 // only to fill out the vtable. ---
 
-extern "C" fn mock_value_kind(_ctx: *mut c_void, _value: GenericValue) -> u32 {
+unsafe extern "C" fn mock_value_kind(_ctx: *mut c_void, _value: GenericValue) -> u32 {
     ValueKind::Int as u32
 }
-extern "C" fn mock_bool_get(_ctx: *mut c_void, _value: GenericValue, _out: *mut bool) -> bool {
+unsafe extern "C" fn mock_bool_get(
+    _ctx: *mut c_void,
+    _value: GenericValue,
+    _out: *mut bool,
+) -> bool {
     false
 }
-extern "C" fn mock_float_get(_ctx: *mut c_void, _value: GenericValue, _out: *mut f64) -> bool {
+unsafe extern "C" fn mock_float_get(
+    _ctx: *mut c_void,
+    _value: GenericValue,
+    _out: *mut f64,
+) -> bool {
     false
 }
-extern "C" fn mock_string_get(_ctx: *mut c_void, _value: GenericValue, _out: *mut FfiStr) -> bool {
+unsafe extern "C" fn mock_string_get(
+    _ctx: *mut c_void,
+    _value: GenericValue,
+    _out: *mut FfiStr,
+) -> bool {
     false
 }
-extern "C" fn mock_list_len(_ctx: *mut c_void, _value: GenericValue, _out: *mut usize) -> bool {
+unsafe extern "C" fn mock_list_len(
+    _ctx: *mut c_void,
+    _value: GenericValue,
+    _out: *mut usize,
+) -> bool {
     false
 }
-extern "C" fn mock_list_get(_ctx: *mut c_void, _value: GenericValue, _index: usize) -> FfiReturn {
+unsafe extern "C" fn mock_list_get(
+    _ctx: *mut c_void,
+    _value: GenericValue,
+    _index: usize,
+) -> FfiReturn {
     FfiReturn {
         status: 0,
         value: blob(0),
     }
 }
-extern "C" fn mock_nil_new(_ctx: *mut c_void) -> GenericValue {
+unsafe extern "C" fn mock_nil_new(_ctx: *mut c_void) -> GenericValue {
     blob(0)
 }
-extern "C" fn mock_bool_new(_ctx: *mut c_void, _value: bool) -> GenericValue {
+unsafe extern "C" fn mock_bool_new(_ctx: *mut c_void, _value: bool) -> GenericValue {
     blob(0)
 }
-extern "C" fn mock_float_new(_ctx: *mut c_void, _value: f64) -> GenericValue {
+unsafe extern "C" fn mock_float_new(_ctx: *mut c_void, _value: f64) -> GenericValue {
     blob(0)
 }
-extern "C" fn mock_list_new(_ctx: *mut c_void) -> GenericValue {
+unsafe extern "C" fn mock_list_new(_ctx: *mut c_void) -> GenericValue {
     blob(0)
 }
-extern "C" fn mock_list_push(
+unsafe extern "C" fn mock_list_push(
     _ctx: *mut c_void,
     _list: GenericValue,
     _item: GenericValue,
@@ -233,10 +266,10 @@ extern "C" fn mock_list_push(
         value: blob(0),
     }
 }
-extern "C" fn mock_value_display(_ctx: *mut c_void, _value: GenericValue) -> GenericValue {
+unsafe extern "C" fn mock_value_display(_ctx: *mut c_void, _value: GenericValue) -> GenericValue {
     blob(0)
 }
-extern "C" fn mock_call_value(
+unsafe extern "C" fn mock_call_value(
     _ctx: *mut c_void,
     _callee: GenericValue,
     _args: *const GenericValue,
@@ -247,7 +280,7 @@ extern "C" fn mock_call_value(
         value: blob(0),
     }
 }
-extern "C" fn mock_invoke_method(
+unsafe extern "C" fn mock_invoke_method(
     _ctx: *mut c_void,
     _receiver: GenericValue,
     _name: FfiStr,
@@ -259,31 +292,39 @@ extern "C" fn mock_invoke_method(
         value: blob(0),
     }
 }
-extern "C" fn mock_value_str(_ctx: *mut c_void, _value: GenericValue) -> FfiReturn {
+unsafe extern "C" fn mock_value_str(_ctx: *mut c_void, _value: GenericValue) -> FfiReturn {
     FfiReturn {
         status: 0,
         value: blob(0),
     }
 }
-extern "C" fn mock_root(_ctx: *mut c_void, _value: GenericValue) {}
-extern "C" fn mock_unroot(_ctx: *mut c_void, _n: usize) {}
-extern "C" fn mock_tuple_len(_ctx: *mut c_void, _value: GenericValue, _out: *mut usize) -> bool {
-    false
-}
-extern "C" fn mock_tuple_get(_ctx: *mut c_void, _value: GenericValue, _index: usize) -> FfiReturn {
-    FfiReturn {
-        status: 0,
-        value: blob(0),
-    }
-}
-extern "C" fn mock_container_len(
+unsafe extern "C" fn mock_root(_ctx: *mut c_void, _value: GenericValue) {}
+unsafe extern "C" fn mock_unroot(_ctx: *mut c_void, _n: usize) {}
+unsafe extern "C" fn mock_tuple_len(
     _ctx: *mut c_void,
     _value: GenericValue,
     _out: *mut usize,
 ) -> bool {
     false
 }
-extern "C" fn mock_attr_get(
+unsafe extern "C" fn mock_tuple_get(
+    _ctx: *mut c_void,
+    _value: GenericValue,
+    _index: usize,
+) -> FfiReturn {
+    FfiReturn {
+        status: 0,
+        value: blob(0),
+    }
+}
+unsafe extern "C" fn mock_container_len(
+    _ctx: *mut c_void,
+    _value: GenericValue,
+    _out: *mut usize,
+) -> bool {
+    false
+}
+unsafe extern "C" fn mock_attr_get(
     _ctx: *mut c_void,
     _receiver: GenericValue,
     _name: FfiStr,
@@ -293,7 +334,7 @@ extern "C" fn mock_attr_get(
         value: blob(0),
     }
 }
-extern "C" fn mock_attr_set(
+unsafe extern "C" fn mock_attr_set(
     _ctx: *mut c_void,
     _receiver: GenericValue,
     _name: FfiStr,
@@ -304,7 +345,7 @@ extern "C" fn mock_attr_set(
         value: blob(0),
     }
 }
-extern "C" fn mock_attr_has(
+unsafe extern "C" fn mock_attr_has(
     _ctx: *mut c_void,
     _receiver: GenericValue,
     _name: FfiStr,
@@ -314,7 +355,7 @@ extern "C" fn mock_attr_has(
         value: blob(0),
     }
 }
-extern "C" fn mock_list_set(
+unsafe extern "C" fn mock_list_set(
     _ctx: *mut c_void,
     _list: GenericValue,
     _index: usize,
@@ -325,7 +366,7 @@ extern "C" fn mock_list_set(
         value: blob(0),
     }
 }
-extern "C" fn mock_value_binary(
+unsafe extern "C" fn mock_value_binary(
     _ctx: *mut c_void,
     _a: GenericValue,
     _b: GenericValue,
@@ -335,7 +376,7 @@ extern "C" fn mock_value_binary(
         value: blob(0),
     }
 }
-extern "C" fn mock_dict_set(
+unsafe extern "C" fn mock_dict_set(
     _ctx: *mut c_void,
     _dict: GenericValue,
     _key: GenericValue,
@@ -346,13 +387,13 @@ extern "C" fn mock_dict_set(
         value: blob(0),
     }
 }
-extern "C" fn mock_value_unary(_ctx: *mut c_void, _value: GenericValue) -> FfiReturn {
+unsafe extern "C" fn mock_value_unary(_ctx: *mut c_void, _value: GenericValue) -> FfiReturn {
     FfiReturn {
         status: 0,
         value: blob(0),
     }
 }
-extern "C" fn mock_is_instance(
+unsafe extern "C" fn mock_is_instance(
     _ctx: *mut c_void,
     _value: GenericValue,
     _class: GenericValue,
@@ -366,7 +407,7 @@ extern "C" fn mock_is_instance(
 fn mock_host_api() -> HostApi {
     HostApi {
         abi_version: GENERIC_PLUGIN_ABI_VERSION,
-        ctx: core::ptr::null_mut(),
+        ctx: ptr::null_mut(),
         value_kind: mock_value_kind,
         bool_get: mock_bool_get,
         int_get: mock_int_get,
@@ -412,7 +453,7 @@ fn mock_host_api() -> HostApi {
     }
 }
 
-extern "C" fn mock_instance_set_opaque(
+unsafe extern "C" fn mock_instance_set_opaque(
     _ctx: *mut c_void,
     _receiver: GenericValue,
     _ptr: *mut c_void,
@@ -422,8 +463,11 @@ extern "C" fn mock_instance_set_opaque(
         value: blob(0),
     }
 }
-extern "C" fn mock_instance_get_opaque(_ctx: *mut c_void, _receiver: GenericValue) -> *mut c_void {
-    core::ptr::null_mut()
+unsafe extern "C" fn mock_instance_get_opaque(
+    _ctx: *mut c_void,
+    _receiver: GenericValue,
+) -> *mut c_void {
+    ptr::null_mut()
 }
 
 fn last_interned() -> String {
@@ -445,14 +489,12 @@ fn descriptor_contents() {
 
     // The exported names, in declaration order.
     // SAFETY: the descriptor references a leaked slice of functions_len entries.
-    let functions = unsafe { core::slice::from_raw_parts(desc.functions, desc.functions_len) };
+    let functions = unsafe { slice::from_raw_parts(desc.functions, desc.functions_len) };
     let names: Vec<&str> = functions
         .iter()
         .map(|f| {
             // SAFETY: names are leaked static strings.
-            unsafe {
-                core::str::from_utf8_unchecked(core::slice::from_raw_parts(f.name.ptr, f.name.len))
-            }
+            unsafe { core::str::from_utf8_unchecked(slice::from_raw_parts(f.name.ptr, f.name.len)) }
         })
         .collect();
     assert_eq!(
@@ -472,8 +514,7 @@ fn descriptor_contents() {
     let expected_arities: [&[u8]; 6] = [&[2], &[0], &[0], &[0], &[0], &[1, 3]];
     for (function, expected) in functions.iter().zip(expected_arities) {
         // SAFETY: arities are leaked static slices of arities_len entries.
-        let arities =
-            unsafe { core::slice::from_raw_parts(function.arities, function.arities_len) };
+        let arities = unsafe { slice::from_raw_parts(function.arities, function.arities_len) };
         assert_eq!(arities, expected);
     }
 
@@ -487,7 +528,7 @@ fn value_descriptor_contents_and_creators() {
     let desc = unsafe { &*generic_plugin_init() };
     assert_eq!(desc.values_len, 2);
     // SAFETY: the descriptor references a leaked slice of values_len entries.
-    let values = unsafe { core::slice::from_raw_parts(desc.values, desc.values_len) };
+    let values = unsafe { slice::from_raw_parts(desc.values, desc.values_len) };
 
     // SAFETY: names are leaked static strings.
     let names: Vec<&str> = values.iter().map(|v| unsafe { ffi_str(v.name) }).collect();
@@ -497,13 +538,16 @@ fn value_descriptor_contents_and_creators() {
     // The generated creator glue passes the host through and returns the
     // built value byte-exact.
     let api = mock_host_api();
-    let ret = values[0].fun.expect("checked non-null above")(&raw const api);
+    // SAFETY: `PluginValueFn`'s contract - `api` is a complete vtable living
+    // on this stack frame, valid for the call.
+    let ret = unsafe { values[0].fun.expect("checked non-null above")(&raw const api) };
     assert_eq!(ret.status, FfiStatus::Ok as u32);
     // SAFETY: the mock encodes integers in the first opaque limb.
     assert_eq!(unsafe { limb0(ret.value) }, 7);
 
     // A failing creator surfaces as an exception, like a failing function.
-    let ret = values[1].fun.expect("checked non-null above")(&raw const api);
+    // SAFETY: as above.
+    let ret = unsafe { values[1].fun.expect("checked non-null above")(&raw const api) };
     assert_eq!(ret.status, FfiStatus::Exception as u32);
 }
 
@@ -512,7 +556,7 @@ fn value_descriptor_contents_and_creators() {
 /// `s` must reference `s.len` bytes of valid UTF-8, valid for the read.
 unsafe fn ffi_str(s: FfiStr) -> &'static str {
     // SAFETY: guaranteed by the caller; names are leaked static strings.
-    unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(s.ptr, s.len)) }
+    unsafe { core::str::from_utf8_unchecked(slice::from_raw_parts(s.ptr, s.len)) }
 }
 
 #[test]
@@ -522,27 +566,30 @@ fn class_descriptor_contents() {
     assert_eq!(desc.classes_len, 2);
 
     // SAFETY: the descriptor references a leaked slice of classes_len entries.
-    let classes = unsafe { core::slice::from_raw_parts(desc.classes, desc.classes_len) };
+    let classes = unsafe { slice::from_raw_parts(desc.classes, desc.classes_len) };
 
     // First class: methods, drop, and traverse all present.
     let widget = &classes[0];
+    // SAFETY: names are leaked static strings.
     assert_eq!(unsafe { ffi_str(widget.name) }, "Widget");
     assert_eq!(widget.methods_len, 2);
     assert!(widget.drop.is_some());
     assert!(widget.traverse.is_some());
 
     // SAFETY: leaked slice of methods_len entries.
-    let methods = unsafe { core::slice::from_raw_parts(widget.methods, widget.methods_len) };
+    let methods = unsafe { slice::from_raw_parts(widget.methods, widget.methods_len) };
+    // SAFETY: names are leaked static strings.
     let method_names: Vec<&str> = methods.iter().map(|m| unsafe { ffi_str(m.name) }).collect();
     assert_eq!(method_names, ["__init__", "poke"]);
     // Method arities survive, including the multi-arity `poke` (self + 0/1).
-    let poke_arities =
-        unsafe { core::slice::from_raw_parts(methods[1].arities, methods[1].arities_len) };
+    // SAFETY: arities are leaked static slices of arities_len entries.
+    let poke_arities = unsafe { slice::from_raw_parts(methods[1].arities, methods[1].arities_len) };
     assert_eq!(poke_arities, &[0, 1]);
     assert!(methods.iter().all(|m| m.fun.is_some()));
 
     // Second class: no drop/traverse (the optional fields default to None).
     let plain = &classes[1];
+    // SAFETY: names are leaked static strings.
     assert_eq!(unsafe { ffi_str(plain.name) }, "Plain");
     assert_eq!(plain.methods_len, 1);
     assert!(plain.drop.is_none());
@@ -553,12 +600,14 @@ fn call_exported(index: usize, args: &[GenericValue]) -> FfiReturn {
     // SAFETY: valid leaked descriptor, see descriptor_contents.
     let desc = unsafe { &*generic_plugin_init() };
     // SAFETY: see above.
-    let functions = unsafe { core::slice::from_raw_parts(desc.functions, desc.functions_len) };
+    let functions = unsafe { slice::from_raw_parts(desc.functions, desc.functions_len) };
     let api = mock_host_api();
     let fun = functions[index]
         .fun
         .expect("export_module! emits non-null function pointers");
-    fun(&raw const api, args.as_ptr(), args.len())
+    // SAFETY: `PluginFn`'s contract - `api` is a complete vtable on this frame
+    // and `args` a live slice, both valid for the call.
+    unsafe { fun(&raw const api, args.as_ptr(), args.len()) }
 }
 
 #[test]
@@ -609,7 +658,7 @@ fn typed_error_path() {
 /// writing at all - the out-param is initialized null): a protocol
 /// violation. `Host::as_str` must report "not a string" instead of
 /// building a slice from the null pointer or fabricating an empty string.
-extern "C" fn mock_string_get_null_ptr(
+unsafe extern "C" fn mock_string_get_null_ptr(
     _ctx: *mut c_void,
     _value: GenericValue,
     out: *mut FfiStr,
@@ -623,17 +672,19 @@ extern "C" fn mock_string_get_null_ptr(
 fn as_str_rejects_a_null_pointer() {
     let mut api = mock_host_api();
     api.string_get = mock_string_get_null_ptr;
-    let host = Host::new(&api);
+    // SAFETY: `api` is a complete mock vtable living on this stack frame,
+    // answering per the `HostApi` protocol - `Host`'s invariant.
+    let host = unsafe { Host::new(&api) };
     assert_eq!(host.as_str(blob(0)), None);
 }
 
 #[test]
 fn panic_becomes_exception() {
     // Silence the default panic hook for the expected panic.
-    let previous = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
+    let previous = panic::take_hook();
+    panic::set_hook(Box::new(|_| {}));
     let ret = call_exported(2, &[]);
-    std::panic::set_hook(previous);
+    panic::set_hook(previous);
 
     assert_eq!(ret.status, FfiStatus::Exception as u32);
     // SAFETY: the class handle is built via `blob`, so limb 0 is set.
@@ -652,10 +703,10 @@ fn fatal_forwards_unchanged() {
 #[test]
 fn non_string_panic_payload_gets_the_fallback_message() {
     // Silence the default panic hook for the expected panic.
-    let previous = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
+    let previous = panic::take_hook();
+    panic::set_hook(Box::new(|_| {}));
     let ret = call_exported(4, &[]);
-    std::panic::set_hook(previous);
+    panic::set_hook(previous);
 
     assert_eq!(ret.status, FfiStatus::Exception as u32);
     assert_eq!(last_interned(), "panic: plugin function panicked");
@@ -665,14 +716,17 @@ fn non_string_panic_payload_gets_the_fallback_message() {
 fn null_args_with_zero_nargs_is_accepted() {
     // A C host may pass a null argument pointer for a zero-argument call;
     // the glue must not build a slice from it.
-    let desc = unsafe { &*generic_plugin_init() };
     // SAFETY: valid leaked descriptor, see descriptor_contents.
-    let functions = unsafe { core::slice::from_raw_parts(desc.functions, desc.functions_len) };
+    let desc = unsafe { &*generic_plugin_init() };
+    // SAFETY: the descriptor references a leaked slice of functions_len entries.
+    let functions = unsafe { slice::from_raw_parts(desc.functions, desc.functions_len) };
     let api = mock_host_api();
     let fun = functions[1]
         .fun
         .expect("export_module! emits non-null function pointers");
-    let ret = fun(&raw const api, core::ptr::null(), 0);
+    // SAFETY: `PluginFn`'s contract, whose argument clause is vacuous for
+    // `nargs == 0` - which is exactly what this test pins.
+    let ret = unsafe { fun(&raw const api, ptr::null(), 0) };
     // `fail` still runs and produces its IndexError.
     assert_eq!(ret.status, FfiStatus::Exception as u32);
 }
@@ -680,7 +734,7 @@ fn null_args_with_zero_nargs_is_accepted() {
 /// A host callback answering with a status outside the enum: the safe
 /// wrapper must surface it as a protocol-violation exception, never
 /// interpret `value`.
-extern "C" fn mock_call_value_unknown_status(
+unsafe extern "C" fn mock_call_value_unknown_status(
     _ctx: *mut c_void,
     _callee: GenericValue,
     _args: *const GenericValue,
@@ -696,7 +750,9 @@ extern "C" fn mock_call_value_unknown_status(
 fn unknown_host_status_is_a_protocol_violation_exception() {
     let mut api = mock_host_api();
     api.call_value = mock_call_value_unknown_status;
-    let mut host = Host::new(&api);
+    // SAFETY: `api` is a complete mock vtable living on this stack frame,
+    // answering per the `HostApi` protocol - `Host`'s invariant.
+    let mut host = unsafe { Host::new(&api) };
     let result = host.call(blob(0), &[]);
     assert!(matches!(result, Err(PluginError::Exception(_))));
     assert_eq!(last_interned(), "host callback returned unknown status 7");
@@ -706,7 +762,10 @@ fn unknown_host_status_is_a_protocol_violation_exception() {
 /// callback the protocol-violation path uses to build its exception. Error
 /// construction must bottom out at a nil-carrying exception instead of
 /// recursing through itself until the stack overflows.
-extern "C" fn mock_builtin_get_unknown_status(_ctx: *mut c_void, _name: FfiStr) -> FfiReturn {
+unsafe extern "C" fn mock_builtin_get_unknown_status(
+    _ctx: *mut c_void,
+    _name: FfiStr,
+) -> FfiReturn {
     FfiReturn {
         status: 7,
         value: blob(0),
@@ -718,7 +777,9 @@ fn unknown_status_during_error_construction_does_not_recurse() {
     let mut api = mock_host_api();
     api.call_value = mock_call_value_unknown_status;
     api.builtin_get = mock_builtin_get_unknown_status;
-    let mut host = Host::new(&api);
+    // SAFETY: `api` is a complete mock vtable living on this stack frame,
+    // answering per the `HostApi` protocol - `Host`'s invariant.
+    let mut host = unsafe { Host::new(&api) };
     let result = host.call(blob(0), &[]);
     assert!(matches!(result, Err(PluginError::Exception(_))));
 }
@@ -726,7 +787,7 @@ fn unknown_status_during_error_construction_does_not_recurse() {
 /// A host whose `builtin_get` reports a fatal error: error construction
 /// must propagate `Fatal` instead of downgrading it to a catchable
 /// exception carrying nil.
-extern "C" fn mock_builtin_get_fatal(_ctx: *mut c_void, _name: FfiStr) -> FfiReturn {
+unsafe extern "C" fn mock_builtin_get_fatal(_ctx: *mut c_void, _name: FfiStr) -> FfiReturn {
     FfiReturn {
         status: FfiStatus::Fatal as u32,
         value: blob(0),
@@ -737,6 +798,8 @@ extern "C" fn mock_builtin_get_fatal(_ctx: *mut c_void, _name: FfiStr) -> FfiRet
 fn fatal_during_error_construction_stays_fatal() {
     let mut api = mock_host_api();
     api.builtin_get = mock_builtin_get_fatal;
-    let host = Host::new(&api);
+    // SAFETY: `api` is a complete mock vtable living on this stack frame,
+    // answering per the `HostApi` protocol - `Host`'s invariant.
+    let host = unsafe { Host::new(&api) };
     assert!(matches!(host.type_error("boom"), PluginError::Fatal));
 }

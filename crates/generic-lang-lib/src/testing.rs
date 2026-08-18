@@ -190,7 +190,7 @@ fn run_tests_for_single_file(file: &PathBuf) -> FileTestResult {
 fn find_test_files(dir: &PathBuf) -> Vec<PathBuf> {
     let mut files: Vec<_> = WalkDir::new(dir)
         .into_iter()
-        .filter_map(std::result::Result::ok) // skip entries with errors
+        .filter_map(Result::ok) // skip entries with errors
         .filter(|e| e.file_type().is_file())
         .filter_map(|e| {
             let path = e.path();

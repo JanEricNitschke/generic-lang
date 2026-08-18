@@ -164,7 +164,7 @@ pub enum OpCode {
 #[cfg(test)]
 #[test]
 fn test_opcode_size() {
-    assert_eq!(std::mem::size_of::<OpCode>(), 1);
+    assert_eq!(size_of::<OpCode>(), 1);
 }
 
 impl OpCode {
@@ -344,7 +344,7 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
     fn instruction_len(&self, offset: usize, heap: &Heap) -> usize {
         use OpCode::*;
         let opcode = OpCode::try_from_primitive(self.chunk.code[offset]).unwrap();
-        std::mem::size_of::<OpCode>()
+        size_of::<OpCode>()
             + match opcode {
                 Nil | True | False | StopIteration | LoadZero | LoadOne | LoadTwo
                 | LoadMinusOne | LoadZerof | LoadOnef | Pop | Dup | Swap | CloseUpvalue

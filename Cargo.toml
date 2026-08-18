@@ -18,6 +18,15 @@ license    = "MIT"
 keywords   = ["programming-language", "generic"]
 categories = ["parser-implementations", "compilers"]
 
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unsafe_attr_outside_unsafe = "deny"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"
+unnecessary_safety_comment = "warn"
+unnecessary_safety_doc = "warn"
+
 [workspace.dependencies]
 # default-features off so dependents (the bin) control the lib's features
 # explicitly - that is what makes `--no-default-features` builds of the

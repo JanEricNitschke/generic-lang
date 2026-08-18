@@ -14,7 +14,7 @@ pub(super) fn generator_iter_native(
     Ok(*receiver)
 }
 
-// GC-safety of the take/restore pattern in send/next/raise below: the
+// GC invariant of the take/restore pattern in send/next/raise below: the
 // generator is taken out of the heap (`take_generator`) and thus hidden
 // from the GC while it runs. This is sound because `Generator::resume_with`
 // moves everything GC-relevant it holds (saved value stack, callframe) onto

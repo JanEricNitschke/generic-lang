@@ -75,7 +75,7 @@ fn test_value_size() {
     // From Number, because of GenericRational, because of GenericInt being 16
     // bytes (#[repr(align(8))] keeps it 16 on 32-bit too, matching GenericValue's size).
     assert_eq!(sizes.iter().copied().max().unwrap(), 32);
-    assert_eq!(std::mem::size_of::<Value>(), 32);
+    assert_eq!(size_of::<Value>(), 32);
 }
 
 // This is fake btw. But it is only used for hash,

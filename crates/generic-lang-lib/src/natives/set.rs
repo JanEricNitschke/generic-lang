@@ -118,7 +118,7 @@ pub(super) fn set_iter_next_native(
     receiver: &Value,
     _args: &[Value],
 ) -> VmResult<Value> {
-    // GC-safety: mem::take pattern, same as list/tuple/range iterators.
+    // GC invariant: mem::take pattern, same as list/tuple/range iterators.
     let mut iter = std::mem::take(receiver.as_set_iterator_mut(&mut vm.heap));
     let set = iter.get_set(&vm.heap);
 
@@ -273,7 +273,7 @@ pub(super) fn set_bitxor_native(vm: &mut VM, receiver: &Value, args: &[Value]) -
 /// Helper: extract items from a Set value into a Vec.
 fn extract_set_items(vm: &mut VM, value: &Value) -> VmResult<Vec<Value>> {
     if let Value::Instance(inst) = value
-        && let Some(crate::value::NativeClass::Set(set)) = &inst.to_value(&vm.heap).backing
+        && let Some(NativeClass::Set(set)) = &inst.to_value(&vm.heap).backing
     {
         Ok(set.items.iter().map(|(v, _h)| *v).collect())
     } else {

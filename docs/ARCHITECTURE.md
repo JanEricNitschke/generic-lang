@@ -270,6 +270,23 @@ uncatchable.
 Everything is feature-gated (`plugins`, in default); libraries are never
 unloaded. Code: `src/vm/plugins/` (mod/host_api/loader/trampolines/tests).
 
+All `unsafe` in the workspace lives in this machinery, and the FFI is typed to
+say so: every ABI function pointer is an `unsafe extern "C" fn`, in both
+directions, and `GenericValue`'s storage is private so safe code cannot forge a
+value (only the host issues them, via `to_ffi`). Host side, that means the 35 `cb_*` callbacks declare the contract
+documented on `HostApi` and discharge it in one `unsafe` prologue that decodes
+the raw inputs (`vm_from_ctx`, `from_ffi`, `str_from_ffi`, `extend_args` - all
+`unsafe fn`s with `# Safety` sections), after which the body is ordinary safe
+code; and everything that takes a plugin-supplied function pointer is an
+`unsafe fn` - the three `call_plugin*` entry points and the four loader steps
+that store such pointers for later dispatch or collection - so the obligation
+lands on the loader, which validated the descriptor of a library it `dlopen`ed. Plugin side, `generic-lang-api` keeps the whole thing behind two safe
+abstractions - `Host` (an `unsafe fn new` asserting the vtable is real, once,
+so the ~45 callback calls behind it are safe) and `export_module!` (which emits
+`unsafe extern "C" fn` wrappers) - leaving a Rust plugin author only their own
+`drop`/`traverse` and `opaque_ref`. The C representation is unchanged, so the
+generated `generic.h` and non-Rust plugins are unaffected.
+
 ## Load-bearing invariants (the "do not break" list)
 
 1. Allocation never collects; `collect_garbage` has exactly one call site.

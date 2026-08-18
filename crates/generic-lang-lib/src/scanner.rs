@@ -170,7 +170,7 @@ pub enum TokenKind {
 #[cfg(test)]
 #[test]
 fn test_token_kind_size() {
-    assert_eq!(std::mem::size_of::<TokenKind>(), 1);
+    assert_eq!(size_of::<TokenKind>(), 1);
 }
 
 impl std::fmt::Display for TokenKind {
@@ -195,7 +195,7 @@ pub struct Token<'a> {
 #[test]
 fn test_token_size() {
     // 64 on 64-bit (str is 16 bytes), 32 on 32-bit (str is 8 bytes).
-    assert!(std::mem::size_of::<Token<'_>>() <= 64);
+    assert!(size_of::<Token<'_>>() <= 64);
 }
 
 impl<'a> Token<'a> {
