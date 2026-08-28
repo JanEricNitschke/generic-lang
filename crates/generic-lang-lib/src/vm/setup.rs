@@ -25,7 +25,7 @@ impl VM {
         if closure.is_module {
             let value_id = closure.function.to_value(&self.heap).name;
             let script_name = self.heap.builtin_constants().script_name;
-            let alias = alias.map_or(value_id, |alias| alias);
+            let alias = alias.unwrap_or(value_id);
             let module_id = self.heap.add_module(Module::new(
                 value_id,
                 file_path,
