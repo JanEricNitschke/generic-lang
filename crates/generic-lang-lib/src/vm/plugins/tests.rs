@@ -24,7 +24,9 @@
 #[cfg(not(miri))]
 use std::env::consts::{DLL_PREFIX, DLL_SUFFIX};
 use std::path::PathBuf;
-use std::{env, fs, process, ptr, slice, str};
+#[cfg(not(miri))]
+use std::{env, fs, process};
+use std::{ptr, slice, str};
 
 use generic_lang_api::{
     FfiReturn, FfiStatus, FfiStr, GenericValue, HostApi, PluginFn, PluginVisitFn, ValueKind,
