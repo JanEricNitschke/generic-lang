@@ -56,6 +56,9 @@ variant_size_differences = "warn"
 undocumented_unsafe_blocks = "warn"
 unnecessary_safety_comment = "warn"
 unnecessary_safety_doc = "warn"
+# Deliberately off: it contradicts `unreachable_pub` on items in private
+# modules (rust-lang/rust-clippy#5369) - enforced in generic-lang-lib/src/lib.rs.
+redundant_pub_crate = "allow"
 # Correctness traps.
 create_dir = "warn"
 float_cmp_const = "warn"
