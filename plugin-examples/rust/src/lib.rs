@@ -73,7 +73,7 @@ fn sum(host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginErr
 
 /// `identity(v)` - return the argument unchanged. Round-trips every value
 /// kind through the FFI for the value-integrity tests.
-fn identity(_host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
+const fn identity(_host: &mut Host, args: &[GenericValue]) -> Result<GenericValue, PluginError> {
     Ok(args[0])
 }
 
