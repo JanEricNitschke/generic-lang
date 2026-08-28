@@ -273,7 +273,7 @@ unloaded. Code: `src/vm/plugins/` (mod/host_api/loader/trampolines/tests).
 All `unsafe` in the workspace lives in this machinery, and the FFI is typed to
 say so: every ABI function pointer is an `unsafe extern "C" fn`, in both
 directions, and `GenericValue`'s storage is private so safe code cannot forge a
-value (only the host issues them, via `to_ffi`). Host side, that means the 35 `cb_*` callbacks declare the contract
+value (only the host issues them, via `to_ffi`). Host side, that means the 42 `cb_*` callbacks declare the contract
 documented on `HostApi` and discharge it in one `unsafe` prologue that decodes
 the raw inputs (`vm_from_ctx`, `from_ffi`, `str_from_ffi`, `extend_args` - all
 `unsafe fn`s with `# Safety` sections), after which the body is ordinary safe

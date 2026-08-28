@@ -861,7 +861,7 @@ impl Drop for Rooted<'_> {
 }
 
 /// Signature of a Rust plugin function used with `export_module!`.
-pub type RustPluginFn = fn(&mut Host<'_>, &[GenericValue]) -> Result<GenericValue, PluginError>;
+pub type RustPluginFn = fn(&mut Host, &[GenericValue]) -> Result<GenericValue, PluginError>;
 
 /// Implementation detail of `export_module!`: runs a Rust plugin function
 /// behind `catch_unwind` and maps the outcome to an [`FfiReturn`].

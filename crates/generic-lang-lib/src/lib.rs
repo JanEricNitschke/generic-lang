@@ -16,6 +16,10 @@
 // Pre-existing duplicate transitive dependencies (syn 1/2 via derivative and
 // shrinkwraprs, rand 0.8/0.10, …); nothing actionable per crate.
 #![allow(clippy::multiple_crate_versions)]
+// Contradicts `unreachable_pub` on items in private modules - see the
+// workspace lints table. Attribute, not the table allow alone: CI's pedantic
+// pass re-enables nursery on the command line, which outranks `[lints]`.
+#![allow(clippy::redundant_pub_crate)]
 
 use std::{io::Write, path::PathBuf};
 
