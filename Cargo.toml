@@ -22,6 +22,7 @@ categories = ["parser-implementations", "compilers"]
 # they currently report nothing - that is what catches regressions. rustc has no
 # `pedantic`-style group for these, so most are listed one by one.
 [workspace.lints.rust]
+warnings = { level = "deny", priority = -2 }
 # Unsafe discipline.
 unsafe_op_in_unsafe_fn = "deny"
 unsafe_attr_outside_unsafe = "deny"

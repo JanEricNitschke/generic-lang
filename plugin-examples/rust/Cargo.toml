@@ -20,6 +20,7 @@ crate-type = ["cdylib"]
 # these are the same unsafe-discipline lints spelled out again, since this
 # fixture is also the showcase plugin authors copy from.
 [lints.rust]
+warnings = { level = "deny", priority = -2 }
 unsafe_op_in_unsafe_fn = "deny"
 unsafe_attr_outside_unsafe = "deny"
 
