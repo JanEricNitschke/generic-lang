@@ -272,12 +272,12 @@ more-benchmark: $(REL_BIN)
 	for filename in benchmark/*.gen; do \
 		echo $$filename; \
 		filebase=$${filename%.*}; \
-		hyperfine --reference ".\\target\\release\\generic $${filebase}.gen" --show-output --warmup 1 ".\\reference\\craftinginterpreters\\clox $${filebase}.lox.nom" ".\\reference\\craftinginterpreters\\jlox.bat $${filebase}.lox.nom"; \
+		hyperfine ".\\target\\release\\generic $${filebase}.gen" --show-output --warmup 1 ".\\reference\\craftinginterpreters\\clox $${filebase}.lox.nom" ".\\reference\\craftinginterpreters\\jlox.bat $${filebase}.lox.nom"; \
 	done
 
 .PHONY: fib-benchmark
 fib-benchmark: $(REL_BIN)
-	hyperfine --reference ".\\target\release\\generic benchmark\\fib\\fib.gen" --warmup 1 ".\\reference\\craftinginterpreters\\clox benchmark\\fib\\fib.lox.nom"   \
+	hyperfine ".\\target\release\\generic benchmark\\fib\\fib.gen" --warmup 1 ".\\reference\\craftinginterpreters\\clox benchmark\\fib\\fib.lox.nom"   \
 	"python benchmark\\fib\\fib.py" "ruby benchmark\\fib\\fib.rb" ".\\reference\\craftinginterpreters\\jlox.bat benchmark\\fib\\fib.lox.nom" \
 
 .PHONY: benchmark-ci
@@ -288,12 +288,12 @@ more-benchmark-ci: $(REL_BIN)
 	for filename in benchmark/*.gen; do \
 		echo $$filename; \
 		filebase=$${filename%.*}; \
-		hyperfine --reference "./target/release/generic $${filebase}.gen" --show-output --warmup 1 "./reference/craftinginterpreters/clox $${filebase}.lox.nom" "./reference/craftinginterpreters/jlox $${filebase}.lox.nom"; \
+		hyperfine "./target/release/generic $${filebase}.gen" --show-output --warmup 1 "./reference/craftinginterpreters/clox $${filebase}.lox.nom" "./reference/craftinginterpreters/jlox $${filebase}.lox.nom"; \
 	done
 
 .PHONY: fib-benchmark-ci
 fib-benchmark-ci: $(REL_BIN)
-	hyperfine --reference "./target/release/generic benchmark/fib/fib.gen" --warmup 1 "./reference/craftinginterpreters/clox benchmark/fib/fib.lox.nom"   \
+	hyperfine "./target/release/generic benchmark/fib/fib.gen" --warmup 1 "./reference/craftinginterpreters/clox benchmark/fib/fib.lox.nom"   \
 	"python benchmark/fib/fib.py" "ruby benchmark/fib/fib.rb" "./reference/craftinginterpreters/jlox benchmark/fib/fib.lox.nom" \
 
 # A real downstream program: clone the generic TicTacToe and run its test
