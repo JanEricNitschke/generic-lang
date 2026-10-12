@@ -96,7 +96,8 @@ mod tests {
     fn no_file_means_repl() {
         let args = parse(&["generic"]);
         assert!(!args.test);
-        assert!(args.file_and_arguments.is_empty());
+        let expected: [String; 0] = [];
+        assert_eq!(args.file_and_arguments, expected);
     }
 
     /// A leading `--` still lets a file whose name starts with a dash
