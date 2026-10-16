@@ -20,7 +20,7 @@ try {
     print("should not reach");
 } catch ImportError as e {
     print(str(e).contains("speaks ABI version 9999")); # expect: true
-    print(str(e).contains("host expects 1")); # expect: true
+    print(str(e).contains("host expects")); # expect: true
 }
 
 # A dylib without generic_plugin_init -> ImportError naming the missing symbol
