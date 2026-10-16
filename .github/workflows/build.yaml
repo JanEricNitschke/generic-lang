@@ -232,7 +232,7 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - name: Install cross
-        run: cargo install cross --locked
+        run: cargo install cross --git https://github.com/cross-rs/cross
       - name: Set CFLAGS for aarch64
         # ring's ARM asm needs __ARM_ARCH, which the cross container's gcc doesn't define.
         if: startsWith(matrix.target, 'aarch64')

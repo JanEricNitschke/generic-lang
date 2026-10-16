@@ -269,10 +269,8 @@ jobs:
 
       - name: Install Cross
         if: matrix.command == 'cross'
-        shell: bash
         run: |
-          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-          cargo binstall --no-confirm cross
+          cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Build for ${{ matrix.target }}
         run: ${{ matrix.command }} build --locked --release --target=${{ matrix.target }}
