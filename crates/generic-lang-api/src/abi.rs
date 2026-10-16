@@ -16,7 +16,7 @@ use core::ptr;
 ///
 /// The host checks a module's [`ModuleDesc::abi_version`] before calling
 /// anything in it and refuses to load mismatching plugins.
-pub const GENERIC_PLUGIN_ABI_VERSION: u32 = 1;
+pub const GENERIC_PLUGIN_ABI_VERSION: u32 = 2;
 
 /// An opaque generic runtime value.
 ///

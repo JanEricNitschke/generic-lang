@@ -15,7 +15,7 @@
  * The host checks a module's [`ModuleDesc::abi_version`] before calling
  * anything in it and refuses to load mismatching plugins.
  */
-#define GENERIC_PLUGIN_ABI_VERSION 1
+#define GENERIC_PLUGIN_ABI_VERSION 2
 
 /**
  * Discriminator for [`FfiReturn::status`].
