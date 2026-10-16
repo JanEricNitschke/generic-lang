@@ -85,9 +85,8 @@ jobs:
           git push origin "generic-lang-api-v${VERSION}"
 
       # Bump the API crate version via cargo-release. For a minor (ABI) bump,
-      # also increment GENERIC_PLUGIN_ABI_VERSION in abi.rs before
-      # cargo-release runs, then regenerate generic.h and verify the
-      # crate_version_encodes_the_abi_version test still passes.
+      # also increment GENERIC_PLUGIN_ABI_VERSION in abi.rs, then regenerate generic.h,
+      # and verify the crate_version_encodes_the_abi_version test still passes.
       # --no-push so the post-bump steps (header regen, test) happen before
       # the commit and tag are pushed.
       - name: Bump version (auto)
@@ -99,23 +98,23 @@ jobs:
           git config user.name "$GIT_AUTHOR_NAME"
           git config user.email "${GIT_AUTHOR_ID}+${GIT_AUTHOR_NAME}@users.noreply.github.com"
           cargo install cargo-release --locked
+          cargo release ${{ inputs.api_bump }} -p generic-lang-api --no-publish --no-push --no-confirm --config release-api.toml --execute
           if [ "${{ inputs.api_bump }}" = "minor" ]; then
             sudo apt-get update && sudo apt-get install -y make
             cargo install cbindgen --locked
-            CURRENT_MINOR=$(cargo metadata --format-version=1 --no-deps |
+            NEW_ABI=$(cargo metadata --format-version=1 --no-deps |
               jq -r '.packages[] | select(.name == "generic-lang-api") | .version' |
               cut -d. -f2)
-            NEW_ABI=$((CURRENT_MINOR + 1))
             sed -i -E "s/pub const GENERIC_PLUGIN_ABI_VERSION: u32 = [0-9]+;/pub const GENERIC_PLUGIN_ABI_VERSION: u32 = ${NEW_ABI};/" \
               crates/generic-lang-api/src/abi.rs
-          fi
-          cargo release ${{ inputs.api_bump }} -p generic-lang-api --no-publish --no-push --no-confirm --config release-api.toml --execute
-          if [ "${{ inputs.api_bump }}" = "minor" ]; then
             make generate-plugin-header
             cargo test -p generic-lang-api crate_version_encodes_the_abi_version
           fi
+          # The amend rewrote the release commit; re-point its tag
+          API_TAG=$(git tag --points-at HEAD)
           git add -A
           git commit --amend --no-edit
+          if [ -n "$API_TAG" ]; then git tag -f "$API_TAG"; fi
           git push origin "HEAD:${{ github.ref_name }}" --tags
 
       - name: Read version
