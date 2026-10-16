@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, macos-15-intel, windows-latest]
         toolchain: [stable, beta]
     runs-on: ${{ matrix.os }}
     defaults:
@@ -219,6 +219,11 @@ jobs:
           - i686-unknown-linux-musl
           - aarch64-unknown-linux-musl
           - armv7-unknown-linux-musleabihf
+          # Mirror the android wheel targets from the publish workflow. QEMU
+          # runs these against bionic; only tests that do not depend on the
+          # Android Runtime work there, which covers the whole Rust suite.
+          - aarch64-linux-android
+          - x86_64-linux-android
     steps:
       - name: Checkout repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -239,13 +244,19 @@ jobs:
 
   windows-cross-test:
     name: Windows test (${{ matrix.target }})
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - i686-pc-windows-msvc
-          - x86_64-pc-windows-gnu
+        include:
+          - os: windows-latest
+            target: i686-pc-windows-msvc
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu
+          # aarch64 binaries cannot run on the x64 runner and cross has no
+          # msvc images; the arm runner runs them natively.
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
     steps:
       - name: Checkout repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
