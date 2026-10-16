@@ -10,6 +10,12 @@ name: Publish
 # - API crate (generic-lang-api, version 0.<abi>.<patch>): crates.io +
 #   GitHub Release only.
 #
+# All release jobs downstream of the bumps carry explicit `if` conditions:
+# a skipped need (e.g. `bump-api` when only the interpreter is released)
+# poisons the whole needs chain with silent skips unless the downstream job
+# evaluates its own condition, and the wheels/binaries/releases only run
+# after crates.io publishing succeeded, keeping releases atomic.
+#
 # Tags use per-crate prefixes:
 # - Interpreter:  vX.Y.Z                    (e.g. v3.0.0)
 # - API crate:     generic-lang-api-vX.Y.Z   (e.g. generic-lang-api-v0.1.0)
@@ -218,7 +224,8 @@ jobs:
   # ---------------------------------------------------------------------------
   build-binaries:
     name: Build Binaries
-    needs: [bump-interpreter]
+    needs: [bump-interpreter, crates-io]
+    if: ${{ !cancelled() && needs.bump-interpreter.result == 'success' && needs.crates-io.result == 'success' }}
     continue-on-error: true
     strategy:
       matrix:
@@ -293,7 +300,8 @@ jobs:
 
   build-package:
     name: Package Crate
-    needs: [bump-interpreter]
+    needs: [bump-interpreter, crates-io]
+    if: ${{ !cancelled() && needs.bump-interpreter.result == 'success' && needs.crates-io.result == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -317,7 +325,8 @@ jobs:
           path: target/package/*.crate
 
   linux:
-    needs: [bump-interpreter]
+    needs: [bump-interpreter, crates-io]
+    if: ${{ !cancelled() && needs.bump-interpreter.result == 'success' && needs.crates-io.result == 'success' }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -352,7 +361,8 @@ jobs:
           path: dist
 
   musllinux:
-    needs: [bump-interpreter]
+    needs: [bump-interpreter, crates-io]
+    if: ${{ !cancelled() && needs.bump-interpreter.result == 'success' && needs.crates-io.result == 'success' }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -386,7 +396,8 @@ jobs:
           path: dist
 
   windows:
-    needs: [bump-interpreter]
+    needs: [bump-interpreter, crates-io]
+    if: ${{ !cancelled() && needs.bump-interpreter.result == 'success' && needs.crates-io.result == 'success' }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -414,7 +425,8 @@ jobs:
           path: dist
 
   macos:
-    needs: [bump-interpreter]
+    needs: [bump-interpreter, crates-io]
+    if: ${{ !cancelled() && needs.bump-interpreter.result == 'success' && needs.crates-io.result == 'success' }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -440,7 +452,8 @@ jobs:
           path: dist
 
   android:
-    needs: [bump-interpreter]
+    needs: [bump-interpreter, crates-io]
+    if: ${{ !cancelled() && needs.bump-interpreter.result == 'success' && needs.crates-io.result == 'success' }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -466,7 +479,8 @@ jobs:
           path: dist
 
   sdist:
-    needs: [bump-interpreter]
+    needs: [bump-interpreter, crates-io]
+    if: ${{ !cancelled() && needs.bump-interpreter.result == 'success' && needs.crates-io.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -489,6 +503,7 @@ jobs:
   pypi:
     name: Publish to PyPI
     needs: [bump-interpreter, linux, musllinux, windows, macos, android, sdist]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'skipped') }}
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -507,6 +522,7 @@ jobs:
   github-release-interpreter:
     name: GitHub Release (interpreter)
     needs: [bump-interpreter, build-binaries, build-package, linux, musllinux, windows, macos, android, sdist]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write
