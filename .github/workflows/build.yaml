@@ -17,6 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        toolchain: [stable, beta]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -37,6 +38,7 @@ jobs:
     - name: Set up Rust
       uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
       with:
+        toolchain: ${{ matrix.toolchain }}
         components: rustfmt,clippy
         build-warnings: ""
     - name: Install make
