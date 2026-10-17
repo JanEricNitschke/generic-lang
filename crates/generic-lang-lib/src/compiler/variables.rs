@@ -294,8 +294,15 @@ impl<'scanner> Compiler<'scanner, '_> {
         }
 
         if let Some(local) = self.in_enclosing(|compiler| compiler.resolve_local(name)) {
-            self.in_enclosing(|compiler| compiler.locals_mut()[local].is_captured = true);
-            return Some(self.add_upvalue(local, true));
+            // `resolve_local` reports the own-initializer error and returns
+            // `locals.len()` as a sentinel index; mark the capture only when
+            // the index names a real slot and fail the resolution otherwise.
+            return self
+                .in_enclosing(|compiler| {
+                    compiler.locals_mut().get_mut(local)?.is_captured = true;
+                    Some(local)
+                })
+                .map(|local| self.add_upvalue(local, true));
         }
 
         if let Some(upvalue) = self.in_enclosing(|compiler| compiler.resolve_upvalue(name)) {
