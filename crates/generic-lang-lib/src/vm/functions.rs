@@ -237,8 +237,7 @@ impl VM {
                 }
                 // Nothing found.
                 else {
-                    let message =
-                        format!("Undefined property '{}'.", self.heap.strings[method_name]);
+                    let message = self.undefined_property_message(receiver, method_name);
                     self.throw(AttributeError, &message)
                 }
             }
@@ -250,8 +249,7 @@ impl VM {
                     self.stack[new_stack_base] = value;
                     self.call_value(value, arg_count)
                 } else {
-                    let message =
-                        format!("Undefined property '{}'.", self.heap.strings[method_name]);
+                    let message = self.undefined_property_message(receiver, method_name);
                     self.throw(AttributeError, &message)
                 }
             }
@@ -261,11 +259,7 @@ impl VM {
                     self.stack[new_stack_base] = value.value;
                     self.call_value(value.value, arg_count)
                 } else {
-                    let message = format!(
-                        "Function '{}' not defined in module {}.",
-                        method_name.to_value(&self.heap),
-                        module.to_value(&self.heap).name.to_value(&self.heap)
-                    );
+                    let message = self.undefined_module_name_message(module, method_name);
                     self.throw(ValueError, &message)
                 }
             }
@@ -273,7 +267,13 @@ impl VM {
                 if let Some(proxy_class) = self.get_proxy_class(receiver) {
                     self.invoke_from_class(proxy_class, method_name, arg_count)
                 } else {
-                    self.throw(TypeError, "Only instances have methods.")
+                    self.throw(
+                        TypeError,
+                        &format!(
+                            "Only instances have methods, got: `{}`.",
+                            receiver.to_string(&self.heap)
+                        ),
+                    )
                 }
             }
         }
@@ -287,7 +287,9 @@ impl VM {
         arg_count: u8,
     ) -> VmResult {
         let Some(method) = class.to_value(&self.heap).methods.get(&method_name) else {
-            let message = format!("Undefined property '{}'.", self.heap.strings[method_name]);
+            // The receiver sits below the arguments on the stack.
+            let receiver = *self.peek(arg_count as usize).unwrap();
+            let message = self.undefined_property_message(receiver, method_name);
             return self.throw(AttributeError, &message);
         };
         match method {
@@ -387,7 +389,10 @@ impl VM {
             },
             _ => self.throw(
                 TypeError,
-                "Can only call functions, classes and instances with a `__call__` method.",
+                &format!(
+                    "Can only call functions, classes and instances with a `__call__` method, got: `{}`.",
+                    callee.to_string(&self.heap)
+                ),
             ),
         }
     }
@@ -865,10 +870,7 @@ impl VM {
             for name in names {
                 let Some(value) = last_module.to_value(&self.heap).globals.get(&name).copied()
                 else {
-                    let message = format!(
-                        "Could not find name to import `{}`.",
-                        name.to_value(&self.heap)
-                    );
+                    let message = self.missing_import_name_message(last_module, name);
                     return Err(self.throw(ImportError, &message).unwrap_err());
                 };
                 if was_local_import {

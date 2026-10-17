@@ -35,6 +35,7 @@ mod heap;
 mod natives;
 mod scanner;
 mod stdlib;
+mod suggestions;
 mod types;
 mod utils;
 mod value;

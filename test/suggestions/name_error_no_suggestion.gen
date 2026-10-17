@@ -1,0 +1,2 @@
+# Nothing is close to the misspelled name, so no suggestion is appended.
+print(completely_unrelated_name); # expect runtime error: NameError: Undefined variable 'completely_unrelated_name'.

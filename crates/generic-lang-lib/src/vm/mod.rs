@@ -25,6 +25,7 @@ mod native_containers;
 #[cfg(feature = "plugins")]
 pub(crate) mod plugins;
 mod state;
+mod suggestions;
 mod testing;
 mod variables;
 

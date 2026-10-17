@@ -1,0 +1,1 @@
+from "collections" import Dequ; # expect runtime error: ImportError: Could not find name to import `Dequ`. Did you mean: 'Deque'?

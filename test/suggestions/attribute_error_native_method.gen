@@ -1,0 +1,2 @@
+var items = [1, 2, 3];
+items.apend(4); # expect runtime error: AttributeError: Undefined property 'apend'. Did you mean: 'append'?

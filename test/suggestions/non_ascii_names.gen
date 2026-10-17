@@ -1,0 +1,31 @@
+# Non-ASCII names reach the matcher through getattr (identifiers in
+# source are ASCII-only) and are compared byte-wise, so multi-byte
+# characters count as several edits.
+
+# An umlaut matches its unaccented spelling at the two edits a long
+# name may have...
+class Words {
+    var world = 1;
+}
+try { print(getattr(Words, "wörld")); } catch AttributeError as e { print(e.message()); } # expect: Undefined property 'wörld'. Did you mean: 'world'?
+
+# ...and an emoji is one byte away from its neighbour.
+class Emojis {}
+var emojis = Emojis();
+setattr(emojis, "foo👍", 1);
+try { print(getattr(emojis, "foo👎")); } catch AttributeError as e { print(e.message()); } # expect: Undefined property 'foo👎'. Did you mean: 'foo👍'?
+
+# The byte-wise distance is only an approximation: a one-character
+# umlaut typo costs two byte edits, so it can lose against two plain
+# letter edits, which look equally far to the matcher. Class variables
+# are declared in order, which pins the tie-break.
+class Confusables {
+    var wbrld = 1;
+    var world = 1;
+}
+try { print(getattr(Confusables, "wörld")); } catch AttributeError as e { print(e.message()); } # expect: Undefined property 'wörld'. Did you mean: 'wbrld'?
+
+# Short accented names never suggest at all: the umlaut already uses
+# up the single edit short names are allowed.
+setattr(emojis, "wo", 1);
+try { print(getattr(emojis, "wö")); } catch AttributeError as e { print(e.message()); } # expect: Undefined property 'wö'.

@@ -5,6 +5,7 @@ use crate::vm::ExceptionKind::{
 };
 use crate::{
     heap::Heap,
+    suggestions::did_you_mean_suffix,
     types::InjectedKind,
     value::{
         BoundMethod, GenericInt, GenericRational, Module, NativeClass, Number, Value,
@@ -344,11 +345,7 @@ pub(super) fn getattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             if let Some(value) = maybe_value {
                 Ok(value)
             } else {
-                let message = format!(
-                    "Undefined name '{}' in module {}.",
-                    string_id.to_value(&vm.heap).clone(),
-                    module_id.to_value(&vm.heap).name.to_value(&vm.heap)
-                );
+                let message = vm.undefined_module_name_message(*module_id, *string_id);
                 Err(vm.throw(AttributeError, &message).unwrap_err())
             }
         }
@@ -371,7 +368,7 @@ pub(super) fn getattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
                 None => Err(vm
                     .throw(
                         AttributeError,
-                        &format!("Undefined property '{}'.", vm.heap.strings[*string_id]),
+                        &vm.undefined_property_message(*receiver, *string_id),
                     )
                     .unwrap_err()),
             }
@@ -382,7 +379,7 @@ pub(super) fn getattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
                 None => Err(vm
                     .throw(
                         AttributeError,
-                        &format!("Undefined property '{}'.", vm.heap.strings[*string_id]),
+                        &vm.undefined_property_message(Value::Class(*class), *string_id),
                     )
                     .unwrap_err()),
             }
@@ -524,10 +521,25 @@ pub(super) fn delattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     if let Value::String(string_id) = args[1] {
         let field = &vm.heap.strings[string_id].clone();
         if let Value::Instance(instance) = args[0] {
+            // Only fields are deletable, so only fields are suggested.
             match instance.to_value_mut(&mut vm.heap).fields.remove(field) {
                 Some(_) => Ok(Value::Nil),
                 None => Err(vm
-                    .throw(AttributeError, &format!("Undefined property '{field}'."))
+                    .throw(
+                        AttributeError,
+                        &format!(
+                            "Undefined property '{field}'.{}",
+                            did_you_mean_suffix(
+                                field,
+                                &instance
+                                    .to_value(&vm.heap)
+                                    .fields
+                                    .keys()
+                                    .map(String::as_str)
+                                    .collect::<Vec<_>>()
+                            )
+                        ),
+                    )
                     .unwrap_err()),
             }
         } else if let Value::Class(class) = args[0] {
@@ -537,7 +549,21 @@ pub(super) fn delattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
             {
                 Some(_) => Ok(Value::Nil),
                 None => Err(vm
-                    .throw(AttributeError, &format!("Undefined property '{field}'."))
+                    .throw(
+                        AttributeError,
+                        &format!(
+                            "Undefined property '{field}'.{}",
+                            did_you_mean_suffix(
+                                field,
+                                &class
+                                    .to_value(&vm.heap)
+                                    .variables
+                                    .keys()
+                                    .map(|variable| variable.to_value(&vm.heap).as_str())
+                                    .collect::<Vec<_>>()
+                            )
+                        ),
+                    )
                     .unwrap_err()),
             }
         } else if let Value::Module(module_id) = args[0] {
@@ -553,10 +579,7 @@ pub(super) fn delattr_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
                     Ok(Value::Nil)
                 }
                 None => {
-                    let message = format!(
-                        "Undefined name '{field}' in module {}.",
-                        module_id.to_value(&vm.heap).name.to_value(&vm.heap)
-                    );
+                    let message = vm.undefined_module_name_message(module_id, string_id);
                     Err(vm.throw(AttributeError, &message).unwrap_err())
                 }
             }

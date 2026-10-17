@@ -1,0 +1,9 @@
+# The failed name itself is never suggested: `greet` exists as a method
+# but is not reachable through the class object, so suggesting it would
+# be absurd - while the close `greets` class variable is still
+# considered.
+class Wide {
+    var greets = 1;
+    greet() { return "hi"; }
+}
+Wide.greet; # expect runtime error: AttributeError: Undefined property 'greet'. Did you mean: 'greets'?

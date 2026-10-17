@@ -1,0 +1,1 @@
+import "collectons"; # expect runtime error: ImportError: Could not find the file to be imported. Attempted path `"test/suggestions/collectons"` and stdlib. Did you mean: 'collections'?

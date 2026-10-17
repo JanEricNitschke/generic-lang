@@ -129,8 +129,9 @@ impl VM {
             )?;
         } else {
             let message = format!(
-                "Could not find the file to be imported. Attempted path `{:?}` and stdlib.",
-                file_path.to_slash_lossy()
+                "Could not find the file to be imported. Attempted path `{:?}` and stdlib.{}",
+                file_path.to_slash_lossy(),
+                self.stdlib_import_suggestion(&name),
             );
             return self.throw(ImportError, &message);
         }
@@ -196,10 +197,7 @@ impl VM {
             let defining_module = (!local_import).then(|| self.defining_module());
             for name in names_to_import {
                 let Some(global) = module_id.to_value(&self.heap).globals.get(name).copied() else {
-                    let message = format!(
-                        "Could not find name to import `{}`.",
-                        name.to_value(&self.heap)
-                    );
+                    let message = self.missing_import_name_message(module_id, *name);
                     return self.throw(ImportError, &message);
                 };
                 if let Some(defining_module) = defining_module {
