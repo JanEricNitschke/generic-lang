@@ -4,6 +4,7 @@
 
 use shrinkwraprs::Shrinkwrap;
 use std::cmp::Ordering;
+use std::fmt::Write;
 use strum_macros::{Display, EnumIter};
 
 #[derive(Shrinkwrap, PartialEq, Eq, Clone, Copy, Debug, PartialOrd)]
@@ -55,6 +56,92 @@ impl Location {
             end_column: other.end_column,
             index: self.index,
         }
+    }
+}
+
+/// If `loc` covers `line_no`, mark the corresponding chars in `underline`
+/// with `ch`.
+///
+/// Shared by the runtime traceback rendering and the compile error
+/// snippets.
+pub(crate) fn mark_location_on_line(
+    underline: &mut [char],
+    loc: &Location,
+    line_no: usize,
+    line_len: usize,
+    ch: char,
+) {
+    let start_line = *loc.start_line;
+    let end_line = *loc.end_line;
+
+    if line_no < start_line || line_no > end_line {
+        return;
+    }
+
+    let start = if line_no == start_line {
+        (*loc.start_column).saturating_sub(1)
+    } else {
+        0
+    };
+    let end = if line_no == end_line {
+        (*loc.end_column).saturating_sub(1).min(line_len) // subtract 1 for exclusive
+    } else {
+        line_len
+    };
+
+    for item in underline.iter_mut().take(end).skip(start) {
+        *item = ch;
+    }
+}
+
+/// Render the source lines covered by `oploc` as snippet rows into
+/// `out`: one 4-space indented source line followed by its 4-space
+/// indented underline row, `~` marking the preceding and following
+/// context and `^` the blamed span.
+///
+/// Row pairs are separated by a newline; the caller places the first
+/// row (the runtime writes it right after the frame header, compile
+/// errors after a newline of their own). Empty source lines are
+/// skipped, underline rows are trimmed at the end. Shared by the
+/// runtime traceback rendering and the compile error snippets.
+pub(crate) fn render_snippet_rows(out: &mut String, source: &str, oploc: &OpcodeLocation) {
+    let first_line = oploc
+        .preceding
+        .as_ref()
+        .map_or(*oploc.source.start_line, |preceding| *preceding.start_line);
+
+    let last_line = oploc
+        .following
+        .as_ref()
+        .map_or(*oploc.source.end_line, |following| *following.end_line);
+
+    let lines: Vec<&str> = source.lines().collect();
+    let mut first_row = true;
+    for line_no in first_line..=last_line {
+        let line = lines.get(line_no.saturating_sub(1)).copied().unwrap_or("");
+        let line_len = line.chars().count();
+        if line_len == 0 {
+            continue;
+        }
+        if !first_row {
+            out.push('\n');
+        }
+        first_row = false;
+        let _ = writeln!(out, "    {line}");
+        let mut underline: Vec<char> = vec![' '; line_len];
+        if let Some(preceding) = &oploc.preceding {
+            mark_location_on_line(&mut underline, preceding, line_no, line_len, '~');
+        }
+        if let Some(following) = &oploc.following {
+            mark_location_on_line(&mut underline, following, line_no, line_len, '~');
+        }
+        mark_location_on_line(&mut underline, &oploc.source, line_no, line_len, '^');
+        let underline: String = underline
+            .into_iter()
+            .collect::<String>()
+            .trim_end()
+            .to_string();
+        let _ = write!(out, "    {underline}");
     }
 }
 

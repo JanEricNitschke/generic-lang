@@ -423,6 +423,9 @@ class Test {
           }
           unexpectedCount++;
         }
+      } else if (line.startsWith("    ")) {
+        // Source snippet / underline row rendered under the preceding
+        // error, like the runtime tracebacks render.
       } else if (line != "") {
         if (unexpectedCount < 10) {
           fail("Unexpected output on stderr:");

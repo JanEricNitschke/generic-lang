@@ -6,6 +6,7 @@
 
 use super::Compiler;
 use crate::scanner::{Token, TokenKind as TK};
+use crate::types::{OpcodeLocation, render_snippet_rows};
 
 impl Compiler<'_, '_> {
     pub(super) fn error_at_current(&mut self, msg: &str) {
@@ -29,10 +30,20 @@ impl Compiler<'_, '_> {
             } else {
                 format!(" at '{}'", token.as_str())
             };
-            self.errors.push(format!(
-                "[line {}] Error{position}: {msg}",
-                *token.location.end_line
-            ));
+            let mut message = format!("[line {}] Error{position}: {msg}", *token.location.end_line);
+            // Underline the erroring token, spanning all of its lines.
+            // End-of-file errors and tokens swallowed to the end of the
+            // file (an unterminated string, say) have nothing to point at.
+            let reaches_eof = token.kind == TK::Error && self.scanner.at_eof();
+            if token.kind != TK::Eof && !reaches_eof {
+                message.push('\n');
+                render_snippet_rows(
+                    &mut message,
+                    self.scanner.source(),
+                    &OpcodeLocation::new(token.location),
+                );
+            }
+            self.errors.push(message);
         }
         self.had_error = true;
         #[cfg(feature = "debug_parser")]

@@ -242,6 +242,19 @@ impl<'a> Scanner<'a> {
         &self.source[start..end]
     }
 
+    /// The full source being scanned. Used to render the snippet rows
+    /// under a compile error.
+    pub(crate) fn source(&self) -> &'a str {
+        self.source
+    }
+
+    /// Whether the scanner has consumed the whole source. True
+    /// right after an error token that was scanned to the end of the
+    /// file (an unterminated string, say).
+    pub(crate) fn at_eof(&self) -> bool {
+        self.peek().is_none()
+    }
+
     fn mode(&self) -> &ScannerMode {
         self.modes
             .last()

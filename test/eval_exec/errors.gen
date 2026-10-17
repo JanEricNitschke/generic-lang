@@ -11,6 +11,8 @@ try {
     eval("var x = 1;");
 } catch SyntaxError as e {
     print(e.message()); # expect: [line 1] Error at 'var': Expect expression.
+    # expect:     var x = 1;
+    # expect:     ^^^
 }
 
 try {
