@@ -13,8 +13,8 @@ try {
 # expect: Traceback (most recent call last):
 # expect:   File "test/exceptions/stacktrace.gen", line 10, in <script>
 # expect:         inner(error);
-# expect:         ~~~~~^^^^^^^ 
+# expect:         ~~~~~^^^^^^^
 # expect:   File "test/exceptions/stacktrace.gen", line 3, in inner
 # expect:         throw val;
-# expect:         ~~~~~~^^^ 
+# expect:         ~~~~~~^^^
 }

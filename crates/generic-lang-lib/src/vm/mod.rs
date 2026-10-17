@@ -49,7 +49,7 @@ use std::path::PathBuf;
 
 use crate::config::{GENERIC_BUILTINS_DIR, GENERIC_STDLIB_DIR};
 use crate::natives;
-use crate::types::{InjectedKind, Location};
+use crate::types::{InjectedKind, render_snippet_rows};
 use crate::vm::errors::VmResult;
 use crate::{
     chunk::{CodeOffset, OpCode},
@@ -446,17 +446,6 @@ impl VM {
                 .get_location(CodeOffset(frame.ip.saturating_sub(1)))
                 .filled();
 
-            // Determine snippet range: from start of preceding to end of following
-            let first_line = oploc
-                .preceding
-                .as_ref()
-                .map_or(*oploc.source.start_line, |p| *p.start_line);
-
-            let last_line = oploc
-                .following
-                .as_ref()
-                .map_or(*oploc.source.end_line, |f| *f.end_line);
-
             // Header: file, source.start_line, function name
             writeln!(
                 out,
@@ -475,68 +464,13 @@ impl VM {
             let Some(source_text) = source_text else {
                 continue;
             };
-            let lines: Vec<&str> = source_text.lines().collect();
-            for line_no in first_line..=last_line {
-                let line = lines.get(line_no.saturating_sub(1)).copied().unwrap_or("");
-                let line_len = line.chars().count();
-
-                if line_len == 0 {
-                    continue;
-                }
-
-                // print code line
-                writeln!(out, "    {line}").unwrap();
-
-                let mut underline: Vec<char> = vec![' '; line_len];
-
-                if let Some(pre) = &oploc.preceding {
-                    mark_location_on_line(&mut underline, pre, line_no, line_len, '~');
-                }
-
-                if let Some(fol) = &oploc.following {
-                    mark_location_on_line(&mut underline, fol, line_no, line_len, '~');
-                }
-                mark_location_on_line(&mut underline, &oploc.source, line_no, line_len, '^');
-
-                let underline_str: String = underline.iter().collect();
-                write!(out, "    {underline_str}").unwrap();
-            }
+            render_snippet_rows(&mut out, &source_text, &oploc);
         }
 
         out
     }
 }
 
-/// If `loc` covers `line_no`, mark the corresponding chars in `underline` with `ch`.
-fn mark_location_on_line(
-    underline: &mut [char],
-    loc: &Location,
-    line_no: usize,
-    line_len: usize,
-    ch: char,
-) {
-    let start_line = *loc.start_line;
-    let end_line = *loc.end_line;
-
-    if line_no < start_line || line_no > end_line {
-        return;
-    }
-
-    let start = if line_no == start_line {
-        (*loc.start_column).saturating_sub(1)
-    } else {
-        0
-    };
-    let end = if line_no == end_line {
-        (*loc.end_column).saturating_sub(1).min(line_len) // subtract 1 for exclusive
-    } else {
-        line_len
-    };
-
-    for item in underline.iter_mut().take(end).skip(start) {
-        *item = ch;
-    }
-}
 // Remaining opcode handlers
 impl VM {
     fn jump_conditional(&mut self, condition: JumpCondition) -> VmResult {

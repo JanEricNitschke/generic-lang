@@ -577,6 +577,91 @@ mod tests {
         }
     }
 
+    fn compile_and_get_errors(source: &str) -> Vec<String> {
+        let mut heap = create_test_heap();
+        let scanner = Scanner::new(
+            source,
+            #[cfg(feature = "debug_scanner")]
+            false,
+        );
+        let compiler = Compiler::new(
+            scanner,
+            &mut heap,
+            "test",
+            #[cfg(any(feature = "print_code", feature = "debug_parser"))]
+            false,
+        );
+
+        match compiler.compile_collect() {
+            Ok(_) => Vec::new(),
+            Err(errors) => errors,
+        }
+    }
+
+    #[test]
+    fn test_error_snippet_underlines_the_erroring_token() {
+        let errors = compile_and_get_errors("var a = ;");
+        assert_eq!(
+            errors,
+            vec!["[line 1] Error at ';': Expect expression.\n    var a = ;\n            ^"]
+        );
+    }
+
+    #[test]
+    fn test_error_snippet_spans_multi_character_tokens() {
+        let errors = compile_and_get_errors("clas Foo {}");
+        assert_eq!(
+            errors,
+            vec![
+                "[line 1] Error at 'Foo': Expect ';' after expression.\n    clas Foo {}\n         ^^^"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_error_at_end_has_no_snippet() {
+        let errors = compile_and_get_errors("var a = 1");
+        assert_eq!(
+            errors,
+            vec!["[line 1] Error at end: Expect ';' after variable declaration."]
+        );
+    }
+
+    #[test]
+    fn test_error_snippet_spans_multiple_lines() {
+        // A token spanning several lines shows all of its lines, with
+        // the underline running to the line end on the first line and
+        // from the line start on the last.
+        let errors =
+            compile_and_get_errors("while (true) {\n    break \"abc\ndef\";\n}\nvar t = 1;");
+        assert_eq!(
+            errors,
+            vec![concat!(
+                "[line 3] Error at '\"abc\ndef\"': Expect ';' after 'break'.\n",
+                "        break \"abc\n",
+                "              ^^^^\n",
+                "    def\";\n",
+                "    ^^^^",
+            )]
+        );
+    }
+
+    #[test]
+    fn test_error_snippet_skips_tokens_reaching_eof() {
+        // An unterminated string swallows everything up to the end of
+        // the file; like `Error at end`, it has nothing to point at.
+        let errors = compile_and_get_errors("var s = \"abc\nvar t = 1;\n");
+        assert_eq!(errors, vec!["[line 3] Error: Unterminated string."]);
+    }
+
+    #[test]
+    fn test_error_snippet_skips_tokens_reaching_eof_without_trailing_newline() {
+        // Same as above, but the file does not end in a newline: the
+        // string still swallows every remaining line.
+        let errors = compile_and_get_errors("var s = \"abc\nvar t = 1;");
+        assert_eq!(errors, vec!["[line 2] Error: Unterminated string."]);
+    }
+
     #[test]
     fn test_compile_empty_program() {
         // Input
