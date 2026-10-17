@@ -206,6 +206,15 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         &self.rules[operator as usize]
     }
 
+    /// Whether the current token could begin an expression (it has a
+    /// prefix parsing rule). Used to recognize a probably-forgotten
+    /// comma: the next element is already there.
+    pub(super) fn current_starts_expression(&self) -> bool {
+        self.current
+            .as_ref()
+            .is_some_and(|token| self.get_rule(token.kind).prefix.is_some())
+    }
+
     /// Parse an infix expression to the end
     fn parse_infix_chain(
         &mut self,
@@ -252,18 +261,22 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
 
             self.parse_infix_chain(precedence, can_assign, ignore_operators, lhs_start_location);
 
-            if can_assign
-                && (self.match_(TK::Equal)
-                    | self.match_(TK::PlusEqual)
+            if can_assign {
+                if self.match_(TK::Equal) {
+                    // An `=` after a non-assignable expression is almost
+                    // always a mistyped comparison.
+                    self.error("Invalid assignment target. Maybe you meant '==' instead of '='?");
+                } else if self.match_(TK::PlusEqual)
                     | self.match_(TK::MinusEqual)
                     | self.match_(TK::StarEqual)
                     | self.match_(TK::SlashEqual)
                     | self.match_(TK::HatEqual)
                     | self.match_(TK::PipeEqual)
                     | self.match_(TK::AmperEqual)
-                    | self.match_(TK::PercentEqual))
-            {
-                self.error("Invalid assignment target.");
+                    | self.match_(TK::PercentEqual)
+                {
+                    self.error("Invalid assignment target.");
+                }
             }
             ParseResult::Success
         } else {
@@ -622,7 +635,14 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             return;
         }
         self.expression();
-        self.consume(TK::RightParen, "Expect ')' after expression.");
+        // An expression already finished but the next token starts a new
+        // one, so the user most likely meant a tuple and forgot the
+        // comma.
+        if !self.check(TK::RightParen) && self.current_starts_expression() {
+            self.error_at_current("Expect ')' after expression. Perhaps you forgot a comma?");
+        } else {
+            self.consume(TK::RightParen, "Expect ')' after expression.");
+        }
     }
 
     /// Emit a float literal constant.
@@ -831,6 +851,13 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             }
             item_count += 1;
             if !self.match_(TK::Comma) {
+                // The next token starts a new element, so the comma
+                // between them was probably forgotten.
+                if !self.check(TK::RightBracket) && self.current_starts_expression() {
+                    self.error_at_current(
+                        "Expect ',' or ']' after list element. Perhaps you forgot a comma?",
+                    );
+                }
                 break;
             }
         }
@@ -887,25 +914,32 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             return self.finish_hash_collection(CollectionType::Dict, 0);
         }
 
-        // First element
+        // Whether the elements are plain set entries or `key: value`
+        // dict entries is decided by the colon (if any) after the first
+        // key, so the first iteration of the loop is special.
+        let mut collection_type: Option<CollectionType> = None;
         let mut item_count = 0;
-        self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon, TK::Comma]);
-        let collection_type: CollectionType = if self.match_(TK::Colon) {
-            CollectionType::Dict
-        } else {
-            CollectionType::Set
-        };
-        if collection_type == CollectionType::Dict {
-            self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon, TK::Comma]);
-        }
-        item_count += 1;
-        self.match_(TK::Comma); // optional trailing comma after first
-
-        // Remaining elements
         while !self.check(TK::RightBrace) {
             match collection_type {
-                CollectionType::Dict => self.parse_dict_entry(),
-                CollectionType::Set => self.parse_precedence_ignoring(
+                None => {
+                    self.parse_precedence_ignoring(
+                        Precedence::non_assigning(),
+                        &[TK::Colon, TK::Comma],
+                    );
+                    collection_type = Some(if self.match_(TK::Colon) {
+                        CollectionType::Dict
+                    } else {
+                        CollectionType::Set
+                    });
+                    if matches!(collection_type, Some(CollectionType::Dict)) {
+                        self.parse_precedence_ignoring(
+                            Precedence::non_assigning(),
+                            &[TK::Colon, TK::Comma],
+                        );
+                    }
+                }
+                Some(CollectionType::Dict) => self.parse_dict_entry(),
+                Some(CollectionType::Set) => self.parse_precedence_ignoring(
                     Precedence::non_assigning(),
                     &[TK::Colon, TK::Comma],
                 ),
@@ -917,11 +951,26 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             }
             item_count += 1;
             if !self.match_(TK::Comma) {
+                // The next token starts a new element, so the comma
+                // between them was probably forgotten.
+                if !self.check(TK::RightBrace) && self.current_starts_expression() {
+                    let kind = match collection_type {
+                        Some(CollectionType::Dict) => "dict",
+                        Some(CollectionType::Set) => "set",
+                        None => unreachable!("The collection type is set by the first element"),
+                    };
+                    self.error_at_current(&format!(
+                        "Expect ',' or '}}' after {kind} element. Perhaps you forgot a comma?"
+                    ));
+                }
                 break;
             }
         }
 
-        self.finish_hash_collection(collection_type, item_count);
+        self.finish_hash_collection(
+            collection_type.expect("The collection type is decided by the first element"),
+            item_count,
+        );
     }
 
     /// Helper function to consume the closing brace and emit the appropriate

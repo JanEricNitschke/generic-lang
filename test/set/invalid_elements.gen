@@ -1,0 +1,14 @@
+# A token that cannot start an element is reported where the first
+# element would be; the literal then fails to close cleanly.
+# [line 9] Error at ';': Expect expression.
+# [line 10] Error at '=': Expect expression.
+# [line 11] Error at ',': Expect expression.
+# [line 12] Error at ',': Expect expression.
+# [line 13] Error at '@': Expect expression.
+# [line 14] Error at ')': Expect expression.
+var a = {;
+var b = {=;
+var c = {,};
+var d = {, 1};
+var e = { @ };
+var f = {);

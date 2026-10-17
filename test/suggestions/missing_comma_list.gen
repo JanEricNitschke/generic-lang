@@ -1,0 +1,4 @@
+# [line 3] Error at '2': Expect ',' or ']' after list element. Perhaps you forgot a comma?
+# [line 4] Error at '3': Expect ',' or ']' after list element. Perhaps you forgot a comma?
+var items = [1 2];
+var more = [1, 2 3];

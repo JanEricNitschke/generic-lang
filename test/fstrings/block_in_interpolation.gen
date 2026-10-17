@@ -1,4 +1,4 @@
-# [line 5] Error at '=': Expect expression.
+# [line 5] Error at '=': Expect '}' after set literal.
 # [line 5] Error at '}': Expect expression.
 var name = "Bob";
 var age = 42;
