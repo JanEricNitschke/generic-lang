@@ -380,8 +380,7 @@ macro_rules! run_instruction {
                             $self.stack_push(value);
                             Ok(None)
                         } else {
-                            let message =
-                                format!("Undefined property '{}'.", field.to_value(&$self.heap));
+                            let message = $self.undefined_property_message(value, field);
                             $self.throw(AttributeError, &message)
                         }
                     }
@@ -393,8 +392,7 @@ macro_rules! run_instruction {
                             $self.stack_push(value);
                             Ok(None)
                         } else {
-                            let message =
-                                format!("Undefined property '{}'.", field.to_value(&$self.heap));
+                            let message = $self.undefined_property_message(value, field);
                             $self.throw(AttributeError, &message)
                         }
                     }
@@ -404,11 +402,7 @@ macro_rules! run_instruction {
                             $self.stack_push(value.value);
                             Ok(None)
                         } else {
-                            let message = format!(
-                                "Undefined name '{}' in module {}.",
-                                field.to_value(&$self.heap),
-                                module.to_value(&$self.heap).name.to_value(&$self.heap)
-                            );
+                            let message = $self.undefined_module_name_message(module, field);
                             $self.throw(AttributeError, &message)
                         }
                     }

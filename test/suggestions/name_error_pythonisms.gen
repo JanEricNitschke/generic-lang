@@ -1,0 +1,9 @@
+# Names that only exist in other languages get a hint for their
+# generic equivalent instead of a plain "undefined variable".
+try { print(None); } catch NameError as e { print(e.message()); } # expect: Undefined variable 'None'. Did you mean 'nil'?
+try { print(True); } catch NameError as e { print(e.message()); } # expect: Undefined variable 'True'. Did you mean 'true'?
+try { print(False); } catch NameError as e { print(e.message()); } # expect: Undefined variable 'False'. Did you mean 'false'?
+class Foo {
+    name() { print(self); }
+}
+Foo().name(); # expect runtime error: NameError: Undefined variable 'self'. Did you mean 'this'?

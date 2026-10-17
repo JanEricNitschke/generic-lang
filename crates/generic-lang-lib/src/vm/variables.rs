@@ -43,7 +43,7 @@ impl VM {
                     if let Some(value) = maybe_builtin {
                         self.stack_push(value);
                     } else {
-                        let message = format!("Undefined variable '{}'.", self.heap.strings[*name]);
+                        let message = self.undefined_variable_message(*name);
                         return Err(self.throw(NameError, &message).unwrap_err());
                     }
                 }
@@ -91,7 +91,7 @@ impl VM {
                 }
                 global.value = stack_top_value;
             } else {
-                let message = format!("Undefined variable '{}'.", name.to_value(&self.heap));
+                let message = self.undefined_variable_message(name);
                 return Err(self.throw(NameError, &message).unwrap_err());
             }
         }

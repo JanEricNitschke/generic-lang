@@ -1,1 +1,1 @@
-true[2]; # expect runtime error: TypeError: Only instances have methods.
+true[2]; # expect runtime error: TypeError: Only instances have methods, got: `true`.

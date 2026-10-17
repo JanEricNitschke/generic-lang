@@ -1,0 +1,4 @@
+class Foo {}
+var foo = Foo();
+foo.name = 1;
+print(getattr(foo, "nme")); # expect runtime error: AttributeError: Undefined property 'nme'. Did you mean: 'name'?

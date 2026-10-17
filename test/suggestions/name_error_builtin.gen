@@ -1,0 +1,1 @@
+print(lenn([1, 2])); # expect runtime error: NameError: Undefined variable 'lenn'. Did you mean: 'len'?

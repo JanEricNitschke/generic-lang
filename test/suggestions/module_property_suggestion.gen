@@ -1,0 +1,2 @@
+import "math" as m;
+print(m.pii); # expect runtime error: AttributeError: Undefined name 'pii' in module math. Did you mean: 'pi'?

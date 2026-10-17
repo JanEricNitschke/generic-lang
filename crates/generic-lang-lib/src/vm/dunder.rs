@@ -61,12 +61,9 @@ impl VM {
         if let Some(length) = self.invoke_method_by_name(&[value], method_name)? {
             Ok(length)
         } else {
-            Err(self
-                .throw(
-                    AttributeError,
-                    &format!("Undefined property '{method_name}'."),
-                )
-                .unwrap_err())
+            let method_name = self.heap.string_id(&method_name);
+            let message = self.undefined_property_message(value, method_name);
+            Err(self.throw(AttributeError, &message).unwrap_err())
         }
     }
 

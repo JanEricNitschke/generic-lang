@@ -1,0 +1,6 @@
+class Foo {
+    name() { return "Foo"; }
+}
+var foo = Foo();
+print(foo.name()); # expect: Foo
+print(foo.nam()); # expect runtime error: AttributeError: Undefined property 'nam'. Did you mean: 'name'?

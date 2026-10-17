@@ -1,0 +1,11 @@
+# Common method names from other languages get a hint for the generic
+# equivalent instead of a bare "did you mean".
+var items = [1, 2];
+try { items.push(3); } catch AttributeError as e { print(e.message()); } # expect: Undefined property 'push'. Did you mean: 'append'?
+try { items.length(); } catch AttributeError as e { print(e.message()); } # expect: Undefined property 'length'. Use the 'len' function instead.
+var mapping = {:};
+try { mapping.put("a", 1); } catch AttributeError as e { print(e.message()); } # expect: Undefined property 'put'. Use d[k] = v.
+var numbers = {1, 2};
+try { numbers.add(3); } catch AttributeError as e { print(e.message()); } # expect: Undefined property 'add'. Did you mean: 'insert'?
+var pair = (1, 2);
+try { pair.append(3); } catch AttributeError as e { print(e.message()); } # expect: Undefined property 'append'. Did you mean to use a 'list' instead?

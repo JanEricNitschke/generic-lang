@@ -1,0 +1,3 @@
+# The suggestion pool covers the rust stdlib too, not just the embedded
+# generic one.
+import "tim"; # expect runtime error: ImportError: Could not find the file to be imported. Attempted path `"test/suggestions/tim"` and stdlib. Did you mean: 'time'?
