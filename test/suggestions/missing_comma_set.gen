@@ -1,0 +1,6 @@
+# [line 4] Error at '2': Expect ',' or '}' after set element. Perhaps you forgot a comma?
+# [line 5] Error at '3': Expect ',' or '}' after set element. Perhaps you forgot a comma?
+# [line 6] Error at '2': Expect ',' or '}' after set element. Perhaps you forgot a comma?
+var s = {1 2};
+var t = {1, 2 3};
+var u = {1 2, 3};

@@ -1,0 +1,6 @@
+# A dict entry needs a value after the colon, and the empty-dict
+# opener `{:` demands the closing brace right away.
+# [line 5] Error at '}': Expect expression.
+# [line 7] Error at end: Expect '}' after dict literal.
+var a = {"a":};
+var b = {:

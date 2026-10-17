@@ -1,0 +1,2 @@
+# [line 2] Error at '2': Expect ',' or ')' after argument. Perhaps you forgot a comma?
+print(1 2);

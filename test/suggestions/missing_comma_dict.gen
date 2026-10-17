@@ -1,0 +1,6 @@
+# [line 4] Error at '"b"': Expect ',' or '}' after dict element. Perhaps you forgot a comma?
+# [line 5] Error at '"c"': Expect ',' or '}' after dict element. Perhaps you forgot a comma?
+# [line 6] Error at '"b"': Expect ',' or '}' after dict element. Perhaps you forgot a comma?
+var d = {"a": 1 "b": 2};
+var e = {"a": 1, "b": 2 "c": 3};
+var f = {"a": 1 "b": 2, "c": 3};

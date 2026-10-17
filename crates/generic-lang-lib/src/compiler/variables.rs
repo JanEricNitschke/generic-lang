@@ -461,6 +461,13 @@ impl<'scanner> Compiler<'scanner, '_> {
                 arg_count += 1;
 
                 if !self.match_(TK::Comma) {
+                    // The next token starts a new argument, so the comma
+                    // between them was probably forgotten.
+                    if !self.check(TK::RightParen) && self.current_starts_expression() {
+                        self.error_at_current(
+                            "Expect ',' or ')' after argument. Perhaps you forgot a comma?",
+                        );
+                    }
                     break;
                 }
             }

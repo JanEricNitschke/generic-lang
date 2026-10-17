@@ -1,0 +1,6 @@
+# [line 4] Error at '2': Expect ')' after expression. Perhaps you forgot a comma?
+# [line 5] Error at '3': Expect ')' after expression. Perhaps you forgot a comma?
+# [line 6] Error at '2': Expect ')' after expression. Perhaps you forgot a comma?
+var pair = (1 2);
+var later = (1, 2 3);
+var early = (1 2, 3);
