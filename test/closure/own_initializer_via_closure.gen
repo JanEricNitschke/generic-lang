@@ -1,0 +1,6 @@
+# Regression test: reading a local in its own initializer through a
+# closure used to panic the compiler instead of reporting the usual
+# own-initializer error. The second case resolves through a nested
+# closure.
+fun f() { var x = ->() x; }  # Error at 'x': Can't read local variable in its own initializer.
+fun g() { var x = ->() ->() x; }  # Error at 'x': Can't read local variable in its own initializer.
