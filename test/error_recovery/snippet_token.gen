@@ -1,0 +1,4 @@
+var a = ;
+# [line 1] Error at ';': Expect expression.
+#|    var a = ;
+#|            ^

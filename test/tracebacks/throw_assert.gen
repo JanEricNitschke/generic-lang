@@ -1,0 +1,7 @@
+try {
+  throw AssertionError("boom");
+} catch AssertionError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/throw_assert.gen", line 2, in <script>
+# expect:       throw AssertionError("boom");
+# expect:       ~~~~~~^^^^^^^^^^^^^^^^^^^^^^

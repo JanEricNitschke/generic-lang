@@ -1,0 +1,7 @@
+try {
+  undefined_g = 5;
+} catch NameError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/variable_store.gen", line 2, in <script>
+# expect:       undefined_g = 5;
+# expect:       ^^^^^^^^^^^~~

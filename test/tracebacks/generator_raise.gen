@@ -1,0 +1,16 @@
+gen g() {
+  yield 1;
+  yield missing;
+}
+var it = g();
+try {
+  next(it);
+  next(it);
+} catch NameError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/generator_raise.gen", line 8, in <script>
+# expect:       next(it);
+# expect:       ~~~~^^^^
+# expect:   File "test/tracebacks/generator_raise.gen", line 3, in g
+# expect:       yield missing;
+# expect:             ^^^^^^^

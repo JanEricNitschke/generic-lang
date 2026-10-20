@@ -1,0 +1,8 @@
+var d = {"a": 1};
+try {
+  d["b"];
+} catch KeyError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/dict_missing_key.gen", line 3, in <script>
+# expect:       d["b"];
+# expect:       ~^^^^^

@@ -1,0 +1,10 @@
+var d = {"a": 1};
+try {
+  foreach (var k in d) {
+    d["b"] = 2;
+  }
+} catch RuntimeError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/container_mutation.gen", line 3, in <script>
+# expect:       foreach (var k in d) {
+# expect:                         ^

@@ -1,0 +1,1 @@
+fun f(value = yield 1) {} # Error at 'yield': Can't yield from top-level code.

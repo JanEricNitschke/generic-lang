@@ -1,0 +1,7 @@
+try {
+  5 % 0;
+} catch ValueError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/mod_by_zero.gen", line 2, in <script>
+# expect:       5 % 0;
+# expect:       ~~^~~

@@ -1,0 +1,9 @@
+import "pathlib" as pathlib;
+var p = pathlib.Path("/definitely_missing_xyz");
+try {
+  p.read_text();
+} catch IoError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/io_error.gen", line 4, in <script>
+# expect:       p.read_text();
+# expect:       ~~~~~~~~~~~^^

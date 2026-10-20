@@ -1,0 +1,7 @@
+try {
+  len(1);
+} catch AttributeError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/native_dunder_missing.gen", line 2, in <script>
+# expect:       len(1);
+# expect:       ~~~^^^
