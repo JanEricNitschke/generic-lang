@@ -1,0 +1,11 @@
+while (true) {
+    break "abc
+def";
+}
+var t = 1;
+# [line 3] Error at '"abc
+#|def"': Expect ';' after 'break'.
+#|        break "abc
+#|              ^^^^
+#|    def";
+#|    ^^^^

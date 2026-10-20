@@ -1,0 +1,11 @@
+# Class members are compiled in source order, not grouped by kind: a
+# class-variable default can use an instance method declared earlier.
+class Ordered {
+    answer() {
+        return 42;
+    }
+
+    var value = Ordered().answer();
+}
+
+print(Ordered.value); # expect: 42

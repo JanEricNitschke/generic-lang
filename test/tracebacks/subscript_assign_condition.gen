@@ -1,0 +1,13 @@
+class Boom { __bool__() { throw ValueError("bad"); } }
+class C { __setitem__(i, v) { return Boom(); } }
+var c = C();
+try {
+    if c[0] = 1 { print("x"); }
+} catch ValueError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/subscript_assign_condition.gen", line 5, in <script>
+# expect:         if c[0] = 1 { print("x"); }
+# expect:            ^^^^^^^^
+# expect:   File "test/tracebacks/subscript_assign_condition.gen", line 1, in __bool__
+# expect:     class Boom { __bool__() { throw ValueError("bad"); } }
+# expect:                               ~~~~~~^^^^^^^^^^^^^^^^^

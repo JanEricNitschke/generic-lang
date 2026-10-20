@@ -1,0 +1,4 @@
+clas Foo {}
+# [line 1] Error at 'Foo': Expect ';' after expression.
+#|    clas Foo {}
+#|         ^^^

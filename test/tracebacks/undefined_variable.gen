@@ -1,0 +1,7 @@
+try {
+  missing;
+} catch NameError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/undefined_variable.gen", line 2, in <script>
+# expect:       missing;
+# expect:       ^^^^^^^

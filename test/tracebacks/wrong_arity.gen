@@ -1,0 +1,10 @@
+fun f(a, b) {
+  return a;
+}
+try {
+  f(1);
+} catch TypeError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/wrong_arity.gen", line 5, in <script>
+# expect:       f(1);
+# expect:       ~^^^

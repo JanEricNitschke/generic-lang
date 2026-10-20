@@ -1,0 +1,8 @@
+fun f() {
+    var a = 1;
+    var a = 2;
+}
+var x = ;
+# [line 5] Error at ';': Expect expression.
+#|    var x = ;
+#|            ^

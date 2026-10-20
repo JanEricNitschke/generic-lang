@@ -1,0 +1,11 @@
+try {
+  throw ValueError("boom");
+} catch ValueError as e {
+  try {
+    throw e;
+  } catch ValueError as f { print(f.stack_trace()); }
+}
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/reraise.gen", line 2, in <script>
+# expect:       throw ValueError("boom");
+# expect:       ~~~~~~^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,14 @@
+fun f() {
+  x = 2;
+}
+const x = 1;
+try {
+  f();
+} catch ConstReassignmentError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/const_reassignment.gen", line 6, in <script>
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/const_reassignment.gen", line 2, in f
+# expect:       x = 2;
+# expect:       ^~~

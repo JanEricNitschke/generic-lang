@@ -1,0 +1,4 @@
+# [line 4] Error: Unterminated string.
+#|
+var s = "abc
+var t = 1;

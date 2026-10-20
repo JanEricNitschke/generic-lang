@@ -1,0 +1,8 @@
+var o = {};
+try {
+  o.nope();
+} catch AttributeError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/invoke_missing.gen", line 3, in <script>
+# expect:       o.nope();
+# expect:       ~~~~~~^^

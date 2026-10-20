@@ -1,14 +1,16 @@
-//! Error handling for the compiler.
+//! Error handling for the parser.
 //!
 //! Print nice error messages to the console when something goes wrong.
 //! Also handles synchronization after an error to prevent cascading errors and
 //! allow for multiple errors to be reported in a single run.
 
-use super::Compiler;
-use crate::scanner::{Token, TokenKind as TK};
-use crate::types::{OpcodeLocation, render_snippet_rows};
+use super::front::Parser;
+use crate::{
+    scanner::{Token, TokenKind as TK},
+    types::{OpcodeLocation, render_snippet_rows},
+};
 
-impl Compiler<'_, '_> {
+impl Parser<'_> {
     pub(super) fn error_at_current(&mut self, msg: &str) {
         self.error_at(self.current.clone().as_ref(), msg);
     }
@@ -64,7 +66,6 @@ impl Compiler<'_, '_> {
                 if cfg!(feature = "debug_parser_builtin") || !self.is_builtin {
                     println!("Found semicolon, resuming parsing");
                 }
-
                 return;
             }
             if let Some(

@@ -1,0 +1,19 @@
+fun b() {
+  return missing;
+}
+fun a() {
+  return b();
+}
+try {
+  a();
+} catch NameError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/nested.gen", line 8, in <script>
+# expect:       a();
+# expect:       ~^^
+# expect:   File "test/tracebacks/nested.gen", line 5, in a
+# expect:       return b();
+# expect:              ~^^
+# expect:   File "test/tracebacks/nested.gen", line 2, in b
+# expect:       return missing;
+# expect:              ^^^^^^^
