@@ -1,0 +1,9 @@
+fun identity(value) {
+    return value;
+}
+fun add(a, b) {
+    return a + b;
+}
+
+print(identity(1,)); # expect: 1
+print(add(1, 2,)); # expect: 3

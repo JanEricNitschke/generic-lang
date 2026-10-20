@@ -1,0 +1,13 @@
+fun one(a,) {
+    return a;
+}
+fun two(a, b,) {
+    return a + b;
+}
+fun rest(*values,) {
+    return values;
+}
+
+print(one(1)); # expect: 1
+print(two(1, 2)); # expect: 3
+print(rest(1, 2)); # expect: (1, 2)
