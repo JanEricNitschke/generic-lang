@@ -1,0 +1,6 @@
+from "nested/fib.gen" import (Z,);
+print(Z); # expect: 1
+
+from "nested/fib.gen" import (X, Y,);
+print(X); # expect: Right X
+print(Y); # expect: 2
