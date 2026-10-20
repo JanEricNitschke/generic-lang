@@ -426,7 +426,7 @@ mod tests {
 
     #[test]
     fn get_returns_status_headers_and_body() {
-        let mut vm = VM::new();
+        let mut vm = VM::default();
         let url = serve_once(200, "hello");
         let url_value = Value::String(vm.heap.string_id(&url));
         let response = get_native(&mut vm, &[url_value]).unwrap();
@@ -443,7 +443,7 @@ mod tests {
 
     #[test]
     fn post_sends_body_and_header() {
-        let mut vm = VM::new();
+        let mut vm = VM::default();
         let url = serve_once(201, "created");
         let url_value = Value::String(vm.heap.string_id(&url));
         let body_value = Value::String(vm.heap.string_id(&"payload".to_string()));
@@ -464,7 +464,7 @@ mod tests {
 
     #[test]
     fn error_status_is_a_response_not_a_throw() {
-        let mut vm = VM::new();
+        let mut vm = VM::default();
         let url = serve_once(404, "nope");
         let url_value = Value::String(vm.heap.string_id(&url));
         let response = get_native(&mut vm, &[url_value]).unwrap();
@@ -474,7 +474,7 @@ mod tests {
 
     #[test]
     fn transport_failure_raises() {
-        let mut vm = VM::new();
+        let mut vm = VM::default();
         // Nothing listening on this port.
         let url_value = Value::String(vm.heap.string_id(&"http://127.0.0.1:1/".to_string()));
         get_native(&mut vm, &[url_value]).unwrap_err();
@@ -482,7 +482,7 @@ mod tests {
 
     #[test]
     fn non_string_url_is_a_type_error() {
-        let mut vm = VM::new();
+        let mut vm = VM::default();
         get_native(&mut vm, &[Value::Nil]).unwrap_err();
     }
 }

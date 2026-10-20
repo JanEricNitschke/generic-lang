@@ -101,6 +101,7 @@ verbose_file_reads = "warn"
 generic-lang-lib = { version = "3.2.0", path = "crates/generic-lang-lib", default-features = false }
 generic-lang-api = { version = "0.2.0", path = "crates/generic-lang-api" }
 
+byteorder    = "1.5.0"
 clap         = { version = "4.6.1", features = ["derive"] }
 convert_case = "0.12.0"
 derivative   = "2.2.0"

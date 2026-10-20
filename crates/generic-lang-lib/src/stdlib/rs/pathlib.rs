@@ -343,7 +343,7 @@ mod tests {
 
     #[test]
     fn write_then_read_round_trips() {
-        let mut vm = VM::new();
+        let mut vm = VM::default();
         let dir = TempDir::new().unwrap();
         let file = new_path(&mut vm, &dir.path().join("note.txt"));
         let contents = Value::String(vm.heap.string_id(&"hello file".to_string()));
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn iterdir_lists_entries() {
-        let mut vm = VM::new();
+        let mut vm = VM::default();
         let dir = TempDir::new().unwrap();
         fs::write(dir.path().join("a.txt"), "a").unwrap();
         fs::write(dir.path().join("b.txt"), "b").unwrap();
@@ -377,7 +377,7 @@ mod tests {
 
     #[test]
     fn mkdir_creates_parents_and_is_idempotent() {
-        let mut vm = VM::new();
+        let mut vm = VM::default();
         let base = TempDir::new().unwrap();
         let nested = new_path(&mut vm, &base.path().join("a/b/c"));
         assert_eq!(
@@ -394,7 +394,7 @@ mod tests {
 
     #[test]
     fn rmdir_flat_and_recursive() {
-        let mut vm = VM::new();
+        let mut vm = VM::default();
         let base = TempDir::new().unwrap();
         // Flat rmdir removes an empty directory but refuses a non-empty one.
         let empty = base.path().join("empty");
@@ -421,7 +421,7 @@ mod tests {
 
     #[test]
     fn write_text_rejects_non_string() {
-        let mut vm = VM::new();
+        let mut vm = VM::default();
         let file = new_path(&mut vm, StdPath::new("unused"));
         path_write_text_native(&mut vm, &file, &[Value::Nil]).unwrap_err();
     }
