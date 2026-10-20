@@ -797,13 +797,20 @@ impl Parser<'_> {
         let path = path_token.as_str()[1..path_token.as_str().len() - 1].to_string();
         self.consume(TK::Import, "Expect 'import' after imported file path.");
 
-        let (first_name, first_location) = self.parse_variable("Expect name to import.");
-        let mut names = vec![(first_name, first_location)];
-        let mut last_name_location = first_location;
-        while self.match_(TK::Comma) {
+        let parenthesized = self.match_(TK::LeftParen);
+        let mut names = Vec::new();
+        let mut last_name_location;
+        loop {
             let (name, location) = self.parse_variable("Expect name to import.");
             last_name_location = location;
             names.push((name, location));
+            if !self.match_(TK::Comma) || (parenthesized && self.check(TK::RightParen)) {
+                break;
+            }
+        }
+        if parenthesized {
+            self.consume(TK::RightParen, "Expect ')' after names to import.");
+            last_name_location = self.location();
         }
         self.consume(TK::Semicolon, "Expect ';' after names to import name.");
         StmtKind::ImportFrom {
