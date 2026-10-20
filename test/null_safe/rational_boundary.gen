@@ -1,0 +1,18 @@
+# `?.`/`?[` only guard their postfix chain; the rational operator is
+# outside it, so the right operand is still evaluated when the receiver
+# is nil.
+var count = 0;
+
+fun bump() {
+    count += 1;
+    return 3;
+}
+
+var a = nil;
+try {
+    var r = a?.foo : (bump());
+    print(r);
+} catch TypeError {
+    print("rational rejected"); # expect: rational rejected
+}
+print(count); # expect: 1

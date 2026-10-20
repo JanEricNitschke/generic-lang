@@ -1,0 +1,7 @@
+try {
+  import "does_not_exist_qqq";
+} catch ImportError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/import_failure.gen", line 2, in <script>
+# expect:       import "does_not_exist_qqq";
+# expect:              ^^^^^^^^^^^^^^^^^^^^

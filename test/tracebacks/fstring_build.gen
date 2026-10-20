@@ -1,0 +1,16 @@
+class Boom {
+  __str__() {
+    throw ValueError("str boom");
+  }
+}
+
+try {
+  var s = f"x${Boom()}y";
+} catch ValueError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/fstring_build.gen", line 8, in <script>
+# expect:       var s = f"x${Boom()}y";
+# expect:               ^^^^^^^^^^^^^^
+# expect:   File "test/tracebacks/fstring_build.gen", line 3, in __str__
+# expect:         throw ValueError("str boom");
+# expect:         ~~~~~~^^^^^^^^^^^^^^^^^^^^^^

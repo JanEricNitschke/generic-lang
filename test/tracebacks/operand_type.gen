@@ -1,0 +1,7 @@
+try {
+  1 + nil;
+} catch TypeError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/operand_type.gen", line 2, in <script>
+# expect:       1 + nil;
+# expect:       ~~^~~~~

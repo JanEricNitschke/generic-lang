@@ -1,19 +1,154 @@
-//! Frontend of the compiler.
-//!
-//! Parses the tokens from the scanner to emit the correct bytecode for
-//! declarations, statements and expressions.
-use super::{ClassState, Compiler, FunctionType, LoopState, rules::Precedence};
+//! The parser's core: statements, declarations, and function literals
+//! (expressions live in [`super::rules`], error handling in
+//! [`super::error`]).
+
+use super::ast::{
+    CatchClause, ClassDecl, ClassMember, ClassVar, Expr, ExprContext, ExprKind, FunKind,
+    FunctionDef, FunctionKind, InjectedBody, InjectedProgram, LambdaBody, LambdaLit, Literal,
+    Method, MethodKind, Param, ParamList, Program, StmtKind, SwitchCase, TryStmt,
+};
+use super::rules::Precedence;
+
+use rustc_hash::FxHashSet as HashSet;
 
 use crate::{
-    chunk::{CodeOffset, ConstantIndex, ConstantLongIndex, OpCode},
-    scanner::{Token, TokenKind as TK},
-    types::{
-        ConditionType, Location, LoopType, Mutability, NumberEncoding, OpcodeLocation, ReturnMode,
-    },
-    utils::get_file_stem,
+    scanner::{Scanner, Token, TokenKind as TK},
+    types::{ConditionType, InjectedKind, Location, LoopType, Mutability},
 };
 
-impl Compiler<'_, '_> {
+/// Per-function parse state: the function's kind (for the `return`/
+/// `yield` validity checks) and the labels of its active loops.
+pub(super) struct FunctionState {
+    pub(super) kind: FunKind,
+    loop_labels: Vec<Option<String>>,
+}
+
+impl FunctionState {
+    fn new(kind: FunKind) -> Self {
+        Self {
+            kind,
+            loop_labels: Vec::new(),
+        }
+    }
+}
+
+/// Keep track of the state of a class declaration
+///
+/// Similar to `LoopState`, this is needed for nested class declarations.
+pub(super) struct ClassState {
+    pub(super) has_superclass: bool,
+    /// Class variable names declared in this class body, to reject
+    /// duplicate declarations at compile time.
+    class_variables: HashSet<String>,
+}
+
+impl ClassState {
+    fn new() -> Self {
+        Self {
+            has_superclass: false,
+            class_variables: HashSet::default(),
+        }
+    }
+}
+
+pub(crate) struct Parser<'scanner> {
+    /// The scanner that provides tokens to the compiler.
+    pub(super) scanner: Scanner<'scanner>,
+    pub(super) previous: Option<Token<'scanner>>,
+    pub(super) current: Option<Token<'scanner>>,
+
+    pub(super) had_error: bool,
+    pub(super) panic_mode: bool,
+    /// Collected compile errors; printed to stderr by [`Self::compile`],
+    /// returned to the caller by the collecting entry points (eval/exec
+    /// wrap them in a catchable `SyntaxError`).
+    pub(super) errors: Vec<String>,
+
+    /// Function nesting, for `return`/`yield` validity checks. Each
+    /// entry owns the loop-label stack of that function (loop labels
+    /// are per-function).
+    pub(super) function_stack: Vec<FunctionState>,
+
+    /// Class nesting, for `this`/`super` validity checks. Not reset per
+    /// function: methods nest inside their class.
+    pub(super) class_stack: Vec<ClassState>,
+
+    /// Whether the source is an embedded builtin; gates the
+    /// `debug_parser` output.
+    #[cfg(feature = "debug_parser")]
+    pub(super) is_builtin: bool,
+}
+
+impl<'scanner> Parser<'scanner> {
+    #[must_use]
+    pub(crate) fn new(
+        scanner: Scanner<'scanner>,
+        #[cfg(feature = "debug_parser")] is_builtin: bool,
+    ) -> Self {
+        Self {
+            scanner,
+            previous: None,
+            current: None,
+            had_error: false,
+            panic_mode: false,
+            errors: Vec::new(),
+            function_stack: vec![FunctionState::new(FunKind::Script)],
+            class_stack: Vec::new(),
+            #[cfg(feature = "debug_parser")]
+            is_builtin,
+        }
+    }
+
+    /// Parse a whole program: the top-level declaration loop.
+    pub(crate) fn parse_program(&mut self) -> Program {
+        self.advance();
+        let mut declarations = Vec::new();
+        while !self.match_(TK::Eof) {
+            declarations.push(self.declaration());
+        }
+        Program { declarations }
+    }
+
+    /// Parse injected (`eval`/`exec`) source: the injected locals only
+    /// matter to codegen (they become the function's leading slots), so
+    /// this merely parses the body and places the arity check.
+    pub(crate) fn parse_injected(
+        &mut self,
+        locals: &[String],
+        kind: InjectedKind,
+    ) -> InjectedProgram {
+        self.advance();
+        // Every local is filled by the caller, so all of them are
+        // required and the closure carries no defaults; the callers
+        // (`eval`/`exec`) reject more than 255 locals up front, so the
+        // error here is a backstop (placed after `advance` so it
+        // attaches to a token and is not dropped).
+        if u8::try_from(locals.len()).is_err() {
+            self.error("Can't inject more than 255 locals.");
+        }
+        let body = match kind {
+            InjectedKind::Eval => {
+                let expr = self.expression();
+                self.consume(TK::Eof, "Expect end of expression.");
+                InjectedBody::Eval(Box::new(expr))
+            }
+            InjectedKind::Exec => {
+                let mut declarations = Vec::new();
+                while !self.match_(TK::Eof) {
+                    declarations.push(self.declaration());
+                }
+                InjectedBody::Exec(declarations)
+            }
+        };
+        InjectedProgram {
+            locals: locals.to_vec(),
+            body,
+        }
+    }
+}
+
+// Scanner plumbing.
+impl Parser<'_> {
     pub(super) fn advance(&mut self) {
         self.previous = std::mem::take(&mut self.current);
         loop {
@@ -67,219 +202,132 @@ impl Compiler<'_, '_> {
     }
 
     #[cfg(feature = "debug_parser")]
-    pub(super) fn previous_token_kind(&self) -> Option<TK> {
+    fn previous_token_kind(&self) -> Option<TK> {
         self.previous.as_ref().map(|t| t.kind)
     }
 
-    /// Produce bytecode for parsing an expression.
-    ///
-    /// After that bytecode runs the resulting value will be on top of the stack.
-    pub(super) fn expression(&mut self) {
-        self.parse_precedence(Precedence::Assignment);
+    /// Parse a full expression (assignment precedence).
+    pub(super) fn expression(&mut self) -> Expr {
+        self.parse_precedence(Precedence::Assignment)
     }
+}
 
-    pub(super) fn declaration(&mut self) {
-        if self.match_(TK::Var) {
-            self.var_declaration(Mutability::Mutable);
+// Statements.
+impl Parser<'_> {
+    fn declaration(&mut self) -> StmtKind {
+        let kind = if self.match_(TK::Var) {
+            self.var_declaration(Mutability::Mutable)
         } else if self.match_(TK::Const) {
-            self.var_declaration(Mutability::Immutable);
+            self.var_declaration(Mutability::Immutable)
         } else if self.check(TK::At) {
-            self.decorated_declaration();
+            self.decorated_declaration()
         } else if self.check(TK::Fun) || self.check(TK::Gen) {
             // `fun_declaration` consumes the keyword itself to know which
             // function type it declares, so the keyword is only peeked here.
-            self.fun_declaration();
+            self.fun_declaration(Vec::new())
         } else if self.match_(TK::Class) {
-            self.class_declaration();
+            StmtKind::Class(Box::new(self.class_declaration(Vec::new())))
         } else {
-            self.statement();
-        }
+            self.statement()
+        };
         if self.panic_mode {
             self.synchronize();
         }
+        kind
     }
 
-    fn var_declaration(&mut self, mutability: Mutability) {
-        let global = self.parse_variable("Expect variable name.", mutability);
-
-        if self.match_(TK::Equal) {
-            self.expression();
-        } else {
-            self.emit_byte(OpCode::Nil, self.op_location());
-        }
-
+    /// `var`/`const name (= init)?;` - also the initializer clause of a
+    /// `for` loop, which reuses the same shape (including its `;`).
+    fn var_declaration(&mut self, mutability: Mutability) -> StmtKind {
+        let (name, name_location) = self.parse_variable("Expect variable name.");
+        let initializer = self.match_(TK::Equal).then(|| Box::new(self.expression()));
         self.consume(TK::Semicolon, "Expect ';' after variable declaration.");
-
-        self.define_variable(global, mutability);
+        let semicolon_location = self.location();
+        StmtKind::VarDecl {
+            name,
+            mutability,
+            initializer,
+            name_location,
+            semicolon_location,
+        }
     }
 
-    fn fun_declaration(&mut self) {
-        self.named_fun_declaration();
-    }
-
-    /// The undecorated function or generator statement (`fun`/`gen` not
-    /// yet consumed): define and bind it, returning the name and its
-    /// location for a decorator wrapper.
-    fn named_fun_declaration(&mut self) -> (String, Location) {
-        let function_type = if self.match_(TK::Gen) {
-            FunctionType::Generator
+    fn fun_declaration(&mut self, decorators: Vec<Expr>) -> StmtKind {
+        let (context, kind) = if self.match_(TK::Gen) {
+            (FunKind::Generator, FunctionKind::Generator)
         } else {
             self.consume(TK::Fun, "Expect function declaration.");
-            FunctionType::Function
+            (FunKind::Function, FunctionKind::Function)
         };
-        let (global, name, location) = self.undecorated_fun_definition(function_type);
-        self.define_variable(global, Mutability::Mutable);
-        (name, location)
+        let (name, _name_location) = self.parse_variable("Expect function name.");
+        let fn_lit = self.parse_function_def(name.clone(), context);
+        StmtKind::FunctionDecl {
+            name,
+            kind,
+            fn_lit,
+            decorators,
+        }
     }
 
-    /// A declaration introduced by one or more decorators; the target may
-    /// be a function, a generator, or a class. One uniform scheme for all
-    /// of them:
-    ///
-    /// 1. The decorator values are evaluated in source order and tracked
-    ///    as anonymous locals, so everything the following declaration
-    ///    declares (the `super` local, a local name) stays aligned with
-    ///    the physical stack.
-    /// 2. The plain declaration runs and binds its name as usual.
-    /// 3. The chain is applied to loaded copies, innermost first, and the
-    ///    result is written back over the binding
-    ///    (`Name = d1(d2(Name))`).
-    /// 4. At top level the temporaries are popped afterwards; in a scope
-    ///    they die with it.
-    ///
-    /// Stack progression for `@d1 @d2 fun Name`, at local scope (at top
-    /// level `Name` lives in the globals table instead of a slot):
-    ///
-    /// ```text
-    /// [..]                                  start
-    /// [.., d1, d2]                          decorator temporaries
-    /// [.., d1, d2, Name]                    declaration; Name's slot
-    /// [.., d1, d2, Name, d1, d2, Name]      loaded copies
-    /// [.., d1, d2, Name, d1, d2(Name)]      innermost call
-    /// [.., d1, d2, Name, d1(d2(Name))]      outermost call
-    /// [.., d1, d2, result, result]          SetLocal peeks, writes Name's slot
-    /// [.., d1, d2, result]                  Pop discards the leftover copy
-    /// [..]                                  (top level only) temporaries popped
-    /// ```
-    fn decorated_declaration(&mut self) {
-        let temporaries_base = self.locals().len();
-        let mut decorator_locations = Vec::new();
+    /// One or more `` @decorator `` expressions in front of a function
+    /// or class declaration.
+    fn decorated_declaration(&mut self) -> StmtKind {
+        let mut decorators = Vec::new();
         while self.match_(TK::At) {
-            let start_location = self.current_location();
-            self.expression();
-            let end_location = self.location();
-            decorator_locations.push(start_location.merge_ordered(&end_location));
-        }
-        for _ in &decorator_locations {
-            // `@` cannot start an identifier, so user code can never
-            // resolve these; they are only addressed by slot.
-            self.add_local(
-                self.synthetic_identifier_token("@decorator"),
-                Mutability::Immutable,
-            );
-            self.mark_initialized();
+            decorators.push(self.expression());
         }
 
-        let (name, location) = if self.match_(TK::Class) {
-            self.class_declaration()
+        if self.match_(TK::Class) {
+            StmtKind::Class(Box::new(self.class_declaration(decorators)))
         } else if self.check(TK::Fun) || self.check(TK::Gen) {
-            self.named_fun_declaration()
+            self.fun_declaration(decorators)
         } else {
             self.error_at_current(
                 "Expect function or class declaration or another decorator call after a decorator call.",
             );
-            return;
-        };
-
-        for offset in 0..decorator_locations.len() {
-            self.emit_local_get(temporaries_base + offset, location);
-        }
-        self.named_variable(&name, false, location);
-        self.emit_decorator_calls(&decorator_locations);
-        self.emit_variable_set_and_pop(&name, location);
-
-        if *self.scope_depth() == 0 {
-            for _ in &decorator_locations {
-                self.emit_byte(OpCode::Pop, OpcodeLocation::new(location));
+            StmtKind::Expression {
+                expr: Box::new(self.dummy_expr()),
             }
-            self.locals_mut().truncate(temporaries_base);
         }
-    }
-
-    /// One `CALL 1` per decorator, innermost (closest to the definition)
-    /// first.
-    fn emit_decorator_calls(&mut self, decorator_locations: &[Location]) {
-        for decorator_location in decorator_locations.iter().rev() {
-            self.emit_bytes(OpCode::Call, 1, OpcodeLocation::new(*decorator_location));
-        }
-    }
-
-    fn undecorated_fun_definition(
-        &mut self,
-        function_type: FunctionType,
-    ) -> (Option<ConstantLongIndex>, String, Location) {
-        let global = self.parse_variable("Expect function name.", Mutability::Mutable);
-        let name = self.previous.as_ref().unwrap().as_str().to_string();
-        let location = self.location();
-        // The name local stays uninitialized while the parameter list
-        // compiles: default expressions run in the enclosing scope before
-        // the closure exists, so reading the name there is the
-        // own-initializer error. `function` marks it initialized ahead of
-        // the body, which may self-reference for recursion.
-        self.named_function(function_type);
-        (global, name, location)
     }
 
     /// Compile a class declaration (the `class` keyword is already
-    /// consumed). Returns the class name and its location so a decorator
-    /// wrapper can reload and rebind the class.
-    fn class_declaration(&mut self) -> (String, Location) {
-        self.consume(TK::Identifier, "Expect class name.");
-        let class_name_location = self.location();
-        let class_name = self.previous.as_ref().unwrap().as_str().to_string();
-        let name_constant = self.identifier_constant(&class_name);
-        self.declare_variable(Mutability::Mutable);
-        let class_name_index = ConstantIndex::try_from(name_constant).unwrap_or_else(|_| {
-            self.error("Too many constants when declaring class.");
-            ConstantIndex(0)
-        });
-        self.emit_bytes(OpCode::Class, class_name_index, self.op_location());
-        self.define_variable(Some(name_constant), Mutability::Mutable);
-        self.class_state.push(ClassState::new());
+    /// consumed).
+    fn class_declaration(&mut self, decorators: Vec<Expr>) -> ClassDecl {
+        let (name, name_location) = self.parse_variable("Expect class name.");
+        let mut members = Vec::new();
 
-        if self.match_(TK::Less) {
+        // The class context must be active while the superclass clause and
+        // the body parse.
+        self.class_stack.push(ClassState::new());
+
+        let superclass = self.match_(TK::Less).then(|| {
             let less_location = self.location();
             self.consume(TK::Identifier, "Expect superclass name.");
-            let super_class_location = self.location();
-            self.variable(false, &[]);
-
-            if class_name == self.previous.as_ref().unwrap().as_str() {
+            let superclass_location = self.location();
+            let superclass_name = self.previous.as_ref().unwrap().as_str().to_string();
+            if name == superclass_name {
                 self.error("A class can't inherit from itself.");
             }
-
-            self.begin_scope();
-            self.add_local(self.synthetic_token(TK::Super), Mutability::Mutable);
-            self.define_variable(None, Mutability::Mutable);
-
-            self.named_variable(&class_name, true, class_name_location);
-            self.emit_byte(
-                OpCode::Inherit,
-                OpcodeLocation {
-                    preceding: Some(less_location),
-                    source: super_class_location,
-                    following: None,
-                },
-            );
             self.current_class_mut().unwrap().has_superclass = true;
-        }
+            (
+                Box::new(Expr {
+                    location: superclass_location,
+                    kind: ExprKind::Variable {
+                        name: superclass_name,
+                        ctx: ExprContext::Load,
+                    },
+                }),
+                less_location,
+            )
+        });
 
-        self.named_variable(&class_name, true, class_name_location);
         self.consume(TK::LeftBrace, "Expect '{' before class body.");
         while !self.check(TK::RightBrace) && !self.check(TK::Eof) {
             if self.match_(TK::Var) {
-                self.class_variable_declaration();
+                members.push(ClassMember::Variable(self.class_variable_declaration()));
             } else {
-                self.method();
+                members.push(ClassMember::Method(self.method()));
             }
             // `method` does not consume tokens when the class body holds
             // something that cannot start a method, so without bailing here on
@@ -290,251 +338,165 @@ impl Compiler<'_, '_> {
             }
         }
         self.consume(TK::RightBrace, "Expect '}' after class body.");
-        self.emit_byte(OpCode::Pop, self.op_location());
+        self.class_stack.pop();
 
-        if self.current_class().unwrap().has_superclass {
-            self.end_scope();
+        ClassDecl {
+            name,
+            superclass,
+            members,
+            decorators,
+            name_location,
         }
-
-        self.class_state.pop();
-        (class_name, class_name_location)
     }
 
-    fn statement(&mut self) {
+    fn statement(&mut self) -> StmtKind {
         if self.match_(TK::If) || self.match_(TK::Unless) {
-            let condition_type = if self.check_previous(TK::If) {
-                ConditionType::If
-            } else {
+            let condition_type = if self.check_previous(TK::Unless) {
                 ConditionType::Unless
-            };
-            self.conditional_statement(condition_type);
-        } else if self.match_(TK::Try) {
-            self.try_statement();
-        } else if self.match_(TK::Throw) {
-            self.throw_statement();
-        } else if self.match_(TK::LeftBrace) {
-            self.scoped_block();
-        } else if self.match_(TK::For) {
-            self.for_statement();
-        } else if self.match_(TK::ForEach) {
-            self.foreach_statement();
-        } else if self.match_(TK::While) || self.match_(TK::Until) {
-            let loop_type = if self.check_previous(TK::While) {
-                LoopType::While
             } else {
-                LoopType::Until
+                ConditionType::If
             };
-            self.loop_statement(loop_type);
+            self.conditional_statement(condition_type)
+        } else if self.match_(TK::Try) {
+            self.try_statement()
+        } else if self.match_(TK::Throw) {
+            self.throw_statement()
+        } else if self.match_(TK::LeftBrace) {
+            StmtKind::Block {
+                stmts: self.block(),
+            }
+        } else if self.match_(TK::For) {
+            self.for_statement()
+        } else if self.match_(TK::ForEach) {
+            self.foreach_statement()
+        } else if self.match_(TK::While) || self.match_(TK::Until) {
+            let loop_type = if self.check_previous(TK::Until) {
+                LoopType::Until
+            } else {
+                LoopType::While
+            };
+            self.loop_statement(loop_type)
         } else if self.match_(TK::Continue) {
-            self.continue_statement();
+            self.continue_statement()
         } else if self.match_(TK::Break) {
-            self.break_statement();
+            self.break_statement()
         } else if self.match_(TK::Return) {
-            self.return_statement();
+            self.return_statement()
         } else if self.match_(TK::Switch) {
-            self.switch_statement();
+            self.switch_statement()
         } else if self.match_(TK::Import) {
-            self.import_statement();
+            self.import_statement()
         } else if self.match_(TK::From) {
-            self.import_from_statement();
+            self.import_from_statement()
         } else if self.match_(TK::Async) || self.match_(TK::Await) {
             self.error("Async and await are not yet implemented.");
+            StmtKind::Expression {
+                expr: Box::new(self.dummy_expr()),
+            }
         } else if self.match_(TK::Finally) {
             self.error("Finally is not yet implemented.");
+            StmtKind::Expression {
+                expr: Box::new(self.dummy_expr()),
+            }
         } else {
-            self.expression_statement();
+            self.expression_statement()
         }
     }
 
-    fn try_statement(&mut self) {
-        let location = self.op_location();
-        let mut first_catch_start = Some(self.emit_jump(OpCode::RegisterCatches, location));
-
+    fn try_statement(&mut self) -> StmtKind {
+        let try_location = self.location();
         self.consume(TK::LeftBrace, "Expect '{' after try");
-        self.scoped_block();
+        let body = self.block();
 
-        self.emit_byte(OpCode::PopHandler, self.op_location());
-        let jump_to_else = self.emit_jump(OpCode::Jump, location);
-        let mut catch_jumps_to_end = Vec::new();
-        let mut jump_to_next_catch = None;
-
+        let mut catches = Vec::new();
         while self.match_(TK::Catch) {
-            if let Some(first_catch_offset) = first_catch_start {
-                self.patch_jump(first_catch_offset);
-                first_catch_start = None;
-            }
-
-            self.begin_scope();
-
-            let exception_var_name = "@exception";
-            // Declare space for where the exception variable will be sitting on the stack.
-            self.add_local(
-                self.synthetic_identifier_token(exception_var_name),
-                Mutability::Immutable,
-            );
-            self.define_variable(None, Mutability::Immutable);
-
-            if let Some(jump) = jump_to_next_catch {
-                self.patch_jump(jump);
-            }
-
-            let mut jumps_to_catch_body = Vec::new();
-
-            if self.match_(TK::LeftParen) {
+            let matchers = if self.match_(TK::LeftParen) {
+                let mut matchers = Vec::new();
                 loop {
-                    let start_location = self.current_location();
-                    self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Comma]);
-                    let end_location = self.location();
-                    let exception_location =
-                        OpcodeLocation::new(start_location.merge_ordered(&end_location));
-                    // This compares the exception at STACK[-2] with the class at STACK[-1]
-                    // Pops the class and leaves the comparison result above the exception.
-                    self.emit_byte(OpCode::CompareException, exception_location);
-                    jumps_to_catch_body
-                        .push(self.emit_jump(OpCode::PopJumpIfTrue, exception_location));
-
+                    let expr = self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Comma]);
+                    matchers.push(expr);
                     if !self.match_(TK::Comma) {
                         break;
                     }
                 }
                 self.consume(TK::RightParen, "Expect ')' after exception types.");
+                matchers
             } else {
-                let start_location = self.current_location();
-                self.expression();
-                let end_location = self.location();
-                let exception_location =
-                    OpcodeLocation::new(start_location.merge_ordered(&end_location));
-                self.emit_byte(OpCode::CompareException, exception_location);
-                jumps_to_catch_body.push(self.emit_jump(OpCode::PopJumpIfTrue, exception_location));
-            }
+                vec![self.expression()]
+            };
 
-            jump_to_next_catch = Some(self.emit_jump(OpCode::Jump, location));
-
-            for jump in jumps_to_catch_body {
-                self.patch_jump(jump);
-            }
-
-            if self.match_(TK::As) {
-                let global =
-                    self.parse_variable("Expect exception variable name.", Mutability::Immutable);
-                self.named_variable(&exception_var_name, false, location.source);
-                self.define_variable(global, Mutability::Immutable);
-            }
+            let binding = self.match_(TK::As).then(|| {
+                let (name, location) = self.parse_variable("Expect exception variable name.");
+                (name, location)
+            });
 
             self.consume(TK::LeftBrace, "Expect '{' after catch clause");
-            self.block();
-            self.end_scope();
-            // We remove the exception with the end of the scope.
-            // Leave nil on the stack to indicate the the reraise that we caught the exception.
-            self.emit_byte(OpCode::Nil, self.op_location());
-            catch_jumps_to_end.push(self.emit_jump(OpCode::Jump, location));
+            let catch_body = self.block();
+            catches.push(CatchClause {
+                matchers,
+                binding,
+                body: catch_body,
+            });
         }
 
-        self.patch_jump(jump_to_else);
-
-        if self.match_(TK::Else) {
+        let else_block = self.match_(TK::Else).then(|| {
             self.consume(TK::LeftBrace, "Expect '{' after else");
-            self.block();
-        }
-        let jump_over_reraise = self.emit_jump(OpCode::Jump, location);
+            self.block()
+        });
 
-        match jump_to_next_catch {
-            Some(jump) => self.patch_jump(jump),
-            None => self.error("Each try block needs at least one catch clause."),
+        if catches.is_empty() {
+            self.error("Each try block needs at least one catch clause.");
         }
-        for jump in catch_jumps_to_end {
-            self.patch_jump(jump);
-        }
-        self.emit_byte(OpCode::Reraise, self.op_location());
 
-        self.patch_jump(jump_over_reraise);
-
-        // TODO: Add this back
-        // Finally is tricky because it needs to interrupt not only exceptions
-        // but also return, break and continue.
-        // if self.match_(TK::Finally) {
-        //     // Parse finally block
-        //     self.consume(TK::LeftBrace, "Expect '{' after finally");
-        //     self.block();
-        // }
+        StmtKind::Try(Box::new(TryStmt {
+            body,
+            catches,
+            else_block,
+            try_location,
+        }))
     }
 
-    fn throw_statement(&mut self) {
+    fn throw_statement(&mut self) -> StmtKind {
         let throw_location = self.location();
-        let start_location = self.current_location();
-        self.expression();
-        let end_location = self.location();
+        let expr = Box::new(self.expression());
         self.consume(TK::Semicolon, "Expect ';' after throw expression.");
-        self.emit_byte(
-            OpCode::Throw,
-            OpcodeLocation {
-                preceding: Some(throw_location),
-                source: start_location.merge_ordered(&end_location),
-                following: None,
-            },
-        );
+        StmtKind::Throw {
+            throw_location,
+            expr,
+        }
     }
 
     /// Parse a conditional statement, either `if` or `unless`.
-    ///
-    /// Structure is:
-    ///
-    /// if (condition) {
-    ///     "A": then block
-    /// } else {
-    ///     "B": else block
-    /// }
-    ///  "C" // Continue here after the conditional statement.
-    fn conditional_statement(&mut self, condition_type: ConditionType) {
+    fn conditional_statement(&mut self, condition_type: ConditionType) -> StmtKind {
+        let keyword_location = self.location();
         // Parse the condition
-        let condition_start = self.current_location();
-        self.expression();
-        let condition_end = self.location();
-        let condition_location = OpcodeLocation::new(condition_start.merge_ordered(&condition_end));
-
+        let condition = Box::new(self.expression());
         self.consume(TK::LeftBrace, "Expect '{' after condition");
-
-        // If the condition is such that we do NOT want the "then" block,
-        // we jump over it and continue at B. The new PopJumpIf opcodes
-        // automatically pop the condition value.
-        let then_jump = self.emit_jump(
-            match condition_type {
-                ConditionType::If => OpCode::PopJumpIfFalse,
-                ConditionType::Unless => OpCode::PopJumpIfTrue,
-            },
-            condition_location,
-        );
-        self.scoped_block();
-
-        // And afterwards always jump over the "else" block to C.
-        let else_jump = self.emit_jump(OpCode::Jump, condition_location);
-
-        // If we do the jump over the "then" block, we need to patch it
-        // to continue at "B" the "else" block. Which is here.
-        self.patch_jump(then_jump);
-
-        // If we have an "else" block, we parse it now.
-        if self.match_(TK::Else) {
+        let then_block = self.block();
+        let then_close_location = self.location();
+        let else_block = self.match_(TK::Else).then(|| {
             self.consume(TK::LeftBrace, "Expect '{' after else");
-            self.scoped_block();
+            self.block()
+        });
+        let else_close_location = self.location();
+        StmtKind::Conditional {
+            condition_type,
+            condition,
+            then_block,
+            else_block,
+            then_close_location,
+            else_close_location,
+            keyword_location,
         }
-
-        // And finally we patch the jump over the "else" block to continue at "C".
-        self.patch_jump(else_jump);
     }
 
-    fn scoped_block(&mut self) {
-        self.begin_scope();
-        self.block();
-        self.end_scope();
-    }
-
-    fn block(&mut self) {
+    fn block(&mut self) -> Vec<StmtKind> {
+        let mut stmts = Vec::new();
         while !self.check(TK::RightBrace) && !self.check(TK::Eof) {
-            self.declaration();
+            stmts.push(self.declaration());
         }
-
         self.consume(TK::RightBrace, "Expect '}' after block.");
+        stmts
     }
 
     fn loop_label(&mut self) -> Option<String> {
@@ -547,404 +509,219 @@ impl Compiler<'_, '_> {
     fn check_duplicate_loop_label(&mut self, label: Option<&str>) {
         if let Some(label) = label
             && self
-                .loop_state()
+                .function_stack
+                .last()
+                .unwrap()
+                .loop_labels
                 .iter()
-                .any(|state| state.label.as_deref() == Some(label))
+                .any(|state| state.as_deref() == Some(label))
         {
             self.error(&format!("Duplicate loop label '{label}'."));
         }
     }
 
-    fn loop_statement(&mut self, loop_type: LoopType) {
-        // Add new loop state
-        let start = CodeOffset(self.current_chunk_len());
-        let depth = self.scope_depth();
+    fn push_loop_label(&mut self, label: Option<String>) {
+        self.function_stack
+            .last_mut()
+            .unwrap()
+            .loop_labels
+            .push(label);
+    }
+
+    fn pop_loop_label(&mut self) {
+        self.function_stack.last_mut().unwrap().loop_labels.pop();
+    }
+
+    fn find_loop_label(&self, label: Option<&str>) -> bool {
+        let labels = &self.function_stack.last().unwrap().loop_labels;
+        label.map_or_else(
+            || !labels.is_empty(),
+            |label| labels.iter().any(|state| state.as_deref() == Some(label)),
+        )
+    }
+
+    fn loop_statement(&mut self, loop_type: LoopType) -> StmtKind {
+        let keyword_location = self.location();
         let label = self.loop_label();
         self.check_duplicate_loop_label(label.as_deref());
-        self.loop_state_mut()
-            .push(LoopState::new(depth, start, label));
-
-        let condition_start = self.current_location();
-        self.expression();
-        let condition_end = self.location();
-        let condition_location = OpcodeLocation::new(condition_start.merge_ordered(&condition_end));
+        let condition = Box::new(self.expression());
         self.consume(TK::LeftBrace, "Expect '{' before loop body.");
-
-        let exit_jump = self.emit_jump(
-            match loop_type {
-                LoopType::While => OpCode::PopJumpIfFalse,
-                LoopType::Until => OpCode::PopJumpIfTrue,
-            },
-            condition_location,
-        );
-        self.scoped_block();
-        let loop_start = self.last_loop_state().as_ref().unwrap().start;
-        self.emit_loop(loop_start);
-
-        self.patch_jump(exit_jump);
-        self.patch_break_jumps();
-        self.loop_state_mut().pop();
-    }
-
-    fn continue_statement(&mut self) {
-        let location = self.op_location();
-        let label = self.loop_label();
-
-        match self.loop_state_by_label(label.as_deref()) {
-            None => self.error("'continue' outside a loop."),
-            Some(state) => {
-                let depth = state.depth;
-                let start = state.start;
-                self.consume(TK::Semicolon, "Expect ';' after 'continue'.");
-                let locals_to_drop = self
-                    .locals()
-                    .iter()
-                    .rev()
-                    .take_while(|local| local.depth > depth)
-                    .count();
-                for _ in 0..locals_to_drop {
-                    self.emit_byte(OpCode::Pop, location);
-                }
-
-                self.emit_loop(start);
-            }
+        self.push_loop_label(label.clone());
+        let body = self.block();
+        let body_close_location = self.location();
+        self.pop_loop_label();
+        StmtKind::Loop {
+            loop_type,
+            condition,
+            body,
+            label,
+            body_close_location,
+            keyword_location,
         }
     }
 
-    fn break_statement(&mut self) {
-        let location = self.op_location();
+    fn continue_statement(&mut self) -> StmtKind {
+        let location = self.location();
         let label = self.loop_label();
+        if !self.find_loop_label(label.as_deref()) {
+            // Report and bail without consuming the `;` (its presence in
+            // the stream drives the follow-up errors and synchronization).
+            self.error("'continue' outside a loop.");
+            return StmtKind::Expression {
+                expr: Box::new(self.dummy_expr()),
+            };
+        }
+        self.consume(TK::Semicolon, "Expect ';' after 'continue'.");
+        StmtKind::Continue { label, location }
+    }
 
-        // First check if we're in a loop and get the depth
-        let loop_depth = match self.loop_state_by_label(label.as_deref()) {
-            None => {
-                self.error("'break' outside a loop.");
-                return;
-            }
-            Some(state) => state.depth,
-        };
-
+    fn break_statement(&mut self) -> StmtKind {
+        let label = self.loop_label();
+        if !self.find_loop_label(label.as_deref()) {
+            // Report and bail without consuming the `;` (its presence in
+            // the stream drives the follow-up errors and synchronization).
+            self.error("'break' outside a loop.");
+            return StmtKind::Expression {
+                expr: Box::new(self.dummy_expr()),
+            };
+        }
         self.consume(TK::Semicolon, "Expect ';' after 'break'.");
-
-        // Calculate locals to drop
-        let locals_to_drop = self
-            .locals()
-            .iter()
-            .rev()
-            .take_while(|local| local.depth > loop_depth)
-            .count();
-
-        // Emit pop instructions
-        for _ in 0..locals_to_drop {
-            self.emit_byte(OpCode::Pop, location);
-        }
-
-        // Now we can safely get the mutable reference and add the jump
-        let jump = self.emit_jump(OpCode::Jump, location);
-        self.loop_state_by_label_mut(label.as_deref())
-            .unwrap()
-            .break_jumps
-            .push(jump);
+        StmtKind::Break { label }
     }
 
-    fn for_statement(&mut self) {
-        self.begin_scope();
+    fn for_statement(&mut self) -> StmtKind {
+        let keyword_location = self.location();
         let label = self.loop_label();
         self.check_duplicate_loop_label(label.as_deref());
         self.consume(TK::LeftParen, "Expect label ('label) or '(' after 'for'.");
-        let location = self.op_location();
 
-        // Compile initializer, store loop variable
-        let loop_var_name_mutable = if self.match_(TK::Semicolon) {
-            // No initializer
+        // The initializer clause is a plain statement: a `var`/`const`
+        // declaration or an expression.
+        let init = if self.match_(TK::Semicolon) {
             None
-        } else if self.match_(TK::Var) || self.match_(TK::Const) {
-            let name = self.current.clone().unwrap();
-            let mutability = if self.check_previous(TK::Var) {
-                Mutability::Mutable
-            } else {
-                Mutability::Immutable
-            };
-            self.var_declaration(mutability);
-            // Challenge 25/2: alias loop variables
-            u8::try_from(self.locals().len() - 1).map_or_else(
-                |_| {
-                    self.error("Creating loop variable led to too many locals.");
-                    None
-                },
-                |loop_var| Some((loop_var, name, mutability)),
-            )
+        } else if self.match_(TK::Var) {
+            Some(Box::new(self.var_declaration(Mutability::Mutable)))
+        } else if self.match_(TK::Const) {
+            Some(Box::new(self.var_declaration(Mutability::Immutable)))
         } else {
-            self.expression_statement();
-            None
+            Some(Box::new(self.expression_statement()))
         };
 
-        // Add new loop state
-        let start = CodeOffset(self.current_chunk_len());
-        let depth = self.scope_depth();
-        self.loop_state_mut()
-            .push(LoopState::new(depth, start, label));
-
-        // Compile condition clause
-        let exit_jump = (!self.match_(TK::Semicolon)).then(|| {
-            let condition_start = self.current_location();
-            self.expression();
-            let condition_end = self.location();
-            let condition_location =
-                OpcodeLocation::new(condition_start.merge_ordered(&condition_end));
+        let condition = if self.match_(TK::Semicolon) {
+            None
+        } else {
+            let condition = Box::new(self.expression());
             self.consume(TK::Semicolon, "Expect ';' after loop condition.");
-            self.emit_jump(OpCode::PopJumpIfFalse, condition_location)
-        });
+            Some(condition)
+        };
 
-        // Increment
-        if !self.match_(TK::RightParen) {
-            let body_jump = self.emit_jump(OpCode::Jump, location);
-            let increment_start = CodeOffset(self.current_chunk_len());
-            self.expression();
-            self.emit_byte(OpCode::Pop, location);
+        let increment = if self.match_(TK::RightParen) {
+            None
+        } else {
+            let increment = Box::new(self.expression());
             self.consume(TK::RightParen, "Expect ')' after for clauses.");
-
-            let loop_start = self.last_loop_state().as_ref().unwrap().start;
-            self.emit_loop(loop_start);
-            self.last_loop_state_mut().as_mut().unwrap().start = increment_start;
-            self.patch_jump(body_jump);
-        }
-
-        // Alias loop variable for this iteration of the loop
-        let loop_and_inner_var =
-            if let Some((loop_var, loop_var_name, mutability)) = loop_var_name_mutable {
-                self.begin_scope();
-                self.emit_bytes(OpCode::GetLocal, loop_var, location);
-                self.add_local(loop_var_name, mutability);
-                self.mark_initialized();
-                u8::try_from(self.locals().len() - 1).map_or_else(
-                    |_| {
-                        self.error("Aliasing loop variable led to too many locals.");
-                        None
-                    },
-                    |inner_var| Some((loop_var, inner_var)),
-                )
-            } else {
-                None
-            };
+            Some(increment)
+        };
+        let right_paren_location = self.location();
 
         self.consume(TK::LeftBrace, "Expect '{' before loop body.");
-        self.scoped_block();
+        self.push_loop_label(label.clone());
+        let body = self.block();
+        let body_close_location = self.location();
+        self.pop_loop_label();
 
-        // Clean up alias for loop variable
-        if let Some((loop_var, inner_var)) = loop_and_inner_var {
-            self.emit_bytes(OpCode::GetLocal, inner_var, location);
-            self.emit_bytes(OpCode::SetLocal, loop_var, location);
-            self.emit_byte(OpCode::Pop, location);
-            self.end_scope();
+        StmtKind::For {
+            label,
+            init,
+            condition,
+            increment,
+            body,
+            right_paren_location,
+            body_close_location,
+            keyword_location,
         }
-
-        let loop_start = self.last_loop_state().as_ref().unwrap().start;
-        self.emit_loop(loop_start);
-
-        if let Some(exit_jump) = exit_jump {
-            self.patch_jump(exit_jump);
-        }
-
-        self.patch_break_jumps();
-
-        self.loop_state_mut().pop();
-        self.end_scope();
     }
 
-    /// Loop:
-    /// ```generic
-    /// foreach (var val in my_list) {
-    ///     print(val);
-    /// }
-    /// ```
-    /// Should be identical to:
-    /// ```generic
-    /// {
-    ///     var iter = my_list.__iter__();
-    ///     var val = 0;
-    ///
-    ///     while (!((val = iter.__next__()) is StopIteration)) {
-    ///         print(val);
-    ///     }
-    /// }
-    /// ```
-    /// Exhaustion is an identity (`is`) test against the `StopIteration`
-    /// sentinel, never an `==` dispatch, so a user `__eq__` cannot end (or
-    /// fail to end) the loop.
-    fn foreach_statement(&mut self) {
-        self.begin_scope();
+    fn foreach_statement(&mut self) -> StmtKind {
+        let keyword_location = self.location();
         let label = self.loop_label();
         self.check_duplicate_loop_label(label.as_deref());
         self.consume(
             TK::LeftParen,
             "Expect label ('label) or '(' after 'foreach'.",
         );
-        let location = self.op_location();
 
-        // Compile initializer, store loop variable
         if !(self.match_(TK::Var) || self.match_(TK::Const)) {
             self.error("Expect variable declaration ('var' or 'const') after '(' in 'foreach'.");
         }
-
-        // Define loop variable
-        let name = self.current.clone().unwrap(); // Needed for aliasing
         let mutability = if self.check_previous(TK::Var) {
             Mutability::Mutable
         } else {
             Mutability::Immutable
         };
-        let global = self.parse_variable("Expect variable name.", mutability);
-        self.emit_byte(OpCode::Nil, location);
+        // Define loop variable
+        let (var_name, var_name_location) = self.parse_variable("Expect variable name.");
         self.consume(TK::In, "Expect 'in' after variable declaration.");
-        self.define_variable(global, mutability);
-        // Challenge 25/2: alias loop variables
-        let loop_var = u8::try_from(self.locals().len() - 1).unwrap_or_else(|_| {
-            self.error("Creating loop variable led to too many locals.");
-            0
-        });
-
-        // Get the iterable
-        let start_location = self.current_location();
-        self.expression();
-        let end_location = self.location();
-        let iterable_location = OpcodeLocation::new(start_location.merge_ordered(&end_location));
+        let in_location = self.location();
+        let iterable = Box::new(self.expression());
         self.consume(TK::RightParen, "Expect ')' after iterable.");
+        let close_location = self.location();
 
-        // Define the iterator
-        self.invoke_fixed(
-            &"__iter__",
-            0,
-            "Too many constants created for OP_FOREACH.",
-            iterable_location,
-        );
-
-        // Do i even need this? This never actually needs a name.
-        self.add_local(
-            self.synthetic_identifier_token("@iter"),
-            Mutability::Mutable,
-        );
-        self.define_variable(None, Mutability::Mutable);
-        let iter_var = u8::try_from(self.locals().len() - 1).unwrap_or_else(|_| {
-            self.error("Creating loop iterator led to too many locals.");
-            0
-        });
-
-        // Store old loop state to restore at then end
-        // Add new loop state
-        let start = CodeOffset(self.current_chunk_len());
-        let depth = self.scope_depth();
-        self.loop_state_mut()
-            .push(LoopState::new(depth, start, label));
-
-        // Compile the check clause as a call to "__next__" on the iterator
-        // and an assignment to the loop variable
-        // then check the loop variable for "StopIteration"
-        // This is the loop check AND increment
-        self.emit_bytes(OpCode::GetLocal, iter_var, location);
-
-        self.invoke_fixed(
-            &"__next__",
-            0,
-            "Too many constants created for OP_FOREACH.",
-            iterable_location,
-        );
-
-        self.emit_bytes(OpCode::SetLocal, loop_var, location);
-        // Exhaustion is a sentinel IDENTITY test: `Is` never dispatches to
-        // a user `__eq__`, so iterating instances whose `__eq__` assumes
-        // its own operand type works, and an always-true `__eq__` cannot
-        // truncate the loop.
-        self.emit_byte(OpCode::StopIteration, location);
-        self.emit_byte(OpCode::Is, location);
-
-        let exit_jump = self.emit_jump(OpCode::PopJumpIfTrue, iterable_location);
-
-        // Alias loop variable for this iteration of the loop
-        self.begin_scope();
-        self.emit_bytes(OpCode::GetLocal, loop_var, location);
-        self.add_local(name, mutability);
-        self.mark_initialized();
-        let inner_var = u8::try_from(self.locals().len() - 1).unwrap_or_else(|_| {
-            self.error("Aliasing loop variable led to too many locals.");
-            0
-        });
-
-        // Body of the loop
         self.consume(TK::LeftBrace, "Expect '{' before loop body.");
-        self.scoped_block();
+        self.push_loop_label(label.clone());
+        let body = self.block();
+        let body_close_location = self.location();
+        self.pop_loop_label();
 
-        // Clean up alias for loop variable after the body.
-        self.emit_bytes(OpCode::GetLocal, inner_var, location);
-        self.emit_bytes(OpCode::SetLocal, loop_var, location);
-        self.emit_byte(OpCode::Pop, location);
-        self.end_scope();
-
-        // Loop back to the check/increment clause
-        let loop_start = self.last_loop_state().as_ref().unwrap().start;
-        self.emit_loop(loop_start);
-        self.patch_jump(exit_jump);
-        self.patch_break_jumps();
-        self.loop_state_mut().pop();
-
-        self.end_scope();
+        StmtKind::Foreach {
+            label,
+            mutability,
+            var_name,
+            iterable,
+            body,
+            var_name_location,
+            in_location,
+            close_location,
+            body_close_location,
+            keyword_location,
+        }
     }
 
-    fn return_statement(&mut self) {
-        let return_location = self.location();
-        if self.function_type() == FunctionType::Script {
+    fn return_statement(&mut self) -> StmtKind {
+        let context = self.function_stack.last().unwrap().kind;
+        if context == FunKind::Script {
             self.error("Can't return from top-level code.");
         }
         if self.match_(TK::Semicolon) {
-            self.emit_return(OpcodeLocation::new(return_location));
-        } else {
-            if self.function_type() == FunctionType::Initializer {
-                self.error("Can't return a value from an initializer.");
-            } else if self.function_type() == FunctionType::Generator {
-                self.error("Can't return a value from a generator.");
-            }
-            let start_location = self.current_location();
-            self.expression();
-            let end_location = self.current_location();
-            self.consume(TK::Semicolon, "Expect ';' after return value.");
-            self.emit_byte(
-                OpCode::Return,
-                OpcodeLocation {
-                    preceding: Some(return_location),
-                    source: start_location.merge_ordered(&end_location),
-                    following: None,
-                },
-            );
+            return StmtKind::Return { value: None };
         }
+        if context == FunKind::Initializer {
+            self.error("Can't return a value from an initializer.");
+        } else if context == FunKind::Generator {
+            self.error("Can't return a value from a generator.");
+        }
+        let value = Box::new(self.expression());
+        self.consume(TK::Semicolon, "Expect ';' after return value.");
+        StmtKind::Return { value: Some(value) }
     }
 
-    fn switch_statement(&mut self) {
-        let start_location = self.current_location();
-        self.expression();
-        let end_location = self.current_location();
-        let switch_var_location = OpcodeLocation::new(start_location.merge_ordered(&end_location));
-
+    fn switch_statement(&mut self) -> StmtKind {
+        let keyword_location = self.location();
+        let subject = Box::new(self.expression());
+        let subject_location = subject.location.merge_ordered(&self.current_location());
         self.consume(TK::LeftBrace, "Expect '{' before 'switch' body.");
 
-        let mut end_jumps = vec![];
+        let mut cases = Vec::new();
         let mut had_default = false;
-        let location = self.op_location();
-
-        // Loop cases and default until the file ends or  the switch gets closed
+        // Loop cases and default until the file ends or the switch gets closed
         while !self.check(TK::RightBrace) && !self.check(TK::Eof) {
             if had_default {
                 self.error_at_current("No 'case' or 'default' allowed after 'default' branch.");
             }
-
-            // Check condition and build the jump over the case if false
-            let miss_jump = if self.match_(TK::Case) {
-                // Have to dup because equality check removes it
-                self.emit_byte(OpCode::Dup, location);
-                self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Colon]);
+            let value = if self.match_(TK::Case) {
+                let value = self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Colon]);
                 self.consume(TK::Colon, "Expect ':' after 'case' value.");
-                self.emit_byte(OpCode::Equal, switch_var_location);
-                let jump = self.emit_jump(OpCode::PopJumpIfFalse, switch_var_location);
-                Some(jump)
+                Some(Box::new(value))
             } else {
                 // The default case does not need to get jumped over
                 self.consume(TK::Default, "Expect 'case' or 'default'.");
@@ -954,12 +731,13 @@ impl Compiler<'_, '_> {
             };
 
             // Read the statements belonging to the current case
+            let mut body = Vec::new();
             while !self.check(TK::RightBrace)
                 && !self.check(TK::Case)
                 && !self.check(TK::Default)
                 && !self.check(TK::Eof)
             {
-                self.statement();
+                body.push(self.statement());
                 // A statement that cannot be parsed leaves the cursor unmoved;
                 // stop consuming this case so the outer loop can bail and let
                 // `declaration` synchronize instead of spinning here.
@@ -967,15 +745,7 @@ impl Compiler<'_, '_> {
                     break;
                 }
             }
-
-            // If a branch has been entered then after it is finished we jump all the
-            // way to the end of the switch
-            end_jumps.push(self.emit_jump(OpCode::Jump, location));
-
-            if let Some(miss_jump) = miss_jump {
-                self.patch_jump(miss_jump);
-            }
-
+            cases.push(SwitchCase { value, body });
             // A case that cannot be parsed leaves the cursor unmoved; bail so the
             // enclosing `declaration` can synchronize instead of spinning here.
             if self.panic_mode {
@@ -983,331 +753,277 @@ impl Compiler<'_, '_> {
             }
         }
 
-        for end_jump in end_jumps {
-            self.patch_jump(end_jump);
-        }
-        self.emit_byte(OpCode::Pop, location); // Get rid of switch value
-
         self.consume(TK::RightBrace, "Expect '}' after 'switch' body.");
-    }
-
-    #[allow(clippy::option_if_let_else)]
-    fn import_statement(&mut self) {
-        self.consume(TK::String, "Expect import path as a string.");
-        let name_to_import_location = self.op_location();
-        let is_local = *self.scope_depth() > 0;
-        let path_token = self.previous.clone().unwrap();
-
-        let path_str = path_token.as_str();
-        // Remove the quotation marks at the start and end
-        let path = &path_str[1..path_str.len() - 1].to_string();
-        let path_constant = self.identifier_constant(&path);
-
-        if self.match_(TK::As) {
-            self.consume(TK::Identifier, "Expect name to import as.");
-            let name_token = self.previous.clone().unwrap();
-            let name = name_token.as_str().to_string();
-            let name_constant = self.identifier_constant(&name);
-            if is_local {
-                self.add_local(name_token.clone(), Mutability::Mutable);
-                self.mark_initialized();
-            }
-            self.consume(TK::Semicolon, "Expect ';' after import alias");
-            self.emit_byte(OpCode::ImportAs, name_to_import_location);
-            if !self.emit_number(
-                path_constant.0,
-                NumberEncoding::Short,
-                name_to_import_location,
-            ) {
-                self.error("Too many constants created for OP_IMPORT_AS.");
-            }
-            if !self.emit_number(
-                name_constant.0,
-                NumberEncoding::Short,
-                name_to_import_location,
-            ) {
-                self.error("Too many constants created for OP_IMPORT_AS.");
-            }
-        } else {
-            if is_local {
-                let name = if let Some(stem) =
-                    get_file_stem(&path_token.lexeme[1..path_token.lexeme.len() - 1])
-                {
-                    stem
-                } else {
-                    self.error(&format!("Could not extract file stem from path: {path}"));
-                    "unknown"
-                };
-                self.add_local(
-                    Token {
-                        kind: path_token.kind,
-                        lexeme: name,
-                        location: path_token.location,
-                    },
-                    Mutability::Mutable,
-                );
-
-                self.mark_initialized();
-            }
-            self.consume(TK::Semicolon, "Expect ';' after imported file path.");
-            self.emit_byte(OpCode::Import, name_to_import_location);
-            if !self.emit_number(
-                path_constant.0,
-                NumberEncoding::Short,
-                name_to_import_location,
-            ) {
-                self.error("Too many constants created for OP_IMPORT.");
-            }
+        StmtKind::Switch {
+            subject,
+            cases,
+            subject_location,
+            keyword_location,
         }
-        self.emit_byte(is_local, name_to_import_location);
     }
 
-    fn import_from_statement(&mut self) {
+    fn import_statement(&mut self) -> StmtKind {
+        self.consume(TK::String, "Expect import path as a string.");
+        let path_token = self.previous.as_ref().unwrap();
+        // Remove the quotation marks at the start and end
+        let path = path_token.as_str()[1..path_token.as_str().len() - 1].to_string();
+        let path_location = self.location();
+
+        let alias = self
+            .match_(TK::As)
+            .then(|| self.parse_variable("Expect name to import as.").0);
+        self.consume(
+            TK::Semicolon,
+            if alias.is_some() {
+                "Expect ';' after import alias"
+            } else {
+                "Expect ';' after imported file path."
+            },
+        );
+        StmtKind::Import {
+            path,
+            alias,
+            path_location,
+        }
+    }
+
+    fn import_from_statement(&mut self) -> StmtKind {
         // `from` was just consumed by the caller.
         let from_location = self.location();
         self.consume(TK::String, "Expect import path as a string.");
-        let is_local = *self.scope_depth() > 0;
-        let path_str = self.previous.as_ref().unwrap().as_str();
+        let path_location = self.location();
+        let path_token = self.previous.as_ref().unwrap();
         // Remove the quotation marks at the start and end
-        let path = &path_str[1..path_str.len() - 1].to_string();
-        let path_constant = self.identifier_constant(&path);
+        let path = path_token.as_str()[1..path_token.as_str().len() - 1].to_string();
         self.consume(TK::Import, "Expect 'import' after imported file path.");
 
-        let mut import_tokens = vec![];
-        loop {
-            // Best way would be to have these as variable length opcodes
-            // with the indices pointing to the constants.
-            // But i am not sure how to get that working with the disassembly,
-            // or more generally where to put the length of the opcode.
-            self.consume(TK::Identifier, "Expect name to import.");
-            import_tokens.push(self.previous.as_ref().unwrap().clone());
-            if !self.match_(TK::Comma) {
-                break;
-            }
+        let (first_name, first_location) = self.parse_variable("Expect name to import.");
+        let mut names = vec![(first_name, first_location)];
+        let mut last_name_location = first_location;
+        while self.match_(TK::Comma) {
+            let (name, location) = self.parse_variable("Expect name to import.");
+            last_name_location = location;
+            names.push((name, location));
         }
         self.consume(TK::Semicolon, "Expect ';' after names to import name.");
-        // One location covers the whole `from ... import ...`: a failure can
-        // originate from the module or from any of the names, and the single
-        // `ImportFrom` opcode cannot tell which.
-        // TODO: Report the missing module and each invalid name separately,
-        // each pointing at its own span. That needs the VM to resolve the
-        // names one at a time instead of reading them all up front.
-        let statement_location = OpcodeLocation::new(
-            from_location.merge_ordered(&import_tokens.last().unwrap().location),
-        );
-        self.emit_byte(OpCode::ImportFrom, statement_location);
-        if !self.emit_number(path_constant.0, NumberEncoding::Short, statement_location) {
-            self.error("Too many constants created for OP_IMPORT_FROM.");
-        }
-        self.emit_byte(is_local, statement_location);
-        if !self.emit_number(
-            import_tokens.len(),
-            NumberEncoding::Short,
-            statement_location,
-        ) {
-            self.error("Too many constants created for OP_IMPORT_FROM.");
-        }
-        for constant in import_tokens {
-            let long_index = self.identifier_constant(&constant.as_str().to_string());
-            if let Ok(short) = u8::try_from(*long_index) {
-                self.emit_byte(short, statement_location);
-            } else {
-                self.error("Too many names to import from module.");
-            }
-            if is_local {
-                self.add_local(constant, Mutability::Mutable);
-                self.mark_initialized();
-            }
+        StmtKind::ImportFrom {
+            path,
+            names,
+            path_location,
+            statement_location: from_location.merge_ordered(&last_name_location),
         }
     }
 
-    fn expression_statement(&mut self) {
-        self.expression();
+    fn expression_statement(&mut self) -> StmtKind {
+        let expr = Box::new(self.expression());
         self.consume(TK::Semicolon, "Expect ';' after expression.");
-        self.emit_byte(OpCode::Pop, self.op_location());
+        StmtKind::Expression { expr }
+    }
+}
+
+// Function literals.
+impl Parser<'_> {
+    /// A declared function or method: a `fun`/`gen` declaration or a
+    /// method. The body must be a block. `context` names the function's
+    /// kind for the parse-time checks; the kind itself is named at the
+    /// declaration site that called this.
+    fn parse_function_def(&mut self, name: String, context: FunKind) -> FunctionDef {
+        let fn_location = self.location();
+        // The name local stays uninitialized while the parameter list
+        // compiles: default expressions run in the enclosing scope before
+        // the closure exists, so reading the name there is the
+        // own-initializer error. Codegen marks it initialized ahead of
+        // the body, which may self-reference for recursion.
+        self.function_stack.push(FunctionState::new(context));
+
+        self.consume(TK::LeftParen, "Expect '(' after function name.");
+        let parameters = self.parse_params();
+
+        let body = if self.match_(TK::LeftBrace) {
+            self.block()
+        } else {
+            self.error_at_current("Expect '{' before function body.");
+            Vec::new()
+        };
+
+        self.function_stack.pop();
+        FunctionDef {
+            name,
+            parameters,
+            body,
+            fn_location,
+        }
     }
 
-    fn named_function(&mut self, function_type: FunctionType) {
-        let function_name = self.previous.as_ref().unwrap().as_str().to_string();
-        self.function(&function_name, function_type);
+    /// Parse lambda expressions.
+    ///
+    /// We support either single expressions, where no `return` is needed,
+    /// or full blocks with a `return` statement.
+    pub(super) fn parse_lambda(&mut self) -> LambdaLit {
+        let fn_location = self.location();
+        self.function_stack
+            .push(FunctionState::new(FunKind::Lambda));
+
+        self.consume(TK::LeftParen, "Expect '(' after function name.");
+        let parameters = self.parse_params();
+
+        let body = if self.match_(TK::LeftBrace) {
+            LambdaBody::Block(self.block())
+        } else {
+            LambdaBody::Expression(Box::new(self.expression()))
+        };
+
+        self.function_stack.pop();
+        LambdaLit {
+            parameters,
+            body,
+            fn_location,
+        }
     }
 
-    pub(super) fn function<S: ToString>(&mut self, function_name: &S, function_type: FunctionType) {
-        // Declarations (and only they) have a pending name local in the
-        // enclosing scope to initialize once the parameter list is done.
-        let initializes_enclosing_name = matches!(
-            function_type,
-            FunctionType::Function | FunctionType::Generator
-        );
-        let location = self.op_location();
-        let nested_state = self.nested(function_name, function_type, |compiler| {
-            compiler.begin_scope();
+    /// Parse a parameter default in the enclosing function's context.
+    ///
+    /// Defaults run at definition time in the enclosing frame.
+    fn parse_parameter_default(&mut self) -> Expr {
+        let state = self.function_stack.pop().unwrap();
+        // Non-assigning and no comma rule.
+        let default = self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Comma]);
+        self.function_stack.push(state);
+        default
+    }
 
-            compiler.consume(TK::LeftParen, "Expect '(' after function name.");
-
-            if !compiler.check(TK::RightParen) {
-                loop {
-                    if compiler.match_(TK::Star) {
-                        // `*rest` collects surplus positional arguments; it is
-                        // the last parameter and is not counted in the arity.
-                        compiler.current_function_mut().is_variadic = true;
-                        let constant = compiler
-                            .parse_variable("Expect rest parameter name.", Mutability::Mutable);
-                        compiler.define_variable(constant, Mutability::Mutable);
-                        if !compiler.check(TK::RightParen) {
-                            compiler
-                                .error_at_current("A rest parameter must be the last parameter.");
-                            // Discard the stray trailing parameters so the body
-                            // still parses and no cascade errors follow.
-                            while !compiler.check(TK::RightParen) && !compiler.check(TK::Eof) {
-                                compiler.advance();
-                            }
-                        }
-                        break;
-                    }
-                    if compiler.current_function().arity == 255 {
-                        compiler.error_at_current("Can't have more than 255 parameters.");
-                    } else {
-                        compiler.current_function_mut().arity += 1;
-                    }
-                    let constant =
-                        compiler.parse_variable("Expect parameter name.", Mutability::Mutable);
-                    compiler.define_variable(constant, Mutability::Mutable);
-                    if compiler.match_(TK::Equal) {
-                        // The default is evaluated once, in the enclosing scope
-                        // at definition time; its value is left on the stack for
-                        // the following OP_CLOSURE to capture into the closure.
-                        compiler.in_enclosing(|compiler| {
-                            compiler.parse_precedence_ignoring(
-                                Precedence::non_assigning(),
-                                &[TK::Comma],
-                            );
-                        });
-                    } else {
-                        compiler.current_function_mut().required_params += 1;
-                        // Required parameters must form a prefix: once a default
-                        // has appeared, `arity` outruns the required count, so a
-                        // later required parameter shows up as the two diverging.
-                        if compiler.current_function().required_params
-                            != compiler.current_function().arity
-                        {
-                            compiler.error("A required parameter cannot follow an optional one.");
+    fn parse_params(&mut self) -> ParamList {
+        let mut params: Vec<Param> = Vec::new();
+        let mut rest = None;
+        if !self.check(TK::RightParen) {
+            loop {
+                if self.match_(TK::Star) {
+                    // `*rest` collects surplus positional arguments; it is
+                    // the last parameter and is not counted in the arity.
+                    let (name, location) = self.parse_variable("Expect rest parameter name.");
+                    if !self.check(TK::RightParen) {
+                        self.error_at_current("A rest parameter must be the last parameter.");
+                        // Discard the stray trailing parameters so the body
+                        // still parses and no cascade errors follow.
+                        while !self.check(TK::RightParen) && !self.check(TK::Eof) {
+                            self.advance();
                         }
                     }
-                    if !compiler.match_(TK::Comma) {
-                        break;
+                    rest = Some(Param {
+                        name,
+                        default: None,
+                        location,
+                    });
+                    break;
+                }
+                if params.len() == 255 {
+                    self.error_at_current("Can't have more than 255 parameters.");
+                }
+                let (name, location) = self.parse_variable("Expect parameter name.");
+                let default = if self.match_(TK::Equal) {
+                    Some(Box::new(self.parse_parameter_default()))
+                } else {
+                    // Required parameters must form a prefix: once a default
+                    // has appeared, `arity` outruns the required count, so a
+                    // later required parameter shows up as the two diverging.
+                    let required = params.iter().filter(|p| p.default.is_none()).count() + 1;
+                    if required != params.len() + 1 {
+                        self.error("A required parameter cannot follow an optional one.");
                     }
+                    None
+                };
+                params.push(Param {
+                    name,
+                    default,
+                    location,
+                });
+                if !self.match_(TK::Comma) {
+                    break;
                 }
             }
-
-            compiler.consume(TK::RightParen, "Expect ')' after parameters.");
-            if initializes_enclosing_name {
-                compiler.in_enclosing(Self::mark_initialized);
-            }
-
-            if compiler.match_(TK::LeftBrace) {
-                if function_type == FunctionType::Generator {
-                    compiler.emit_byte(OpCode::ReturnGenerator, location);
-                }
-
-                compiler.block();
-                compiler.end(ReturnMode::Normal, location);
-            } else if function_type == FunctionType::Lambda {
-                compiler.expression();
-                compiler.end(ReturnMode::Raw, location);
-            } else {
-                compiler.error_at_current("Expect '{' before function body.");
-            }
-        });
-
-        let nested_function = nested_state.current_function;
-        let nested_upvalues = nested_state.upvalues;
-
-        self.emit_byte(OpCode::Closure, location);
-        let function_id = self.heap.add_function(nested_function);
-        let value_id_byte = u8::try_from(self.current_chunk_mut().make_constant(function_id).0)
-            .unwrap_or_else(|_| {
-                self.error("Too many constants in one chunk.");
-                0
-            });
-        self.emit_byte(value_id_byte, location);
-
-        for upvalue in nested_upvalues {
-            self.emit_bytes(upvalue.is_local, upvalue.index, location);
         }
+        self.consume(TK::RightParen, "Expect ')' after parameters.");
+        ParamList { params, rest }
     }
+}
 
-    /// A class variable declaration inside a class body:
-    /// `var name (: annotation)? (= default)? ;`. Compiles to the
-    /// annotation and default expressions (nil placeholders when omitted)
-    /// followed by `OP_CLASS_VARIABLE`, which records both on the class
-    /// sitting below them on the stack. A `has_default` operand byte
-    /// distinguishes an omitted default from an explicit `= nil`.
-    fn class_variable_declaration(&mut self) {
-        self.consume(TK::Identifier, "Expect class variable name.");
-        let name = self.previous.as_ref().unwrap().as_str().to_string();
-        if let Some(class_state) = self.current_class_mut()
-            && !class_state.class_variables.insert(name.clone())
-        {
-            self.error(&format!("Duplicate class variable '{name}'."));
-        }
-        let name_constant = self.identifier_constant(&name);
-        if self.match_(TK::Colon) {
-            // Non-assigning so the annotation stops before `= default`,
-            // and no comma rule so it cannot swallow a bare tuple.
-            self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Comma]);
-        } else {
-            self.emit_byte(OpCode::Nil, self.op_location());
-        }
-        let has_default = if self.match_(TK::Equal) {
-            self.expression();
-            true
-        } else {
-            self.emit_byte(OpCode::Nil, self.op_location());
-            false
-        };
-        self.consume(
-            TK::Semicolon,
-            "Expect ';' after class variable declaration.",
-        );
-        let name_index = ConstantIndex::try_from(name_constant).unwrap_or_else(|_| {
-            self.error("Too many constants when declaring class variable.");
-            ConstantIndex(0)
-        });
-        self.emit_bytes(OpCode::ClassVariable, name_index, self.op_location());
-        self.emit_byte(u8::from(has_default), self.op_location());
-    }
-
-    fn method(&mut self) {
-        self.consume(TK::Identifier, "Expect method name.");
-        let name_constant =
-            self.identifier_constant(&self.previous.as_ref().unwrap().as_str().to_string());
-        let function_type = if self.previous.as_ref().unwrap().lexeme == "__init__" {
-            FunctionType::Initializer
-        } else {
-            FunctionType::Method
-        };
-        self.named_function(function_type);
-        let method_name_index = ConstantIndex::try_from(name_constant).unwrap_or_else(|_| {
-            self.error("Too many constants when declaring method.");
-            ConstantIndex(0)
-        });
-        self.emit_bytes(OpCode::Method, method_name_index, self.op_location());
-    }
-
+// Location helpers.
+impl Parser<'_> {
     pub(super) fn location(&self) -> Location {
         self.previous
             .as_ref()
-            .map_or_else(Location::default, |x| x.location)
-    }
-
-    pub(super) fn op_location(&self) -> OpcodeLocation {
-        OpcodeLocation::new(self.location())
+            .map_or_else(Location::default, |t| t.location)
     }
 
     pub(super) fn current_location(&self) -> Location {
         self.current
             .as_ref()
-            .map_or_else(Location::default, |x| x.location)
+            .map_or_else(Location::default, |t| t.location)
+    }
+
+    pub(super) fn current_class(&self) -> Option<&ClassState> {
+        self.class_stack.last()
+    }
+
+    pub(super) fn current_class_mut(&mut self) -> Option<&mut ClassState> {
+        self.class_stack.last_mut()
+    }
+
+    pub(super) fn dummy_expr(&self) -> Expr {
+        Expr {
+            location: self.location(),
+            kind: ExprKind::Literal(Literal::Nil),
+        }
+    }
+}
+
+// Class members.
+impl Parser<'_> {
+    /// `` var name (: annotation)? (= default)?; `` inside a class body.
+    fn class_variable_declaration(&mut self) -> ClassVar {
+        let (name, name_location) = self.parse_variable("Expect class variable name.");
+        // Reject duplicate class variables at compile time, reported at
+        // the repeated name.
+        if let Some(class_state) = self.current_class_mut()
+            && !class_state.class_variables.insert(name.clone())
+        {
+            self.error(&format!("Duplicate class variable '{name}'."));
+        }
+        let annotation = self.match_(TK::Colon).then(|| {
+            // Non-assigning so the annotation stops before `= default`,
+            // and no comma rule so it cannot swallow a bare tuple.
+            Box::new(self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Comma]))
+        });
+        let default = self.match_(TK::Equal).then(|| Box::new(self.expression()));
+
+        self.consume(
+            TK::Semicolon,
+            "Expect ';' after class variable declaration.",
+        );
+        ClassVar {
+            name,
+            annotation,
+            default,
+            name_location,
+            semicolon_location: self.location(),
+        }
+    }
+
+    fn method(&mut self) -> Method {
+        let (name, _name_location) = self.parse_variable("Expect method name.");
+        let is_init = name == "__init__";
+        let (context, kind) = if is_init {
+            (FunKind::Initializer, MethodKind::Initializer)
+        } else {
+            (FunKind::Method, MethodKind::Method)
+        };
+        let fn_lit = self.parse_function_def(name.clone(), context);
+        let close_location = self.location();
+        Method {
+            name,
+            kind,
+            fn_lit,
+            close_location,
+        }
     }
 }

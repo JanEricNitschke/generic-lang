@@ -1,0 +1,24 @@
+# Lambdas support `*rest` parameters like declared functions.
+const tail = ->(a, b, *rest) rest;
+print(tail(1, 2)); # expect: ()
+print(tail(1, 2, 3)); # expect: (3,)
+print(tail(1, 2, 3, 4, 5)); # expect: (3, 4, 5)
+
+# A lambda can be entirely variadic, with either body form.
+const counted = ->(*xs) {
+    return len(xs);
+};
+print(counted()); # expect: 0
+print(counted(1, 2, 3)); # expect: 3
+
+# Defaults before the rest still fill first, then overflow collects.
+const mix = ->(a, b=10, *rest) f"${a} ${b} ${rest}";
+print(mix(1)); # expect: 1 10 ()
+print(mix(1, 2, 3, 4)); # expect: 1 2 (3, 4)
+
+# Too few arguments still report the minimum.
+try {
+    tail(1);
+} catch TypeError as e {
+    print(e.message()); # expect: Expected at least 2 arguments but got 1.
+}

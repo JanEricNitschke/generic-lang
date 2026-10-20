@@ -1,15 +1,21 @@
-//! This module handles functionality related variables.
+//! Variable resolution: scopes, locals, upvalues, and globals.
 //!
-//! Contains functions for resolving variables ad upvalue, local or global.
+//! Declarations must happen ahead of the initializer (so
+//! own-initializer reads are errors), defines after it. Resolution
+//! order, innermost first: local slot, then upvalue, then global.
 
-use super::{Compiler, Local, ScopeDepth, Upvalue};
-use crate::chunk::{ConstantLongIndex, OpCode};
-use crate::compiler::rules::Precedence;
-use crate::config::SPREAD_BITMAP_BYTES;
-use crate::scanner::{Token, TokenKind as TK};
-use crate::types::{Location, Mutability, NumberEncoding, OpcodeLocation};
+use super::ast::{Arg, BinaryOp, Expr, ExprContext, ExprKind};
+use super::back::{Codegen, Local, ScopeDepth, Upvalue};
+use super::front::Parser;
+use super::rules::Precedence;
+use crate::{
+    chunk::{ConstantLongIndex, OpCode},
+    config::SPREAD_BITMAP_BYTES,
+    scanner::TokenKind as TK,
+    types::{Location, Mutability, NumberEncoding, OpcodeLocation},
+};
 
-impl<'scanner> Compiler<'scanner, '_> {
+impl Codegen<'_, '_> {
     /// Start a new scope.
     pub(super) fn begin_scope(&mut self) {
         **self.scope_depth_mut() += 1;
@@ -20,11 +26,12 @@ impl<'scanner> Compiler<'scanner, '_> {
     /// Handles all local variables with a depth larger than the new
     /// (outer) scope. Each local is either popped directly from the stack
     /// or turned into a closed upvalue.
-    pub(super) fn end_scope(&mut self) {
+    /// The pop instructions are emitted *after* the locals are removed
+    /// (collect-then-emit).
+    pub(super) fn end_scope(&mut self, location: OpcodeLocation) {
         **self.scope_depth_mut() -= 1;
         let scope_depth = self.scope_depth();
         let mut instructions = vec![];
-        let location = self.op_location();
         {
             let locals = self.locals_mut();
             while locals.last().is_some_and(|local| local.depth > scope_depth) {
@@ -40,120 +47,124 @@ impl<'scanner> Compiler<'scanner, '_> {
             self.emit_byte(instruction, location);
         }
     }
+}
 
+impl Parser<'_> {
     /// Handle a named variable based on the identifier of the last token.
-    pub(super) fn variable(&mut self, can_assign: bool, _ignore_operators: &[TK]) {
-        self.named_variable(
-            &self.previous.as_ref().unwrap().as_str().to_string(),
-            can_assign,
-            self.location(),
-        );
+    pub(super) fn variable(&mut self, can_assign: bool, _ignore_operators: &[TK]) -> Expr {
+        let name = self.previous.as_ref().unwrap().as_str().to_string();
+        let location = self.location();
+        self.named_variable(name, can_assign, location)
     }
 
     /// Handle a named variable with the given name.
     ///
-    /// First checks if the name belongs to a local variable.
-    /// If none is found, upvalues are searched, before finally it is assumed to
-    /// belong to a global variable.
-    ///
     /// Also handles whether the variable is to be gotten or set.
-    pub(super) fn named_variable<S>(
+    /// An identifier read: a load, or an assignment when `can_assign`
+    /// and an assignment operator follows.
+    pub(super) fn named_variable(
         &mut self,
-        name: &S,
+        name: String,
         can_assign: bool,
-        variable_location: Location,
-    ) where
-        S: ToString,
-    {
-        let getter_location = OpcodeLocation::new(variable_location);
-
-        let (mut get_op, mut set_op, arg) = self.resolve_variable_ops(name);
-
-        // Support for more than u8::MAX variables in a scope
-        let encoding = if arg > u8::MAX.into() {
-            get_op = get_op.to_long();
-            set_op = set_op.to_long();
-            NumberEncoding::Long
-        } else {
-            NumberEncoding::Short
-        };
-
-        // Get or set?
-        let (op, location) = if can_assign
-            && (self.match_(TK::Equal)
-                | self.match_(TK::PlusEqual)
-                | self.match_(TK::MinusEqual)
-                | self.match_(TK::StarEqual)
-                | self.match_(TK::SlashEqual)
-                | self.match_(TK::HatEqual)
-                | self.match_(TK::PipeEqual)
-                | self.match_(TK::AmperEqual)
-                | self.match_(TK::PercentEqual))
-        {
-            let previous_kind = self.previous.as_ref().unwrap().kind;
-            let operator_location = self.location();
-            if matches!(previous_kind, TK::Equal) {
-                self.expression();
-            } else {
-                self.emit_byte(get_op, getter_location);
-                if !self.emit_number(arg, encoding, getter_location) {
-                    self.error(&format!("Too many globals in {get_op:?}"));
-                }
-                let rhs_start_location = self.current_location();
-                self.expression();
-                let rhs_end_location = self.location();
-                let operator_centered_location = OpcodeLocation {
-                    preceding: Some(variable_location),
-                    source: operator_location,
-                    following: Some(rhs_start_location.merge_ordered(&rhs_end_location)),
-                };
-                match previous_kind {
-                    TK::PlusEqual => self.emit_byte(OpCode::Add, operator_centered_location),
-                    TK::MinusEqual => self.emit_byte(OpCode::Subtract, operator_centered_location),
-                    TK::StarEqual => self.emit_byte(OpCode::Multiply, operator_centered_location),
-                    TK::SlashEqual => self.emit_byte(OpCode::Divide, operator_centered_location),
-                    TK::HatEqual => self.emit_byte(OpCode::BitXor, operator_centered_location),
-                    TK::PipeEqual => self.emit_byte(OpCode::BitOr, operator_centered_location),
-                    TK::AmperEqual => self.emit_byte(OpCode::BitAnd, operator_centered_location),
-                    TK::PercentEqual => self.emit_byte(OpCode::Mod, operator_centered_location),
-                    _ => unreachable!("Unexpected byte code "),
-                }
-            }
-            if set_op == OpCode::SetLocal || set_op == OpCode::SetLocalLong {
-                self.check_local_const(arg);
-            }
-            let setter_location = OpcodeLocation {
-                preceding: None,
-                source: variable_location,
-                following: Some(operator_location),
+        location: Location,
+    ) -> Expr {
+        if can_assign && self.match_(TK::Equal) {
+            let op_location = self.location();
+            let value = Box::new(self.expression());
+            return Expr {
+                location: location.merge_ordered(&value.location),
+                kind: ExprKind::Assign {
+                    target: Box::new(Expr {
+                        location,
+                        kind: ExprKind::Variable {
+                            name,
+                            ctx: ExprContext::Store,
+                        },
+                    }),
+                    value,
+                    op_location,
+                },
             };
-            (set_op, setter_location)
-        } else {
-            (get_op, getter_location)
-        };
-
-        // Generate the code.
-        self.emit_byte(op, location);
-
-        if !self.emit_number(arg, encoding, location) {
-            self.error(&format!("Too many globals in {op:?}"));
+        }
+        if can_assign && self.match_aug_operator() {
+            let (op, op_location) = self.take_aug_operator();
+            let value = Box::new(self.expression());
+            return Expr {
+                location: location.merge_ordered(&value.location),
+                kind: ExprKind::AugAssign {
+                    target: Box::new(Expr {
+                        location,
+                        kind: ExprKind::Variable {
+                            name,
+                            ctx: ExprContext::Store,
+                        },
+                    }),
+                    op,
+                    value,
+                    op_location,
+                },
+            };
+        }
+        Expr {
+            location,
+            kind: ExprKind::Variable {
+                name,
+                ctx: ExprContext::Load,
+            },
         }
     }
 
+    /// Match a compound assignment operator (the plain `=` is matched
+    /// separately, first).
+    pub(super) fn match_aug_operator(&mut self) -> bool {
+        self.match_(TK::PlusEqual)
+            | self.match_(TK::MinusEqual)
+            | self.match_(TK::StarEqual)
+            | self.match_(TK::SlashEqual)
+            | self.match_(TK::HatEqual)
+            | self.match_(TK::PipeEqual)
+            | self.match_(TK::AmperEqual)
+            | self.match_(TK::PercentEqual)
+    }
+
+    /// Classify the just-consumed compound-assignment operator.
+    pub(super) fn take_aug_operator(&self) -> (BinaryOp, Location) {
+        let kind = self.previous.as_ref().unwrap().kind;
+        let location = self.location();
+        let op = match kind {
+            TK::PlusEqual => BinaryOp::Add,
+            TK::MinusEqual => BinaryOp::Sub,
+            TK::StarEqual => BinaryOp::Mul,
+            TK::SlashEqual => BinaryOp::Div,
+            TK::HatEqual => BinaryOp::BitXor,
+            TK::PipeEqual => BinaryOp::BitOr,
+            TK::AmperEqual => BinaryOp::BitAnd,
+            TK::PercentEqual => BinaryOp::Mod,
+            _ => unreachable!("not a compound assignment operator"),
+        };
+        (op, location)
+    }
+}
+
+impl Codegen<'_, '_> {
+    /// First checks if the name belongs to a local variable.
+    /// If none is found, upvalues are searched, before finally it is assumed to
+    /// belong to a global variable.
     /// Resolve `name` against the current scopes, innermost first: local
     /// slot, then upvalue, then global constant index. Returns the matching
     /// get and set opcodes (short variants) along with the operand.
-    fn resolve_variable_ops<S>(&mut self, name: &S) -> (OpCode, OpCode, usize)
-    where
-        S: ToString,
-    {
+    pub(super) fn resolve_variable_ops(
+        &mut self,
+        name: &str,
+        error_location: Location,
+    ) -> (OpCode, OpCode, usize) {
         let mut get_op = OpCode::GetLocal;
         let mut set_op = OpCode::SetLocal;
-        let mut arg = self.resolve_local(name);
+        let mut arg = self.resolve_local(name, error_location);
 
         // Upvalue?
         if arg.is_none()
-            && let Some(upvalue_arg) = self.resolve_upvalue(name)
+            && let Some(upvalue_arg) = self.resolve_upvalue(name, error_location)
         {
             get_op = OpCode::GetUpvalue;
             set_op = OpCode::SetUpvalue;
@@ -176,7 +187,7 @@ impl<'scanner> Compiler<'scanner, '_> {
     /// Stack: `[..] -> [.., slot value]`
     pub(super) fn emit_local_get(&mut self, slot: usize, variable_location: Location) {
         let location = OpcodeLocation::new(variable_location);
-        let (op, encoding) = if slot > u8::MAX.into() {
+        let (op, encoding) = if slot > usize::from(u8::MAX) {
             (OpCode::GetLocalLong, NumberEncoding::Long)
         } else {
             (OpCode::GetLocal, NumberEncoding::Short)
@@ -193,14 +204,11 @@ impl<'scanner> Compiler<'scanner, '_> {
     /// expression.
     ///
     /// Stack: `[.., value] -> [..]`
-    pub(super) fn emit_variable_set_and_pop<S>(&mut self, name: &S, variable_location: Location)
-    where
-        S: ToString,
-    {
+    pub(super) fn emit_variable_set_and_pop(&mut self, name: &str, variable_location: Location) {
         let location = OpcodeLocation::new(variable_location);
-        let (_, mut set_op, arg) = self.resolve_variable_ops(name);
+        let (_, mut set_op, arg) = self.resolve_variable_ops(name, variable_location);
 
-        let encoding = if arg > u8::MAX.into() {
+        let encoding = if arg > usize::from(u8::MAX) {
             set_op = set_op.to_long();
             NumberEncoding::Long
         } else {
@@ -214,18 +222,30 @@ impl<'scanner> Compiler<'scanner, '_> {
         self.emit_byte(OpCode::Pop, location);
     }
 
+    /// Emit a plain read of `name`.
+    pub(super) fn emit_named_read(&mut self, name: &str, variable_location: Location) {
+        let location = OpcodeLocation::new(variable_location);
+        let (mut get_op, _, arg) = self.resolve_variable_ops(name, variable_location);
+        let encoding = if arg > usize::from(u8::MAX) {
+            get_op = get_op.to_long();
+            NumberEncoding::Long
+        } else {
+            NumberEncoding::Short
+        };
+        self.emit_byte(get_op, location);
+        if !self.emit_number(arg, encoding, location) {
+            self.error(&format!("Too many globals in {get_op:?}"));
+        }
+    }
+
     // Because the closure would need unique access to self while it
     // is mutably borrowed.
     /// Global values are constant names bound to values.
     /// If already a global with that name exists then its index is used.
     /// Otherwise a new global is created and the string constant corresponding
     /// to its name is added to the constant table.
-    #[allow(clippy::option_if_let_else)]
-    pub(super) fn identifier_constant<S>(&mut self, name: &S) -> ConstantLongIndex
-    where
-        S: ToString,
-    {
-        let string_id = self.heap.string_id(name);
+    pub(super) fn identifier_constant(&mut self, name: &str) -> ConstantLongIndex {
+        let string_id = self.heap.string_id(&name);
         if let Some(index) = self.globals_by_name().get(&string_id) {
             *index
         } else {
@@ -242,17 +262,14 @@ impl<'scanner> Compiler<'scanner, '_> {
     /// than it is read during its own initializer, which is not allowed.
     ///
     /// If it is not found at all, then `None` is returned.
-    fn resolve_local<S>(&mut self, name: &S) -> Option<usize>
-    where
-        S: ToString,
-    {
-        let name = &name.to_string();
+    /// (Current frame; reports the own-initializer error.)
+    fn resolve_local(&mut self, name: &str, error_location: Location) -> Option<usize> {
         let retval = self
             .locals()
             .iter()
             .enumerate()
             .rev()
-            .find(|(_, local)| local.name.lexeme == name)
+            .find(|(_, local)| local.name == name)
             .map(|(index, local)| {
                 if *local.depth == -1 {
                     self.locals().len()
@@ -261,17 +278,20 @@ impl<'scanner> Compiler<'scanner, '_> {
                 }
             });
         if retval == Some(self.locals().len()) {
-            self.error("Can't read local variable in its own initializer.");
+            self.error_at(
+                error_location,
+                name,
+                "Can't read local variable in its own initializer.",
+            );
         }
         retval
     }
 
-    pub(super) fn add_local(&mut self, name: Token<'scanner>, mutability: Mutability) {
+    pub(super) fn add_local(&mut self, name: String, mutability: Mutability) {
         if self.locals().len() > usize::pow(2, 24) - 1 {
             self.error("Too many local variables in function.");
             return;
         }
-
         self.locals_mut().push(Local {
             name,
             depth: ScopeDepth(-1),
@@ -285,35 +305,42 @@ impl<'scanner> Compiler<'scanner, '_> {
     /// Iterates up the scopes checking if a local or upvalue with that name
     /// exists. If nothing is found or the current scope is the outermost,
     /// then `None` is returned.
-    fn resolve_upvalue<S>(&mut self, name: &S) -> Option<u8>
-    where
-        S: ToString,
-    {
+    fn resolve_upvalue(&mut self, name: &str, error_location: Location) -> Option<u8> {
         if !self.has_enclosing() {
             return None;
         }
 
-        if let Some(local) = self.in_enclosing(|compiler| compiler.resolve_local(name)) {
+        if let Some(local) =
+            self.in_enclosing(|codegen| codegen.resolve_local(name, error_location))
+        {
             // `resolve_local` reports the own-initializer error and returns
             // `locals.len()` as a sentinel index; mark the capture only when
             // the index names a real slot and fail the resolution otherwise.
             return self
-                .in_enclosing(|compiler| {
-                    compiler.locals_mut().get_mut(local)?.is_captured = true;
+                .in_enclosing(|codegen| {
+                    codegen.locals_mut().get_mut(local)?.is_captured = true;
                     Some(local)
                 })
-                .map(|local| self.add_upvalue(local, true));
+                .map(|local| self.add_upvalue(local, true, error_location, name));
         }
 
-        if let Some(upvalue) = self.in_enclosing(|compiler| compiler.resolve_upvalue(name)) {
-            return Some(self.add_upvalue(usize::from(upvalue), false));
+        if let Some(upvalue) =
+            self.in_enclosing(|codegen| codegen.resolve_upvalue(name, error_location))
+        {
+            return Some(self.add_upvalue(usize::from(upvalue), false, error_location, name));
         }
 
         None
     }
 
     /// Resolve an upvalue or add a new one if it does not yet exist.
-    fn add_upvalue(&mut self, local_index: usize, is_local: bool) -> u8 {
+    fn add_upvalue(
+        &mut self,
+        local_index: usize,
+        is_local: bool,
+        error_location: Location,
+        error_name: &str,
+    ) -> u8 {
         if let Ok(local_index) = u8::try_from(local_index) {
             // Return index if we already have it
             if let Some((upvalue_index, _)) =
@@ -325,7 +352,11 @@ impl<'scanner> Compiler<'scanner, '_> {
             }
 
             if self.upvalues().len() > usize::from(u8::MAX) {
-                self.error("Too many closure variables in function.");
+                self.error_at(
+                    error_location,
+                    error_name,
+                    "Too many closure variables in function.",
+                );
                 return 0;
             }
 
@@ -339,7 +370,11 @@ impl<'scanner> Compiler<'scanner, '_> {
             u8::try_from(upvalue_count - 1).unwrap()
         } else {
             // This is where `(Get|Set)UpvalueLong` would go
-            self.error("Too many variables in function surrounding closure.");
+            self.error_at(
+                error_location,
+                error_name,
+                "Too many variables in function surrounding closure.",
+            );
             0
         }
     }
@@ -350,40 +385,58 @@ impl<'scanner> Compiler<'scanner, '_> {
     /// Otherwise it is checked if there already is an exiting local
     /// with that name. If so, an error is reported.
     /// Otherwise, the variable is added to the list of locals.
-    pub(super) fn declare_variable(&mut self, mutability: Mutability) {
+    pub(super) fn declare_variable(
+        &mut self,
+        name: &str,
+        mutability: Mutability,
+        location: Location,
+    ) {
         if *self.scope_depth() == 0 {
             return;
         }
-
-        let name = self.previous.clone().unwrap();
         let scope_depth = self.scope_depth();
-        if self.locals_mut().iter().rev().any(|local| {
+        if self.locals().iter().rev().any(|local| {
             if *local.depth != -1 && local.depth < scope_depth {
                 false
             } else {
-                local.name.lexeme == name.lexeme
+                local.name == name
             }
         }) {
-            self.error("Already a variable with this name in this scope.");
+            self.error_at(
+                location,
+                name,
+                "Already a variable with this name in this scope.",
+            );
         }
-
-        self.add_local(name, mutability);
+        self.add_local(name.to_string(), mutability);
     }
+}
 
+impl Parser<'_> {
+    /// Consume an identifier.
+    pub(super) fn parse_variable(&mut self, msg: &str) -> (String, Location) {
+        self.consume(TK::Identifier, msg);
+        (
+            self.previous.as_ref().unwrap().as_str().to_string(),
+            self.location(),
+        )
+    }
+}
+
+impl Codegen<'_, '_> {
     /// Parse a variable. If it is local, it gets declared normally.
     /// Otherwise, it is added as a global.
-    pub(super) fn parse_variable(
+    pub(super) fn declare_or_intern(
         &mut self,
-        msg: &str,
+        name: &str,
         mutability: Mutability,
+        location: Location,
     ) -> Option<ConstantLongIndex> {
-        self.consume(TK::Identifier, msg);
-
-        self.declare_variable(mutability);
+        self.declare_variable(name, mutability, location);
         if *self.scope_depth() > 0 {
             None
         } else {
-            Some(self.identifier_constant(&self.previous.as_ref().unwrap().as_str().to_string()))
+            Some(self.identifier_constant(name))
         }
     }
 
@@ -411,6 +464,7 @@ impl<'scanner> Compiler<'scanner, '_> {
         &mut self,
         global: Option<ConstantLongIndex>,
         mutability: Mutability,
+        location: OpcodeLocation,
     ) {
         if *self.scope_depth() > 0 {
             self.mark_initialized();
@@ -418,7 +472,6 @@ impl<'scanner> Compiler<'scanner, '_> {
         }
 
         let global = global.unwrap();
-        let location = self.op_location();
 
         if let Ok(short) = u8::try_from(*global) {
             match mutability {
@@ -429,44 +482,33 @@ impl<'scanner> Compiler<'scanner, '_> {
         } else {
             match mutability {
                 Mutability::Mutable => self.emit_byte(OpCode::DefineGlobalLong, location),
-                Mutability::Immutable => {
-                    self.emit_byte(OpCode::DefineGlobalConstLong, location);
-                }
+                Mutability::Immutable => self.emit_byte(OpCode::DefineGlobalConstLong, location),
             }
             if !self.emit_24bit_number(*global, location) {
                 self.error("Too many globals in define_global!");
             }
         }
     }
+}
 
+impl Parser<'_> {
     /// Parse a list of arguments to a call.
     ///
     /// This means all comma separated expressions until a closing `)` is found.
     /// Does NOT permit trailing commas.
-    /// Parse a call's argument list. Each argument leaves one value on the
-    /// stack (a spread `*expr` leaves the iterable itself). Returns the segment
-    /// count and, when any argument is a spread, a per-segment flag list so the
-    /// caller can emit an unpacking call; `None` means a plain call.
-    pub(super) fn argument_list(&mut self) -> (u8, Option<[u8; SPREAD_BITMAP_BYTES]>) {
-        let mut arg_count: u8 = 0;
-        // Spread bitmap: segment `i` sets bit `i % 8` of byte `i / 8`. A fixed
-        // stack array covers the full 255-argument range (32 bytes); only the
-        // `ceil(arg_count / 8)` used bytes are emitted after the opcode.
-        let mut spread_bitmap = [0u8; SPREAD_BITMAP_BYTES];
+    pub(super) fn argument_list(&mut self) -> Vec<Arg> {
+        let mut args: Vec<Arg> = Vec::new();
         if !self.check(TK::RightParen) {
             loop {
                 let is_spread = self.match_(TK::Star);
-                self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Comma]);
-
-                if arg_count == 255 {
+                let value = self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Comma]);
+                // The check fires on the 256th parsed argument, which is
+                // then discarded.
+                if args.len() == 255 {
                     self.error("Can't have more than 255 arguments.");
                     break;
                 }
-                if is_spread {
-                    spread_bitmap[usize::from(arg_count) / 8] |= 1u8 << (arg_count % 8);
-                }
-                arg_count += 1;
-
+                args.push(Arg { value, is_spread });
                 if !self.match_(TK::Comma) {
                     // The next token starts a new argument, so the comma
                     // between them was probably forgotten.
@@ -480,14 +522,11 @@ impl<'scanner> Compiler<'scanner, '_> {
             }
         }
         self.consume(TK::RightParen, "Expect ')' after arguments.");
-        // An all-zero bitmap means no spreads, so a plain call.
-        let spreads = spread_bitmap
-            .iter()
-            .any(|&byte| byte != 0)
-            .then_some(spread_bitmap);
-        (arg_count, spreads)
+        args
     }
+}
 
+impl Codegen<'_, '_> {
     /// Emit the `ceil(arg_count / 8)` used spread-bitmap bytes after an
     /// unpacking-call opcode and its segment count.
     pub(super) fn emit_spread_bitmap(
@@ -501,10 +540,21 @@ impl<'scanner> Compiler<'scanner, '_> {
         }
     }
 
-    fn check_local_const(&mut self, local_index: usize) {
+    /// Reject a write to a `const` local, reported at the variable's
+    /// own name (the token the user declared it with).
+    pub(super) fn check_local_const(
+        &mut self,
+        local_index: usize,
+        error_location: Location,
+        error_token: &str,
+    ) {
         let local = &self.locals()[local_index];
         if *local.depth != -1 && local.mutability == Mutability::Immutable {
-            self.error("Reassignment to local 'const'.");
+            self.error_at(
+                error_location,
+                error_token,
+                "Reassignment to local 'const'.",
+            );
         }
     }
 }

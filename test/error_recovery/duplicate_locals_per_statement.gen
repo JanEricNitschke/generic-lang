@@ -1,0 +1,8 @@
+fun f() {
+    var a = 1;
+    var a = 2;
+    var b = 3;
+    var b = 4;
+}
+# [line 3] Error at 'a': Already a variable with this name in this scope.
+# [line 5] Error at 'b': Already a variable with this name in this scope.

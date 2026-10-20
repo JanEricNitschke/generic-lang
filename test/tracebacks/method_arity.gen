@@ -1,0 +1,10 @@
+class K {
+  m() {}
+}
+try {
+  K().m(1);
+} catch TypeError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/method_arity.gen", line 5, in <script>
+# expect:       K().m(1);
+# expect:       ~~~~~^^^

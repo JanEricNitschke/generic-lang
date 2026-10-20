@@ -7,7 +7,7 @@ the documentation.
 
 - **[Language guide](docs/language/README.md)** - syntax, types, classes, exceptions, modules, the standard library, and the built-in unit-test framework, for people writing generic programs.
 - **[Plugin authoring guide](docs/plugin-authors.md)** - write native modules (Rust, C, C++, Zig) loaded with a plain `import`. API reference: [`generic-lang-api` on docs.rs](https://docs.rs/generic-lang-api).
-- **[Architecture](docs/ARCHITECTURE.md)** - internals for contributors: the scanner → compiler → bytecode → VM pipeline, the value/heap/GC model, the exception model, and the load-bearing invariants.
+- **[Architecture](docs/ARCHITECTURE.md)** - internals for contributors: the scanner → parser/AST → codegen → bytecode → VM pipeline, the value/heap/GC model, the exception model, soudness/correctness invariants that need to be upheld manually.
 
 The workspace is three crates: `generic-lang` (the `generic` binary), `generic-lang-lib` (the interpreter as a library), and `generic-lang-api` (the plugin ABI/authoring API).
 

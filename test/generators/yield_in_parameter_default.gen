@@ -1,0 +1,15 @@
+# A parameter default is evaluated in the enclosing function at definition
+# time, so `yield` there belongs to the enclosing generator.
+gen outer() {
+    fun inner(value = yield 1) {
+        return value;
+    }
+
+    yield inner;
+}
+
+var it = outer();
+print(next(it));        # expect: 1
+var inner = it.send(42);
+print(inner());         # expect: 42
+print(inner(52));       # expect: 52

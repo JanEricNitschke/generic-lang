@@ -1,7 +1,8 @@
 # Generic Programming Language
 
 Rust-based interpreter for a Lox-inspired dynamic programming language.
-Has a single-pass compiler with no lookahead and a virtual machine for execution.
+Compiles source to bytecode through a parser, an AST, and a codegen pass,
+then executes it on a virtual machine.
 
 ## Code Standards
 
@@ -39,7 +40,10 @@ var result = 1 + 2 * 3;
 print(result); # expect: 7
 ```
 
-The Dart test runner validates that `print()` statements produce output matching the `# expect: value` comments.
+The Dart test runner validates that `print()` statements produce output
+matching the `# expect: value` comments. Compile-error tests use
+`# [line N] Error ...` comments; `#|` rows pin exact stderr snippets
+(a bare `#|` asserts no snippet).
 
 ## Key Guidelines
 1. Follow Rust best practices and idiomatic patterns
