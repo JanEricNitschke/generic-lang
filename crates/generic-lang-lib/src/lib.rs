@@ -44,6 +44,33 @@ mod vm;
 pub use testing::{TestRunResult, run_tests};
 pub use vm::InterpretResult;
 
+/// Options controlling a VM run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RunOptions {
+    /// Whether imported modules may be loaded from the on-disk cache.
+    pub cache_read: bool,
+    /// Whether compiled imported modules may be written to the on-disk cache.
+    pub cache_write: bool,
+}
+
+impl RunOptions {
+    const fn for_profile(debug_assertions: bool) -> Self {
+        let enabled = !debug_assertions;
+        Self {
+            cache_read: enabled,
+            cache_write: enabled,
+        }
+    }
+}
+
+impl Default for RunOptions {
+    /// Debug builds disable the module cache by default so stale bytecode
+    /// cannot outlive a compiler change during development.
+    fn default() -> Self {
+        Self::for_profile(cfg!(debug_assertions))
+    }
+}
+
 /// Run the REPL.
 ///
 /// This function will loop, reading a line from stdin and passing it to the VM for interpretation.
@@ -52,8 +79,8 @@ pub use vm::InterpretResult;
 /// # Panics
 ///
 /// If stdout can not be flushed or if `read_line` returns an error.
-pub fn repl() {
-    let mut vm = VM::new();
+pub fn repl(options: RunOptions) {
+    let mut vm = VM::new(options);
     loop {
         print!("> ");
         std::io::stdout().flush().unwrap();
@@ -81,11 +108,28 @@ pub fn repl() {
 pub fn run_file(
     file: PathBuf,
     script_args: Vec<String>,
+    options: RunOptions,
 ) -> Result<InterpretResult, std::io::Error> {
     let contents = std::fs::read_to_string(&file)?;
-    let mut vm = VM::new();
+    let mut vm = VM::new(options);
     let mut argv = vec![file.to_string_lossy().into_owned()];
     argv.extend(script_args);
     vm.set_script_args(argv);
     Ok(vm.interpret(&contents, file))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RunOptions;
+
+    #[test]
+    fn cache_defaults_follow_the_build_profile() {
+        let debug = RunOptions::for_profile(true);
+        assert!(!debug.cache_read);
+        assert!(!debug.cache_write);
+
+        let release = RunOptions::for_profile(false);
+        assert!(release.cache_read);
+        assert!(release.cache_write);
+    }
 }

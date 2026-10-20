@@ -6,6 +6,7 @@
 
 mod ast;
 mod back;
+pub(crate) mod cache;
 mod error;
 mod front;
 mod rules;

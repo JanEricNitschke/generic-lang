@@ -223,6 +223,10 @@ impl Chunk {
         &self.constants
     }
 
+    pub(super) fn name(&self) -> StringId {
+        self.name
+    }
+
     pub(super) fn code(&self) -> &[u8] {
         &self.code
     }

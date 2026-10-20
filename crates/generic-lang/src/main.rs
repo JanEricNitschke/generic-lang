@@ -12,7 +12,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use generic_lang_lib::{InterpretResult, TestRunResult, repl, run_file, run_tests};
+use generic_lang_lib::{InterpretResult, RunOptions, TestRunResult, repl, run_file, run_tests};
 
 #[derive(Parser, Debug)]
 #[command(version)]
@@ -20,6 +20,18 @@ struct Args {
     /// Run in test mode, discovering and executing test functions from a file or directory
     #[arg(short, long)]
     test: bool,
+
+    /// Ignore existing compiled-module cache files.
+    #[arg(long)]
+    no_cache_read: bool,
+
+    /// Do not write compiled-module cache files.
+    #[arg(long)]
+    no_cache_write: bool,
+
+    /// Disable both reading and writing compiled-module caches.
+    #[arg(long)]
+    no_cache: bool,
 
     /// The file to run followed by its arguments (`os.argv[1:]`). The
     /// file path is the first positional, and it ends option parsing:
@@ -32,16 +44,21 @@ struct Args {
 /// Main entry point for the generic interpreter
 fn main() {
     let args = Args::parse();
+    let defaults = RunOptions::default();
+    let options = RunOptions {
+        cache_read: defaults.cache_read && !args.no_cache && !args.no_cache_read,
+        cache_write: defaults.cache_write && !args.no_cache && !args.no_cache_write,
+    };
     let mut file_and_arguments = args.file_and_arguments.into_iter();
     let file = file_and_arguments.next().map(PathBuf::from);
 
     match (file, args.test) {
-        (Some(file), true) => match run_tests(&file) {
+        (Some(file), true) => match run_tests(&file, options) {
             TestRunResult::AllPassed => {}
             TestRunResult::HadFailures => std::process::exit(1),
             TestRunResult::InvalidPath => std::process::exit(74),
         },
-        (Some(file), false) => match run_file(file, file_and_arguments.collect()) {
+        (Some(file), false) => match run_file(file, file_and_arguments.collect(), options) {
             Err(e) => {
                 eprintln!("{e}");
                 std::process::exit(74);
@@ -54,7 +71,7 @@ fn main() {
             eprintln!("Error: --test flag requires a file or directory to be specified");
             std::process::exit(64);
         }
-        (None, false) => repl(),
+        (None, false) => repl(options),
     }
 }
 
@@ -90,6 +107,44 @@ mod tests {
         let args = parse(&["generic", "-t", "tests"]);
         assert!(args.test);
         assert_eq!(args.file_and_arguments, ["tests"]);
+    }
+
+    #[test]
+    fn cache_flags_before_the_file() {
+        let args = parse(&[
+            "generic",
+            "--no-cache",
+            "--no-cache-read",
+            "--no-cache-write",
+            "script.gen",
+        ]);
+        assert!(args.no_cache);
+        assert!(args.no_cache_read);
+        assert!(args.no_cache_write);
+        assert_eq!(args.file_and_arguments, ["script.gen"]);
+    }
+
+    #[test]
+    fn cache_flags_after_the_file_go_to_the_script() {
+        let args = parse(&[
+            "generic",
+            "script.gen",
+            "--no-cache",
+            "--no-cache-read",
+            "--no-cache-write",
+        ]);
+        assert!(!args.no_cache);
+        assert!(!args.no_cache_read);
+        assert!(!args.no_cache_write);
+        assert_eq!(
+            args.file_and_arguments,
+            [
+                "script.gen",
+                "--no-cache",
+                "--no-cache-read",
+                "--no-cache-write"
+            ]
+        );
     }
 
     #[test]
