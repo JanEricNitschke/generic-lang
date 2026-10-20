@@ -415,7 +415,7 @@ impl Parser<'_> {
                 loop {
                     let expr = self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Comma]);
                     matchers.push(expr);
-                    if !self.match_(TK::Comma) {
+                    if !self.match_(TK::Comma) || self.check(TK::RightParen) {
                         break;
                     }
                 }
@@ -895,51 +895,56 @@ impl Parser<'_> {
     fn parse_params(&mut self) -> ParamList {
         let mut params: Vec<Param> = Vec::new();
         let mut rest = None;
-        if !self.check(TK::RightParen) {
-            loop {
-                if self.match_(TK::Star) {
-                    // `*rest` collects surplus positional arguments; it is
-                    // the last parameter and is not counted in the arity.
-                    let (name, location) = self.parse_variable("Expect rest parameter name.");
-                    if !self.check(TK::RightParen) {
-                        self.error_at_current("A rest parameter must be the last parameter.");
-                        // Discard the stray trailing parameters so the body
-                        // still parses and no cascade errors follow.
-                        while !self.check(TK::RightParen) && !self.check(TK::Eof) {
-                            self.advance();
-                        }
-                    }
-                    rest = Some(Param {
-                        name,
-                        default: None,
-                        location,
-                    });
-                    break;
-                }
-                if params.len() == 255 {
-                    self.error_at_current("Can't have more than 255 parameters.");
-                }
-                let (name, location) = self.parse_variable("Expect parameter name.");
-                let default = if self.match_(TK::Equal) {
-                    Some(Box::new(self.parse_parameter_default()))
-                } else {
-                    // Required parameters must form a prefix: once a default
-                    // has appeared, `arity` outruns the required count, so a
-                    // later required parameter shows up as the two diverging.
-                    let required = params.iter().filter(|p| p.default.is_none()).count() + 1;
-                    if required != params.len() + 1 {
-                        self.error("A required parameter cannot follow an optional one.");
-                    }
-                    None
-                };
-                params.push(Param {
+        while !self.check(TK::RightParen) {
+            if self.match_(TK::Star) {
+                // `*rest` collects surplus positional arguments; it is
+                // the last parameter and is not counted in the arity.
+                let (name, location) = self.parse_variable("Expect rest parameter name.");
+                rest = Some(Param {
                     name,
-                    default,
+                    default: None,
                     location,
                 });
-                if !self.match_(TK::Comma) {
+                if self.match_(TK::Comma) {
+                    if self.check(TK::RightParen) {
+                        break;
+                    }
+                    self.error("A rest parameter must be the last parameter.");
+                } else if self.check(TK::RightParen) {
                     break;
+                } else {
+                    self.error_at_current("A rest parameter must be the last parameter.");
                 }
+                // Discard the stray trailing parameters so the body
+                // still parses and no cascade errors follow.
+                while !self.check(TK::RightParen) && !self.check(TK::Eof) {
+                    self.advance();
+                }
+                break;
+            }
+            if params.len() == 255 {
+                self.error_at_current("Can't have more than 255 parameters.");
+            }
+            let (name, location) = self.parse_variable("Expect parameter name.");
+            let default = if self.match_(TK::Equal) {
+                Some(Box::new(self.parse_parameter_default()))
+            } else {
+                // Required parameters must form a prefix: once a default
+                // has appeared, `arity` outruns the required count, so a
+                // later required parameter shows up as the two diverging.
+                let required = params.iter().filter(|p| p.default.is_none()).count() + 1;
+                if required != params.len() + 1 {
+                    self.error("A required parameter cannot follow an optional one.");
+                }
+                None
+            };
+            params.push(Param {
+                name,
+                default,
+                location,
+            });
+            if !self.match_(TK::Comma) {
+                break;
             }
         }
         self.consume(TK::RightParen, "Expect ')' after parameters.");

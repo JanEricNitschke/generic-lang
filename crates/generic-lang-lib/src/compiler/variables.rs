@@ -495,30 +495,28 @@ impl Parser<'_> {
     /// Parse a list of arguments to a call.
     ///
     /// This means all comma separated expressions until a closing `)` is found.
-    /// Does NOT permit trailing commas.
+    /// An optional trailing comma is permitted.
     pub(super) fn argument_list(&mut self) -> Vec<Arg> {
         let mut args: Vec<Arg> = Vec::new();
-        if !self.check(TK::RightParen) {
-            loop {
-                let is_spread = self.match_(TK::Star);
-                let value = self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Comma]);
-                // The check fires on the 256th parsed argument, which is
-                // then discarded.
-                if args.len() == 255 {
-                    self.error("Can't have more than 255 arguments.");
-                    break;
+        while !self.check(TK::RightParen) {
+            let is_spread = self.match_(TK::Star);
+            let value = self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Comma]);
+            // The check fires on the 256th parsed argument, which is
+            // then discarded.
+            if args.len() == 255 {
+                self.error("Can't have more than 255 arguments.");
+                break;
+            }
+            args.push(Arg { value, is_spread });
+            if !self.match_(TK::Comma) {
+                // The next token starts a new argument, so the comma
+                // between them was probably forgotten.
+                if !self.check(TK::RightParen) && self.current_starts_expression() {
+                    self.error_at_current(
+                        "Expect ',' or ')' after argument. Perhaps you forgot a comma?",
+                    );
                 }
-                args.push(Arg { value, is_spread });
-                if !self.match_(TK::Comma) {
-                    // The next token starts a new argument, so the comma
-                    // between them was probably forgotten.
-                    if !self.check(TK::RightParen) && self.current_starts_expression() {
-                        self.error_at_current(
-                            "Expect ',' or ')' after argument. Perhaps you forgot a comma?",
-                        );
-                    }
-                    break;
-                }
+                break;
             }
         }
         self.consume(TK::RightParen, "Expect ')' after arguments.");

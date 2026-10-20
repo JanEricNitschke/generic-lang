@@ -1,0 +1,14 @@
+class Error1 < Exception {}
+class Error2 < Exception {}
+
+try {
+    throw Error1("one");
+} catch (Error1,) {
+    print("one"); # expect: one
+}
+
+try {
+    throw Error1("two");
+} catch (Error1, Error2,) {
+    print("two"); # expect: two
+}

@@ -1,0 +1,2 @@
+print(len({"a": 1,})); # expect: 1
+print(len({"a": 1, "b": 2,})); # expect: 2
