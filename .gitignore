@@ -30,6 +30,7 @@ replay_pid*
 *.project/
 *.code-workspace
 target/
+__generic_cache__/
 
 reference/
 *.sh
