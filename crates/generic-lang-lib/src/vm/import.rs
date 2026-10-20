@@ -1,4 +1,4 @@
-use super::{Global, VM};
+use super::{Global, ModuleSource, VM};
 use crate::vm::ExceptionKind::ImportError;
 
 use path_slash::PathBufExt;
@@ -76,7 +76,7 @@ impl VM {
             self.import_generic_module(
                 &contents,
                 &name,
-                file_path,
+                ModuleSource::OnDisk(&file_path),
                 names_to_import,
                 alias,
                 local_import,
@@ -111,7 +111,7 @@ impl VM {
                 std::str::from_utf8(stdlib_file.contents())
                     .unwrap_or_else(|_| panic!("Invalid UTF-8 in generic stdlib module: {name}")),
                 &name,
-                PathBuf::from(&name),
+                ModuleSource::Embedded,
                 names_to_import,
                 alias,
                 local_import,
@@ -298,27 +298,24 @@ impl VM {
         &mut self,
         contents: &str,
         name: &str,
-        file_path: PathBuf,
+        origin: ModuleSource<'_>,
         names_to_import: Option<Vec<StringId>>,
         alias: Option<StringId>,
         local_import: bool,
     ) -> VmResult {
-        if let Some(function) = self.compile(
-            contents,
-            name,
-            #[cfg(any(
-                feature = "print_code",
-                feature = "debug_scanner",
-                feature = "debug_parser"
-            ))]
-            false,
-        ) {
+        if let Some(function) = self.compile_module(contents, name, origin) {
             let function = self.heap.add_function(function);
             let function_id = function.as_function();
             let closure =
                 Closure::new(*function_id, true, self.modules.last().copied(), &self.heap);
 
-            self.add_closure_to_modules(&closure, file_path, names_to_import, alias, local_import);
+            self.add_closure_to_modules(
+                &closure,
+                origin.module_path(name),
+                names_to_import,
+                alias,
+                local_import,
+            );
 
             let value_id = self.heap.add_closure(closure);
             self.stack_push(value_id);
