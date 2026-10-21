@@ -23,6 +23,7 @@
 
 use std::{io::Write, path::PathBuf};
 
+pub use compiler::{FormatOptions, format_source, format_source_with_default};
 use vm::VM;
 
 mod testing;

@@ -63,10 +63,11 @@ jobs:
       run: pip install clang-format cpplint
 
     - name: Check version sync
-      # The workspace package version must match the generic-lang-lib dep pin
-      # in [workspace.dependencies], and the generic-lang-api dep pin must
-      # match the crate's own version. cargo-release keeps these in sync on
-      # releases; this guard catches manual drift.
+      # The workspace package version must match the generic-lang-lib and
+      # generic-lang-derive dep pins in [workspace.dependencies], and the
+      # generic-lang-api dep pin must match the crate's own version.
+      # cargo-release keeps these in sync on releases; this guard catches
+      # manual drift.
       if: runner.os == 'Linux'
       run: |
         set -euo pipefail
@@ -75,6 +76,13 @@ jobs:
         LIB_DEP=$(grep 'generic-lang-lib = {' Cargo.toml | grep -oP 'version = "\K[^"]+')
         [ "$LIB_VER" = "$LIB_DEP" ] || {
           echo "::error::generic-lang-lib version ($LIB_VER) != workspace dep pin ($LIB_DEP)"
+          exit 1
+        }
+        DERIVE_VER=$(cargo metadata --format-version=1 --no-deps |
+          jq -r '.packages[] | select(.name == "generic-lang-derive") | .version')
+        DERIVE_DEP=$(grep 'generic-lang-derive = {' Cargo.toml | grep -oP 'version = "\K[^"]+')
+        [ "$DERIVE_VER" = "$DERIVE_DEP" ] || {
+          echo "::error::generic-lang-derive version ($DERIVE_VER) != workspace dep pin ($DERIVE_DEP)"
           exit 1
         }
         API_VER=$(cargo metadata --format-version=1 --no-deps |

@@ -5,10 +5,11 @@
 //! at them; they always come last in a node.
 
 use crate::types::{ConditionType, Location, LoopType, Mutability};
+use generic_lang_derive::LocationLessEq;
 use num_bigint::BigInt;
 
 /// A parsed program: the top-level declarations.
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) struct Program {
     pub declarations: Vec<StmtKind>,
 }
@@ -103,7 +104,7 @@ impl From<MethodKind> for FunKind {
 
 /// A single call argument. `` *expr `` spreads: the iterable's elements
 /// become the arguments.
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) struct Arg {
     pub value: Expr,
     pub is_spread: bool,
@@ -145,7 +146,7 @@ pub(crate) enum UnaryOp {
 
 /// A literal value as parsed: nil, booleans, the stop-iteration
 /// sentinel, numbers, and strings.
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) enum Literal {
     Nil,
     True,
@@ -188,7 +189,7 @@ pub(crate) enum BoolOperator {
 
 /// One part of an f-string: a literal text run or an interpolated
 /// expression.
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) enum FstringPart {
     /// Literal text. The final part carries the closing quote stripped.
     Str(String),
@@ -197,16 +198,17 @@ pub(crate) enum FstringPart {
 
 /// A t-string: its static text and its interpolations, kept in two
 /// parallel lists (they interleave in the source).
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) struct Tstring {
-    /// Static text, in order. An implicit empty string is prepended
-    /// when the template starts with an interpolation; the final part
-    /// carries its closing quote stripped.
+    /// Static text boundaries, in order. This always contains exactly one
+    /// more entry than `interpolations`: the text before each interpolation,
+    /// including empty strings for adjacent interpolations, plus the trailing
+    /// text. The final part carries its closing quote stripped.
     pub parts: Vec<String>,
     pub interpolations: Vec<TstringInterp>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) struct TstringInterp {
     /// The interpolated expression.
     pub value: Box<Expr>,
@@ -219,13 +221,13 @@ pub(crate) struct TstringInterp {
 ///
 /// `location` covers the expression's whole extent in the source (first
 /// token .. last token).
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) struct Expr {
     pub kind: ExprKind,
     pub location: Location,
 }
 
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) enum ExprKind {
     Literal(Literal),
 
@@ -379,7 +381,7 @@ impl ExprKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) struct Param {
     pub name: String,
     /// Evaluated once, when the function is defined.
@@ -389,7 +391,7 @@ pub(crate) struct Param {
 
 /// A function's parameters: the named parameters plus the trailing
 /// `*rest` parameter, if any.
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) struct ParamList {
     pub params: Vec<Param>,
     pub rest: Option<Param>,
@@ -401,7 +403,7 @@ pub(crate) struct ParamList {
 /// its own type ([`LambdaLit`]).
 ///
 /// `fn_location` is the function's name token.
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) struct FunctionDef {
     pub name: String,
     pub parameters: ParamList,
@@ -412,21 +414,21 @@ pub(crate) struct FunctionDef {
 /// A `` -> `` lambda literal: parameters plus either a block body or a
 /// bare expression (an implicit `return`). Unlike a function it binds no
 /// name. `fn_location` is the `` -> `` token.
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) struct LambdaLit {
     pub parameters: ParamList,
     pub body: LambdaBody,
     pub fn_location: Location,
 }
 
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) enum LambdaBody {
     Block(Vec<StmtKind>),
     /// A bare expression (implicit `` return <expr> ``).
     Expression(Box<Expr>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) enum StmtKind {
     /// `` expr; ``
     Expression {
@@ -573,7 +575,7 @@ pub(crate) enum StmtKind {
 /// `superclass` holds the superclass expression (a plain identifier
 /// read) and the `<` token. `members` keeps class variables and methods
 /// in source order: codegen evaluates their expressions in that order.
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) struct ClassDecl {
     pub name: String,
     pub superclass: Option<(Box<Expr>, Location)>,
@@ -584,7 +586,7 @@ pub(crate) struct ClassDecl {
 }
 
 /// One item of a class body, in source order.
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) enum ClassMember {
     Variable(ClassVar),
     Method(Method),
@@ -594,7 +596,7 @@ pub(crate) enum ClassMember {
 /// body. `default` distinguishes an explicit `` = nil `` from an omitted
 /// default: it is `Some` of a nil literal exactly when `` = nil `` was
 /// written.
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) struct ClassVar {
     pub name: String,
     pub annotation: Option<Box<Expr>>,
@@ -604,7 +606,7 @@ pub(crate) struct ClassVar {
 }
 
 /// A class member: name plus the function literal.
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) struct Method {
     pub name: String,
     pub kind: MethodKind,
@@ -614,7 +616,7 @@ pub(crate) struct Method {
 
 /// `` try``/``catch``/``else``. `try_location` is the `try` keyword:
 /// the jump-over size-limit sites of the emitted jump ladder.
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) struct TryStmt {
     pub body: Vec<StmtKind>,
     pub catches: Vec<CatchClause>,
@@ -626,7 +628,7 @@ pub(crate) struct TryStmt {
 /// one entry for `` catch (X) `` / `` catch X ``, several for
 /// `` catch (X, Y) `` (the parser always requires at least one). The
 /// pending exception is compared against each matcher in order.
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) struct CatchClause {
     pub matchers: Vec<Expr>,
     /// `` Some((name, token)) `` for `` catch ... as name ``.
@@ -634,7 +636,7 @@ pub(crate) struct CatchClause {
     pub body: Vec<StmtKind>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, LocationLessEq)]
 pub(crate) struct SwitchCase {
     /// `None` for the `default:` branch.
     pub value: Option<Box<Expr>>,
