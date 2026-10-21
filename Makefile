@@ -25,6 +25,18 @@ cargo-test:
 docs-check:
 	RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace
 
+# Format every .gen fixture under the repo (default excludes skip build/VCS
+# dirs). Exit 65 means an input file is not valid Generic source, which is
+# expected for the negative fixtures, so its output is suppressed. Any other
+# nonzero exit (internal formatter error 70, IO 74, panic 101) fails and
+# prints the collected diagnostics.
+.PHONY: fmt-all-gen-check
+fmt-all-gen-check: $(DEBUG_BIN)
+	@./$(DEBUG_BIN) fmt . >/dev/null 2>fmt.err; \
+	status=$$?; \
+	if [ "$$status" -ne 0 ] && [ "$$status" -ne 65 ]; then cat fmt.err; rm -f fmt.err; exit "$$status"; fi; \
+	rm -f fmt.err
+
 # Regenerate the C header from the plugin ABI types. The header is checked
 # in; CI fails if it is out of date. Requires `cargo install cbindgen`.
 .PHONY: generate-plugin-header

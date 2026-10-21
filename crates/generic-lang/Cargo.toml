@@ -21,6 +21,7 @@ path = "src/main.rs"
 [dependencies]
 clap             = { workspace = true }
 generic-lang-lib = { workspace = true }
+walkdir          = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

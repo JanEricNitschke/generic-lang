@@ -1,0 +1,22 @@
+[package]
+name        = "generic-lang-derive"
+description = "Derive macros used by the generic language implementation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+readme.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+proc-macro = true
+
+[lints]
+workspace = true
+
+[dependencies]
+quote = { workspace = true }
+syn   = { workspace = true }

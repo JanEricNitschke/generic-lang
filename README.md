@@ -65,6 +65,27 @@ Now to use generic, in your terminal, run:
 generic
 ```
 
+## Formatting
+
+Format a source file to stdout with:
+
+```bash
+generic fmt path/to/file.gen
+```
+
+Rewrite one or more files in place with `-w` / `--write`:
+
+```bash
+generic fmt -w path/to/file.gen other.gen
+```
+
+The formatter parses the file and prints a canonical layout with four-space
+indentation by default. Use `--indent-width N` to choose a different number
+of spaces per level (at least one). When printing multiple files to stdout,
+each file is preceded by an `==> path <==` header. It currently discards comments because the scanner removes them
+before the AST is built; preserving comments requires retaining comment tokens
+and attaching them to AST nodes.
+
 ## Testing
 
 **Generic** supports two types of testing:

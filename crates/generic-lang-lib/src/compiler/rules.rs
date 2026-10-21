@@ -46,6 +46,11 @@ impl Precedence {
     pub(crate) const fn non_assigning() -> Self {
         Self::Tuple
     }
+
+    pub(crate) fn tighter(self) -> Self {
+        Self::try_from_primitive(u8::from(self) + 1)
+            .expect("there is no precedence tighter than primary")
+    }
 }
 
 #[derive(Debug)]
@@ -695,6 +700,11 @@ impl Parser<'_> {
                         self.error("Can't have more than 255 interpolations in a t-string.");
                         break;
                     }
+                    if parts.len() == interpolations.len() {
+                        // Adjacent interpolations have no text token between
+                        // them; keep one part per interpolation boundary.
+                        parts.push(String::new());
+                    }
                     // parse an expression until the matching `}`
                     // Get the start position of the expression
                     let expr_start = self.current_location();
@@ -722,6 +732,11 @@ impl Parser<'_> {
                     // remove the trailing quote from the slice
                     let lexeme = token.as_str();
                     parts.push(lexeme[..lexeme.len() - 1].to_string());
+                    debug_assert_eq!(
+                        parts.len(),
+                        interpolations.len() + 1,
+                        "t-string parts must bracket every interpolation"
+                    );
                     let end_location = token.location;
                     return Expr {
                         location: open_location.merge_ordered(&end_location),

@@ -5,8 +5,9 @@ name: Publish
 # builds, publishes, and creates GitHub Releases.
 #
 # The two version tracks are independent:
-# - Interpreter (generic-lang + generic-lang-lib, shared workspace version):
-#   full pipeline — crates.io, binaries, wheels, sdist, GitHub Release.
+# - Interpreter (generic-lang + generic-lang-lib + generic-lang-derive,
+#   shared workspace version): full pipeline — crates.io, binaries, wheels,
+#   sdist, GitHub Release.
 # - API crate (generic-lang-api, version 0.<abi>.<patch>): crates.io +
 #   GitHub Release only.
 #
@@ -207,7 +208,9 @@ jobs:
 
       - name: Publish changed crates
         run: |
-          for crate in generic-lang-api generic-lang-lib generic-lang; do
+          # Dependencies must be published before their dependents: the
+          # derive crate is a required build dependency of generic-lang-lib.
+          for crate in generic-lang-api generic-lang-derive generic-lang-lib generic-lang; do
             version=$(cargo metadata --format-version=1 --no-deps |
               jq -r --arg name "$crate" '.packages[] | select(.name == $name) | .version')
             if curl -fsSL "https://index.crates.io/${crate:0:2}/${crate:2:2}/$crate" 2>/dev/null |

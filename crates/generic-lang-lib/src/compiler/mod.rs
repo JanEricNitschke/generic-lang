@@ -5,15 +5,18 @@
 //! emits bytecode.
 
 mod ast;
+mod ast_eq;
 mod back;
 pub(crate) mod cache;
 mod error;
+mod fmt;
 mod front;
 mod rules;
 mod variables;
 
 use crate::{heap::Heap, scanner::Scanner, types::InjectedKind, value::Function};
 use back::Codegen;
+pub use fmt::{FormatError, FormatOptions, format_source, format_source_with_default};
 use front::Parser;
 
 /// Main compiler struct that turns tokens into bytecode.
