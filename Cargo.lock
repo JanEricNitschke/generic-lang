@@ -301,11 +301,20 @@ dependencies = [
  "clap",
  "generic-lang-lib",
  "tempfile",
+ "walkdir",
 ]
 
 [[package]]
 name = "generic-lang-api"
 version = "0.2.0"
+
+[[package]]
+name = "generic-lang-derive"
+version = "3.2.0"
+dependencies = [
+ "quote",
+ "syn 2.0.117",
+]
 
 [[package]]
 name = "generic-lang-lib"
@@ -316,6 +325,7 @@ dependencies = [
  "derivative",
  "derive_more",
  "generic-lang-api",
+ "generic-lang-derive",
  "hashbrown 0.17.1",
  "humansize",
  "include_dir",

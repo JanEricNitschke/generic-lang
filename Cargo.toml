@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["crates/generic-lang", "crates/generic-lang-lib", "crates/generic-lang-api"]
+members = [
+    "crates/generic-lang",
+    "crates/generic-lang-lib",
+    "crates/generic-lang-api",
+    "crates/generic-lang-derive",
+]
 # The plugin test fixtures are built out-of-band by `make plugin-test-fixture`
 # and must not be part of the workspace: `cargo package --workspace` must not
 # package them, `--locked` release builds must not resolve their deps, and
@@ -100,6 +105,7 @@ verbose_file_reads = "warn"
 # binary actually disable plugins.
 generic-lang-lib = { version = "3.2.0", path = "crates/generic-lang-lib", default-features = false }
 generic-lang-api = { version = "0.2.0", path = "crates/generic-lang-api" }
+generic-lang-derive = { version = "3.2.0", path = "crates/generic-lang-derive" }
 
 byteorder    = "1.5.0"
 clap         = { version = "4.6.1", features = ["derive"] }
@@ -115,6 +121,7 @@ num-bigint   = { version = "0.5.1" }
 num-traits   = "0.2.19"
 num_enum     = "0.7.6"
 paste        = "1.0.15"
+quote        = "1.0.45"
 path-slash   = "0.2.1"
 rand         = "0.10.1"
 rustc-hash   = "2.1.2"
@@ -125,6 +132,7 @@ serde_json   = { version = "1", features = ["arbitrary_precision"] }
 ureq         = "3"
 tempfile     = "3"
 strum_macros = "0.28"
+syn          = { version = "2.0.117", features = ["derive"] }
 thiserror    = "2.0.18"
 tinyvec      = { version = "1.10.0", features = ["alloc"] }
 unicode-normalization = "0.1.25"
