@@ -17,6 +17,7 @@ pub fn derive_location_less_eq(input: TokenStream) -> TokenStream {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn try_derive(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = input.ident;
 

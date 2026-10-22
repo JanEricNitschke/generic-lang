@@ -8,6 +8,7 @@ mod ast;
 mod ast_eq;
 mod back;
 pub(crate) mod cache;
+mod comments;
 mod error;
 mod fmt;
 mod front;

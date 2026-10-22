@@ -2,19 +2,16 @@
 //!
 //! The formatter walks the AST and prints a canonical token layout with
 //! configurable indentation (four spaces by default). It deliberately does
-//! not preserve the original line breaks or comments.
-//!
-//! **Comments are currently discarded.** The scanner skips them before the
-//! parser runs, and the AST has no place to attach them, so formatting a
-//! file loses every `#` comment. Preserving comments needs comment tokens
-//! (or trivia) to be retained and attached to AST nodes first.
+//! not preserve the original line breaks. Comments are kept in a side map
+//! keyed by AST list slots, so formatting a file keeps them in source order.
 
 use super::ast::{
-    AccessMode, BinaryOp, BoolOperator, CatchClause, ClassDecl, ClassMember, ClassVar, Expr,
-    ExprKind, FstringPart, FunctionKind, Literal, Method, ParamList, Program, StmtKind, SwitchCase,
-    TryStmt, UnaryOp,
+    AccessMode, BinaryOp, BoolOperator, CatchClause, ClassDecl, ClassMemberKind, ClassVar, Expr,
+    ExprKind, FstringPart, FunctionKind, Literal, Method, ParamList, Program, Stmt, StmtKind,
+    SwitchCase, TryStmt, UnaryOp,
 };
 use super::ast_eq::LocationLessEq;
+use super::comments::{Comment, CommentMap, Position, end_position};
 use super::front::Parser;
 use super::rules::Precedence;
 use crate::scanner::Scanner;
@@ -25,26 +22,36 @@ use crate::types::{ConditionType, LoopType, Mutability};
 pub struct FormatOptions {
     /// Number of spaces per indentation level.
     pub indent_width: usize,
+    /// Soft maximum line length. `None` disables line wrapping.
+    pub max_line_length: Option<usize>,
 }
 
 impl Default for FormatOptions {
     fn default() -> Self {
-        Self { indent_width: 4 }
+        Self {
+            indent_width: 4,
+            max_line_length: None,
+        }
     }
 }
 
-/// Format Generic source into canonical, comment-free source.
+/// Format Generic source into canonical source.
 ///
 /// The source is parsed with the normal compiler front end; parse errors
-/// are returned as the compiler's error messages. Comments are **not**
-/// preserved: the scanner drops them and the AST has no comment nodes.
+/// are returned as the compiler's error messages. Comments are kept in a
+/// side map and printed in source order.
 ///
 /// Before returning, the formatted source is re-parsed and checked: it must
 /// produce the same AST (ignoring source locations) and formatting it again
 /// must be idempotent.
+///
+/// # Errors
+///
+/// Returns the parser errors when the input does not parse, or an internal
+/// formatter error if the formatted output does not round-trip.
 pub fn format_source(source: &str, options: FormatOptions) -> Result<String, Vec<String>> {
     let program = parse(source)?;
-    let formatted = Formatter::new(options).format_program(&program);
+    let formatted = Formatter::new(options, &program.comments).format_program(&program);
 
     let reparsed = parse(&formatted).map_err(|errors| {
         vec![format!(
@@ -52,13 +59,13 @@ pub fn format_source(source: &str, options: FormatOptions) -> Result<String, Vec
             errors.join("\n")
         )]
     })?;
-    if !program.loc_eq(&reparsed) {
+    if !program.loc_eq(&reparsed) || !program.comments.same_comments(&reparsed.comments) {
         return Err(vec![
             "internal formatter error: formatting changed the AST".to_string(),
         ]);
     }
 
-    let again = Formatter::new(options).format_program(&reparsed);
+    let again = Formatter::new(options, &reparsed.comments).format_program(&reparsed);
     if again != formatted {
         return Err(vec![
             "internal formatter error: formatting is not idempotent".to_string(),
@@ -69,6 +76,11 @@ pub fn format_source(source: &str, options: FormatOptions) -> Result<String, Vec
 }
 
 /// Format Generic source with the default [`FormatOptions`].
+///
+/// # Errors
+///
+/// Returns the parser errors when the input does not parse, or an internal
+/// formatter error if the formatted source does not round-trip.
 pub fn format_source_with_default(source: &str) -> Result<String, Vec<String>> {
     format_source(source, FormatOptions::default())
 }
@@ -90,24 +102,49 @@ fn parse(source: &str) -> Result<Program, Vec<String>> {
     Ok(program)
 }
 
-struct Formatter {
+struct Formatter<'comments> {
     out: String,
     indent_unit: String,
+    options: FormatOptions,
+    comments: &'comments CommentMap,
 }
 
-impl Formatter {
-    fn new(options: FormatOptions) -> Self {
+impl<'comments> Formatter<'comments> {
+    fn new(options: FormatOptions, comments: &'comments CommentMap) -> Self {
         Self {
             out: String::new(),
             indent_unit: " ".repeat(options.indent_width),
+            options,
+            comments,
         }
     }
 
     fn format_program(mut self, program: &Program) -> String {
-        for declaration in &program.declarations {
-            self.statement(declaration, 0);
+        self.statements(&program.declarations, None, 0);
+        for comment in self.comments.trailing() {
+            self.comment(comment, 0);
         }
         self.out
+    }
+
+    fn statements(&mut self, statements: &[Stmt], close: Option<Position>, level: usize) {
+        for statement in statements {
+            self.emit_comments(super::comments::start_position(statement.location), level);
+            self.statement(statement, level);
+        }
+        if let Some(close) = close {
+            self.emit_comments(close, level);
+        }
+    }
+
+    fn has_comments(&self, position: Position) -> bool {
+        self.comments.has_comments(position)
+    }
+
+    fn emit_comments(&mut self, position: Position, level: usize) {
+        for comment in self.comments.get(position) {
+            self.comment(comment, level);
+        }
     }
 
     fn indent(&mut self, level: usize) {
@@ -125,22 +162,105 @@ impl Formatter {
         self.out.push('\n');
     }
 
+    fn comment(&mut self, comment: &Comment, level: usize) {
+        if comment.inline && self.out.ends_with('\n') {
+            self.out.pop();
+            self.out.push(' ');
+        } else {
+            self.indent(level);
+        }
+        self.out.push_str(&comment.text);
+        self.newline();
+    }
+
+    fn column(&self) -> usize {
+        self.out.rsplit_once('\n').map_or_else(
+            || self.out.chars().count(),
+            |(_, line)| line.chars().count(),
+        )
+    }
+
+    fn fits(&self, text: &str) -> bool {
+        let Some(limit) = self.options.max_line_length else {
+            return true;
+        };
+        text.chars().count() + self.column() <= limit
+    }
+
+    fn flat_text(&self, render: impl FnOnce(&mut Self)) -> Option<String> {
+        let mut flat = Self::new(
+            FormatOptions {
+                max_line_length: None,
+                ..self.options
+            },
+            self.comments,
+        );
+        render(&mut flat);
+        (!flat.out.contains('\n') && self.fits(&flat.out)).then_some(flat.out)
+    }
+
+    fn comma_list<T>(
+        &mut self,
+        items: &[T],
+        level: usize,
+        open: &str,
+        close: &str,
+        empty: &str,
+        mut render: impl FnMut(&mut Self, &T, usize),
+    ) {
+        if items.is_empty() {
+            self.out.push_str(empty);
+            return;
+        }
+
+        if items.len() == 1 {
+            self.out.push_str(open);
+            render(self, &items[0], level);
+            self.out.push_str(close);
+            return;
+        }
+
+        let flat = self.flat_text(|formatter| {
+            formatter.out.push_str(open);
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    formatter.out.push_str(", ");
+                }
+                render(formatter, item, level);
+            }
+            formatter.out.push_str(close);
+        });
+        if let Some(flat) = flat {
+            self.out.push_str(&flat);
+            return;
+        }
+
+        self.out.push_str(open);
+        self.newline();
+        for item in items {
+            self.indent(level + 1);
+            render(self, item, level + 1);
+            self.out.push(',');
+            self.newline();
+        }
+        self.indented(level, close);
+    }
+
     /// Write a block at the current output position: the caller has already
     /// emitted and indented the line containing the opening brace.
-    fn block(&mut self, statements: &[StmtKind], level: usize) {
-        if statements.is_empty() {
+    fn block(&mut self, statements: &[Stmt], close: Position, level: usize) {
+        if statements.is_empty() && !self.has_comments(close) {
             self.out.push_str("{}");
             return;
         }
         self.out.push_str("{\n");
-        for statement in statements {
-            self.statement(statement, level + 1);
-        }
+        self.statements(statements, Some(close), level + 1);
         self.indented(level, "}");
     }
 
-    fn statement(&mut self, statement: &StmtKind, level: usize) {
-        match statement {
+    #[allow(clippy::too_many_lines)]
+    fn statement(&mut self, statement: &Stmt, level: usize) {
+        match &statement.kind {
             StmtKind::Expression { expr } => {
                 self.indent(level);
                 self.expr(expr, Precedence::Assignment, level);
@@ -161,7 +281,7 @@ impl Formatter {
             }
             StmtKind::Block { stmts } => {
                 self.indent(level);
-                self.block(stmts, level);
+                self.block(stmts, end_position(statement.location), level);
                 self.newline();
             }
             StmtKind::FunctionDecl {
@@ -181,12 +301,12 @@ impl Formatter {
                 self.out.push_str(name);
                 self.parameters(&fn_lit.parameters, level);
                 self.out.push(' ');
-                self.block(&fn_lit.body, level);
+                self.block(&fn_lit.body, end_position(statement.location), level);
                 self.newline();
             }
             StmtKind::Class(class) => {
                 self.decorators(&class.decorators, level);
-                self.class(class, level);
+                self.class(class, end_position(statement.location), level);
                 self.newline();
             }
             StmtKind::Conditional {
@@ -194,6 +314,8 @@ impl Formatter {
                 condition,
                 then_block,
                 else_block,
+                then_close_location,
+                else_close_location,
                 ..
             } => {
                 self.indented(
@@ -205,10 +327,10 @@ impl Formatter {
                 );
                 self.expr(condition, Precedence::None, level);
                 self.out.push(' ');
-                self.block(then_block, level);
+                self.block(then_block, end_position(*then_close_location), level);
                 if let Some(else_block) = else_block {
                     self.out.push_str(" else ");
-                    self.block(else_block, level);
+                    self.block(else_block, end_position(*else_close_location), level);
                 }
                 self.newline();
             }
@@ -226,21 +348,21 @@ impl Formatter {
                         LoopType::Until => "until",
                     },
                 );
-                self.label(label);
+                self.label(label.as_deref());
                 self.out.push(' ');
                 self.expr(condition, Precedence::None, level);
                 self.out.push(' ');
-                self.block(body, level);
+                self.block(body, end_position(statement.location), level);
                 self.newline();
             }
             StmtKind::Break { label } => {
                 self.indented(level, "break");
-                self.label(label);
+                self.label(label.as_deref());
                 self.out.push_str(";\n");
             }
             StmtKind::Continue { label, .. } => {
                 self.indented(level, "continue");
-                self.label(label);
+                self.label(label.as_deref());
                 self.out.push_str(";\n");
             }
             StmtKind::For {
@@ -252,7 +374,7 @@ impl Formatter {
                 ..
             } => {
                 self.indented(level, "for");
-                self.label(label);
+                self.label(label.as_deref());
                 self.out.push_str(" (");
                 if let Some(init) = init {
                     self.for_initializer(init, level);
@@ -266,7 +388,7 @@ impl Formatter {
                     self.expr(increment, Precedence::Assignment, level);
                 }
                 self.out.push_str(") ");
-                self.block(body, level);
+                self.block(body, end_position(statement.location), level);
                 self.newline();
             }
             StmtKind::Foreach {
@@ -278,7 +400,7 @@ impl Formatter {
                 ..
             } => {
                 self.indented(level, "foreach");
-                self.label(label);
+                self.label(label.as_deref());
                 self.out.push_str(" (");
                 self.mutability(*mutability);
                 self.out.push(' ');
@@ -286,7 +408,7 @@ impl Formatter {
                 self.out.push_str(" in ");
                 self.expr(iterable, Precedence::Assignment, level);
                 self.out.push_str(") ");
-                self.block(body, level);
+                self.block(body, end_position(statement.location), level);
                 self.newline();
             }
             StmtKind::Return { value } => {
@@ -309,7 +431,7 @@ impl Formatter {
                 self.indented(level, "switch ");
                 self.expr(subject, Precedence::None, level);
                 self.out.push(' ');
-                self.switch_body(cases, level);
+                self.switch_body(cases, end_position(statement.location), level);
                 self.newline();
             }
             StmtKind::Import { path, alias, .. } => {
@@ -326,18 +448,17 @@ impl Formatter {
                 self.indented(level, "from \"");
                 self.out.push_str(path);
                 self.out.push_str("\" import ");
-                let parenthesized = names.len() > 1;
-                if parenthesized {
-                    self.out.push('(');
-                }
-                for (index, (name, _)) in names.iter().enumerate() {
-                    if index > 0 {
-                        self.out.push_str(", ");
-                    }
-                    self.out.push_str(name);
-                }
-                if parenthesized {
-                    self.out.push(')');
+                if names.len() == 1 {
+                    self.out.push_str(&names[0].0);
+                } else {
+                    self.comma_list(
+                        names,
+                        level,
+                        "(",
+                        ")",
+                        "",
+                        |formatter, (name, _), _level| formatter.out.push_str(name),
+                    );
                 }
                 self.out.push_str(";\n");
             }
@@ -352,7 +473,7 @@ impl Formatter {
         }
     }
 
-    fn class(&mut self, class: &ClassDecl, level: usize) {
+    fn class(&mut self, class: &ClassDecl, close: Position, level: usize) {
         self.indented(level, "class ");
         self.out.push_str(&class.name);
         if let Some((superclass, _)) = &class.superclass {
@@ -360,17 +481,21 @@ impl Formatter {
             self.expr(superclass, Precedence::Assignment, level);
         }
         self.out.push(' ');
-        if class.members.is_empty() {
+        if class.members.is_empty() && !self.has_comments(close) {
             self.out.push_str("{}");
             return;
         }
         self.out.push_str("{\n");
         for member in &class.members {
-            match member {
-                ClassMember::Variable(variable) => self.class_variable(variable, level + 1),
-                ClassMember::Method(method) => self.method(method, level + 1),
+            self.emit_comments(super::comments::start_position(member.location), level + 1);
+            match &member.kind {
+                ClassMemberKind::Variable(variable) => self.class_variable(variable, level + 1),
+                ClassMemberKind::Method(method) => {
+                    self.method(method, end_position(member.location), level + 1);
+                }
             }
         }
+        self.emit_comments(close, level + 1);
         self.indented(level, "}");
     }
 
@@ -388,23 +513,27 @@ impl Formatter {
         self.out.push_str(";\n");
     }
 
-    fn method(&mut self, method: &Method, level: usize) {
+    fn method(&mut self, method: &Method, close: Position, level: usize) {
         self.indented(level, &method.name);
         self.parameters(&method.fn_lit.parameters, level);
         self.out.push(' ');
-        self.block(&method.fn_lit.body, level);
+        self.block(&method.fn_lit.body, close, level);
         self.newline();
     }
 
     fn try_statement(&mut self, try_stmt: &TryStmt, level: usize) {
         self.indented(level, "try ");
-        self.block(&try_stmt.body, level);
+        self.block(&try_stmt.body, end_position(try_stmt.body_location), level);
         for catch in &try_stmt.catches {
             self.catch_clause(catch, level);
         }
         if let Some(else_block) = &try_stmt.else_block {
             self.out.push_str(" else ");
-            self.block(else_block, level);
+            self.block(
+                else_block,
+                end_position(try_stmt.else_location.expect("else block has a location")),
+                level,
+            );
         }
         self.newline();
     }
@@ -427,30 +556,33 @@ impl Formatter {
                 self.expr(matcher, Precedence::Assignment, level);
             }
         } else {
-            self.out.push_str(" (");
-            for (index, matcher) in catch.matchers.iter().enumerate() {
-                if index > 0 {
-                    self.out.push_str(", ");
-                }
-                self.expr_single(matcher, Precedence::Assignment, level);
-            }
-            self.out.push(')');
+            self.comma_list(
+                &catch.matchers,
+                level,
+                " (",
+                ")",
+                "",
+                |formatter, matcher, level| {
+                    formatter.expr_single(matcher, Precedence::Assignment, level);
+                },
+            );
         }
         if let Some((name, _)) = &catch.binding {
             self.out.push_str(" as ");
             self.out.push_str(name);
         }
         self.out.push(' ');
-        self.block(&catch.body, level);
+        self.block(&catch.body, end_position(catch.body_location), level);
     }
 
-    fn switch_body(&mut self, cases: &[SwitchCase], level: usize) {
-        if cases.is_empty() {
+    fn switch_body(&mut self, cases: &[SwitchCase], close: Position, level: usize) {
+        if cases.is_empty() && !self.has_comments(close) {
             self.out.push_str("{}");
             return;
         }
         self.out.push_str("{\n");
         for case in cases {
+            self.emit_comments(super::comments::start_position(case.location), level + 1);
             if let Some(value) = &case.value {
                 self.indented(level + 1, "case ");
                 self.expr(value, Precedence::Assignment, level + 1);
@@ -459,14 +591,13 @@ impl Formatter {
                 self.indented(level + 1, "default:");
             }
             self.newline();
-            for statement in &case.body {
-                self.statement(statement, level + 2);
-            }
+            self.statements(&case.body, None, level + 2);
         }
+        self.emit_comments(close, level + 1);
         self.indented(level, "}");
     }
 
-    fn label(&mut self, label: &Option<String>) {
+    fn label(&mut self, label: Option<&str>) {
         if let Some(label) = label {
             self.out.push_str(" '");
             self.out.push_str(label);
@@ -524,27 +655,32 @@ impl Formatter {
     }
 
     fn parameters(&mut self, parameters: &ParamList, level: usize) {
-        self.out.push('(');
-        let mut first = true;
-        for parameter in &parameters.params {
-            if !first {
-                self.out.push_str(", ");
-            }
-            first = false;
-            self.out.push_str(&parameter.name);
-            if let Some(default) = &parameter.default {
-                self.out.push('=');
-                self.expr_single(default, Precedence::Tuple, level);
-            }
-        }
+        let mut items = parameters
+            .params
+            .iter()
+            .map(|parameter| (false, parameter))
+            .collect::<Vec<_>>();
         if let Some(rest) = &parameters.rest {
-            if !first {
-                self.out.push_str(", ");
-            }
-            self.out.push('*');
-            self.out.push_str(&rest.name);
+            items.push((true, rest));
         }
-        self.out.push(')');
+
+        self.comma_list(
+            &items,
+            level,
+            "(",
+            ")",
+            "()",
+            |formatter, (is_rest, parameter), level| {
+                if *is_rest {
+                    formatter.out.push('*');
+                }
+                formatter.out.push_str(&parameter.name);
+                if let Some(default) = &parameter.default {
+                    formatter.out.push('=');
+                    formatter.expr_single(default, Precedence::Tuple, level);
+                }
+            },
+        );
     }
 
     fn expr(&mut self, expr: &Expr, parent: Precedence, level: usize) {
@@ -574,6 +710,7 @@ impl Formatter {
         }
     }
 
+    #[allow(clippy::too_many_lines, clippy::literal_string_with_formatting_args)]
     fn expr_inner(&mut self, expr: &Expr, level: usize) {
         match &expr.kind {
             ExprKind::Literal(literal) => self.literal(literal),
@@ -604,17 +741,12 @@ impl Formatter {
             }
             ExprKind::Call { callee, args, .. } => {
                 self.expr_single(callee, Precedence::Call, level);
-                self.out.push('(');
-                for (index, arg) in args.iter().enumerate() {
-                    if index > 0 {
-                        self.out.push_str(", ");
-                    }
+                self.comma_list(args, level, "(", ")", "()", |formatter, arg, level| {
                     if arg.is_spread {
-                        self.out.push('*');
+                        formatter.out.push('*');
                     }
-                    self.expr_single(&arg.value, Precedence::Assignment, level);
-                }
-                self.out.push(')');
+                    formatter.expr_single(&arg.value, Precedence::Assignment, level);
+                });
             }
             ExprKind::Unary { op, operand, .. } => {
                 self.out.push_str(match op {
@@ -665,9 +797,24 @@ impl Formatter {
                 self.expr_single(else_, Precedence::Ternary, level);
             }
             ExprKind::Grouping { inner } => {
-                self.out.push('(');
-                self.expr(inner, Precedence::None, level);
-                self.out.push(')');
+                if let ExprKind::Tuple { elements } = &inner.kind
+                    && elements.len() > 1
+                {
+                    self.comma_list(
+                        elements,
+                        level,
+                        "(",
+                        ")",
+                        "()",
+                        |formatter, element, level| {
+                            formatter.expr_single(element, Precedence::Ternary, level);
+                        },
+                    );
+                } else {
+                    self.out.push('(');
+                    self.expr(inner, Precedence::None, level);
+                    self.out.push(')');
+                }
             }
             ExprKind::Tuple { elements } => {
                 if elements.is_empty() {
@@ -680,34 +827,28 @@ impl Formatter {
                 }
             }
             ExprKind::ListLit { items } => {
-                self.out.push('[');
-                self.sequence(items, level);
-                self.out.push(']');
+                self.comma_list(items, level, "[", "]", "[]", |formatter, item, level| {
+                    formatter.expr_single(item, Precedence::Tuple, level);
+                });
             }
             ExprKind::SetLit { items } => {
-                if items.is_empty() {
-                    self.out.push_str("{}");
-                } else {
-                    self.out.push('{');
-                    self.sequence(items, level);
-                    self.out.push('}');
-                }
+                self.comma_list(items, level, "{", "}", "{}", |formatter, item, level| {
+                    formatter.expr_single(item, Precedence::Tuple, level);
+                });
             }
             ExprKind::DictLit { entries } => {
-                if entries.is_empty() {
-                    self.out.push_str("{:}");
-                } else {
-                    self.out.push('{');
-                    for (index, (key, value)) in entries.iter().enumerate() {
-                        if index > 0 {
-                            self.out.push_str(", ");
-                        }
-                        self.expr_single(key, Precedence::Tuple, level);
-                        self.out.push_str(": ");
-                        self.expr_single(value, Precedence::Tuple, level);
-                    }
-                    self.out.push('}');
-                }
+                self.comma_list(
+                    entries,
+                    level,
+                    "{",
+                    "}",
+                    "{:}",
+                    |formatter, (key, value), level| {
+                        formatter.expr_single(key, Precedence::Tuple, level);
+                        formatter.out.push_str(": ");
+                        formatter.expr_single(value, Precedence::Tuple, level);
+                    },
+                );
             }
             ExprKind::Fstring { parts } => {
                 self.out.push_str("f\"");
@@ -747,7 +888,7 @@ impl Formatter {
                 self.out.push(' ');
                 match &lambda.body {
                     super::ast::LambdaBody::Block(body) => {
-                        self.block(body, level);
+                        self.block(body, end_position(expr.location), level);
                     }
                     super::ast::LambdaBody::Expression(expr) => {
                         self.expr(expr, Precedence::Assignment, level);
@@ -788,15 +929,6 @@ impl Formatter {
                 self.out.push_str(", ");
             }
             self.expr_single(element, Precedence::Ternary, level);
-        }
-    }
-
-    fn sequence(&mut self, items: &[Expr], level: usize) {
-        for (index, item) in items.iter().enumerate() {
-            if index > 0 {
-                self.out.push_str(", ");
-            }
-            self.expr_single(item, Precedence::Tuple, level);
         }
     }
 
@@ -872,8 +1004,8 @@ fn precedence(kind: &ExprKind) -> Precedence {
             Precedence::Call
         }
         ExprKind::Super { .. } => Precedence::Call,
-        ExprKind::Tuple { .. } => Precedence::Primary,
-        ExprKind::Literal(_)
+        ExprKind::Tuple { .. }
+        | ExprKind::Literal(_)
         | ExprKind::Variable { .. }
         | ExprKind::Grouping { .. }
         | ExprKind::ListLit { .. }
@@ -934,6 +1066,7 @@ const fn binary_operator(op: BinaryOp) -> &'static str {
 mod tests {
     use super::{FormatOptions, Formatter, Precedence, format_source, format_source_with_default};
     use crate::compiler::ast::{Arg, Expr, ExprContext, ExprKind, Literal};
+    use crate::compiler::comments::CommentMap;
     use crate::types::Location;
 
     fn assert_formatting_with(source: &str, expected: &str, options: FormatOptions) {
@@ -947,6 +1080,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn formats_representative_constructs() {
         let source = r#"# leading comment
 import "math";
@@ -1029,7 +1163,8 @@ class Child < Parent {
     }
 }
 "#;
-        let expected = r#"import "math";
+        let expected = r#"# leading comment
+import "math";
 import "helper" as h;
 from "mod" import (alpha, beta);
 @decorator
@@ -1162,7 +1297,99 @@ return x;
   };
 }
 ";
-        assert_formatting_with(source, expected, FormatOptions { indent_width: 2 });
+        assert_formatting_with(
+            source,
+            expected,
+            FormatOptions {
+                indent_width: 2,
+                ..FormatOptions::default()
+            },
+        );
+    }
+
+    #[test]
+    fn wraps_comma_lists_at_the_line_limit() {
+        let options = FormatOptions {
+            indent_width: 4,
+            max_line_length: Some(30),
+        };
+        let source = "var result = call(first_argument, second_argument);
+var items = [first_item, second_item];
+var mapping = {\"first\": first_value, \"second\": second_value};
+var pair = (first_element, second_element);
+from \"module\" import (alpha_name, beta_name);
+try {} catch (FirstError, SecondError) {}
+fun f(first_parameter, second_parameter) {}
+";
+        let expected = "var result = call(
+    first_argument,
+    second_argument,
+);
+var items = [
+    first_item,
+    second_item,
+];
+var mapping = {
+    \"first\": first_value,
+    \"second\": second_value,
+};
+var pair = (
+    first_element,
+    second_element,
+);
+from \"module\" import (
+    alpha_name,
+    beta_name,
+);
+try {} catch (
+    FirstError,
+    SecondError,
+) {}
+fun f(
+    first_parameter,
+    second_parameter,
+) {}
+";
+        assert_formatting_with(source, expected, options);
+    }
+
+    #[test]
+    fn single_element_lists_and_tuples_are_not_split() {
+        let options = FormatOptions {
+            indent_width: 4,
+            max_line_length: Some(10),
+        };
+        let source = "var x = f(argument);
+var y = [argument];
+var mapping = {\"key\": value};
+var pair = (argument,);
+var empty = ();
+var bare = first, second;
+fun g(parameter) {}
+try {} catch Error {}
+from \"module\" import name;
+";
+        assert_formatting_with(source, source, options);
+    }
+
+    #[test]
+    fn wrapping_uses_the_current_column() {
+        let options = FormatOptions {
+            indent_width: 4,
+            max_line_length: Some(30),
+        };
+        let source = "var value = something_super_long + [1, 2];\n";
+        let expected = "var value = something_super_long + [
+    1,
+    2,
+];
+";
+        assert_formatting_with(source, expected, options);
+    }
+
+    #[test]
+    fn line_length_defaults_to_unlimited() {
+        assert_eq!(FormatOptions::default().max_line_length, None);
     }
 
     #[test]
@@ -1301,17 +1528,28 @@ var e = (a + b):c;
             location: Location::default(),
         };
 
-        let mut formatter = Formatter::new(FormatOptions::default());
+        let comments = CommentMap::default();
+        let mut formatter = Formatter::new(FormatOptions::default(), &comments);
         formatter.expr(&call, Precedence::None, 0);
         assert_eq!(formatter.out, "f((1, 2))");
 
-        let mut formatter = Formatter::new(FormatOptions::default());
+        let mut formatter = Formatter::new(FormatOptions::default(), &comments);
         formatter.expr(&list, Precedence::None, 0);
         assert_eq!(formatter.out, "[(3, 4)]");
 
-        let mut formatter = Formatter::new(FormatOptions::default());
+        let mut formatter = Formatter::new(FormatOptions::default(), &comments);
         formatter.expr(&nested, Precedence::None, 0);
         assert_eq!(formatter.out, "5, (6, 7)");
+
+        let mut formatter = Formatter::new(
+            FormatOptions {
+                max_line_length: Some(10),
+                ..FormatOptions::default()
+            },
+            &comments,
+        );
+        formatter.expr(&call, Precedence::None, 0);
+        assert_eq!(formatter.out, "f((1, 2))");
     }
 
     #[test]
@@ -1335,17 +1573,129 @@ var e = (a + b):c;
     }
 
     #[test]
-    fn discards_comments() {
+    fn places_comments_at_block_boundaries() {
+        let source = "if (x) {\n    a();\n    # then tail\n} else {\n    # else head\n    b();\n}\nfun f() {\n    # fun head\n    c();\n    # fun tail\n}\n";
+        assert_formatting(source, source);
+    }
+
+    #[test]
+    fn keeps_comments_flushed_from_expressions_separate() {
+        assert_formatting(
+            "var x = [1, # first\n 2]; # second\n",
+            "var x = [1, 2];\n# first\n# second\n",
+        );
+    }
+
+    #[test]
+    fn keeps_comments_attached_to_their_lines() {
         let options = FormatOptions::default();
-        let formatted =
-            format_source("# before\nvar x = 1; # after\n", options).expect("source should parse");
-        assert_eq!(formatted, "var x = 1;\n");
+        let formatted = format_source("# before\nvar x = 1;    # a      #b   \n", options)
+            .expect("source should parse");
+        assert_eq!(formatted, "# before\nvar x = 1; # a      #b\n");
+    }
+
+    #[test]
+    fn preserves_comments_in_source_order() {
+        let source = "# file header
+var x = 1; # after declaration
+fun example() {
+    # before statement
+    var y = 2; # after statement
+    if (x) {
+        # empty block
+    }
+    # before return
+    return y;
+    # after return
+}
+# between declarations
+class Widget {
+    # before field
+    var value = 1; # after field
+    method() {
+        # inside method
+        return this.value;
+    }
+    # after method
+}
+try {
+    # try body
+} catch (Error) {
+    # catch body
+} else {
+    # else body
+}
+switch (x) {
+    # before case
+    case 1: # after case label
+        # case body
+        print(1);
+    # before default
+    default:
+        # default body
+        print(2);
+    # switch end
+}
+switch (x) {
+    # empty switch
+}
+# trailing file
+";
+        let expected = "# file header
+var x = 1; # after declaration
+fun example() {
+    # before statement
+    var y = 2; # after statement
+    if (x) {
+        # empty block
+    }
+    # before return
+    return y;
+    # after return
+}
+# between declarations
+class Widget {
+    # before field
+    var value = 1; # after field
+    method() {
+        # inside method
+        return this.value;
+    }
+    # after method
+}
+try {
+    # try body
+} catch Error {
+    # catch body
+} else {
+    # else body
+}
+switch (x) {
+    # before case
+    case 1: # after case label
+        # case body
+        print(1);
+    # before default
+    default:
+        # default body
+        print(2);
+    # switch end
+}
+switch (x) {
+    # empty switch
+}
+# trailing file
+";
+        assert_formatting(source, expected);
     }
 
     #[test]
     fn formats_an_empty_program() {
         let options = FormatOptions::default();
         assert_eq!(format_source("", options).unwrap(), "");
-        assert_eq!(format_source("# only a comment\n", options).unwrap(), "");
+        assert_eq!(
+            format_source("# only a comment\n", options).unwrap(),
+            "# only a comment\n"
+        );
     }
 }

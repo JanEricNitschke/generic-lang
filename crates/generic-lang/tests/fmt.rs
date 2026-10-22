@@ -1,7 +1,7 @@
 //! Process-level checks for `generic fmt`, including safe in-place writes.
 
-// Miri cannot spawn processes. Some cross targets also cannot execute the
-// cross-compiled binary from the test harness.
+// Miri cannot spawn processes. Under `cross`, QEMU runs the test harness but
+// cannot necessarily spawn the cross-compiled binary as a subprocess.
 #![cfg(not(miri))]
 
 use std::{fs, path::Path, process::Command, sync::OnceLock};
@@ -43,8 +43,8 @@ fn fmt_write_rewrites_in_place() {
     let output = run_fmt(&["-w", path_arg(&path)]);
 
     assert!(output.status.success());
-    assert!(output.stdout.is_empty());
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stdout, Vec::<u8>::new());
+    assert_eq!(output.stderr, Vec::<u8>::new());
     assert_eq!(fs::read_to_string(&path).unwrap(), "var x = 1;\n");
     assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
 }
@@ -65,6 +65,44 @@ fn fmt_write_handles_multiple_files() {
     assert!(output.status.success());
     assert_eq!(fs::read_to_string(first).unwrap(), "var a = 1;\n");
     assert_eq!(fs::read_to_string(second).unwrap(), "var b = 2;\n");
+}
+
+#[test]
+fn fmt_line_length_wraps_stdout() {
+    if !can_run_generic() {
+        return;
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("script.gen");
+    fs::write(
+        &path,
+        "var result = call(first_argument, second_argument);\n",
+    )
+    .unwrap();
+
+    let output = run_fmt(&["--line-length", "30", path_arg(&path)]);
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "var result = call(\n    first_argument,\n    second_argument,\n);\n"
+    );
+}
+
+#[test]
+fn fmt_line_length_zero_disables_wrapping() {
+    if !can_run_generic() {
+        return;
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("script.gen");
+    let source = "var result = call(first_argument, second_argument);\n";
+    fs::write(&path, source).unwrap();
+
+    let output = run_fmt(&["--line-length", "0", path_arg(&path)]);
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), source);
 }
 
 #[test]
@@ -125,7 +163,7 @@ fn fmt_error_identifies_the_failing_file() {
     let output = run_fmt(&[path_arg(&good), path_arg(&bad)]);
 
     assert_eq!(output.status.code(), Some(65));
-    assert!(output.stdout.is_empty());
+    assert_eq!(output.stdout, Vec::<u8>::new());
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains(path_arg(&bad)));
 }

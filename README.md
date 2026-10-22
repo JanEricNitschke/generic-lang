@@ -81,10 +81,9 @@ generic fmt -w path/to/file.gen other.gen
 
 The formatter parses the file and prints a canonical layout with four-space
 indentation by default. Use `--indent-width N` to choose a different number
-of spaces per level (at least one). When printing multiple files to stdout,
-each file is preceded by an `==> path <==` header. It currently discards comments because the scanner removes them
-before the AST is built; preserving comments requires retaining comment tokens
-and attaching them to AST nodes.
+of spaces per level (at least one). Use `--line-length N` to set a soft maximum
+line length for comma-separated constructs; omit it or pass `0` to disable
+wrapping.
 
 ## Testing
 
