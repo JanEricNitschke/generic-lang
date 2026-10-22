@@ -103,7 +103,7 @@ mod tests {
     /// `os.argv` reflects the script args installed on the VM, in order.
     #[test]
     fn argv_reflects_script_args() {
-        let mut vm = VM::new();
+        let mut vm = VM::default();
         vm.set_script_args(vec![
             "script.gen".to_string(),
             "--flag".to_string(),

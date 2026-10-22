@@ -90,6 +90,20 @@ To run the full integration test suite:
 make test
 ```
 
+## Module cache
+
+Release builds cache compiled imported `.gen` modules in `__generic_cache__/` next to the source, as `<stem>.generic-<major>.<minor>.genc`. Debug builds compile fresh by default. Cache files contain executable bytecode and are trusted local state; do not commit them.
+
+The cache can be controlled per run:
+
+```bash
+generic --no-cache script.gen           # disable reads and writes
+generic --no-cache-read script.gen      # ignore existing cache files
+generic --no-cache-write script.gen     # do not create or update cache files
+```
+
+Flags must come before the script path.
+
 ## Native plugins
 
 Generic programs can load native modules - shared libraries (`.so`/`.dylib`/`.dll`) - with a normal `import`:

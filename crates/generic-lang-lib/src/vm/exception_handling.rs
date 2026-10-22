@@ -508,7 +508,7 @@ mod tests {
     /// guarantee.
     #[test]
     fn every_exception_kind_has_a_builtin_class() {
-        let mut vm = VM::new();
+        let mut vm = VM::default();
 
         for kind in ExceptionKind::iter() {
             let exception = vm.create_exception(kind.into(), "sync");

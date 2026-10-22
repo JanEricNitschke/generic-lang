@@ -15,6 +15,7 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+byteorder    = { workspace = true }
 convert_case = { workspace = true }
 derivative   = { workspace = true }
 derive_more  = { workspace = true }
@@ -37,14 +38,12 @@ serde_json   = { workspace = true }
 ureq         = { workspace = true }
 strum        = { workspace = true }
 strum_macros = { workspace = true }
+tempfile     = { workspace = true }
 thiserror    = { workspace = true }
 tinyvec      = { workspace = true }
 unicode-normalization = { workspace = true }
 unicode-segmentation  = { workspace = true }
 walkdir      = { workspace = true }
-
-[dev-dependencies]
-tempfile = { workspace = true }
 
 [features]
 default                 = ["plugins"]

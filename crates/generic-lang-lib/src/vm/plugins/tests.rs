@@ -137,7 +137,7 @@ fn all_value_kinds() -> [ValueKind; 21] {
 
 #[test]
 fn value_kind_covers_every_kind() {
-    let mut vm = VM::new();
+    let mut vm = VM::default();
 
     // Numbers: a small int, a bigint that still fits an i64 (→ `Int`), and
     // one that overflows it (→ `BigInt`).
@@ -299,7 +299,7 @@ fn read_ffi_str<'a>(s: FfiStr) -> &'a str {
 fn ffi_blob_round_trips() {
     // Arrange: one value from each broad category - immediates, a bigint, a
     // string, a native container, an exception, a class, and a function.
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let values = [
         Value::Nil,
         Value::Bool(true),
@@ -324,7 +324,7 @@ fn ffi_blob_round_trips() {
 
 #[test]
 fn value_kind_and_scalar_accessors() {
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let seven = 7;
     let fourteetwo = 42;
     let one_point_five = 1.5;
@@ -405,7 +405,7 @@ fn value_kind_and_scalar_accessors() {
 #[test]
 fn string_interning_and_bytes() {
     // Arrange.
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let hello = "héllo";
     let ffi = FfiStr {
         ptr: hello.as_ptr(),
@@ -453,7 +453,7 @@ fn string_interning_and_bytes() {
 #[test]
 fn list_construct_and_access() {
     // Arrange: a fresh, empty native list.
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let nil = to_ffi(Value::Nil);
     let api = build_host_api(&mut vm);
 
@@ -536,7 +536,7 @@ fn list_construct_and_access() {
 #[test]
 fn dict_and_set_operations() {
     // Arrange: an empty dict and set, plus a string value to store.
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let dict = new_container(&mut vm, "Dict");
     let set = new_container(&mut vm, "Set");
     let value_x = new_string(&mut vm, "x");
@@ -592,7 +592,7 @@ fn dict_and_set_operations() {
 #[test]
 fn attribute_access() {
     // Arrange: a plain instance, a value to store, and the field name.
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let instance = plain_instance(&mut vm);
     let value = new_string(&mut vm, "v");
     let field = "field";
@@ -633,7 +633,7 @@ fn attribute_access() {
 #[test]
 fn display_is_raw_and_str_honors_dunder() {
     // Arrange: an exception whose `__str__` differs from its raw repr.
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let exception = vm.create_exception("ValueError", "boom");
     let api = build_host_api(&mut vm);
 
@@ -661,7 +661,7 @@ fn truthiness_equality_hash() {
     // Arrange: two equal-but-distinct big integers - separate heap
     // allocations (bigints are not deduped) so the equality/hash path runs
     // over different handles rather than short-circuiting on identity.
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let a = vm.heap.add_big_int(BigInt::from(7));
     let b = vm.heap.add_big_int(BigInt::from(7));
     assert_ne!(a, b, "the two bigints must be distinct handles");
@@ -705,7 +705,7 @@ fn truthiness_equality_hash() {
 #[test]
 fn call_value_happy_and_error_paths() {
     // Arrange: the builtin `str` native and a one-int argument list.
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let str_fn = builtin_value(&mut vm, "str");
     let args = [to_ffi(Value::from(42i64))];
     let nil = to_ffi(Value::Nil);
@@ -738,7 +738,7 @@ fn call_value_happy_and_error_paths() {
 #[test]
 fn invoke_method_on_native_receiver() {
     // Arrange: an empty list and a one-int argument list.
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let list = new_list(&mut vm);
     let args = [to_ffi(Value::from(5i64))];
     let append = "append";
@@ -778,7 +778,7 @@ fn invoke_method_on_native_receiver() {
 #[test]
 fn rooting_pushes_and_pops_the_vm_stack() {
     // Arrange.
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let value = new_string(&mut vm, "rooted");
     let api = build_host_api(&mut vm);
 
@@ -977,7 +977,7 @@ fn plugin_native(vm: &mut VM, name: &str, arity: &'static [u8], fun: PluginFn) -
 #[test]
 fn trampoline_recovers_the_pointer_from_the_callee() {
     // Arrange: two plugin natives wrapping different function pointers.
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let seven = plugin_native(&mut vm, "seven", &[0], plugin_returns_seven);
     let adder = plugin_native(&mut vm, "add", &[2], plugin_adds_args);
 
@@ -1007,7 +1007,7 @@ fn trampoline_recovers_the_pointer_from_the_callee() {
 /// gated at the dispatch site before the trampoline ever runs.
 #[test]
 fn plugin_native_dispatches_through_the_real_call_path() {
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let adder = plugin_native(&mut vm, "add", &[2], plugin_adds_args);
     let api = build_host_api(&mut vm);
 
@@ -1031,7 +1031,7 @@ fn plugin_native_dispatches_through_the_real_call_path() {
 
 #[test]
 fn call_plugin_maps_every_status() {
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let name = vm.heap.string_id(&"test_plugin_fn");
 
     // Ok → the returned value.
@@ -1075,7 +1075,7 @@ fn rethrown_exceptions_keep_their_identity() {
     // A plugin that rethrows an exception it received re-raises the
     // exact instance: class (user-defined subclasses included), fields,
     // and stack trace all survive the FFI round-trip.
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let type_error = *builtin_value(&mut vm, "TypeError").as_class();
     let message_id = vm.heap.string_id(&"original");
 
@@ -1139,7 +1139,7 @@ fn rethrown_exceptions_keep_their_identity() {
 #[test]
 fn is_instance_matches_value_type_proxy_classes() {
     // Arrange: a value per proxied kind, plus each proxy class.
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let string = new_string(&mut vm, "hi");
     let rational = Value::from(Number::Rational(
         GenericRational::new(GenericInt::Small(1), GenericInt::Small(3), &mut vm.heap).unwrap(),
@@ -1221,7 +1221,7 @@ fn corrupt_dylib_is_an_import_error_not_a_crash() {
 
     // Importing it claims the plugin arm (the candidate exists) but fails
     // to load - a catchable ImportError, not a crash.
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let name_id = vm.heap.string_id(&"demo");
     let result = vm
         .try_import_plugin(&dir.join("demo"), name_id, None, None, false)
@@ -1296,7 +1296,7 @@ fn add_plugin_class(vm: &mut VM, name: &str, info: PluginClassInfo) -> Value {
 
 #[test]
 fn instance_set_get_opaque_roundtrip_and_errors() {
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let class = add_plugin_class(
         &mut vm,
         "Widget",
@@ -1358,7 +1358,7 @@ fn instance_set_get_opaque_roundtrip_and_errors() {
 
 #[test]
 fn plugin_drop_runs_when_instance_is_collected() {
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let class = add_plugin_class(
         &mut vm,
         "Widget",
@@ -1387,7 +1387,7 @@ fn plugin_drop_runs_when_instance_is_collected() {
 
 #[test]
 fn plugin_traverse_keeps_held_value_alive_across_gc() {
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let class = add_plugin_class(
         &mut vm,
         "Holder",
@@ -1481,7 +1481,7 @@ unsafe extern "C" fn value_creator_throws(host: *const HostApi) -> FfiReturn {
 /// A value creator's `Ok` result comes back as the created value.
 #[test]
 fn value_creator_result_is_returned() {
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let name = vm.heap.string_id(&"seven");
     // SAFETY: a mock plugin function honoring the ABI contract.
     let result = unsafe { call_plugin_value(&mut vm, value_creator_seven, name) };
@@ -1493,7 +1493,7 @@ fn value_creator_result_is_returned() {
 /// per the native error contract, so a failing import surfaces it.
 #[test]
 fn value_creator_exception_is_pending() {
-    let mut vm = VM::new();
+    let mut vm = VM::default();
     let depth = vm.stack.len();
     let name = vm.heap.string_id(&"broken");
     // SAFETY: a mock plugin function honoring the ABI contract.
@@ -1528,7 +1528,7 @@ unsafe extern "C" fn value_creator_forces_gc(host: *const HostApi) -> FfiReturn 
 /// sweep them out from under the module being imported.
 #[test]
 fn module_exports_survive_gc_during_value_creation() {
-    let mut vm = VM::new();
+    let mut vm = VM::default();
 
     // A real import always runs from an executing frame with a current
     // module; recreate that minimal context.

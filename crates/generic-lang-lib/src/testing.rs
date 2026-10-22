@@ -3,6 +3,7 @@
 //! Provides functions to discover and run test files, both individually
 //! and in directory hierarchies.
 
+use crate::RunOptions;
 use crate::vm::{InterpretResult, TestResult, VM};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -25,11 +26,11 @@ pub enum TestRunResult {
 /// Test functions are those whose names start with "test_".
 /// Provides a summary report of test results.
 #[must_use]
-pub fn run_tests(path: &PathBuf) -> TestRunResult {
+pub fn run_tests(path: &PathBuf, options: RunOptions) -> TestRunResult {
     if path.is_file() {
-        run_tests_for_file(path)
+        run_tests_for_file(path, options)
     } else if path.is_dir() {
-        run_tests_for_directory(path)
+        run_tests_for_directory(path, options)
     } else {
         eprintln!(
             "Error: {} is not a valid file or directory",
@@ -48,14 +49,14 @@ pub(crate) struct FileTestResult {
 }
 
 /// Run tests for a single file
-fn run_tests_for_file(file: &PathBuf) -> TestRunResult {
+fn run_tests_for_file(file: &PathBuf, options: RunOptions) -> TestRunResult {
     println!(
         "Running tests in {}...\n",
         file.to_string_lossy()
             .replace('\\', "/")
             .trim_start_matches("./")
     );
-    let result = run_tests_for_single_file(file);
+    let result = run_tests_for_single_file(file, options);
 
     // Print test summary
     print_test_summary(&result.test_results);
@@ -68,7 +69,7 @@ fn run_tests_for_file(file: &PathBuf) -> TestRunResult {
 }
 
 /// Run tests for all test files in a directory
-fn run_tests_for_directory(dir: &PathBuf) -> TestRunResult {
+fn run_tests_for_directory(dir: &PathBuf, options: RunOptions) -> TestRunResult {
     let test_files = find_test_files(dir);
 
     if test_files.is_empty() {
@@ -102,7 +103,7 @@ fn run_tests_for_directory(dir: &PathBuf) -> TestRunResult {
                 .trim_start_matches("./")
         );
 
-        let result = run_tests_for_single_file(&test_file);
+        let result = run_tests_for_single_file(&test_file, options);
 
         // Accumulate results
         overall_results.passed += result.test_results.passed;
@@ -132,7 +133,7 @@ fn run_tests_for_directory(dir: &PathBuf) -> TestRunResult {
 }
 
 /// Run tests for a single file and return the results
-fn run_tests_for_single_file(file: &PathBuf) -> FileTestResult {
+fn run_tests_for_single_file(file: &PathBuf, options: RunOptions) -> FileTestResult {
     match std::fs::read_to_string(file) {
         Err(e) => {
             eprintln!(
@@ -147,7 +148,7 @@ fn run_tests_for_single_file(file: &PathBuf) -> FileTestResult {
             }
         }
         Ok(contents) => {
-            let mut vm = VM::new();
+            let mut vm = VM::new(options);
             match vm.interpret(&contents, file.clone()) {
                 InterpretResult::CompileError => {
                     eprintln!(

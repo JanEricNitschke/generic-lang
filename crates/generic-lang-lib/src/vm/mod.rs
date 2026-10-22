@@ -45,8 +45,10 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use crate::RunOptions;
+use crate::compiler::cache;
 use crate::config::{GENERIC_BUILTINS_DIR, GENERIC_STDLIB_DIR};
 use crate::natives;
 use crate::types::{InjectedKind, render_snippet_rows};
@@ -149,12 +151,38 @@ pub(crate) struct VM {
     /// command line; exposed to programs as `os.argv`. Empty in the REPL
     /// and in embedded uses that do not set it.
     pub(super) script_args: Vec<String>,
+    /// Options controlling this run, including module-cache access.
+    pub(super) run_options: RunOptions,
     /// Must stay declared after `heap`: `Drop` for `Heap` runs plugin `drop`
     /// callbacks whose fn pointers live in the dylibs held here, and Rust drops
     /// fields in declaration order, so the heap must finalize before these
     /// libraries unload.
     #[cfg(feature = "plugins")]
     plugins: PluginState,
+}
+
+/// Where a generic module's source came from.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum ModuleSource<'a> {
+    /// A real source file; its path identifies the module and enables caching.
+    OnDisk(&'a Path),
+    /// Source embedded in the interpreter; modules are identified by name.
+    Embedded,
+}
+
+impl ModuleSource<'_> {
+    fn module_path(self, name: &str) -> PathBuf {
+        match self {
+            Self::OnDisk(path) => path.to_path_buf(),
+            Self::Embedded => PathBuf::from(name),
+        }
+    }
+}
+
+impl Default for VM {
+    fn default() -> Self {
+        Self::new(RunOptions::default())
+    }
 }
 
 // Core functionality for running a script.
@@ -164,7 +192,7 @@ impl VM {
     /// every construction path - `interpret`, the REPL, tests - starts from
     /// the same fully-initialized state.
     #[must_use]
-    pub(super) fn new() -> Self {
+    pub(crate) fn new(options: RunOptions) -> Self {
         let mut vm = Self {
             heap: Heap::new(),
             stack: Vec::with_capacity(crate::config::STACK_MAX),
@@ -179,6 +207,7 @@ impl VM {
             repr_in_progress: HashSet::default(),
             stdlib: HashMap::default(),
             script_args: Vec::new(),
+            run_options: options,
             #[cfg(feature = "plugins")]
             plugins: PluginState::default(),
         };
@@ -251,6 +280,53 @@ impl VM {
             is_builtin,
         );
         compiler.compile()
+    }
+
+    /// Compile a generic module, using the on-disk cache when enabled.
+    fn compile_module(
+        &mut self,
+        contents: &str,
+        name: &str,
+        origin: ModuleSource<'_>,
+    ) -> Option<Function> {
+        match origin {
+            ModuleSource::OnDisk(path) => {
+                let metadata = std::fs::metadata(path).ok();
+                if self.run_options.cache_read
+                    && let Some(metadata) = metadata.as_ref()
+                    && let Some(function) = cache::load(path, contents, metadata, &mut self.heap)
+                {
+                    return Some(function);
+                }
+
+                let function = self.compile(
+                    contents,
+                    name,
+                    #[cfg(any(
+                        feature = "print_code",
+                        feature = "debug_scanner",
+                        feature = "debug_parser"
+                    ))]
+                    false,
+                )?;
+                if self.run_options.cache_write
+                    && let Some(metadata) = metadata.as_ref()
+                {
+                    cache::store(path, contents, metadata, &function, &self.heap);
+                }
+                Some(function)
+            }
+            ModuleSource::Embedded => self.compile(
+                contents,
+                name,
+                #[cfg(any(
+                    feature = "print_code",
+                    feature = "debug_scanner",
+                    feature = "debug_parser"
+                ))]
+                false,
+            ),
+        }
     }
 
     /// Compile and run injected source (`eval`/`exec`) against `module`'s
