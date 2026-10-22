@@ -13,11 +13,18 @@ use crate::types::{ConditionType, Location, LoopType, Mutability};
 
 /// Structural equality that ignores source locations.
 pub(crate) trait LocationLessEq {
+    /// Whether `Some` and `None` count as equal when this type is wrapped in
+    /// an `Option`. Locations are present only when the source contained the
+    /// corresponding delimiter, which formatting may canonicalize away.
+    const IGNORE_OPTION_PRESENCE: bool = false;
+
     /// Whether `self` and `other` have the same structure, ignoring locations.
     fn loc_eq(&self, other: &Self) -> bool;
 }
 
 impl LocationLessEq for Location {
+    const IGNORE_OPTION_PRESENCE: bool = true;
+
     fn loc_eq(&self, _other: &Self) -> bool {
         true
     }
@@ -83,7 +90,7 @@ impl<T: LocationLessEq> LocationLessEq for Option<T> {
         match (self, other) {
             (Some(a), Some(b)) => a.loc_eq(b),
             (None, None) => true,
-            _ => false,
+            _ => T::IGNORE_OPTION_PRESENCE,
         }
     }
 }
@@ -116,6 +123,19 @@ mod tests {
     #[derive(Debug, generic_lang_derive::LocationLessEq)]
     enum TupleSample {
         Pair(u8, #[loc_less(ignore)] String),
+    }
+
+    #[test]
+    fn option_location_presence_is_ignored() {
+        let some = Some(Location::default());
+        let none: Option<Location> = None;
+        assert!(some.loc_eq(&none));
+        assert!(none.loc_eq(&some));
+    }
+
+    #[test]
+    fn option_non_location_presence_matters() {
+        assert!(!Some(1_u8).loc_eq(&None));
     }
 
     #[test]

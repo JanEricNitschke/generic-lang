@@ -9,10 +9,10 @@ use rustc_hash::FxHashMap as HashMap;
 use shrinkwraprs::Shrinkwrap;
 
 use super::ast::{
-    AccessMode, Arg, BinaryOp, BoolOperator, ClassDecl, ClassMember, ClassVar, Expr, ExprContext,
-    ExprKind, FstringPart, FunKind, FunctionDef, InjectedBody, InjectedProgram, LambdaBody,
-    LambdaLit, Literal, Method, ParamList, Program, StmtKind, SwitchCase, TryStmt, Tstring,
-    UnaryOp,
+    AccessMode, Arg, BinaryOp, BoolOperator, ClassDecl, ClassMemberKind, ClassVar, Expr,
+    ExprContext, ExprKind, FstringPart, FunKind, FunctionDef, InjectedBody, InjectedProgram,
+    LambdaBody, LambdaLit, Literal, Method, ParamList, Program, Stmt, StmtKind, SwitchCase,
+    TryStmt, Tstring, UnaryOp,
 };
 use crate::{
     chunk::{Chunk, CodeOffset, ConstantIndex, ConstantLongIndex, OpCode},
@@ -631,9 +631,9 @@ impl Codegen<'_, '_> {
     /// Generate a run of declarations/statements, resetting the panic mode
     /// after each: the first error within one declaration suppresses
     /// the rest *of that declaration* only.
-    fn gen_declarations(&mut self, stmts: &[StmtKind]) {
+    fn gen_declarations(&mut self, stmts: &[Stmt]) {
         for stmt in stmts {
-            self.gen_stmt(stmt);
+            self.gen_stmt(&stmt.kind);
             self.panic_mode = false;
         }
     }
@@ -678,7 +678,7 @@ impl Codegen<'_, '_> {
     /// time; their values are left on the stack for the following
     /// `OP_CLOSURE` to capture into the closure.
     fn gen_parameters(&mut self, parameters: &ParamList) {
-        let ParamList { params, rest } = parameters;
+        let ParamList { params, rest, .. } = parameters;
         self.current_function_mut().arity = params.len();
         self.current_function_mut().required_params = params
             .iter()
@@ -933,9 +933,9 @@ impl Codegen<'_, '_> {
         self.emit_named_read(&decl.name, decl.name_location);
 
         for member in &decl.members {
-            match member {
-                ClassMember::Variable(class_var) => self.gen_class_variable(class_var),
-                ClassMember::Method(method) => self.gen_method(method),
+            match &member.kind {
+                ClassMemberKind::Variable(class_var) => self.gen_class_variable(class_var),
+                ClassMemberKind::Method(method) => self.gen_method(method),
             }
         }
 
@@ -1077,7 +1077,7 @@ impl Codegen<'_, '_> {
                     },
                 );
             }
-            StmtKind::Block { stmts } => {
+            StmtKind::Block { stmts, .. } => {
                 self.begin_scope();
                 self.gen_declarations(stmts);
                 self.end_scope(OpcodeLocation::default());
@@ -1248,6 +1248,7 @@ impl Codegen<'_, '_> {
                 cases,
                 subject_location,
                 keyword_location,
+                ..
             } => self.gen_switch(subject, *subject_location, cases, *keyword_location),
             StmtKind::Import {
                 path,
@@ -1259,6 +1260,7 @@ impl Codegen<'_, '_> {
                 names,
                 path_location,
                 statement_location,
+                ..
             } => self.gen_import_from(path, names, *path_location, *statement_location),
             StmtKind::Expression { expr } => self.gen_expression_statement(expr),
         }
@@ -1376,7 +1378,7 @@ impl Codegen<'_, '_> {
         init: Option<&StmtKind>,
         condition: Option<&Expr>,
         increment: Option<&Expr>,
-        body: &[StmtKind],
+        body: &[Stmt],
         right_paren_location: Location,
         body_close_location: Location,
         keyword_location: Location,
@@ -1529,7 +1531,7 @@ impl Codegen<'_, '_> {
         var_name: &str,
         var_name_location: Location,
         iterable: &Expr,
-        body: &[StmtKind],
+        body: &[Stmt],
         in_location: Location,
         close_location: Location,
         body_close_location: Location,
@@ -1673,7 +1675,7 @@ impl Codegen<'_, '_> {
             });
 
             for stmt in &case.body {
-                self.gen_stmt(stmt);
+                self.gen_stmt(&stmt.kind);
             }
 
             // If a branch has been entered then after it is finished we jump all the

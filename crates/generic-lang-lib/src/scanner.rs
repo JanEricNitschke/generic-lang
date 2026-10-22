@@ -211,6 +211,13 @@ enum ScannerMode {
     Interpolation(u8),
 }
 
+/// A raw `#` comment captured while scanning.
+#[derive(Debug, Clone)]
+pub(crate) struct ScannedComment {
+    pub(crate) text: String,
+    pub(crate) location: Location,
+}
+
 /// Main struct for parsing the source characters to tokens.
 #[derive(Debug, Clone)]
 pub(crate) struct Scanner<'a> {
@@ -220,6 +227,7 @@ pub(crate) struct Scanner<'a> {
     current: usize,
     location: Location,
     modes: Vec<ScannerMode>,
+    comments: Vec<ScannedComment>,
     #[cfg(feature = "debug_scanner")]
     is_builtin: bool,
 }
@@ -233,9 +241,15 @@ impl<'a> Scanner<'a> {
             current: 0,
             location: Location::default(),
             modes: vec![ScannerMode::Normal],
+            comments: Vec::new(),
             #[cfg(feature = "debug_scanner")]
             is_builtin,
         }
+    }
+
+    /// Take every comment scanned so far.
+    pub(crate) fn take_comments(&mut self) -> Vec<ScannedComment> {
+        std::mem::take(&mut self.comments)
     }
 
     pub(crate) fn source_slice(&self, start: usize, end: usize) -> &'a str {
@@ -581,9 +595,15 @@ impl<'a> Scanner<'a> {
                     self.advance();
                 }
                 Some(b'#') => {
+                    self.set_current();
                     while !matches!(self.peek(), Some(b'\n') | None) {
                         self.advance();
                     }
+                    let text = self.source[self.start..self.current].to_string();
+                    self.comments.push(ScannedComment {
+                        text,
+                        location: self.location,
+                    });
                 }
                 _ => break,
             }

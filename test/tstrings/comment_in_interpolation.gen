@@ -1,0 +1,8 @@
+const t = t"a${ 1 + # note
+2 }b";
+const expr = t.interpolations()[0].expression();
+print(t.strings()); # expect: (a, b)
+print(t.interpolations()[0].value()); # expect: 3
+print(expr.contains("# note")); # expect: true
+print(expr.strip() == "1 + # note
+2"); # expect: true
