@@ -1,0 +1,8 @@
+var l = [1];
+try {
+  l[5];
+} catch IndexError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/subscript_out_of_range.gen", line 3, in <script>
+# expect:       l[5];
+# expect:       ~^^^

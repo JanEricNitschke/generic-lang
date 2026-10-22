@@ -258,4 +258,4 @@
 1257;
 1258;
 1259;
-fun overflow_closure() { return 1; }  # Error at '}': Too many constants in one chunk.
+fun overflow_closure() { return 1; }  # Error at 'overflow_closure': Too many constants in one chunk.

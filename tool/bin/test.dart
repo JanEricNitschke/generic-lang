@@ -17,6 +17,8 @@ final _expectedRuntimeErrorPattern = RegExp(r"# expect runtime error: (.+)");
 final _syntaxErrorPattern = RegExp(r"\[.*line (\d+)\] (Error.+)");
 // final _stackTracePattern = RegExp(r"\[line (\d+)\]");
 final _nonTestPattern = RegExp(r"# nontest");
+// A pinned snippet row: `#|<row text>`, following a compile error.
+final _errorSnippetRowPattern = RegExp(r"#\|(.*)");
 
 var _passed = 0;
 var _failed = 0;
@@ -205,6 +207,10 @@ class Test {
   /// The set of expected compile error messages.
   final _expectedErrors = <String>{};
 
+  /// The pinned error block: for each compile error followed by `#|`
+  /// rows, its header plus those rows, checked line for line.
+  final _pinnedErrorBlock = <String>[];
+
   /// The expected runtime error message or `null` if there should not be one.
   String? _expectedRuntimeError;
 
@@ -293,7 +299,10 @@ class Test {
 
       match = _expectedErrorPattern.firstMatch(line);
       if (match != null) {
-        _expectedErrors.add("[$lineNum] ${match[1]}");
+        var header = "[$lineNum] ${match[1]}";
+        _expectedErrors.add(header);
+        lineNum +=
+            _pinSnippetRows(lines, lineNum + 1, "[line $lineNum] ${match[1]}");
 
         // If we expect a compile error, it should exit with EX_DATAERR.
         _expectedExitCode = 65;
@@ -310,7 +319,10 @@ class Test {
         // certain interpreter.
         var language = match[2];
         if (language == null || language == _suite!.language) {
-          _expectedErrors.add("[${match[3]}] ${match[4]}");
+          var header = "[${match[3]}] ${match[4]}";
+          _expectedErrors.add(header);
+          lineNum +=
+              _pinSnippetRows(lines, lineNum + 1, match[0]!.substring(2));
 
           // If we expect a compile error, it should exit with EX_DATAERR.
           _expectedExitCode = 65;
@@ -406,7 +418,50 @@ class Test {
     }
   }
 
+  /// Pins the `#|` rows following the error expectation; [header] is
+  /// its verbatim stderr line, so the pinned block is the exact stderr.
+  /// A bare `#|` pins that the error has no snippet rows.
+  int _pinSnippetRows(List<String> lines, int first, String header) {
+    var rows = <String>[];
+    var consumed = 0;
+    for (var i = first; i <= lines.length; i++) {
+      var match = _errorSnippetRowPattern.firstMatch(lines[i - 1]);
+      if (match == null) break;
+      consumed++;
+      var row = match[1]!;
+      if (row.isNotEmpty) rows.add(row);
+    }
+    if (consumed > 0)
+      _pinnedErrorBlock
+        ..add(header)
+        ..addAll(rows);
+    return consumed;
+  }
+
+  /// Block mode: the stderr must be exactly the pinned block - every
+  /// header and snippet row verbatim, in order, nothing extra.
+  void _validatePinnedErrorBlock(List<String> errorLines) {
+    var actual = [
+      for (var line in errorLines)
+        if (line != "") line
+    ];
+    var expected = _pinnedErrorBlock;
+    for (var i = 0; i < actual.length || i < expected.length; i++) {
+      var got = i < actual.length ? actual[i] : "<missing>";
+      var want = i < expected.length ? expected[i] : "<unexpected>";
+      if (got != want) {
+        fail("Expected '$want' and got '$got'.");
+        return;
+      }
+    }
+  }
+
   void _validateCompileErrors(List<String> error_lines) {
+    if (_pinnedErrorBlock.isNotEmpty) {
+      _validatePinnedErrorBlock(error_lines);
+      return;
+    }
+
     // Validate that every compile error was expected.
     var foundErrors = <String>{};
     var unexpectedCount = 0;

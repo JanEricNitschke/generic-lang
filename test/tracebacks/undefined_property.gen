@@ -1,0 +1,8 @@
+var o = {};
+try {
+  o.fresh;
+} catch AttributeError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/undefined_property.gen", line 3, in <script>
+# expect:       o.fresh;
+# expect:       ~^^^^^^

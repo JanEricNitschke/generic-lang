@@ -1,0 +1,7 @@
+try {
+  foreach (var x in 5) {}
+} catch TypeError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/foreach_not_iterable.gen", line 2, in <script>
+# expect:       foreach (var x in 5) {}
+# expect:                         ^

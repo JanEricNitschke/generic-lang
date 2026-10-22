@@ -1,0 +1,199 @@
+fun f() {
+  f();
+}
+try {
+  f();
+} catch RecursionError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/recursion.gen", line 5, in <script>
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^
+# expect:   File "test/tracebacks/recursion.gen", line 2, in f
+# expect:       f();
+# expect:       ~^^

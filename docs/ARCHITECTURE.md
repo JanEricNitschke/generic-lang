@@ -1,22 +1,21 @@
 # generic-lang Architecture
 
 Internals documentation for contributors and coding agents. Paths are
-relative to `crates/generic-lang-lib/` unless stated otherwise. Line
-numbers drift - treat them as "near here" and re-verify when precision
-matters; function names are the stable handle.
+relative to `crates/generic-lang-lib/` unless stated otherwise; function
+names are the stable handle.
 
 The interpreter descends from *Crafting Interpreters*' clox (bytecode VM,
-single-pass compiler) and extends it with modules, exceptions,
-generators, native container classes, big integers/rationals, f-strings,
-and a C-ABI plugin system.
+single-pass compiler) and extends it with modules, exceptions, generators,
+native container classes, big integers/rationals, f-strings, and a C-ABI
+plugin system. Compilation runs scanner → parser/AST → codegen → bytecode.
 
 ## Workspace layout
 
 ```
 crates/generic-lang/       binary crate: CLI (clap) → calls into the lib
-crates/generic-lang-lib/   the language: scanner, compiler, heap, VM, natives, stdlib
+crates/generic-lang-lib/   the language: scanner, parser/AST, codegen, heap, VM, natives, stdlib
 crates/generic-lang-api/   plugin FFI/ABI crate - the only repr(C) code anywhere
-test/                      .gen end-to-end tests (dart runner, `# expect:` comments)
+test/                      .gen end-to-end tests (dart runner; output, runtime and compile errors)
 tool/                      the dart test runner
 docs/                      this file, plugin-authors.md, language/ (user-facing guide)
 ```
@@ -27,22 +26,139 @@ docs/                      this file, plugin-authors.md, language/ (user-facing 
 functions/classes/methods (`src/natives/mod.rs::define`) → execute the
 embedded generic builtins (`src/builtins/*.gen` - defines the exception
 class hierarchy, populates `VM::builtins`) → register rust-stdlib modules →
-compile the script → run.
+parse and compile the script → run.
 
-Compilation is scanner → single-pass compiler → bytecode `Chunk`
+Compilation is scanner → parser/AST → codegen → bytecode `Chunk`
 (`src/scanner.rs`, `src/compiler/`, `src/chunk.rs`). Even the top-level
 script is a function wrapped in a closure. The VM
-(`src/vm/`) is a stack machine: `run` (`src/vm/mod.rs:293`) loops over
+(`src/vm/`) is a stack machine: `run` (`src/vm/mod.rs`) loops over
 `run_instruction!` (`src/vm/run_instruction.rs`, a macro so tracing and GC
 hooks inline).
 
+## Compiler
+
+The compiler lives in `src/compiler/`:
+
+- `front.rs` - parser core: declarations, statements, function literals, and
+  scanner plumbing. Handles one-token lookahead, `can_assign`, panic-mode
+  synchronization, and parse errors. Scope checks that need frame state
+  (duplicate locals, own-initializer reads) run in codegen.
+- `rules.rs` - expression parsing by precedence climbing: the Pratt table and
+  every expression rule.
+- `error.rs` - parse-error reporting and synchronization.
+- `ast.rs` - node types shared by parser and codegen.
+- `back.rs` - codegen: tree → bytecode. `Frame` carries locals, scope depths,
+  loop state, upvalues, and jump patching.
+- `variables.rs` - scope and name resolution during codegen: declaration and
+  definition discipline, local slots, upvalues, global interning.
+- `mod.rs` - the `Compiler` facade the VM uses: `compile`/`compile_collect` for
+  files, REPL, and modules; `compile_injected` for `eval`/`exec`.
+
+### Parsing
+
+- Declarations and statements are recursive descent; expressions use
+  precedence climbing.
+- `can_assign` decides whether a prefix expression may become an assignment
+  target.
+- Panic-mode synchronization recovers at declaration boundaries.
+- `function_stack` tracks the enclosing function kind (return/yield validity)
+  and owns that function's loop labels. `class_stack` tracks `this`/`super`
+  validity and class-variable names.
+- The parser is heap-free: literal strings and big integers live in the tree
+  and are interned during codegen.
+- Errors are `[line N] Error ...` messages, with a source snippet when the
+  failing token has one.
+
+### Node design
+
+- `Variable`, `Property`, and `Subscript` carry an `ExprContext`
+  (`Load`/`Store`). Assignment targets are created in `Store` context and
+  debug-asserted in `gen_assign`/`gen_aug_assign`.
+- `Assign` and `AugAssign` are separate nodes; compound assignment reuses
+  `BinaryOp`.
+- `MethodCall` is folded into `Call`: a `Property` callee invokes a method
+  without materializing it, a `Super` callee invokes through the superclass,
+  anything else is a plain call.
+- `this` is a plain `Variable` named `this` (slot 0).
+- `FunctionDef` (declaration, body always a block) and `LambdaLit` (block or
+  bare expression) are separate types. Both use `ParamList` (`params` plus
+  `*rest`). Function and method kinds are named at the declaration site;
+  codegen widens them into `FunKind`.
+- Decorators live on the function/class declaration node.
+- A `for` initializer is an `Option<Box<StmtKind>>`: a `VarDecl` or an
+  expression statement.
+- A `catch` clause stores its exception-class filters as `matchers`: one for
+  `catch (X)` / `catch X`, several for `catch (X, Y)`.
+- A class variable with no default is `None`; an explicit `= nil` is
+  `Some(nil)`.
+- Class variables and methods share one ordered `members` list.
+  Class-variable initializers and method parameter defaults run at definition
+  time in source order, so a class variable declared after a method can use an
+  instance of the class (for example `Ordered().answer()`).
+- Blocks, bodies, and the program hold `StmtKind` values directly.
+- Location fields come after the payload fields. A node keeps a location only
+  when a user-visible runtime or compile error can point at it; instructions
+  that cannot fail reuse the nearest available position.
+- Nodes derive `Debug` for inspection tooling.
+
+### Name resolution
+
+- Locals occupy stack slots; upvalues capture enclosing locals or upvalues;
+  globals are interned names.
+- `resolve_local` reports an own-initializer read and returns `locals.len()`
+  as a sentinel. `resolve_upvalue` marks captures with `get_mut`, so a
+  sentinel is never used as a local index.
+- Codegen walks the tree in source order. Constant indexes therefore follow
+  the source: names are interned before argument expressions, declaration
+  names before bodies, and class members in source order.
+
+### Optional chains
+
+`?.`/`?[` are postfix links like `.`/`[]`, with `AccessMode::NullSafe` marking
+the optional ones. `a?.b.c?.d` nests exactly like `a.b.c.d`.
+
+- A null-safe link's `JumpIfNil` leaves the nil receiver as the chain's value
+  and targets the chain end. `gen_expr` opens a chain scope when a chain link
+  is entered from a non-link context; the root patches the collected guards
+  once the chain ends.
+- `gen_expr_continue_nullsafe_chain` compiles a link's receiver/callee inside
+  the active chain. Operands, indices, arguments, and grouping use `gen_expr`
+  and start a new scope.
+- Grouping and non-postfix operators end the chain, so `(a?.b).c` leaves the
+  guard inside the parentheses and `a?.b : c` evaluates `c` when `a` is nil.
+- Assignment matches JavaScript: a target whose direct postfix spine contains
+  `?.`/`?[` is rejected (`a?.x.y = 1`). Grouping and non-postfix operators make
+  the expression assignable again (`(a?.x).y = 1`).
+- Optionals inside indices or arguments are ordinary subexpressions:
+  `a[i?.j] = 1` assigns through `a`.
+
+### Source locations
+
+Every `Expr` location spans its first through last token, so an enclosing infix
+instruction can use `preceding = lhs.location`. Instructions that point at a
+neighboring token capture that token on the node: semicolons, closing braces,
+the `)` of a `for` increment clause, the method name of a `super` call, and the
+token after a `switch` subject.
+
+### Behavior notes
+
+- `Reassignment to local 'const'.` is reported at the const's name.
+- A nested function's `Closure` constant overflow (`Too many constants in one
+  chunk.`) is reported at the function name.
+- `BuildSet`, `BuildDict`, and `BuildFstring` runtime errors blame the whole
+  literal.
+- Scope checks run during codegen. When a program has both syntax and scope
+  errors, syntax errors are reported first.
+- `debug_scanner`, `debug_parser`, and `print_code[_verbose]` provide debug
+  output at their respective stages.
+
 ## Value representation
 
-`Value` (`src/value/mod.rs:30`) is a 32-byte `Copy` enum: immediates
+`Value` (`src/value/mod.rs`) is a 32-byte `Copy` enum: immediates
 (`Bool`, `Nil`, `StopIteration`, `Number`) plus arena IDs for everything
 heap-allocated (`String`, `Closure`, `Function`, `Module`, `Upvalue`,
 `NativeFunction`, `NativeMethod`, `Class`, `Instance`, `BoundMethod`).
-The size is load-bearing (plugin ABI bit-copies the enum);
+The size is part of the plugin contract (plugin ABI bit-copies the enum);
 `test_value_size` (`src/value/mod.rs`) asserts it, and
 `src/vm/plugins/host_api.rs` has `const` asserts that fail the build on
 drift.
@@ -59,7 +175,7 @@ drift.
 - Containers (`List`, `Tuple`, `Dict`, `Set`, `Range`), iterators,
   exceptions, generators, and templates are all `Instance` values whose
   `backing: Option<NativeClass>` holds the native payload
-  (`src/value/natives.rs:106`, `src/value/classes.rs::Instance`). A user
+  (`src/value/natives.rs`, `src/value/classes.rs::Instance`). A user
   class inheriting from a native class gets that backing on
   instantiation - behavior follows the backing, identity follows the
   class.
@@ -71,22 +187,22 @@ Mark-and-sweep over per-type arenas (`src/heap/mod.rs`,
 
 **The one invariant everything leans on: allocation never collects.**
 `Heap::add_*` only track `bytes_allocated`/`needs_gc`. `collect_garbage`
-(`src/vm/garbage_collection.rs:35`) has exactly one call site - the
-instruction-dispatch macro (`src/vm/run_instruction.rs:14`). Therefore GC
+(`src/vm/garbage_collection.rs`) has exactly one call site - the
+instruction-dispatch macro (`src/vm/run_instruction.rs`). Therefore GC
 can only run at instruction boundaries, which means: straight-line native
 code cannot trigger a sweep, and only code that re-enters the interpreter
 (runs bytecode) must think about rooting.
 
-- Root set (`garbage_collection.rs:44-90`): VM stack, callstack, open
+- Root set (`src/vm/garbage_collection.rs`): VM stack, callstack, open
   upvalues, modules, builtins, the stdlib registry's module names, and
   (with `plugins`) the loader's cached export-name strings.
 - The rooting discipline for mid-call temporaries in natives: push onto the
   VM stack (it is a root), rely on the dispatch site's post-call truncate
-  for cleanup. `VM::for_each_rooted` (`src/vm/dunder.rs:149`) is the
+  for cleanup. `VM::for_each_rooted` (`src/vm/dunder.rs`) is the
   canonical helper: roots a batch, runs a stack-neutral callback per
   element (which may re-enter via `__hash__`/`__eq__`), truncates.
 - Dict/Set are GC-safe via static-method APIs `Dict::{add,get,contains,
-  remove,probe}` / `Set::{...}` (`src/value/natives.rs:351` / `:272`)
+  remove,probe}` / `Set::{...}` (`src/value/natives.rs`)
   taking `(vm, receiver, ...)`: the container stays in the heap the whole
   time; the table is only borrowed between re-entry points; matched
   entries are re-located by identity because a reentrant dunder may have
@@ -100,7 +216,7 @@ code cannot trigger a sweep, and only code that re-enters the interpreter
 The model is **pending-on-the-stack**; there is no "currently handling"
 state on the VM.
 
-- `ExceptionKind` (`src/vm/exception_handling.rs:17`): `#[repr(u32)]`, 12
+- `ExceptionKind` (`src/vm/exception_handling.rs`): `#[repr(u32)]`, 12
   variants named exactly like the builtin exception classes (strum
   `IntoStaticStr` derives the class name; pinned by
   `every_exception_kind_has_a_builtin_class` at the bottom of the same
@@ -110,14 +226,14 @@ state on the VM.
   `Runtime(RuntimeErrorKind)` is fatal and always propagates;
   `Exception(ExceptionRaisedKind)` means *a pending exception instance is
   sitting rooted on the stack top*. `VmResult<T> = Result<T, VmErrorKind>`.
-- `VM::throw(kind, msg)` (`exception_handling.rs:433`) creates a real
+- `VM::throw(kind, msg)` (`src/vm/exception_handling.rs`) creates a real
   instance of the named builtin class (`create_exception`, single
   kind→class mapping), pushes it (pending, rooted), attaches the stack
   trace at the throw site, and returns `Err(Exception)`. **No unwinding
   happens at the throw site.** Natives throw with
   `Err(vm.throw(Kind, &msg).unwrap_err())`.
 - Control transfer happens in exactly one place:
-  `resolve_pending_exception(call_depth)` (`exception_handling.rs:268`) -
+  `resolve_pending_exception(call_depth)` (`src/vm/exception_handling.rs`) -
   pops the innermost handler if it belongs to the current callstack region,
   truncates modules/callstack/stack to the handler's snapshot, jumps to the
   catch block, re-delivers the exception on the stack for
@@ -128,7 +244,7 @@ state on the VM.
   `report_uncaught_exception` → fatal) and region-scoped
   `run_function_from_depth` (`src/vm/functions.rs`), which hands escapes
   over **untruncated** - cleanup belongs to the caller.
-- `invoke_and_run_function` (`src/vm/functions.rs:45`) is the single entry
+- `invoke_and_run_function` (`src/vm/functions.rs`) is the single entry
   point for every native/dunder re-entry and owns the cleanup contract:
   snapshot frames/modules/stack; on `Err(Exception)` restore the snapshot
   with the exception re-pushed on top. Result: a native always sees "state
@@ -138,11 +254,11 @@ state on the VM.
 - Generators suspend their active handlers into the generator object
   (`SuspendedExceptionHandler`, re-based on resume) and mark themselves
   `Completed` when an exception escapes them (`Generator::resume_with`,
-  `src/value/natives.rs:809`).
+  `src/value/natives.rs`).
 
 ## Native calling convention
 
-- Signatures (`src/value/natives.rs:100-101`):
+- Signatures (`src/value/natives.rs`):
   `NativeFunctionImpl = fn(&mut VM, &[Value]) -> VmResult<Value>`, methods
   additionally take a `&Value` receiver.
 - Both dispatch sites live in `src/vm/functions.rs`
@@ -212,7 +328,7 @@ receive.
 
 ## Import machinery
 
-`import_file` (`src/vm/import.rs:24`) resolves a fallback chain:
+`import_file` (`src/vm/import.rs`) resolves a fallback chain:
 
 1. user `.gen` file on disk (with a circular-import check against the
    module stack),
@@ -287,7 +403,7 @@ so the ~45 callback calls behind it are safe) and `export_module!` (which emits
 `drop`/`traverse` and `opaque_ref`. The C representation is unchanged, so the
 generated `generic.h` and non-Rust plugins are unaffected.
 
-## Load-bearing invariants (the "do not break" list)
+## Important invariants
 
 1. Allocation never collects; `collect_garbage` has exactly one call site.
 2. `Value` is 32 bytes, ≤8-aligned, `Copy` (plugin ABI bit-copies it).
@@ -314,7 +430,7 @@ generated `generic.h` and non-Rust plugins are unaffected.
     `Drop for Heap` at teardown.
 11. The GC `traverse` callback must report every `GenericValue` a plugin
     instance holds; failure is a use-after-free (mark-and-sweep, so `traverse`
-    is load-bearing for all liveness of held values, not just cycles).
+    is required for all liveness of held values, not just cycles).
 12. The plugin export cache (`plugins.loaded`) interns function, class,
     method, and value names as `StringId`s that a cache-hit re-import feeds
     into module setup; `collect_garbage` marks all four categories as roots.
@@ -324,8 +440,9 @@ generated `generic.h` and non-Rust plugins are unaffected.
 Test pyramid:
 - `cargo test` - unit tests in the lib (incl. the plugin host tests) and
   the API crate (mock-vtable FFI glue tests, layout asserts).
-- `.gen` end-to-end tests under `test/` - `# expect:` /
-  `# expect runtime error:` comments, run by the dart tool
+- `.gen` end-to-end tests under `test/` - `# expect:`,
+  `# expect runtime error:`, and `# [line N] Error ...` comments (with `#|`
+  rows for exact error snippets), run by the dart tool
   (`make custom-dart-test`), again under `stress_gc`
   (`make stress-gc-test`), plus the unittest-runner suites. The Rust plugin
   tests (`test/plugin/rust/`) run in the normal suite; the cross-language
@@ -335,6 +452,10 @@ Test pyramid:
 - miri runs the whole workspace test suite (only the two plugin loader
   tests are `#[cfg(not(miri))]` - they do real filesystem and `dlopen`
   work miri cannot execute) and one example program.
+
+Every `.gen` test boots the VM, so the embedded builtins and stdlib are
+compiled through the compiler on each run. The compiler has no separate
+unit-test module; behavior and diagnostics are covered end to end.
 
 **Run the full CI matrix locally before declaring any change done** - CI
 only runs on `main` pushes/PRs, so local runs are the only gate on feature

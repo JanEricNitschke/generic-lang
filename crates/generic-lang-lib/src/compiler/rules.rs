@@ -1,23 +1,25 @@
-//! Parser to expressions while respecting operator precedence.
+//! Parser for expressions while repsecting operator precedence
 //!
 //! Uses Vaughan Pratt's "top-down operator precedence parsing".
 
+use super::ast::{
+    AccessMode, BinaryOp, BoolOperator, Expr, ExprContext, ExprKind, FstringPart, FunKind, Literal,
+    Tstring, TstringInterp, UnaryOp,
+};
+use super::{back::Codegen, front::Parser};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-use super::{Compiler, FunctionType};
-use crate::chunk::OpCode;
-use crate::config::LAMBDA_NAME;
-use crate::scanner::TokenKind as TK;
-use crate::types::{CollectionType, Location, NumberEncoding, OpcodeLocation};
-use crate::value::{
-    Instance, Tuple, Value,
-    utils::{ParsedInteger, parse_float_compiler, parse_integer_compiler},
+use crate::{
+    chunk::OpCode,
+    scanner::TokenKind as TK,
+    types::{Location, NumberEncoding, OpcodeLocation},
+    value::utils::{ParsedInteger, parse_float_compiler, parse_integer_compiler},
 };
 
-// The precedence of the different operators in the language
+// The precedence of the different operators in the language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
-pub(super) enum Precedence {
+pub(crate) enum Precedence {
     None,
     Assignment, // =
     Tuple,      // ,
@@ -41,68 +43,59 @@ pub(super) enum Precedence {
 }
 
 impl Precedence {
-    pub(super) const fn non_assigning() -> Self {
+    pub(crate) const fn non_assigning() -> Self {
         Self::Tuple
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ParseResult {
-    /// A prefix rule was found and executed
-    Success,
-    /// No prefix rule was found for the current token
+#[derive(Debug)]
+enum ParseResult {
+    /// A prefix rule was found and executed.
+    Success(Expr),
+    /// No prefix rule was found for the current token.
     NoPrefix,
 }
 
 // Typedef for the functions that parse the different types of expressions
-type PrefixFn<'scanner, 'arena> = fn(&mut Compiler<'scanner, 'arena>, bool, &[TK]) -> ();
-type InfixFn<'scanner, 'arena> = fn(&mut Compiler<'scanner, 'arena>, bool, &[TK], Location) -> ();
+type PrefixFn = fn(&mut Parser<'_>, bool, &[TK]) -> Expr;
+type InfixFn = fn(&mut Parser<'_>, bool, &[TK], Expr) -> Expr;
 
-// This  specifies the functions that handle the parsing of an operator as prefix or infix,
+// This specifies the functions that handle the parsing of an operator as prefix or infix,
 // as well as its precedence. There will be one such struct for each Token.
-#[derive(Clone)]
-pub(super) struct Rule<'scanner, 'arena> {
-    prefix: Option<PrefixFn<'scanner, 'arena>>,
-    infix: Option<InfixFn<'scanner, 'arena>>,
+#[derive(Clone, Copy)]
+struct Rule {
+    prefix: Option<PrefixFn>,
+    infix: Option<InfixFn>,
     precedence: Precedence,
 }
 
-impl Default for Rule<'_, '_> {
-    fn default() -> Self {
-        Self {
-            prefix: Option::default(),
-            infix: Option::default(),
-            precedence: Precedence::None,
-        }
-    }
-}
-
+/// Rules used for parsing expressions by precedence climbing.
+/// The parse table: one entry per token kind. Built once in a `const`
+/// now - the rule functions are the free shims above, so the table no
+/// longer needs the per-instance build the lifetimed old one forced.
 macro_rules! make_rules {
     (@parse_fn None) => { None };
-    (@parse_fn $prefix:ident) => { Some(Compiler::$prefix) };
+    (@parse_fn $prefix:ident) => { Some($prefix) };
 
     ($($token:ident = [$prefix:ident, $infix:ident, $precedence:ident]),* $(,)?) => {{
-        // Horrible hack to pre-fill the array with *something* before assigning the right values based on the macro input
-        // Needed because `Rule` cannot be `Copy` (due to `fn`s)
-        // If the tokens get input into the macro in the same order
-        // That they appear in the enum then the loop is not needed.
-        let mut rules = [$(Rule { prefix: make_rules!(@parse_fn $prefix), infix: make_rules!(@parse_fn $infix), precedence: Precedence::$precedence }),*];
+        let mut rules = [Rule {
+            prefix: None,
+            infix: None,
+            precedence: Precedence::None,
+        }; 94];
         $(
             rules[TK::$token as usize] = Rule {
                 prefix: make_rules!(@parse_fn $prefix),
                 infix: make_rules!(@parse_fn $infix),
-                precedence: Precedence::$precedence
+                precedence: Precedence::$precedence,
             };
         )*
         rules
     }};
 }
 
-pub(super) type Rules<'scanner, 'arena> = [Rule<'scanner, 'arena>; 94];
-
-// Can't be static because the associated function types include lifetimes
 #[rustfmt::skip]
-pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
+const fn make_rules() -> [Rule; 94] {
     make_rules!(
         LeftParen                = [grouping,        call,               Call       ],
         RightParen               = [None,            None,               None       ],
@@ -201,18 +194,21 @@ pub(super) fn make_rules<'scanner, 'arena>() -> Rules<'scanner, 'arena> {
     )
 }
 
-impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
-    const fn get_rule(&self, operator: TK) -> &Rule<'scanner, 'arena> {
-        &self.rules[operator as usize]
-    }
+static RULES: [Rule; 94] = make_rules();
 
+fn rule(kind: TK) -> Rule {
+    RULES[kind as usize]
+}
+
+// Expressions.
+impl Parser<'_> {
     /// Whether the current token could begin an expression (it has a
     /// prefix parsing rule). Used to recognize a probably-forgotten
     /// comma: the next element is already there.
     pub(super) fn current_starts_expression(&self) -> bool {
         self.current
             .as_ref()
-            .is_some_and(|token| self.get_rule(token.kind).prefix.is_some())
+            .is_some_and(|token| rule(token.kind).prefix.is_some())
     }
 
     /// Parse an infix expression to the end
@@ -221,64 +217,43 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         precedence: Precedence,
         can_assign: bool,
         ignore_operators: &[TK],
-        lhs_location: Location,
-    ) {
-        while precedence
-            <= self
-                .get_rule(self.current.as_ref().unwrap().kind)
-                .precedence
+        mut expr: Expr,
+    ) -> Expr {
+        while precedence <= rule(self.current.as_ref().unwrap().kind).precedence
             && !ignore_operators.contains(&self.current.as_ref().unwrap().kind)
         {
-            let lhs_end_location = self.location();
             self.advance();
-            let infix_rule = self
-                .get_rule(self.previous.as_ref().unwrap().kind)
-                .infix
-                .unwrap();
-            infix_rule(
-                self,
-                can_assign,
-                ignore_operators,
-                lhs_location.merge_ordered(&lhs_end_location),
-            );
+            let infix_rule = rule(self.previous.as_ref().unwrap().kind).infix.unwrap();
+            expr = infix_rule(self, can_assign, ignore_operators, expr);
         }
+        expr
     }
 
     /// The actual precedence parsing function.
     ///
     /// Based on Vaughan Pratt's "top-down operator precedence parsing".
     /// See: [Crafting Interpreters](https://craftinginterpreters.com/compiling-expressions.html)
-    pub(super) fn try_parse_precedence_ignoring(
+    fn try_parse_precedence_ignoring(
         &mut self,
         precedence: Precedence,
         ignore_operators: &[TK],
     ) -> ParseResult {
-        if let Some(prefix_rule) = self.get_rule(self.current.as_ref().unwrap().kind).prefix {
+        if let Some(prefix_rule) = rule(self.current.as_ref().unwrap().kind).prefix {
             self.advance();
-            let lhs_start_location = self.location();
             let can_assign = precedence <= Precedence::Assignment;
-            prefix_rule(self, can_assign, ignore_operators);
-
-            self.parse_infix_chain(precedence, can_assign, ignore_operators, lhs_start_location);
+            let expr = prefix_rule(self, can_assign, ignore_operators);
+            let expr = self.parse_infix_chain(precedence, can_assign, ignore_operators, expr);
 
             if can_assign {
                 if self.match_(TK::Equal) {
                     // An `=` after a non-assignable expression is almost
                     // always a mistyped comparison.
                     self.error("Invalid assignment target. Maybe you meant '==' instead of '='?");
-                } else if self.match_(TK::PlusEqual)
-                    | self.match_(TK::MinusEqual)
-                    | self.match_(TK::StarEqual)
-                    | self.match_(TK::SlashEqual)
-                    | self.match_(TK::HatEqual)
-                    | self.match_(TK::PipeEqual)
-                    | self.match_(TK::AmperEqual)
-                    | self.match_(TK::PercentEqual)
-                {
+                } else if self.match_aug_operator() {
                     self.error("Invalid assignment target.");
                 }
             }
-            ParseResult::Success
+            ParseResult::Success(expr)
         } else {
             ParseResult::NoPrefix
         }
@@ -288,93 +263,82 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         &mut self,
         precedence: Precedence,
         ignore_operators: &[TK],
-    ) {
+    ) -> Expr {
         match self.try_parse_precedence_ignoring(precedence, ignore_operators) {
-            ParseResult::Success => {}
+            ParseResult::Success(expr) => expr,
             ParseResult::NoPrefix => {
                 self.advance();
                 self.error("Expect expression.");
+                self.dummy_expr()
             }
         }
     }
 
-    pub(super) fn parse_precedence(&mut self, precedence: Precedence) {
-        self.parse_precedence_ignoring(precedence, &[]);
+    pub(super) fn parse_precedence(&mut self, precedence: Precedence) -> Expr {
+        self.parse_precedence_ignoring(precedence, &[])
     }
 
-    /// Parse the expression which will leave its value on the stack.
-    /// Then emit the bytecode for the respective operation which will act on the value on the stack.
-    fn unary(&mut self, _can_assign: bool, ignore_operators: &[TK]) {
+    /// Parse a unary operator and its operand.
+    fn unary(&mut self, _can_assign: bool, ignore_operators: &[TK]) -> Expr {
         let operator = self.previous.as_ref().unwrap().kind;
         let operator_location = self.location();
-
-        let start_location = self.current_location();
-        self.parse_precedence_ignoring(Precedence::Unary, ignore_operators);
-        let end_location = self.location();
-        let location = OpcodeLocation {
-            preceding: None,
-            source: operator_location,
-            following: Some(start_location.merge_ordered(&end_location)),
+        let op = match operator {
+            TK::Minus => UnaryOp::Neg,
+            TK::Bang => UnaryOp::Not,
+            _ => unreachable!("Unknown unary operator: {operator}"),
         };
-        match operator {
-            TK::Minus => self.emit_byte(OpCode::Negate, location),
-            TK::Bang => self.emit_byte(OpCode::Not, location),
-            _ => unreachable!("Unknown unary operator: {}", operator),
+        let operand = Box::new(self.parse_precedence_ignoring(Precedence::Unary, ignore_operators));
+        Expr {
+            location: operator_location.merge_ordered(&operand.location),
+            kind: ExprKind::Unary {
+                op,
+                operand,
+                op_location: operator_location,
+            },
         }
     }
 
-    /// For a binary operator, we need to parse the right operand and then emit the correct bytecode.
-    /// The left operand is already on the stack.
-    /// The final order on the stack will be that the right operand is on top of the left one.
-    /// This is then handled correctly in the VM when the bytecode of a binary operator is encountered.
-    fn binary(&mut self, _can_assign: bool, ignore_operators: &[TK], lhs_location: Location) {
-        // First operand is already on the stack
+    /// Parse a binary operator's right operand. The left operand was parsed
+    /// by the caller and is passed in.
+    fn binary(&mut self, _can_assign: bool, ignore_operators: &[TK], lhs: Expr) -> Expr {
         let operator = self.previous.as_ref().unwrap().kind;
         let operator_location = self.location();
-
-        let rule = self.get_rule(operator);
-
-        let rhs_start_location = self.current_location();
-        // Correctly put the second operand on the stack
-        self.parse_precedence_ignoring(
-            Precedence::try_from_primitive(u8::from(rule.precedence) + 1).expect(
-                "Invalid precedence in 'binary', should never be called for `Primary expression`.",
-            ),
-            ignore_operators,
-        );
-        let rhs_end_location = self.location();
-
-        let location = OpcodeLocation {
-            preceding: Some(lhs_location),
-            source: operator_location,
-            following: Some(rhs_start_location.merge_ordered(&rhs_end_location)),
+        let rule = rule(operator);
+        let op = match operator {
+            TK::BangEqual => BinaryOp::NotEqual,
+            TK::EqualEqual => BinaryOp::Equal,
+            TK::Greater => BinaryOp::Greater,
+            TK::GreaterEqual => BinaryOp::GreaterEqual,
+            TK::Less => BinaryOp::Less,
+            TK::LessEqual => BinaryOp::LessEqual,
+            TK::Plus => BinaryOp::Add,
+            TK::Minus => BinaryOp::Sub,
+            TK::Star => BinaryOp::Mul,
+            TK::Slash => BinaryOp::Div,
+            TK::Hat => BinaryOp::BitXor,
+            TK::Pipe => BinaryOp::BitOr,
+            TK::Amper => BinaryOp::BitAnd,
+            TK::Percent => BinaryOp::Mod,
+            TK::StarStar => BinaryOp::Exp,
+            TK::SlashSlash => BinaryOp::FloorDiv,
+            TK::In => BinaryOp::In,
+            TK::Is => BinaryOp::Is,
+            TK::Colon => BinaryOp::Rational,
+            TK::DotDotEqual => BinaryOp::RangeInclusive,
+            TK::DotDotLess => BinaryOp::RangeExclusive,
+            _ => unreachable!("Unknown binary operator: {operator}"),
         };
-
-        // Emit the correct byte code to perform the operation on the two values
-        match operator {
-            TK::BangEqual => self.emit_byte(OpCode::NotEqual, location),
-            TK::EqualEqual => self.emit_byte(OpCode::Equal, location),
-            TK::Greater => self.emit_byte(OpCode::Greater, location),
-            TK::GreaterEqual => self.emit_byte(OpCode::GreaterEqual, location),
-            TK::Less => self.emit_byte(OpCode::Less, location),
-            TK::LessEqual => self.emit_byte(OpCode::LessEqual, location),
-            TK::Plus => self.emit_byte(OpCode::Add, location),
-            TK::Minus => self.emit_byte(OpCode::Subtract, location),
-            TK::Star => self.emit_byte(OpCode::Multiply, location),
-            TK::Slash => self.emit_byte(OpCode::Divide, location),
-            TK::Hat => self.emit_byte(OpCode::BitXor, location),
-            TK::Pipe => self.emit_byte(OpCode::BitOr, location),
-            TK::Amper => self.emit_byte(OpCode::BitAnd, location),
-            TK::Percent => self.emit_byte(OpCode::Mod, location),
-            TK::StarStar => self.emit_byte(OpCode::Exp, location),
-            TK::SlashSlash => self.emit_byte(OpCode::FloorDiv, location),
-            TK::In => self.in_(location),
-            TK::Is => self.emit_byte(OpCode::Is, location),
-            TK::Colon => self.emit_byte(OpCode::BuildRational, location),
-            //  Could think about making these one opcode with a boolean operand
-            TK::DotDotEqual => self.emit_byte(OpCode::BuildRangeInclusive, location),
-            TK::DotDotLess => self.emit_byte(OpCode::BuildRangeExclusive, location),
-            _ => unreachable!("Unknown binary operator: {}", operator),
+        let precedence = Precedence::try_from_primitive(u8::from(rule.precedence) + 1)
+            .expect("Invalid precedence in 'binary'");
+        let rhs = Box::new(self.parse_precedence_ignoring(precedence, ignore_operators));
+        Expr {
+            location: lhs.location.merge_ordered(&rhs.location),
+            kind: ExprKind::Binary {
+                op,
+                lhs: Box::new(lhs),
+                rhs,
+                op_location: operator_location,
+            },
         }
     }
 
@@ -384,96 +348,56 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// Evaluates `a`, if it is truthy, then `b` is evaluated and returned,
     /// otherwise `c` is evaluated and returned.
     ///
-    /// When we enter this function, the first operand (`a`) is already on the stack.
-    /// For the rest of the logic have a look at [`Compiler::conditional_statement`].
-    /// We work exactly like that except we always have a "then" and we only have expressions
-    /// instead of blocks.
-    fn ternary(
-        &mut self,
-        _can_assign: bool,
-        ignore_operators: &[TK],
-        condition_location: Location,
-    ) {
-        let location = OpcodeLocation::new(condition_location);
-        let then_jump = self.emit_jump(OpCode::PopJumpIfFalse, location);
-
-        // First value: We parse the "then" expression and jump over the "else" expression.
-        // The condition has already been popped by PopJumpIfFalse.
-        self.parse_precedence_ignoring(
+    /// When we enter this function, the condition (`a`) has already been
+    /// parsed by the caller. This mirrors `conditional_statement`, except
+    /// both branches are expressions and there is always an `else`.
+    fn ternary(&mut self, _can_assign: bool, ignore_operators: &[TK], condition: Expr) -> Expr {
+        let question_location = self.location();
+        let then_branch = Box::new(self.parse_precedence_ignoring(
             Precedence::Ternary,
             &[&[TK::Colon], ignore_operators].concat(),
-        );
-
-        let else_jump = self.emit_jump(OpCode::Jump, location);
-
+        ));
         self.consume(
             TK::Colon,
             "Expect ':' after 'then' branch of ternary operator.",
         );
-
-        // Patch the jump over the "else" expression to continue after the end of the "then" expression.
-        self.patch_jump(then_jump);
-
-        self.parse_precedence_ignoring(
+        let else_branch = Box::new(self.parse_precedence_ignoring(
             Precedence::Ternary,
             &[&[TK::Colon], ignore_operators].concat(),
-        );
-
-        self.patch_jump(else_jump);
+        ));
+        Expr {
+            location: condition.location.merge_ordered(&else_branch.location),
+            kind: ExprKind::Ternary {
+                condition: Box::new(condition),
+                then: then_branch,
+                else_: else_branch,
+                question_location,
+            },
+        }
     }
 
-    /// Parse lambda expressions.
-    ///
-    /// We support either single expressions, where no `return` is needed,
-    /// or full blocks with a `return` statement.
-    fn lambda(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
-        self.function(&LAMBDA_NAME, FunctionType::Lambda);
+    fn lambda(&mut self, _can_assign: bool, _ignore_operators: &[TK]) -> Expr {
+        let fn_lit = self.parse_lambda();
+        let end = self.location();
+        Expr {
+            location: fn_lit.fn_location.merge_ordered(&end),
+            kind: ExprKind::Lambda(Box::new(fn_lit)),
+        }
     }
 
-    /// Parse `X in Y`
-    ///
-    /// Work by invoking `Y.contains(X)`.
-    ///
-    /// Order on the stack is element -- container
-    /// To call a method container.contains(element)
-    // We need container -- element
-    /// Then call `OP_INVOKE` with "contains" and `1`
-    fn in_(&mut self, operator_centered_location: OpcodeLocation) {
-        // Swap the order
-        let collection_location = OpcodeLocation {
-            preceding: Some(
-                operator_centered_location
-                    .preceding
-                    .unwrap()
-                    .merge_ordered(&operator_centered_location.source),
-            ),
-            source: operator_centered_location.following.unwrap(),
-            following: None,
-        };
-        self.emit_byte(OpCode::Swap, collection_location);
-        self.invoke_fixed(
-            &"contains",
-            1,
-            "Too many constants created for OP_IN.",
-            collection_location,
-        );
-    }
-
-    /// Parsing any call just means parsing the arguments and then emitting the correct bytecode.
-    fn call(&mut self, _can_assign: bool, _ignore_operators: &[TK], lhs_location: Location) {
-        let argument_list_start_location = self.location();
-        let (arg_count, spreads) = self.argument_list();
-        let argument_list_end_location = self.location();
-        let location = OpcodeLocation {
-            preceding: Some(lhs_location),
-            source: argument_list_start_location.merge_ordered(&argument_list_end_location),
-            following: None,
-        };
-        if let Some(bitmap) = spreads {
-            self.emit_bytes(OpCode::CallUnpack, arg_count, location);
-            self.emit_spread_bitmap(&bitmap, arg_count, location);
-        } else {
-            self.emit_bytes(OpCode::Call, arg_count, location);
+    /// Parse a call's argument list. The callee was parsed by the caller.
+    fn call(&mut self, _can_assign: bool, _ignore_operators: &[TK], callee: Expr) -> Expr {
+        let open_location = self.location();
+        let args = self.argument_list();
+        let close_location = self.location();
+        let args_location = open_location.merge_ordered(&close_location);
+        Expr {
+            location: callee.location.merge_ordered(&args_location),
+            kind: ExprKind::Call {
+                callee: Box::new(callee),
+                args,
+                args_location,
+            },
         }
     }
 
@@ -481,147 +405,115 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ///
     /// This is actually fairly complicated, as cases like
     /// `a.b;`, `a.b = c;` and `a.b()` all have to be handled correctly here.
-    fn dot(&mut self, can_assign: bool, _ignore_operators: &[TK], lhs_location: Location) {
+    /// A following `(` is left to the call rule: `` object.name(args) ``
+    /// becomes a `Call` whose callee is this property, which codegen
+    /// turns into an `Invoke`.
+    fn dot(&mut self, can_assign: bool, _ignore_operators: &[TK], lhs: Expr) -> Expr {
         // The `.` (or `?.` when entered through optional chaining) that
         // triggered this rule, already consumed by the caller.
-        let accessor_location = self.location();
+        self.finish_dot(can_assign, lhs, AccessMode::Direct)
+    }
+
+    #[allow(clippy::too_many_lines)] // one cohesive property rule
+    fn finish_dot(&mut self, can_assign: bool, lhs: Expr, mode: AccessMode) -> Expr {
+        // An optional link anywhere in the chain's postfix spine makes
+        // the whole chain unassignable.
+        let can_assign = can_assign && !chain_has_optional_link(&lhs);
+        let operator_location = self.location();
         self.consume(TK::Identifier, "Expect property name after '.'.");
         let identifier_location = self.location();
-        let name_constant =
-            self.identifier_constant(&self.previous.as_ref().unwrap().as_str().to_string());
-        let target_location = lhs_location.merge_ordered(&identifier_location);
+        let name = self.previous.as_ref().unwrap().as_str().to_string();
+        let target_location = lhs.location.merge_ordered(&identifier_location);
         // Blame the access itself (`.foo` / `?.foo`) with the receiver as
         // context, mirroring the subscript getter.
-        let access_location = accessor_location.merge_ordered(&identifier_location);
-        let getter_location = OpcodeLocation {
-            preceding: Some(lhs_location),
-            source: access_location,
-            following: None,
-        };
+        let access_location = operator_location.merge_ordered(&identifier_location);
 
-        if can_assign
-            && (self.match_(TK::Equal)
-                | self.match_(TK::PlusEqual)
-                | self.match_(TK::MinusEqual)
-                | self.match_(TK::StarEqual)
-                | self.match_(TK::SlashEqual)
-                | self.match_(TK::HatEqual)
-                | self.match_(TK::PipeEqual)
-                | self.match_(TK::AmperEqual)
-                | self.match_(TK::PercentEqual))
-        {
-            let previous_kind = self.previous.as_ref().unwrap().kind;
-            let operator_location = self.location();
-            if matches!(previous_kind, TK::Equal) {
-                self.expression();
-            } else {
-                self.emit_byte(OpCode::Dup, getter_location);
-                self.emit_byte(OpCode::GetProperty, getter_location);
-                if !self.emit_number(name_constant.0, NumberEncoding::Short, getter_location) {
-                    self.error("Too many constants created for OP_GET_PROPERTY.");
-                }
-                let rhs_start_location = self.current_location();
-                self.expression();
-                let rhs_end_location = self.location();
-                let operator_centered_location = OpcodeLocation {
-                    preceding: Some(target_location),
-                    source: operator_location,
-                    following: Some(rhs_start_location.merge_ordered(&rhs_end_location)),
-                };
-                match previous_kind {
-                    TK::PlusEqual => self.emit_byte(OpCode::Add, operator_centered_location),
-                    TK::MinusEqual => self.emit_byte(OpCode::Subtract, operator_centered_location),
-                    TK::StarEqual => self.emit_byte(OpCode::Multiply, operator_centered_location),
-                    TK::SlashEqual => self.emit_byte(OpCode::Divide, operator_centered_location),
-                    TK::HatEqual => self.emit_byte(OpCode::BitXor, operator_centered_location),
-                    TK::PipeEqual => self.emit_byte(OpCode::BitOr, operator_centered_location),
-                    TK::AmperEqual => self.emit_byte(OpCode::BitAnd, operator_centered_location),
-                    TK::PercentEqual => self.emit_byte(OpCode::Mod, operator_centered_location),
-                    _ => unreachable!("Unexpected byte code "),
-                }
-            }
-            let setter_location = OpcodeLocation {
-                preceding: Some(lhs_location),
-                source: access_location,
-                following: Some(operator_location),
+        if can_assign && self.match_(TK::Equal) {
+            let op_location = self.location();
+            let value = Box::new(self.expression());
+            return Expr {
+                location: target_location.merge_ordered(&value.location),
+                kind: ExprKind::Assign {
+                    target: Box::new(Expr {
+                        location: target_location,
+                        kind: ExprKind::Property {
+                            object: Box::new(lhs),
+                            name,
+                            mode,
+                            ctx: ExprContext::Store,
+                            access_location,
+                        },
+                    }),
+                    value,
+                    op_location,
+                },
             };
-            self.emit_byte(OpCode::SetProperty, setter_location);
-            if !self.emit_number(name_constant.0, NumberEncoding::Short, setter_location) {
-                self.error("Too many constants created for OP_SET_PROPERTY");
-            }
-        } else if self.match_(TK::LeftParen) {
-            let args_start_location = self.location();
-            let (arg_count, spreads) = self.argument_list();
-            let args_end_location = self.location();
-            let invoke_location = OpcodeLocation {
-                preceding: Some(target_location),
-                source: args_start_location.merge_ordered(&args_end_location),
-                following: None,
+        }
+        if can_assign && self.match_aug_operator() {
+            let (op, op_location) = self.take_aug_operator();
+            let value = Box::new(self.expression());
+            return Expr {
+                location: target_location.merge_ordered(&value.location),
+                kind: ExprKind::AugAssign {
+                    target: Box::new(Expr {
+                        location: target_location,
+                        kind: ExprKind::Property {
+                            object: Box::new(lhs),
+                            name,
+                            mode,
+                            ctx: ExprContext::Store,
+                            access_location,
+                        },
+                    }),
+                    op,
+                    value,
+                    op_location,
+                },
             };
-            let opcode = if spreads.is_some() {
-                OpCode::InvokeUnpack
-            } else {
-                OpCode::Invoke
-            };
-            self.emit_byte(opcode, invoke_location);
-            if !self.emit_number(name_constant.0, NumberEncoding::Short, invoke_location) {
-                self.error("Too many constants created for OP_INVOKE");
-            }
-            self.emit_byte(arg_count, invoke_location);
-            if let Some(bitmap) = spreads {
-                self.emit_spread_bitmap(&bitmap, arg_count, invoke_location);
-            }
-        } else {
-            self.emit_byte(OpCode::GetProperty, getter_location);
-            if !self.emit_number(name_constant.0, NumberEncoding::Short, getter_location) {
-                self.error("Too many constants created for OP_GET_PROPERTY.");
-            }
+        }
+        Expr {
+            location: target_location,
+            kind: ExprKind::Property {
+                object: Box::new(lhs),
+                name,
+                mode,
+                ctx: ExprContext::Load,
+                access_location,
+            },
         }
     }
 
+    /// `` ?[index] `` - the optional-chaining link; never an assignment
+    /// target. The chain keeps climbing afterwards.
     fn optional_subscript(
         &mut self,
         _can_assign: bool,
-        ignore_operators: &[TK],
-        lhs_location: Location,
-    ) {
-        let end_jump = self.emit_jump(
-            OpCode::JumpIfNil,
-            OpcodeLocation {
-                preceding: None,
-                source: lhs_location,
-                following: Some(self.location()),
-            },
-        );
-        self.subscript(false, ignore_operators, lhs_location);
-        self.parse_infix_chain(Precedence::Call, false, ignore_operators, lhs_location);
-        self.patch_jump(end_jump);
+        _ignore_operators: &[TK],
+        lhs: Expr,
+    ) -> Expr {
+        self.finish_subscript(false, lhs, AccessMode::NullSafe)
     }
 
-    fn optional_dot(&mut self, _can_assign: bool, ignore_operators: &[TK], lhs_location: Location) {
-        let end_jump = self.emit_jump(
-            OpCode::JumpIfNil,
-            OpcodeLocation {
-                preceding: None,
-                source: lhs_location,
-                following: Some(self.location()),
-            },
-        );
-        self.dot(false, ignore_operators, lhs_location);
-        self.parse_infix_chain(Precedence::Call, false, ignore_operators, lhs_location);
-        self.patch_jump(end_jump);
+    /// `` ?.name `` - the optional-chaining link. Parses like `dot()`,
+    /// never an assignment target; the chain keeps climbing afterwards.
+    fn optional_dot(&mut self, _can_assign: bool, _ignore_operators: &[TK], lhs: Expr) -> Expr {
+        self.finish_dot(false, lhs, AccessMode::NullSafe)
     }
 
     /// Handles the four tokens that directly corresponds to values.
-    fn literal(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
-        let literal = self.previous.as_ref().unwrap().kind;
-        let location = self.op_location();
-        match literal {
-            TK::False => self.emit_byte(OpCode::False, location),
-            TK::Nil => self.emit_byte(OpCode::Nil, location),
-            TK::StopIteration => self.emit_byte(OpCode::StopIteration, location),
-            TK::True => self.emit_byte(OpCode::True, location),
-            _ => unreachable!("Unknown literal: {}", literal),
+    fn literal(&self, _can_assign: bool, _ignore_operators: &[TK]) -> Expr {
+        let kind = self.previous.as_ref().unwrap().kind;
+        let location = self.location();
+        let lit = match kind {
+            TK::False => Literal::False,
+            TK::Nil => Literal::Nil,
+            TK::StopIteration => Literal::StopIteration,
+            TK::True => Literal::True,
+            _ => unreachable!("Unknown literal: {kind}"),
+        };
+        Expr {
+            kind: ExprKind::Literal(lit),
+            location,
         }
     }
 
@@ -629,12 +521,18 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ///
     /// The full expression within the grouping will be parsed as one.
     /// Empty parens create an empty tuple instead.
-    fn grouping(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
+    fn grouping(&mut self, _can_assign: bool, _ignore_operators: &[TK]) -> Expr {
+        let open_location = self.location();
         if self.match_(TK::RightParen) {
-            self.emit_bytes(OpCode::BuildTuple, 0, self.op_location());
-            return;
+            let close_location = self.location();
+            return Expr {
+                location: open_location.merge_ordered(&close_location),
+                kind: ExprKind::Tuple {
+                    elements: Vec::new(),
+                },
+            };
         }
-        self.expression();
+        let inner = Box::new(self.expression());
         // An expression already finished but the next token starts a new
         // one, so the user most likely meant a tuple and forgot the
         // comma.
@@ -642,6 +540,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             self.error_at_current("Expect ')' after expression. Perhaps you forgot a comma?");
         } else {
             self.consume(TK::RightParen, "Expect ')' after expression.");
+        }
+        Expr {
+            location: open_location.merge_ordered(&self.location()),
+            kind: ExprKind::Grouping { inner },
         }
     }
 
@@ -652,48 +554,54 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// The constant gets loaded into the current chunks constant table
     /// and the index is pushed after the corresponding `OpCode`.
     /// The VM then loads the constant from the constant table using that index.
-    fn float(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
+    fn float(&mut self, _can_assign: bool, _ignore_operators: &[TK]) -> Expr {
         let string = self.previous.as_ref().unwrap().as_str();
         let value = match parse_float_compiler(string) {
             Ok(value) => value,
             Err(msg) => {
                 self.error(&msg);
-                return;
+                return self.dummy_expr();
             }
         };
-        self.emit_constant(value, self.op_location());
+        Expr {
+            kind: ExprKind::Literal(Literal::Float(value)),
+            location: self.location(),
+        }
     }
 
     /// Emit an integer literal.
     ///
-    /// Works equivalent to [`Compiler::float`].
-    fn integer(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
+    /// Works equivalent to [`Self::float`].
+    fn integer(&mut self, _can_assign: bool, _ignore_operators: &[TK]) -> Expr {
         let integer_str = self.previous.as_ref().unwrap().as_str();
         let parsed = match parse_integer_compiler(integer_str) {
             Ok(parsed) => parsed,
             Err(msg) => {
                 self.error(&msg);
-                return;
+                return self.dummy_expr();
             }
         };
-        match parsed {
-            ParsedInteger::Small(value) => self.emit_constant(value, self.op_location()),
-            ParsedInteger::Big(bigint) => {
-                let bigint_id = self.heap.add_big_int(bigint);
-                self.emit_constant(bigint_id, self.op_location());
-            }
+        let lit = match parsed {
+            ParsedInteger::Small(value) => Literal::Int(value),
+            ParsedInteger::Big(bigint) => Literal::BigInt(bigint),
+        };
+        Expr {
+            kind: ExprKind::Literal(lit),
+            location: self.location(),
         }
     }
 
     /// Emit a string constant.
     ///
     /// Here, the string is taken from the lexeme of the token with the last and first
-    /// character (`"`) stripped. Rest works like for [`Compiler::float`].
-    fn string(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
+    /// character (`"`) stripped. Rest works like for [`Self::float`].
+    fn string(&self, _can_assign: bool, _ignore_operators: &[TK]) -> Expr {
         let lexeme = self.previous.as_ref().unwrap().as_str();
         let value = lexeme[1..lexeme.len() - 1].to_string();
-        let string_id = self.heap.string_id(&value);
-        self.emit_constant(string_id, self.op_location());
+        Expr {
+            kind: ExprKind::Literal(Literal::Str(value)),
+            location: self.location(),
+        }
     }
 
     /// Emit fstring parts.
@@ -704,11 +612,13 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// - `InterpolationStringEnd`: The final non-interpolation part WITH closing quotes
     /// - `InterpolationStart` `${`: Only indicate that an interpolation comes next
     /// - `InterpolationEnd` `}`: Indicates that the interpolation is over
-    fn fstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
+    fn fstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) -> Expr {
+        let open_location = self.location();
+        let mut parts: Vec<FstringPart> = Vec::new();
         let mut part_count = 0;
         loop {
             self.advance();
-            let token = self.previous.as_ref().unwrap();
+            let token = self.previous.clone().unwrap();
             part_count += 1;
             if part_count == 255 {
                 self.error("Can't have more than 255 parts in an f-string.");
@@ -717,24 +627,20 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             match token.kind {
                 TK::InterpolationStringPart => {
                     // raw slice of string part, no quotes
-                    let string_id = self.heap.string_id(&token.as_str().to_string());
-                    self.emit_constant(string_id, self.op_location());
+                    parts.push(FstringPart::Str(token.as_str().to_string()));
                 }
 
                 TK::InterpolationStart => {
                     // parse an expression until the matching `}`
-                    self.expression();
+                    let expr = self.expression();
                     self.consume(TK::InterpolationEnd, "Expected '}' after interpolation.");
+                    parts.push(FstringPart::Interp(Box::new(expr)));
                 }
 
                 TK::InterpolationStringEnd => {
                     // remove the trailing quote from the slice
                     let lexeme = token.as_str();
-                    let value = lexeme[..lexeme.len() - 1].to_string();
-                    let string_id = self.heap.string_id(&value);
-                    self.emit_constant(string_id, self.op_location());
-
-                    self.emit_bytes(OpCode::BuildFstring, part_count, self.op_location());
+                    parts.push(FstringPart::Str(lexeme[..lexeme.len() - 1].to_string()));
                     break; // done with the fstring
                 }
 
@@ -744,6 +650,10 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                     break;
                 }
             }
+        }
+        Expr {
+            location: open_location.merge_ordered(&self.location()),
+            kind: ExprKind::Fstring { parts },
         }
     }
 
@@ -755,26 +665,28 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// - `InterpolationStringEnd`: The final non-interpolation part WITH closing quotes
     /// - `InterpolationStart` `${`: Only indicate that an interpolation comes next
     /// - `InterpolationEnd` `}`: Indicates that the interpolation is over
-    fn tstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
+    ///
+    /// Unlike an f-string, the interpolated values keep their source text
+    /// (for display) and the static parts are carried by the template as a
+    /// prebuilt tuple.
+    fn tstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) -> Expr {
+        let open_location = self.location();
+        let mut parts: Vec<String> = Vec::new();
+        let mut interpolations: Vec<TstringInterp> = Vec::new();
         let mut interpolation_count = 0;
 
-        let mut string_parts: Vec<Value> = Vec::new();
-        let t_string_location = self.op_location();
-
-        if self.current.as_ref().unwrap().kind == TK::InterpolationStart {
-            // First part is empty
-            let string_id = self.heap.string_id(&String::new());
-            string_parts.push(string_id.into());
+        if self.current_token_kind() == Some(TK::InterpolationStart) {
+            // First part is empty.
+            parts.push(String::new());
         }
 
         loop {
             self.advance();
-            let token = self.previous.as_ref().unwrap();
+            let token = self.previous.clone().unwrap();
             match token.kind {
                 TK::InterpolationStringPart => {
                     // raw slice of string part, no quotes
-                    let string_id = self.heap.string_id(&token.as_str().to_string());
-                    string_parts.push(string_id.into());
+                    parts.push(token.as_str().to_string());
                 }
 
                 TK::InterpolationStart => {
@@ -788,18 +700,20 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                     let expr_start = self.current_location();
 
                     // parse an expression until the matching `}`
-                    self.expression();
+                    let expr = self.expression();
 
                     // Get the end position of the expression
                     let expr_end = self.current_location();
 
                     // Get the lexeme of the expression from the scanner's source
-                    let expr_lexeme = self.scanner.source_slice(expr_start.index, expr_end.index);
-                    let expr_string_id = self.heap.string_id(&expr_lexeme.to_string());
-                    self.emit_constant(expr_string_id, self.op_location());
-
-                    // Emit BuildInterpolation opcode
-                    self.emit_byte(OpCode::BuildInterpolation, self.op_location());
+                    let source_text = self
+                        .scanner
+                        .source_slice(expr_start.index, expr_end.index)
+                        .to_string();
+                    interpolations.push(TstringInterp {
+                        value: Box::new(expr),
+                        source_text,
+                    });
 
                     self.consume(TK::InterpolationEnd, "Expected '}' after interpolation.");
                 }
@@ -807,24 +721,15 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 TK::InterpolationStringEnd => {
                     // remove the trailing quote from the slice
                     let lexeme = token.as_str();
-                    let value = lexeme[..lexeme.len() - 1].to_string();
-                    let string_id = self.heap.string_id(&value);
-                    string_parts.push(string_id.into());
-
-                    // Build tuple of interpolations
-                    self.emit_bytes(OpCode::BuildTuple, interpolation_count, self.op_location());
-
-                    let tuple = Tuple::new(string_parts);
-
-                    let instance = Instance::new(
-                        *self.heap.native_classes.get("Tuple").unwrap(),
-                        Some(tuple.into()),
-                    );
-                    let instance_value = self.heap.add_instance(instance);
-                    self.emit_constant(instance_value, t_string_location);
-
-                    self.emit_byte(OpCode::BuildTemplate, self.op_location());
-                    break; // done with the tstring
+                    parts.push(lexeme[..lexeme.len() - 1].to_string());
+                    let end_location = token.location;
+                    return Expr {
+                        location: open_location.merge_ordered(&end_location),
+                        kind: ExprKind::Tstring(Box::new(Tstring {
+                            parts,
+                            interpolations,
+                        })),
+                    };
                 }
 
                 _ => {
@@ -834,22 +739,33 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
                 }
             }
         }
+        let end = self.location();
+        Expr {
+            location: open_location.merge_ordered(&end),
+            kind: ExprKind::Tstring(Box::new(Tstring {
+                parts,
+                interpolations,
+            })),
+        }
     }
 
     /// Parse a list literal ([a, b, c(,)])
     ///
     /// Handles optional trailing commas.
-    fn list(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
-        let mut item_count = 0;
+    fn list(&mut self, _can_assign: bool, _ignore_operators: &[TK]) -> Expr {
+        let open_location = self.location();
+        let mut items = Vec::new();
         // Handle trailing comma
         while !self.check(TK::RightBracket) {
             // No assignments
-            self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Comma]);
-            if item_count == 255 {
+            let item = self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Comma]);
+            // The check fires on the 256th parsed item, which is then
+            // discarded.
+            if items.len() == 255 {
                 self.error("Can't have more than 255 items in a list literal.");
                 break;
             }
-            item_count += 1;
+            items.push(item);
             if !self.match_(TK::Comma) {
                 // The next token starts a new element, so the comma
                 // between them was probably forgotten.
@@ -862,40 +778,43 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
             }
         }
         self.consume(TK::RightBracket, "Expect ']' after list literal.");
-        self.emit_bytes(OpCode::BuildList, item_count, self.op_location());
+        let close_location = self.location();
+        Expr {
+            location: open_location.merge_ordered(&close_location),
+            kind: ExprKind::ListLit { items },
+        }
     }
 
     /// Parse a tuple literal 'a, b, c(,)'
     ///
     /// Handles optional trailing commas.
-    /// Empty tuples are '()' and parsed by [`Compiler::grouping`].
+    /// Empty tuples are '()' and parsed by [`Self::grouping`].
     /// This only does tuples with at least one element.
-    fn tuple(&mut self, _can_assign: bool, ignore_operators: &[TK], _lhs_location: Location) {
-        // This is infix, so the first expression has already been parsed.
-
-        let mut item_count = 1;
-        // Handle trailing comma
-        while self.try_parse_precedence_ignoring(
+    // This is infix, so the first expression has already been parsed.
+    fn tuple(&mut self, _can_assign: bool, ignore_operators: &[TK], lhs: Expr) -> Expr {
+        let start_location = lhs.location;
+        let mut elements = vec![lhs];
+        while let ParseResult::Success(item) = self.try_parse_precedence_ignoring(
             Precedence::Ternary,
             &[&[TK::Comma], ignore_operators].concat(),
-        ) == ParseResult::Success
-        {
-            if item_count == 255 {
+        ) {
+            if elements.len() == 255 {
                 self.error("Can't have more than 255 items in a tuple literal.");
                 break;
             }
-            item_count += 1;
+            elements.push(item);
             if !self.match_(TK::Comma) {
                 break;
             }
         }
-
-        self.emit_bytes(OpCode::BuildTuple, item_count, self.op_location());
+        let end_location = self.location();
+        Expr {
+            location: start_location.merge_ordered(&end_location),
+            kind: ExprKind::Tuple { elements },
+        }
     }
 
-    /// Handle the hashed collection `set`and `dict``.`
-    ///
-    /// Sets effectively work equivalent to [`Compiler::list`], except
+    /// Sets effectively work equivalent to [`Self::list`], except
     /// that curly braces are used instead of square ones.
     /// Dicts work similar, instead that each entry is of the form:
     /// `key: value`. Whether the code is parsed as set or dict is determined
@@ -903,184 +822,209 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ///
     /// Empty braces `{}` are parsed as an empty set.
     /// Empty dict literal is `{:}`.
-    fn hash_collection(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
-        // Empty set literal
-        if self.check(TK::RightBrace) {
-            return self.finish_hash_collection(CollectionType::Set, 0);
-        }
+    fn hash_collection(&mut self, _can_assign: bool, _ignore_operators: &[TK]) -> Expr {
+        let open_location = self.location();
 
+        // Empty set literal `{}`.
+        if self.check(TK::RightBrace) {
+            return self.finish_set_literal(Vec::new(), open_location);
+        }
         // Empty dict literal {:}
         if self.match_(TK::Colon) {
-            return self.finish_hash_collection(CollectionType::Dict, 0);
+            return self.finish_dict_literal(Vec::new(), open_location);
         }
 
-        // Whether the elements are plain set entries or `key: value`
-        // dict entries is decided by the colon (if any) after the first
-        // key, so the first iteration of the loop is special.
-        let mut collection_type: Option<CollectionType> = None;
-        let mut item_count = 0;
-        while !self.check(TK::RightBrace) {
-            match collection_type {
-                None => {
-                    self.parse_precedence_ignoring(
-                        Precedence::non_assigning(),
-                        &[TK::Colon, TK::Comma],
-                    );
-                    collection_type = Some(if self.match_(TK::Colon) {
-                        CollectionType::Dict
-                    } else {
-                        CollectionType::Set
-                    });
-                    if matches!(collection_type, Some(CollectionType::Dict)) {
-                        self.parse_precedence_ignoring(
-                            Precedence::non_assigning(),
-                            &[TK::Colon, TK::Comma],
-                        );
-                    }
-                }
-                Some(CollectionType::Dict) => self.parse_dict_entry(),
-                Some(CollectionType::Set) => self.parse_precedence_ignoring(
-                    Precedence::non_assigning(),
-                    &[TK::Colon, TK::Comma],
-                ),
-            }
+        // The colon after the first element decides the kind.
+        let key = self.parse_hash_element();
+        if self.match_(TK::Colon) {
+            let value = self.parse_hash_element();
+            self.parse_dict_literal(key, value, open_location)
+        } else {
+            self.parse_set_literal(key, open_location)
+        }
+    }
 
+    fn parse_hash_element(&mut self) -> Expr {
+        self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon, TK::Comma])
+    }
+
+    fn parse_set_literal(&mut self, first: Expr, open_location: Location) -> Expr {
+        let mut items = vec![first];
+        let mut item_count = 1usize;
+        loop {
+            if !self.match_(TK::Comma) {
+                // The next token starts a new element, so the comma
+                // between them was probably forgotten.
+                if !self.check(TK::RightBrace) && self.current_starts_expression() {
+                    self.error_at_current(
+                        "Expect ',' or '}' after set element. Perhaps you forgot a comma?",
+                    );
+                }
+                break;
+            }
+            if self.check(TK::RightBrace) {
+                break;
+            }
+            items.push(self.parse_hash_element());
             if item_count == 255 {
                 self.error("Can't have more than 255 items in a set literal.");
                 break;
             }
             item_count += 1;
+        }
+        self.finish_set_literal(items, open_location)
+    }
+
+    fn parse_dict_literal(
+        &mut self,
+        first_key: Expr,
+        first_value: Expr,
+        open_location: Location,
+    ) -> Expr {
+        let mut entries = vec![(first_key, first_value)];
+        let mut item_count = 1usize;
+        loop {
             if !self.match_(TK::Comma) {
                 // The next token starts a new element, so the comma
                 // between them was probably forgotten.
                 if !self.check(TK::RightBrace) && self.current_starts_expression() {
-                    let kind = match collection_type {
-                        Some(CollectionType::Dict) => "dict",
-                        Some(CollectionType::Set) => "set",
-                        None => unreachable!("The collection type is set by the first element"),
-                    };
-                    self.error_at_current(&format!(
-                        "Expect ',' or '}}' after {kind} element. Perhaps you forgot a comma?"
-                    ));
+                    self.error_at_current(
+                        "Expect ',' or '}' after dict element. Perhaps you forgot a comma?",
+                    );
                 }
                 break;
             }
+            if self.check(TK::RightBrace) {
+                break;
+            }
+            entries.push(self.parse_dict_entry());
+            if item_count == 255 {
+                self.error("Can't have more than 255 items in a dict literal.");
+                break;
+            }
+            item_count += 1;
         }
-
-        self.finish_hash_collection(
-            collection_type.expect("The collection type is decided by the first element"),
-            item_count,
-        );
+        self.finish_dict_literal(entries, open_location)
     }
 
-    /// Helper function to consume the closing brace and emit the appropriate
-    /// collection creation opcode (`BuildDict` or `BuildSet`) for dict or set literals.
-    fn finish_hash_collection(&mut self, collection_type: CollectionType, item_count: u8) {
-        self.consume(
-            TK::RightBrace,
-            &format!(
-                "Expect '}}' after {} literal.",
-                match collection_type {
-                    CollectionType::Dict => "dict",
-                    CollectionType::Set => "set",
-                }
-            ),
-        );
-        self.emit_bytes(
-            match collection_type {
-                CollectionType::Dict => OpCode::BuildDict,
-                CollectionType::Set => OpCode::BuildSet,
-            },
-            item_count,
-            self.op_location(),
-        );
-    }
-
-    fn parse_dict_entry(&mut self) {
-        self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon, TK::Comma]);
+    /// Parse a `key: value` dict entry.
+    fn parse_dict_entry(&mut self) -> (Expr, Expr) {
+        let key = self.parse_hash_element();
         self.consume(TK::Colon, "Expect ':' after key.");
-        self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Colon, TK::Comma]);
+        let value = self.parse_hash_element();
+        (key, value)
+    }
+
+    fn finish_set_literal(&mut self, items: Vec<Expr>, open_location: Location) -> Expr {
+        self.consume(TK::RightBrace, "Expect '}' after set literal.");
+        let close_location = self.location();
+        Expr {
+            location: open_location.merge_ordered(&close_location),
+            kind: ExprKind::SetLit { items },
+        }
+    }
+
+    fn finish_dict_literal(&mut self, entries: Vec<(Expr, Expr)>, open_location: Location) -> Expr {
+        self.consume(TK::RightBrace, "Expect '}' after dict literal.");
+        let close_location = self.location();
+        Expr {
+            location: open_location.merge_ordered(&close_location),
+            kind: ExprKind::DictLit { entries },
+        }
     }
 
     /// Parse subscript (`a[b]`) expressions.
     ///
-    /// Implemented similar to [`Compiler::dot`] to handle getting
+    /// Implemented similar to [`Self::dot`] to handle getting
     /// and setting.
-    ///
     /// Also works by invoking `__getitem__` or `__setitem__`
     /// on the value to allow classes to overload how this operation works.
-    fn subscript(&mut self, can_assign: bool, _ignore_operators: &[TK], lhs_location: Location) {
-        let target_start_location = self.location();
-        self.parse_precedence(Precedence::non_assigning());
+    fn subscript(&mut self, can_assign: bool, _ignore_operators: &[TK], lhs: Expr) -> Expr {
+        self.finish_subscript(can_assign, lhs, AccessMode::Direct)
+    }
+
+    fn finish_subscript(&mut self, can_assign: bool, lhs: Expr, mode: AccessMode) -> Expr {
+        // See `finish_dot`: an optional link in the spine blocks
+        // assignment to the whole chain.
+        let can_assign = can_assign && !chain_has_optional_link(&lhs);
+        let operator_location = self.location();
+        let index = Box::new(self.parse_precedence(Precedence::non_assigning()));
         self.consume(TK::RightBracket, "Expect ']' after index.");
         let target_end_location = self.location();
-        let target_location = target_start_location.merge_ordered(&target_end_location);
-        let getter_location = OpcodeLocation {
-            preceding: Some(lhs_location),
-            source: target_location,
-            following: None,
-        };
-        if can_assign
-            && (self.match_(TK::Equal)
-                | self.match_(TK::PlusEqual)
-                | self.match_(TK::MinusEqual)
-                | self.match_(TK::StarEqual)
-                | self.match_(TK::SlashEqual)
-                | self.match_(TK::HatEqual)
-                | self.match_(TK::PipeEqual)
-                | self.match_(TK::AmperEqual)
-                | self.match_(TK::PercentEqual))
-        {
-            let previous_kind = self.previous.as_ref().unwrap().kind;
-            let operator_location = self.location();
-            if matches!(previous_kind, TK::Equal) {
-                self.expression();
-            } else {
-                self.emit_bytes(OpCode::DupN, 2, getter_location);
-                self.invoke_fixed(
-                    &"__getitem__",
-                    1,
-                    "Too many constants created for OP_SUBSCRIPT.",
-                    getter_location,
-                );
-                let rhs_start_location = self.current_location();
-                self.expression();
-                let rhs_end_location = self.location();
-                let operator_centered_location = OpcodeLocation {
-                    preceding: Some(lhs_location.merge_ordered(&target_location)),
-                    source: operator_location,
-                    following: Some(rhs_start_location.merge_ordered(&rhs_end_location)),
-                };
-                match previous_kind {
-                    TK::PlusEqual => self.emit_byte(OpCode::Add, operator_centered_location),
-                    TK::MinusEqual => self.emit_byte(OpCode::Subtract, operator_centered_location),
-                    TK::StarEqual => self.emit_byte(OpCode::Multiply, operator_centered_location),
-                    TK::SlashEqual => self.emit_byte(OpCode::Divide, operator_centered_location),
-                    TK::HatEqual => self.emit_byte(OpCode::BitXor, operator_centered_location),
-                    TK::PipeEqual => self.emit_byte(OpCode::BitOr, operator_centered_location),
-                    TK::AmperEqual => self.emit_byte(OpCode::BitAnd, operator_centered_location),
-                    TK::PercentEqual => self.emit_byte(OpCode::Mod, operator_centered_location),
-                    _ => unreachable!("Unexpected byte code "),
-                }
-            }
-            let setter_location = OpcodeLocation {
-                preceding: Some(lhs_location),
-                source: target_location,
-                following: Some(operator_location),
+        let target_location = operator_location.merge_ordered(&target_end_location);
+
+        if can_assign && self.match_(TK::Equal) {
+            let op_location = self.location();
+            let value = Box::new(self.expression());
+            return Expr {
+                location: target_location.merge_ordered(&value.location),
+                kind: ExprKind::Assign {
+                    target: Box::new(Expr {
+                        location: target_location,
+                        kind: ExprKind::Subscript {
+                            object: Box::new(lhs),
+                            index,
+                            mode,
+                            ctx: ExprContext::Store,
+                            target_location,
+                        },
+                    }),
+                    value,
+                    op_location,
+                },
             };
-            self.invoke_fixed(
-                &"__setitem__",
-                2,
-                "Too many constants created for OP_SUBSCRIPT.",
-                setter_location,
-            );
-        } else {
-            self.invoke_fixed(
-                &"__getitem__",
-                1,
-                "Too many constants created for OP_SUBSCRIPT.",
-                getter_location,
-            );
+        }
+        if can_assign && self.match_aug_operator() {
+            let (op, op_location) = self.take_aug_operator();
+            let value = Box::new(self.expression());
+            return Expr {
+                location: target_location.merge_ordered(&value.location),
+                kind: ExprKind::AugAssign {
+                    target: Box::new(Expr {
+                        location: target_location,
+                        kind: ExprKind::Subscript {
+                            object: Box::new(lhs),
+                            index,
+                            mode,
+                            ctx: ExprContext::Store,
+                            target_location,
+                        },
+                    }),
+                    op,
+                    value,
+                    op_location,
+                },
+            };
+        }
+        Expr {
+            location: lhs.location.merge_ordered(&target_location),
+            kind: ExprKind::Subscript {
+                object: Box::new(lhs),
+                index,
+                mode,
+                ctx: ExprContext::Load,
+                target_location,
+            },
+        }
+    }
+
+    fn logical(
+        &mut self,
+        op: BoolOperator,
+        ignore_operators: &[TK],
+        lhs: Expr,
+        precedence: Precedence,
+    ) -> Expr {
+        let op_location = self.location();
+        let rhs = Box::new(self.parse_precedence_ignoring(precedence, ignore_operators));
+        Expr {
+            location: lhs.location.merge_ordered(&rhs.location),
+            kind: ExprKind::Logical {
+                op,
+                lhs: Box::new(lhs),
+                rhs,
+                op_location,
+            },
         }
     }
 
@@ -1089,33 +1033,15 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// The result of such an expression is the first operand that evaluates
     /// falsey or the last operand if all are truthy.
     /// The second expression is not evaluated if the first is already false.
-    fn and(&mut self, _can_assign: bool, ignore_operators: &[TK], lhs_location: Location) {
-        let end_jump = self.emit_jump(
-            OpCode::JumpIfFalseOrPop,
-            OpcodeLocation {
-                preceding: None,
-                source: lhs_location,
-                following: Some(self.location()),
-            },
-        );
-        self.parse_precedence_ignoring(Precedence::And, ignore_operators);
-        self.patch_jump(end_jump);
+    fn and(&mut self, _can_assign: bool, ignore_operators: &[TK], lhs: Expr) -> Expr {
+        self.logical(BoolOperator::And, ignore_operators, lhs, Precedence::And)
     }
 
     /// Short circuiting `or`.
     ///
-    /// Work equivalently to [`Compiler::and`].
-    fn or(&mut self, _can_assign: bool, ignore_operators: &[TK], lhs_location: Location) {
-        let end_jump = self.emit_jump(
-            OpCode::JumpIfTrueOrPop,
-            OpcodeLocation {
-                preceding: None,
-                source: lhs_location,
-                following: Some(self.location()),
-            },
-        );
-        self.parse_precedence_ignoring(Precedence::Or, ignore_operators);
-        self.patch_jump(end_jump);
+    /// Work equivalently to [`Self::and`].
+    fn or(&mut self, _can_assign: bool, ignore_operators: &[TK], lhs: Expr) -> Expr {
+        self.logical(BoolOperator::Or, ignore_operators, lhs, Precedence::Or)
     }
 
     /// Handle `this`.
@@ -1124,14 +1050,24 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     /// `this` which is initialized to the specific instance.
     ///
     /// Outside of a class context this is a syntax error.
-    fn this(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
+    fn this(&mut self, _can_assign: bool, _ignore_operators: &[TK]) -> Expr {
         if self.current_class().is_none() {
             self.error("Can't use 'this' outside of a class.");
-            return;
+            return self.dummy_expr();
         }
-        self.variable(false, &[]);
+        Expr {
+            kind: ExprKind::Variable {
+                name: String::from("this"),
+                ctx: ExprContext::Load,
+            },
+            location: self.location(),
+        }
     }
 
+    /// `` super.name `` - the superclass method lookup. A following `(`
+    /// is left to the call rule (`` super.name(args) `` becomes a
+    /// `Call` with this node as the callee, which codegen turns into a
+    /// `SuperInvoke`).
     /// Handle `super` expressions that interact with the superlcass.
     ///
     /// Like `this`, `super` also only work when used inside class.
@@ -1140,7 +1076,7 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
     ///
     /// Unlike `this`, only method access either in the form of a call
     /// or to create a bound method is possible.
-    fn super_(&mut self, _can_assign: bool, _ignore_operators: &[TK]) {
+    fn super_(&mut self, _can_assign: bool, _ignore_operators: &[TK]) -> Expr {
         match self.current_class() {
             None => {
                 self.error("Can't use 'super' outside of a class.");
@@ -1153,108 +1089,140 @@ impl<'scanner, 'arena> Compiler<'scanner, 'arena> {
         let super_location = self.location();
         self.consume(TK::Dot, "Expect '.' after 'super'.");
         let dot_location = self.location();
-
         self.consume(TK::Identifier, "Expect superclass method name.");
         let identifier_location = self.location();
-        let name = self.identifier_constant(&self.previous.as_ref().unwrap().as_str().to_string());
+        let method = self.previous.as_ref().unwrap().as_str().to_string();
 
-        let target_location = super_location.merge_ordered(&identifier_location);
         let access_location = dot_location.merge_ordered(&identifier_location);
 
-        self.named_variable(
-            &self.synthetic_token(TK::This).as_str(),
-            false,
-            self.location(),
-        );
-        if self.match_(TK::LeftParen) {
-            let args_start_location = self.location();
-            let (arg_count, spreads) = self.argument_list();
-            let args_end_location = self.location();
-            let invoke_location = OpcodeLocation {
-                preceding: Some(target_location),
-                source: args_start_location.merge_ordered(&args_end_location),
-                following: None,
-            };
-            self.named_variable(
-                &self.synthetic_token(TK::Super).as_str(),
-                false,
+        Expr {
+            location: super_location.merge_ordered(&identifier_location),
+            kind: ExprKind::Super {
+                method,
                 super_location,
-            );
-            let opcode = if spreads.is_some() {
-                OpCode::SuperInvokeUnpack
-            } else {
-                OpCode::SuperInvoke
-            };
-            self.emit_byte(opcode, invoke_location);
-            if !self.emit_number(*name, NumberEncoding::Short, invoke_location) {
-                self.error("Too many constants while compiling OP_SUPER_INVOKE");
-            }
-            self.emit_byte(arg_count, invoke_location);
-            if let Some(bitmap) = spreads {
-                self.emit_spread_bitmap(&bitmap, arg_count, invoke_location);
-            }
-        } else {
-            let getter_location = OpcodeLocation {
-                preceding: Some(super_location),
-                source: access_location,
-                following: None,
-            };
-            self.named_variable(
-                &self.synthetic_token(TK::Super).as_str(),
-                false,
-                super_location,
-            );
-            self.emit_byte(OpCode::GetSuper, getter_location);
-            if !self.emit_number(*name, NumberEncoding::Short, getter_location) {
-                self.error("Too many constants while compiling OP_SUPER_INVOKE");
-            }
+                access_location,
+            },
         }
     }
 
-    fn yield_(&mut self, _can_assign: bool, ignore_operators: &[TK]) {
+    fn yield_(&mut self, _can_assign: bool, ignore_operators: &[TK]) -> Expr {
         let yield_location = self.location();
-        if self.function_type() == FunctionType::Script {
+        let context = self.function_stack.last().unwrap().kind;
+        if context == FunKind::Script {
             self.error("Can't yield from top-level code.");
-        } else if self.function_type() != FunctionType::Generator {
+        } else if context != FunKind::Generator {
             self.error("Can only yield from a generator function.");
         }
 
-        let start_location = self.current_location();
         match self.try_parse_precedence_ignoring(Precedence::Assignment, ignore_operators) {
-            ParseResult::Success => {
-                let end_location = self.current_location();
-                self.emit_byte(
-                    OpCode::Yield,
-                    OpcodeLocation {
-                        preceding: Some(yield_location),
-                        source: start_location.merge_ordered(&end_location),
-                        following: None,
-                    },
-                );
-            }
-            ParseResult::NoPrefix => {
-                self.emit_bytes(
-                    OpCode::Nil,
-                    OpCode::Yield,
-                    OpcodeLocation::new(yield_location),
-                );
-            }
+            ParseResult::Success(operand) => Expr {
+                location: yield_location.merge_ordered(&operand.location),
+                kind: ExprKind::Yield {
+                    operand: Some(Box::new(operand)),
+                },
+            },
+            ParseResult::NoPrefix => Expr {
+                location: yield_location,
+                kind: ExprKind::Yield { operand: None },
+            },
         }
     }
+}
 
+impl Codegen<'_, '_> {
     /// Helper function to deal with operators that delegate to overloaded methods.
-    pub(super) fn invoke_fixed<S: ToString>(
+    /// Emits `Invoke` with a name constant index.
+    /// `error_*` names the token for the error raised when the
+    /// name-constant index overflows a byte operand.
+    pub(super) fn invoke_fixed(
         &mut self,
-        name: &S,
+        name: &str,
         arg_count: u8,
         error_message: &str,
         location: OpcodeLocation,
+        error_location: Location,
+        error_token: &str,
     ) {
         let name_constant = self.identifier_constant(name);
         self.emit_byte(OpCode::Invoke, location);
         if !self.emit_number(name_constant.0, NumberEncoding::Short, location) {
-            self.error(error_message);
+            self.error_at(error_location, error_token, error_message);
         }
         self.emit_byte(arg_count, location);
+    }
+}
+
+// Free-fn shims over the rule methods: a method's `Self` lifetime is
+// early-bound and cannot coerce to the higher-ranked fn-pointer aliases,
+// while plain functions are fully late-ranked.
+macro_rules! prefix_shim {
+    ($($name:ident),* $(,)?) => {
+        $(
+            fn $name(parser: &mut Parser<'_>, can_assign: bool, ignore_operators: &[TK]) -> Expr {
+                parser.$name(can_assign, ignore_operators)
+            }
+        )*
+    };
+}
+macro_rules! infix_shim {
+    ($($name:ident),* $(,)?) => {
+        $(
+            fn $name(
+                parser: &mut Parser<'_>,
+                can_assign: bool,
+                ignore_operators: &[TK],
+                lhs: Expr,
+            ) -> Expr {
+                parser.$name(can_assign, ignore_operators, lhs)
+            }
+        )*
+    };
+}
+
+prefix_shim!(
+    grouping,
+    hash_collection,
+    list,
+    unary,
+    literal,
+    string,
+    integer,
+    float,
+    fstring,
+    tstring,
+    variable,
+    this,
+    super_,
+    lambda,
+    yield_,
+);
+infix_shim!(
+    binary,
+    call,
+    dot,
+    subscript,
+    tuple,
+    ternary,
+    and,
+    or,
+    optional_dot,
+    optional_subscript
+);
+/// Whether the direct postfix spine of `expr` contains an optional
+/// (`?.` / `?[`) link. Assignment is rejected in that case, matching
+/// JavaScript: grouping and non-postfix operators end the spine, so
+/// `(a?.b).c = 1` is an ordinary assignment expression.
+fn chain_has_optional_link(mut expr: &Expr) -> bool {
+    loop {
+        match &expr.kind {
+            ExprKind::Property { mode, object, .. } | ExprKind::Subscript { mode, object, .. } => {
+                if *mode == AccessMode::NullSafe {
+                    return true;
+                }
+                expr = object;
+            }
+            ExprKind::Call { callee, .. } => expr = callee,
+            _ => return false,
+        }
     }
 }

@@ -60,7 +60,8 @@ impl Location {
 }
 
 /// If `loc` covers `line_no`, mark the corresponding chars in `underline`
-/// with `ch`.
+/// with `ch`. A span covering several lines marks only its first and
+/// last line; the renderer elides the lines in between.
 ///
 /// Shared by the runtime traceback rendering and the compile error
 /// snippets.
@@ -75,6 +76,9 @@ pub(crate) fn mark_location_on_line(
     let end_line = *loc.end_line;
 
     if line_no < start_line || line_no > end_line {
+        return;
+    }
+    if start_line != end_line && line_no != start_line && line_no != end_line {
         return;
     }
 
@@ -97,7 +101,8 @@ pub(crate) fn mark_location_on_line(
 /// Render the source lines covered by `oploc` as snippet rows into
 /// `out`: one 4-space indented source line followed by its 4-space
 /// indented underline row, `~` marking the preceding and following
-/// context and `^` the blamed span.
+/// context and `^` the blamed span. Lines that carry no mark are
+/// elided - each unmarked gap prints as a single `...` row.
 ///
 /// Row pairs are separated by a newline; the caller places the first
 /// row (the runtime writes it right after the frame header, compile
@@ -116,18 +121,14 @@ pub(crate) fn render_snippet_rows(out: &mut String, source: &str, oploc: &Opcode
         .map_or(*oploc.source.end_line, |following| *following.end_line);
 
     let lines: Vec<&str> = source.lines().collect();
-    let mut first_row = true;
+    let mut rows = 0;
+    let mut gap = false;
     for line_no in first_line..=last_line {
         let line = lines.get(line_no.saturating_sub(1)).copied().unwrap_or("");
         let line_len = line.chars().count();
         if line_len == 0 {
             continue;
         }
-        if !first_row {
-            out.push('\n');
-        }
-        first_row = false;
-        let _ = writeln!(out, "    {line}");
         let mut underline: Vec<char> = vec![' '; line_len];
         if let Some(preceding) = &oploc.preceding {
             mark_location_on_line(&mut underline, preceding, line_no, line_len, '~');
@@ -136,12 +137,25 @@ pub(crate) fn render_snippet_rows(out: &mut String, source: &str, oploc: &Opcode
             mark_location_on_line(&mut underline, following, line_no, line_len, '~');
         }
         mark_location_on_line(&mut underline, &oploc.source, line_no, line_len, '^');
+        if underline.iter().all(|item| *item == ' ') {
+            gap = true;
+            continue;
+        }
+        if rows > 0 {
+            out.push('\n');
+            if gap {
+                writeln!(out, "    ...").unwrap();
+            }
+        }
+        gap = false;
+        let _ = writeln!(out, "    {line}");
         let underline: String = underline
             .into_iter()
             .collect::<String>()
             .trim_end()
             .to_string();
         let _ = write!(out, "    {underline}");
+        rows += 1;
     }
 }
 
@@ -253,13 +267,6 @@ impl InjectedKind {
 pub(crate) enum ReturnMode {
     Normal,
     Raw,
-}
-
-/// Enum for collection types
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CollectionType {
-    Dict,
-    Set,
 }
 
 /// Enum for equality comparison modes

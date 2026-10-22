@@ -1,0 +1,50 @@
+# Only the direct postfix spine blocks assignment. Grouping, index
+# expressions, and non-postfix operators end the chain, so these are
+# ordinary assignments that evaluate normally.
+
+class Leaf {
+    __init__() {
+        this.y = 0;
+    }
+}
+
+class Holder {
+    __init__(leaf) {
+        this.x = leaf;
+    }
+}
+
+var holder = Holder(Leaf());
+(holder?.x).y = 1;
+print(holder.x.y); # expect: 1
+
+var nil_holder = nil;
+try {
+    (nil_holder?.x).y = 2;
+} catch TypeError {
+    print("grouped target evaluates normally"); # expect: grouped target evaluates normally
+}
+
+class Index {
+    __init__() {
+        this.j = 0;
+    }
+}
+
+var list = [0];
+list[Index()?.j] = 5;
+print(list[0]); # expect: 5
+
+class Numbered {
+    __init__() {
+        this.b = 2;
+    }
+}
+
+var numbered = Numbered();
+var c = 4;
+try {
+    numbered?.b : c.y = 1;
+} catch TypeError {
+    print("rational ends the chain"); # expect: rational ends the chain
+}

@@ -1,0 +1,7 @@
+try {
+  for (var i = 0; i < "a"; i += 1) {}
+} catch TypeError as e { print(e.stack_trace()); }
+# expect: Traceback (most recent call last):
+# expect:   File "test/tracebacks/for_condition.gen", line 2, in <script>
+# expect:       for (var i = 0; i < "a"; i += 1) {}
+# expect:                       ~~^~~~~
