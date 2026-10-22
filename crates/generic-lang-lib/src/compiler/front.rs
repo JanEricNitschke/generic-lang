@@ -3,10 +3,11 @@
 //! [`super::error`]).
 
 use super::ast::{
-    CatchClause, ClassDecl, ClassMember, ClassVar, Expr, ExprContext, ExprKind, FunKind,
-    FunctionDef, FunctionKind, InjectedBody, InjectedProgram, LambdaBody, LambdaLit, Literal,
-    Method, MethodKind, Param, ParamList, Program, StmtKind, SwitchCase, TryStmt,
+    CatchClause, ClassDecl, ClassMember, ClassMemberKind, ClassVar, Expr, ExprContext, ExprKind,
+    FunKind, FunctionDef, FunctionKind, InjectedBody, InjectedProgram, LambdaBody, LambdaLit,
+    Literal, Method, MethodKind, Param, ParamList, Program, Stmt, StmtKind, SwitchCase, TryStmt,
 };
+use super::comments;
 use super::rules::Precedence;
 
 use rustc_hash::FxHashSet as HashSet;
@@ -106,7 +107,11 @@ impl<'scanner> Parser<'scanner> {
         while !self.match_(TK::Eof) {
             declarations.push(self.declaration());
         }
-        Program { declarations }
+        let comments = comments::attach(&declarations, self.scanner.take_comments());
+        Program {
+            declarations,
+            comments,
+        }
     }
 
     /// Parse injected (`eval`/`exec`) source: the injected locals only
@@ -214,7 +219,19 @@ impl Parser<'_> {
 
 // Statements.
 impl Parser<'_> {
-    fn declaration(&mut self) -> StmtKind {
+    /// Build a node location from its start and the last consumed token.
+    /// Error recovery may leave the parser before `start`; keep `start` then.
+    fn location_from(&self, start: Location) -> Location {
+        let end = self.location();
+        if start.index <= end.index {
+            start.merge_ordered(&end)
+        } else {
+            start
+        }
+    }
+
+    fn declaration(&mut self) -> Stmt {
+        let start = self.current_location();
         let kind = if self.match_(TK::Var) {
             self.var_declaration(Mutability::Mutable)
         } else if self.match_(TK::Const) {
@@ -228,12 +245,15 @@ impl Parser<'_> {
         } else if self.match_(TK::Class) {
             StmtKind::Class(Box::new(self.class_declaration(Vec::new())))
         } else {
-            self.statement()
+            self.statement_kind()
         };
         if self.panic_mode {
             self.synchronize();
         }
-        kind
+        Stmt {
+            kind,
+            location: self.location_from(start),
+        }
     }
 
     /// `var`/`const name (= init)?;` - also the initializer clause of a
@@ -324,11 +344,16 @@ impl Parser<'_> {
 
         self.consume(TK::LeftBrace, "Expect '{' before class body.");
         while !self.check(TK::RightBrace) && !self.check(TK::Eof) {
-            if self.match_(TK::Var) {
-                members.push(ClassMember::Variable(self.class_variable_declaration()));
+            let start = self.current_location();
+            let kind = if self.match_(TK::Var) {
+                ClassMemberKind::Variable(self.class_variable_declaration())
             } else {
-                members.push(ClassMember::Method(self.method()));
-            }
+                ClassMemberKind::Method(self.method())
+            };
+            members.push(ClassMember {
+                kind,
+                location: self.location_from(start),
+            });
             // `method` does not consume tokens when the class body holds
             // something that cannot start a method, so without bailing here on
             // an error the loop would never make progress. Hand control back to
@@ -349,7 +374,16 @@ impl Parser<'_> {
         }
     }
 
-    fn statement(&mut self) -> StmtKind {
+    fn statement(&mut self) -> Stmt {
+        let start = self.current_location();
+        let kind = self.statement_kind();
+        Stmt {
+            kind,
+            location: self.location_from(start),
+        }
+    }
+
+    fn statement_kind(&mut self) -> StmtKind {
         if self.match_(TK::If) || self.match_(TK::Unless) {
             let condition_type = if self.check_previous(TK::Unless) {
                 ConditionType::Unless
@@ -406,11 +440,14 @@ impl Parser<'_> {
     fn try_statement(&mut self) -> StmtKind {
         let try_location = self.location();
         self.consume(TK::LeftBrace, "Expect '{' after try");
+        let body_start = self.location();
         let body = self.block();
+        let body_location = body_start.merge_ordered(&self.location());
 
         let mut catches = Vec::new();
         while self.match_(TK::Catch) {
-            let matchers = if self.match_(TK::LeftParen) {
+            let (matchers, matchers_location) = if self.match_(TK::LeftParen) {
+                let start = self.location();
                 let mut matchers = Vec::new();
                 loop {
                     let expr = self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Comma]);
@@ -420,9 +457,10 @@ impl Parser<'_> {
                     }
                 }
                 self.consume(TK::RightParen, "Expect ')' after exception types.");
-                matchers
+                let location = start.merge_ordered(&self.location());
+                (matchers, Some(location))
             } else {
-                vec![self.expression()]
+                (vec![self.expression()], None)
             };
 
             let binding = self.match_(TK::As).then(|| {
@@ -431,18 +469,26 @@ impl Parser<'_> {
             });
 
             self.consume(TK::LeftBrace, "Expect '{' after catch clause");
+            let body_start = self.location();
             let catch_body = self.block();
+            let body_location = body_start.merge_ordered(&self.location());
             catches.push(CatchClause {
                 matchers,
+                matchers_location,
                 binding,
                 body: catch_body,
+                body_location,
             });
         }
 
-        let else_block = self.match_(TK::Else).then(|| {
+        let (else_block, else_location) = if self.match_(TK::Else) {
             self.consume(TK::LeftBrace, "Expect '{' after else");
-            self.block()
-        });
+            let start = self.location();
+            let block = self.block();
+            (Some(block), Some(start.merge_ordered(&self.location())))
+        } else {
+            (None, None)
+        };
 
         if catches.is_empty() {
             self.error("Each try block needs at least one catch clause.");
@@ -453,6 +499,8 @@ impl Parser<'_> {
             catches,
             else_block,
             try_location,
+            body_location,
+            else_location,
         }))
     }
 
@@ -490,7 +538,7 @@ impl Parser<'_> {
         }
     }
 
-    fn block(&mut self) -> Vec<StmtKind> {
+    fn block(&mut self) -> Vec<Stmt> {
         let mut stmts = Vec::new();
         while !self.check(TK::RightBrace) && !self.check(TK::Eof) {
             stmts.push(self.declaration());
@@ -718,6 +766,7 @@ impl Parser<'_> {
             if had_default {
                 self.error_at_current("No 'case' or 'default' allowed after 'default' branch.");
             }
+            let start = self.current_location();
             let value = if self.match_(TK::Case) {
                 let value = self.parse_precedence_ignoring(Precedence::Assignment, &[TK::Colon]);
                 self.consume(TK::Colon, "Expect ':' after 'case' value.");
@@ -729,8 +778,8 @@ impl Parser<'_> {
                 had_default = true;
                 None
             };
+            let body_start_location = self.location();
 
-            // Read the statements belonging to the current case
             let mut body = Vec::new();
             while !self.check(TK::RightBrace)
                 && !self.check(TK::Case)
@@ -745,7 +794,12 @@ impl Parser<'_> {
                     break;
                 }
             }
-            cases.push(SwitchCase { value, body });
+            cases.push(SwitchCase {
+                value,
+                body,
+                body_start_location,
+                location: self.location_from(start),
+            });
             // A case that cannot be parsed leaves the cursor unmoved; bail so the
             // enclosing `declaration` can synchronize instead of spinning here.
             if self.panic_mode {
@@ -798,6 +852,7 @@ impl Parser<'_> {
         self.consume(TK::Import, "Expect 'import' after imported file path.");
 
         let parenthesized = self.match_(TK::LeftParen);
+        let names_start_location = self.location();
         let mut names = Vec::new();
         let mut last_name_location;
         loop {
@@ -808,14 +863,16 @@ impl Parser<'_> {
                 break;
             }
         }
-        if parenthesized {
+        let names_location = parenthesized.then(|| {
             self.consume(TK::RightParen, "Expect ')' after names to import.");
             last_name_location = self.location();
-        }
+            names_start_location.merge_ordered(&last_name_location)
+        });
         self.consume(TK::Semicolon, "Expect ';' after names to import name.");
         StmtKind::ImportFrom {
             path,
             names,
+            names_location,
             path_location,
             statement_location: from_location.merge_ordered(&last_name_location),
         }
@@ -900,6 +957,7 @@ impl Parser<'_> {
     }
 
     fn parse_params(&mut self) -> ParamList {
+        let open_location = self.location();
         let mut params: Vec<Param> = Vec::new();
         let mut rest = None;
         while !self.check(TK::RightParen) {
@@ -955,7 +1013,11 @@ impl Parser<'_> {
             }
         }
         self.consume(TK::RightParen, "Expect ')' after parameters.");
-        ParamList { params, rest }
+        ParamList {
+            params,
+            rest,
+            location: open_location.merge_ordered(&self.location()),
+        }
     }
 }
 

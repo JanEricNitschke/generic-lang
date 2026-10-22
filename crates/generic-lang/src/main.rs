@@ -95,6 +95,10 @@ enum Command {
         #[arg(long, value_name = "N", default_value_t = 4, value_parser = clap::value_parser!(u16).range(1..))]
         indent_width: u16,
 
+        /// Soft maximum line length; 0 or omitted means unlimited
+        #[arg(long, value_name = "N")]
+        line_length: Option<usize>,
+
         /// Files or directories to format. Directories are searched
         /// recursively for `.gen` files, skipping common build/VCS dirs.
         #[arg(value_name = "PATH", required = true)]
@@ -110,10 +114,12 @@ fn main() {
             Command::Fmt {
                 write,
                 indent_width,
+                line_length,
                 files,
             } => {
                 let options = FormatOptions {
                     indent_width: usize::from(indent_width),
+                    max_line_length: line_length.filter(|&length| length > 0),
                 };
                 let files = collect_format_files(&files);
                 if let Err(code) = format_files(&files, write, options) {
@@ -366,6 +372,7 @@ mod tests {
         let Some(Command::Fmt {
             write,
             indent_width,
+            line_length,
             files,
         }) = args.command
         else {
@@ -373,11 +380,12 @@ mod tests {
         };
         assert!(!write);
         assert_eq!(indent_width, 4);
+        assert_eq!(line_length, None);
         assert_eq!(
             files,
             [PathBuf::from("script.gen"), PathBuf::from("other.gen")]
         );
-        assert!(args.file_and_arguments.is_empty());
+        assert_eq!(args.file_and_arguments, Vec::<String>::new());
     }
 
     #[test]
@@ -471,6 +479,15 @@ mod tests {
             assert!(write);
             assert_eq!(files, [PathBuf::from("script.gen")]);
         }
+    }
+
+    #[test]
+    fn fmt_line_length_parses() {
+        let args = parse(&["generic", "fmt", "--line-length", "40", "script.gen"]);
+        let Some(Command::Fmt { line_length, .. }) = args.command else {
+            panic!("expected the fmt subcommand");
+        };
+        assert_eq!(line_length, Some(40));
     }
 
     #[test]
