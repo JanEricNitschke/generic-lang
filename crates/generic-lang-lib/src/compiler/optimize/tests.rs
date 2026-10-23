@@ -1,7 +1,8 @@
 use super::constant_fold::*;
 use super::walk::{Visitor, walk_stmt_kind};
+use super::*;
 use crate::compiler::ast::{
-    BinaryOp, BoolOperator, Expr, ExprKind, FstringPart, Literal, Program, StmtKind, UnaryOp,
+    BinaryOp, BoolOperator, Expr, ExprKind, FstringPart, Literal, Stmt, StmtKind, UnaryOp,
 };
 use crate::compiler::front::Parser;
 use crate::scanner::Scanner;
@@ -42,6 +43,12 @@ fn parse_program(source: &str) -> Program {
     program
 }
 
+fn optimize_source(source: &str) -> Program {
+    let mut program = parse_program(source);
+    program.optimize();
+    program
+}
+
 #[derive(Default)]
 struct RecordingVisitor {
     statements: Vec<&'static str>,
@@ -69,6 +76,20 @@ impl Visitor for RecordingVisitor {
             StmtKind::ImportFrom { .. } => "import-from",
         });
         walk_stmt_kind(self, stmt);
+    }
+}
+
+fn function_body(program: &Program) -> &[Stmt] {
+    match &program.declarations[0].kind {
+        StmtKind::FunctionDecl { fn_lit, .. } => &fn_lit.body,
+        other => panic!("expected function declaration, got {other:?}"),
+    }
+}
+
+fn expression_statement_expr(stmt: &StmtKind) -> &Expr {
+    match stmt {
+        StmtKind::Expression { expr } => expr,
+        other => panic!("expected expression statement, got {other:?}"),
     }
 }
 
@@ -463,6 +484,193 @@ fn folds_literal_comparisons() {
 }
 
 #[test]
+fn drops_statements_after_terminators() {
+    let program = optimize_source(
+        r#"
+            fun f() {
+                print("before");
+                return 1;
+                print("dead");
+            }
+            fun g() {
+                throw "boom";
+                print("dead");
+            }
+            fun h() {
+                while (true) {
+                    break;
+                    print("dead");
+                }
+                return 0;
+            }
+            "#,
+    );
+    let f = match &program.declarations[0].kind {
+        StmtKind::FunctionDecl { fn_lit, .. } => &fn_lit.body,
+        other => panic!("expected function, got {other:?}"),
+    };
+    assert_eq!(f.len(), 2);
+    assert!(matches!(f[1].kind, StmtKind::Return { .. }));
+
+    let g = match &program.declarations[1].kind {
+        StmtKind::FunctionDecl { fn_lit, .. } => &fn_lit.body,
+        other => panic!("expected function, got {other:?}"),
+    };
+    assert_eq!(g.len(), 1);
+    assert!(matches!(g[0].kind, StmtKind::Throw { .. }));
+
+    let h = match &program.declarations[2].kind {
+        StmtKind::FunctionDecl { fn_lit, .. } => &fn_lit.body,
+        other => panic!("expected function, got {other:?}"),
+    };
+    match &h[0].kind {
+        StmtKind::Loop { body, .. } => {
+            assert_eq!(body.len(), 1);
+            assert!(matches!(body[0].kind, StmtKind::Break { .. }));
+        }
+        other => panic!("expected loop, got {other:?}"),
+    }
+}
+
+#[test]
+fn simplifies_constant_conditionals() {
+    let program = optimize_source(
+        r#"
+            if (true) { print("then"); } else { print("else"); }
+            if (false) { print("dead"); }
+            unless (false) { print("unless"); } else { print("dead"); }
+            "#,
+    );
+    assert_eq!(program.declarations.len(), 2);
+    for (declaration, expected) in program.declarations.iter().zip(["then", "unless"]) {
+        match &declaration.kind {
+            StmtKind::Block { stmts } => {
+                assert_eq!(stmts.len(), 1);
+                let expr = expression_statement_expr(&stmts[0].kind);
+                match &expr.kind {
+                    ExprKind::Call { args, .. } => {
+                        assert!(matches!(
+                            &args[0].value.kind,
+                            ExprKind::Literal(Literal::Str(value)) if value == expected
+                        ));
+                    }
+                    other => panic!("expected call, got {other:?}"),
+                }
+            }
+            other => panic!("expected block, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn drops_statically_false_loops() {
+    let program = optimize_source(
+        r#"
+            fun f() {
+                while (false) { print("dead"); }
+                until (true) { print("dead"); }
+                for (var i = 0; false; i = i + 1) { print("dead"); }
+                while (true) { break; }
+            }
+            "#,
+    );
+    let body = function_body(&program);
+    assert_eq!(body.len(), 1);
+    assert!(matches!(body[0].kind, StmtKind::Loop { .. }));
+}
+
+#[test]
+fn keeps_false_for_initializer_side_effects() {
+    let program = optimize_source(
+        r#"
+            fun f() {
+                for (var x = print("init"); false; x = x) { print("dead"); }
+            }
+            "#,
+    );
+    let body = function_body(&program);
+    assert_eq!(body.len(), 1);
+    match &body[0].kind {
+        StmtKind::Block { stmts } => {
+            assert_eq!(stmts.len(), 1);
+            assert!(matches!(stmts[0].kind, StmtKind::VarDecl { .. }));
+        }
+        other => panic!("expected init block, got {other:?}"),
+    }
+}
+
+#[test]
+fn drops_pure_expression_statements() {
+    let program = optimize_source(
+        r#"
+            fun f() {
+                1;
+                "unused";
+                (2 + 3);
+                nil;
+                print("kept");
+            }
+            "#,
+    );
+    let body = function_body(&program);
+    assert_eq!(body.len(), 1);
+    let expr = expression_statement_expr(&body[0].kind);
+    assert!(matches!(expr.kind, ExprKind::Call { .. }));
+}
+
+#[test]
+fn drops_pure_expression_statements_at_top_level() {
+    let program = optimize_source(
+        r#"
+            1;
+            "unused";
+            (2 + 3);
+            nil;
+            print("kept");
+            "#,
+    );
+    assert_eq!(program.declarations.len(), 1);
+    let expr = expression_statement_expr(&program.declarations[0].kind);
+    assert!(matches!(expr.kind, ExprKind::Call { .. }));
+}
+
+#[test]
+fn drops_statements_after_continue() {
+    let program = optimize_source(
+        r#"
+            fun f() {
+                while (true) {
+                    continue;
+                    print("dead");
+                }
+            }
+            "#,
+    );
+    let body = function_body(&program);
+    let StmtKind::Loop { body, .. } = &body[0].kind else {
+        panic!("expected loop");
+    };
+    assert_eq!(body.len(), 1);
+    assert!(matches!(body[0].kind, StmtKind::Continue { .. }));
+}
+
+#[test]
+fn keeps_expression_statements_that_can_raise_or_have_effects() {
+    let program = optimize_source(
+        r#"
+            fun f() {
+                [1, 2];
+                ({1: 2});
+                missing;
+                print("call");
+            }
+            "#,
+    );
+    let body = function_body(&program);
+    assert_eq!(body.len(), 4);
+}
+
+#[test]
 fn visits_loop_initializers_through_the_statement_hook() {
     let mut program = parse_program(
         "
@@ -476,6 +684,35 @@ fn visits_loop_initializers_through_the_statement_hook() {
     let mut visitor = RecordingVisitor::default();
     visitor.visit_stmts(&mut program.declarations);
     assert_eq!(visitor.statements, ["function", "for", "var", "expression"]);
+}
+
+#[test]
+fn removes_empty_blocks() {
+    let program = optimize_source(
+        "
+            fun f() {
+                {}
+                { var x = 1; }
+            }
+            ",
+    );
+    let body = function_body(&program);
+    assert_eq!(body.len(), 1);
+    assert!(matches!(body[0].kind, StmtKind::Block { ref stmts } if stmts.len() == 1));
+}
+
+#[test]
+fn removes_nested_empty_blocks() {
+    let program = optimize_source(
+        "
+            fun f() {
+                { { } }
+                if (true) { { } }
+            }
+            ",
+    );
+    let body = function_body(&program);
+    assert!(body.is_empty());
 }
 
 #[test]

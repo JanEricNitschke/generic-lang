@@ -1,0 +1,3 @@
+foreach (var x in (1, StopIteration, 2)) {
+    print(x); # expect: 1
+}

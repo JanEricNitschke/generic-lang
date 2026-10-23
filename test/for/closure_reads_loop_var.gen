@@ -1,0 +1,10 @@
+var fns = [];
+for (var i = 0; i < 3; i = i + 1) {
+    fns.append(->() i);
+}
+foreach (var f in fns) {
+    print(f());
+}
+# expect: 0
+# expect: 1
+# expect: 2

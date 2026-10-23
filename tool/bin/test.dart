@@ -940,9 +940,38 @@ void _defineTestSuites() {
       testGlobPattern: "test/plugin/lang/**.gen",
       genericArgs: ["--no-optimize"]);
 
-  // The full reference suite with the optimizer enabled.
+  // The full reference suite with the optimizer enabled. These limit tests are
+  // skipped because optimization legitimately removes the dead statements or
+  // constant branches that would otherwise exceed the compiler limits; the
+  // remaining limit tests still run.
   _allSuites["generic-optimized"] = Suite(
-      "generic-optimized", "c", "generic", [], {...cloxTests},
+      "generic-optimized",
+      "c",
+      "generic",
+      [],
+      {
+        ...cloxTests,
+        "test/limit/jump_too_large.gen": "skip",
+        "test/limit/loop_too_large.gen": "skip",
+        "test/limit/too_many_constants_class_name.gen": "skip",
+        "test/limit/too_many_constants_class_variable.gen": "skip",
+        "test/limit/too_many_constants_closure.gen": "skip",
+        "test/limit/too_many_constants_get_property.gen": "skip",
+        "test/limit/too_many_constants_get_property_compound.gen": "skip",
+        "test/limit/too_many_constants_import.gen": "skip",
+        "test/limit/too_many_constants_import_as.gen": "skip",
+        "test/limit/too_many_constants_import_from.gen": "skip",
+        "test/limit/too_many_constants_in.gen": "skip",
+        "test/limit/too_many_constants_invoke.gen": "skip",
+        "test/limit/too_many_constants_method.gen": "skip",
+        "test/limit/too_many_constants_set_property.gen": "skip",
+        "test/limit/too_many_constants_subscript.gen": "skip",
+        "test/limit/too_many_constants_subscript_compound.gen": "skip",
+        "test/limit/too_many_constants_subscript_set.gen": "skip",
+        "test/limit/too_many_constants_super_get.gen": "skip",
+        "test/limit/too_many_constants_super_invoke.gen": "skip",
+        "test/limit/too_many_names_to_import.gen": "skip",
+      },
       testGlobPattern: "test/**.gen",
       genericArgs: ["--optimize", "--no-cache"]);
 
