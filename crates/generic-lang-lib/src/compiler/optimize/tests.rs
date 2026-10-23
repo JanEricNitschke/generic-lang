@@ -1,5 +1,8 @@
 use super::constant_fold::*;
-use crate::compiler::ast::{BinaryOp, BoolOperator, Expr, ExprKind, FstringPart, Literal, UnaryOp};
+use super::walk::{Visitor, walk_stmt_kind};
+use crate::compiler::ast::{
+    BinaryOp, BoolOperator, Expr, ExprKind, FstringPart, Literal, Program, StmtKind, UnaryOp,
+};
 use crate::compiler::front::Parser;
 use crate::scanner::Scanner;
 use crate::types::Location;
@@ -21,6 +24,52 @@ fn parse_expr(source: &str) -> Expr {
     let expr = parser.expression();
     assert!(!parser.had_error, "failed to parse {source}");
     expr
+}
+
+fn parse_program(source: &str) -> Program {
+    let scanner = Scanner::new(
+        source,
+        #[cfg(feature = "debug_scanner")]
+        false,
+    );
+    let mut parser = Parser::new(
+        scanner,
+        #[cfg(feature = "debug_parser")]
+        false,
+    );
+    let program = parser.parse_program();
+    assert!(!parser.had_error, "failed to parse {source}");
+    program
+}
+
+#[derive(Default)]
+struct RecordingVisitor {
+    statements: Vec<&'static str>,
+}
+
+impl Visitor for RecordingVisitor {
+    fn visit_stmt_kind(&mut self, stmt: &mut StmtKind) {
+        self.statements.push(match stmt {
+            StmtKind::Expression { .. } => "expression",
+            StmtKind::VarDecl { .. } => "var",
+            StmtKind::Block { .. } => "block",
+            StmtKind::FunctionDecl { .. } => "function",
+            StmtKind::Class(_) => "class",
+            StmtKind::Conditional { .. } => "conditional",
+            StmtKind::Loop { .. } => "loop",
+            StmtKind::Break { .. } => "break",
+            StmtKind::Continue { .. } => "continue",
+            StmtKind::For { .. } => "for",
+            StmtKind::Foreach { .. } => "foreach",
+            StmtKind::Return { .. } => "return",
+            StmtKind::Throw { .. } => "throw",
+            StmtKind::Try(_) => "try",
+            StmtKind::Switch { .. } => "switch",
+            StmtKind::Import { .. } => "import",
+            StmtKind::ImportFrom { .. } => "import-from",
+        });
+        walk_stmt_kind(self, stmt);
+    }
 }
 
 fn fold(source: &str) -> (Expr, Location) {
@@ -411,6 +460,22 @@ fn folds_literal_comparisons() {
     assert_binary_kept("0.0 / 0.0 == 0.0 / 0.0", BinaryOp::Equal);
     assert_binary_kept("1 / 2 == 0.5", BinaryOp::Equal);
     assert_binary_kept("1 / 2 < 0.75", BinaryOp::Less);
+}
+
+#[test]
+fn visits_loop_initializers_through_the_statement_hook() {
+    let mut program = parse_program(
+        "
+            fun f() {
+                for (var i = 0; i < 1; i = i + 1) {
+                    print(i);
+                }
+            }
+            ",
+    );
+    let mut visitor = RecordingVisitor::default();
+    visitor.visit_stmts(&mut program.declarations);
+    assert_eq!(visitor.statements, ["function", "for", "var", "expression"]);
 }
 
 #[test]
