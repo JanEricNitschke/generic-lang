@@ -480,6 +480,12 @@ impl GenericInt {
         }
     }
 
+    pub(crate) fn from_bigint(value: BigInt, heap: &mut Heap) -> Self {
+        value
+            .to_i64()
+            .map_or_else(|| *heap.add_big_int(value).as_generic_int(), Self::Small)
+    }
+
     #[allow(clippy::option_if_let_else)]
     pub(crate) fn from_usize(n: usize, heap: &mut Heap) -> Self {
         if let Ok(n) = i64::try_from(n) {

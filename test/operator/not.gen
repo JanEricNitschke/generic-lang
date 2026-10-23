@@ -4,6 +4,11 @@ print(!!true);    # expect: true
 
 print(!123);      # expect: false
 print(!0);        # expect: true
+print(!0.0);      # expect: true
+print(!(0 / 5));  # expect: true
+print(!(9223372036854775808 - 9223372036854775808)); # expect: true
+print(!());       # expect: true
+print(!(1,));     # expect: false
 
 print(!nil);     # expect: true
 
