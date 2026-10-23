@@ -1,0 +1,18 @@
+for (var i = 0; i < 2; i = i + 1) {
+    var f = ->() {
+        var total = 0;
+        foreach (var j in (0, 1, 2)) {
+            if (j == 1) {
+                continue;
+            }
+            if (j == 2) {
+                break;
+            }
+            total = total + j;
+        }
+        return i + total;
+    };
+    print(f());
+}
+# expect: 0
+# expect: 1

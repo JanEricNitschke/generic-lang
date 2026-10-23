@@ -1,0 +1,7 @@
+for (var i = 0; i < 2; i = i + 1) {
+    var bump = ->() {
+        i = i + 1;
+    };
+    bump();
+    print(i); # expect: 1
+}

@@ -1,0 +1,18 @@
+for (var i = 0; i < 2; i = i + 1) {
+    var inner = 0;
+    while (inner < 3) {
+        if (inner == 1) {
+            break;
+        }
+        inner = inner + 1;
+    }
+    foreach (var j in (0, 1, 2)) {
+        if (j == 1) {
+            continue;
+        }
+        inner = inner + j;
+    }
+    print(inner);
+}
+# expect: 3
+# expect: 3

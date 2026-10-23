@@ -1,7 +1,9 @@
 use super::constant_fold::*;
+use super::loop_unrolling::*;
 use super::walk::{Visitor, walk_stmt_kind};
+use super::*;
 use crate::compiler::ast::{
-    BinaryOp, BoolOperator, Expr, ExprKind, FstringPart, Literal, Program, StmtKind, UnaryOp,
+    BinaryOp, BoolOperator, Expr, ExprKind, FstringPart, Literal, Stmt, StmtKind, UnaryOp,
 };
 use crate::compiler::front::Parser;
 use crate::scanner::Scanner;
@@ -42,6 +44,12 @@ fn parse_program(source: &str) -> Program {
     program
 }
 
+fn optimize_source(source: &str) -> Program {
+    let mut program = parse_program(source);
+    program.optimize();
+    program
+}
+
 #[derive(Default)]
 struct RecordingVisitor {
     statements: Vec<&'static str>,
@@ -69,6 +77,20 @@ impl Visitor for RecordingVisitor {
             StmtKind::ImportFrom { .. } => "import-from",
         });
         walk_stmt_kind(self, stmt);
+    }
+}
+
+fn function_body(program: &Program) -> &[Stmt] {
+    match &program.declarations[0].kind {
+        StmtKind::FunctionDecl { fn_lit, .. } => &fn_lit.body,
+        other => panic!("expected function declaration, got {other:?}"),
+    }
+}
+
+fn expression_statement_expr(stmt: &StmtKind) -> &Expr {
+    match stmt {
+        StmtKind::Expression { expr } => expr,
+        other => panic!("expected expression statement, got {other:?}"),
     }
 }
 
@@ -463,6 +485,205 @@ fn folds_literal_comparisons() {
 }
 
 #[test]
+fn drops_statements_after_terminators() {
+    let program = optimize_source(
+        r#"
+            fun f() {
+                print("before");
+                return 1;
+                print("dead");
+            }
+            fun g() {
+                throw "boom";
+                print("dead");
+            }
+            fun h() {
+                while (true) {
+                    break;
+                    print("dead");
+                }
+                return 0;
+            }
+            "#,
+    );
+    let f = match &program.declarations[0].kind {
+        StmtKind::FunctionDecl { fn_lit, .. } => &fn_lit.body,
+        other => panic!("expected function, got {other:?}"),
+    };
+    assert_eq!(f.len(), 2);
+    assert!(matches!(f[1].kind, StmtKind::Return { .. }));
+
+    let g = match &program.declarations[1].kind {
+        StmtKind::FunctionDecl { fn_lit, .. } => &fn_lit.body,
+        other => panic!("expected function, got {other:?}"),
+    };
+    assert_eq!(g.len(), 1);
+    assert!(matches!(g[0].kind, StmtKind::Throw { .. }));
+
+    let h = match &program.declarations[2].kind {
+        StmtKind::FunctionDecl { fn_lit, .. } => &fn_lit.body,
+        other => panic!("expected function, got {other:?}"),
+    };
+    match &h[0].kind {
+        StmtKind::Loop { body, .. } => {
+            assert_eq!(body.len(), 1);
+            assert!(matches!(body[0].kind, StmtKind::Break { .. }));
+        }
+        other => panic!("expected loop, got {other:?}"),
+    }
+}
+
+#[test]
+fn simplifies_constant_conditionals() {
+    let program = optimize_source(
+        r#"
+            if (true) { print("then"); } else { print("else"); }
+            if (false) { print("dead"); }
+            unless (false) { print("unless"); } else { print("dead"); }
+            "#,
+    );
+    assert_eq!(program.declarations.len(), 2);
+    for (declaration, expected) in program.declarations.iter().zip(["then", "unless"]) {
+        match &declaration.kind {
+            StmtKind::Block { stmts } => {
+                assert_eq!(stmts.len(), 1);
+                let expr = expression_statement_expr(&stmts[0].kind);
+                match &expr.kind {
+                    ExprKind::Call { args, .. } => {
+                        assert!(matches!(
+                            &args[0].value.kind,
+                            ExprKind::Literal(Literal::Str(value)) if value == expected
+                        ));
+                    }
+                    other => panic!("expected call, got {other:?}"),
+                }
+            }
+            other => panic!("expected block, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn drops_statically_false_loops() {
+    let program = optimize_source(
+        r#"
+            fun f() {
+                while (false) { print("dead"); }
+                until (true) { print("dead"); }
+                for (var i = 0; false; i = i + 1) { print("dead"); }
+                while (true) { break; }
+            }
+            "#,
+    );
+    let body = function_body(&program);
+    assert_eq!(body.len(), 1);
+    assert!(matches!(body[0].kind, StmtKind::Loop { .. }));
+}
+
+#[test]
+fn keeps_false_for_initializer_side_effects() {
+    let program = optimize_source(
+        r#"
+            fun f() {
+                for (var x = print("init"); false; x = x) { print("dead"); }
+            }
+            "#,
+    );
+    let body = function_body(&program);
+    assert_eq!(body.len(), 1);
+    match &body[0].kind {
+        StmtKind::Block { stmts } => {
+            assert_eq!(stmts.len(), 1);
+            assert!(matches!(stmts[0].kind, StmtKind::VarDecl { .. }));
+        }
+        other => panic!("expected init block, got {other:?}"),
+    }
+}
+
+#[test]
+fn drops_pure_expression_statements() {
+    let program = optimize_source(
+        r#"
+            fun f() {
+                1;
+                "unused";
+                (2 + 3);
+                nil;
+                print("kept");
+            }
+            "#,
+    );
+    let body = function_body(&program);
+    assert_eq!(body.len(), 1);
+    let expr = expression_statement_expr(&body[0].kind);
+    assert!(matches!(expr.kind, ExprKind::Call { .. }));
+}
+
+#[test]
+fn drops_pure_expression_statements_at_top_level() {
+    let program = optimize_source(
+        r#"
+            1;
+            "unused";
+            (2 + 3);
+            nil;
+            print("kept");
+            "#,
+    );
+    assert_eq!(program.declarations.len(), 1);
+    let expr = expression_statement_expr(&program.declarations[0].kind);
+    assert!(matches!(expr.kind, ExprKind::Call { .. }));
+}
+
+#[test]
+fn unrolls_loops_at_top_level() {
+    let program = optimize_source(
+        r#"
+            for (var i = 0; i < 3; i = i + 1) {
+                print(i);
+            }
+            "#,
+    );
+    assert_iteration_values(&program.declarations, &[0, 1, 2], "top-level loop");
+}
+
+#[test]
+fn drops_statements_after_continue() {
+    let program = optimize_source(
+        r#"
+            fun f() {
+                while (true) {
+                    continue;
+                    print("dead");
+                }
+            }
+            "#,
+    );
+    let body = function_body(&program);
+    let StmtKind::Loop { body, .. } = &body[0].kind else {
+        panic!("expected loop");
+    };
+    assert_eq!(body.len(), 1);
+    assert!(matches!(body[0].kind, StmtKind::Continue { .. }));
+}
+
+#[test]
+fn keeps_expression_statements_that_can_raise_or_have_effects() {
+    let program = optimize_source(
+        r#"
+            fun f() {
+                [1, 2];
+                ({1: 2});
+                missing;
+                print("call");
+            }
+            "#,
+    );
+    let body = function_body(&program);
+    assert_eq!(body.len(), 4);
+}
+
+#[test]
 fn visits_loop_initializers_through_the_statement_hook() {
     let mut program = parse_program(
         "
@@ -476,6 +697,387 @@ fn visits_loop_initializers_through_the_statement_hook() {
     let mut visitor = RecordingVisitor::default();
     visitor.visit_stmts(&mut program.declarations);
     assert_eq!(visitor.statements, ["function", "for", "var", "expression"]);
+}
+
+#[test]
+fn removes_empty_blocks() {
+    let program = optimize_source(
+        "
+            fun f() {
+                {}
+                { var x = 1; }
+            }
+            ",
+    );
+    let body = function_body(&program);
+    assert_eq!(body.len(), 1);
+    assert!(matches!(body[0].kind, StmtKind::Block { ref stmts } if stmts.len() == 1));
+}
+
+#[test]
+fn removes_nested_empty_blocks() {
+    let program = optimize_source(
+        "
+            fun f() {
+                { { } }
+                if (true) { { } }
+            }
+            ",
+    );
+    let body = function_body(&program);
+    assert!(body.is_empty());
+}
+
+#[test]
+fn unrolls_c_style_for_loops() {
+    let program = optimize_source(
+        "
+            fun f() {
+                for (var i = 0; i < 3; i = i + 1) {
+                    print(i);
+                }
+            }
+            ",
+    );
+    let body = function_body(&program);
+    assert_eq!(body.len(), 3);
+    for (iteration, (stmt, expected)) in body.iter().zip([0, 1, 2]).enumerate() {
+        let StmtKind::Block { stmts } = &stmt.kind else {
+            panic!("expected iteration block");
+        };
+        let StmtKind::VarDecl {
+            initializer: Some(initializer),
+            ..
+        } = &stmts[0].kind
+        else {
+            panic!("expected loop variable declaration");
+        };
+        assert!(
+            matches!(
+                initializer.kind,
+                ExprKind::Literal(Literal::Int(value)) if value == expected
+            ),
+            "iteration {iteration}"
+        );
+    }
+}
+
+fn assert_iteration_values(stmts: &[Stmt], expected: &[i64], context: &str) {
+    assert_eq!(stmts.len(), expected.len(), "{context}");
+    for (stmt, expected) in stmts.iter().zip(expected) {
+        let StmtKind::Block { stmts } = &stmt.kind else {
+            panic!("expected iteration block for {context}");
+        };
+        let StmtKind::VarDecl {
+            initializer: Some(initializer),
+            ..
+        } = &stmts[0].kind
+        else {
+            panic!("expected loop variable declaration for {context}");
+        };
+        assert!(
+            matches!(
+                initializer.kind,
+                ExprKind::Literal(Literal::Int(value)) if value == *expected
+            ),
+            "{context}: expected {expected}"
+        );
+    }
+}
+
+fn assert_for_iterations(case: &str, expected: &[i64]) {
+    let source = format!("fun f() {{ {case} }}");
+    let program = optimize_source(&source);
+    assert_iteration_values(function_body(&program), expected, case);
+}
+
+#[test]
+fn unrolls_loop_comparison_shapes() {
+    assert_for_iterations(
+        "for (var i = 0; i <= 2; i = i + 1) { print(i); }",
+        &[0, 1, 2],
+    );
+    assert_for_iterations(
+        "for (var i = 3; i > 0; i = i - 1) { print(i); }",
+        &[3, 2, 1],
+    );
+    assert_for_iterations(
+        "for (var i = 2; i >= 0; i = i - 1) { print(i); }",
+        &[2, 1, 0],
+    );
+    assert_for_iterations(
+        "for (var i = -2; i <= 0; i += 1) { print(i); }",
+        &[-2, -1, 0],
+    );
+    assert_for_iterations("for (var i = 2; i >= 0; i -= 1) { print(i); }", &[2, 1, 0]);
+    assert_for_iterations(
+        "for (var i = 9223372036854775807; i <= 9223372036854775807; i = i + 1) { print(i); }",
+        &[i64::MAX],
+    );
+    assert_for_iterations("for (var i = 5; i < 3; i = i + 1) { print(i); }", &[]);
+}
+
+#[test]
+fn does_not_unroll_loops_that_never_reach_the_bound() {
+    let cases = [
+        "for (var i = 0; i < 3; i = i - 1) { print(i); }",
+        "for (var i = 3; i > 0; i = i + 1) { print(i); }",
+        "for (var i = 0; i < 3; i = i + 0) { print(i); }",
+    ];
+    for case in cases {
+        let source = format!("fun f() {{ {case} }}");
+        let program = optimize_source(&source);
+        let body = function_body(&program);
+        assert!(
+            matches!(body[0].kind, StmtKind::For { .. }),
+            "unexpectedly unrolled {case}"
+        );
+    }
+}
+
+#[test]
+fn does_not_unroll_unsafe_for_loops() {
+    let cases = [
+        "for (var i = 0; i < 3; i = i + 1) { break; }",
+        "for (var i = 0; i < 3; i = i + 1) { continue; }",
+        "for (var i = 0; i < 3; i = i + 1) { i = 10; }",
+        "for (const i = 0; i < 3; i = i + 1) { print(i); }",
+        "for (var i = start; i < 3; i = i + 1) { print(i); }",
+    ];
+    for case in cases {
+        let source = format!("fun f() {{ {case} }}");
+        let program = optimize_source(&source);
+        let body = function_body(&program);
+        assert!(
+            matches!(body[0].kind, StmtKind::For { .. }),
+            "unexpectedly unrolled {case}"
+        );
+    }
+}
+
+#[test]
+fn does_not_unroll_loops_containing_lambdas_functions_or_classes() {
+    let cases = [
+        "for (var i = 0; i < 3; i = i + 1) { var f = ->() 1; }",
+        "for (var i = 0; i < 3; i = i + 1) { fun inner() {} }",
+        "for (var i = 0; i < 3; i = i + 1) { class Inner {} }",
+        "foreach (var x in (1, 2, 3)) { var f = ->() x; }",
+        "foreach (var x in (1, 2, 3)) { fun inner() {} }",
+        "foreach (var x in (1, 2, 3)) { class Inner {} }",
+    ];
+    for case in cases {
+        let source = format!("fun f() {{ {case} }}");
+        let program = optimize_source(&source);
+        let body = function_body(&program);
+        assert!(
+            matches!(
+                body[0].kind,
+                StmtKind::For { .. } | StmtKind::Foreach { .. }
+            ),
+            "unexpectedly unrolled {case}"
+        );
+    }
+}
+
+#[test]
+fn does_not_unroll_too_many_trips() {
+    let cases = ["for (var i = 0; i < 33; i = i + 1) { print(i); }"];
+    for case in cases {
+        let source = format!("fun f() {{ {case} }}");
+        let program = optimize_source(&source);
+        let body = function_body(&program);
+        assert!(
+            matches!(body[0].kind, StmtKind::For { .. }),
+            "unexpectedly unrolled {case}"
+        );
+    }
+
+    let tuple = format!(
+        "({})",
+        std::iter::repeat_n("1", MAX_UNROLL_TRIPS + 1)
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    let source = format!("fun f() {{ foreach (var x in {tuple}) {{ print(x); }} }}");
+    let program = optimize_source(&source);
+    let body = function_body(&program);
+    assert!(matches!(body[0].kind, StmtKind::Foreach { .. }));
+}
+
+fn nested_for_source(body_statements: usize) -> String {
+    let body = "print(i);".repeat(body_statements);
+    format!("fun f() {{ for (var i = 0; i < {MAX_UNROLL_TRIPS}; i = i + 1) {{ {{ {body} }} }} }}")
+}
+
+fn nested_foreach_source(body_statements: usize) -> String {
+    let body = "print(x);".repeat(body_statements);
+    let tuple = (1..=MAX_UNROLL_TRIPS)
+        .map(|value| value.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("fun f() {{ foreach (var x in ({tuple})) {{ {{ {body} }} }} }}")
+}
+
+#[test]
+fn unrolls_nested_bodies_at_the_statement_budget() {
+    for source in [nested_for_source(125), nested_foreach_source(125)] {
+        let program = optimize_source(&source);
+        let body = function_body(&program);
+        assert_eq!(body.len(), MAX_UNROLL_TRIPS, "{source}");
+    }
+}
+
+#[test]
+fn does_not_unroll_nested_bodies_past_the_statement_budget() {
+    for source in [nested_for_source(126), nested_foreach_source(126)] {
+        let program = optimize_source(&source);
+        let body = function_body(&program);
+        assert!(
+            matches!(
+                body[0].kind,
+                StmtKind::For { .. } | StmtKind::Foreach { .. }
+            ),
+            "unexpectedly unrolled {source}"
+        );
+    }
+}
+
+#[test]
+fn cleans_up_empty_iteration_bodies() {
+    let program = optimize_source("fun f() { for (var i = 0; i < 3; i = i + 1) {} }");
+    let body = function_body(&program);
+    assert_eq!(body.len(), 3);
+    for statement in body {
+        let StmtKind::Block { stmts } = &statement.kind else {
+            panic!("expected iteration block");
+        };
+        assert_eq!(stmts.len(), 1);
+        assert!(matches!(stmts[0].kind, StmtKind::VarDecl { .. }));
+    }
+}
+
+#[test]
+fn statement_count_excludes_function_and_method_bodies() {
+    let program = parse_program(
+        "
+            fun outer() {
+                fun inner() {
+                    print(1);
+                    print(2);
+                }
+                class Thing {
+                    method() {
+                        print(3);
+                    }
+                }
+            }
+            ",
+    );
+    let body = function_body(&program);
+    assert_eq!(statement_count(body), 3);
+}
+
+#[test]
+fn unrolls_foreach_over_constant_tuples() {
+    let program = optimize_source(
+        r#"
+            fun f() {
+                foreach (var x in (1, 2, 3)) {
+                    print(x);
+                }
+                foreach (var x in ()) {
+                    print("dead");
+                }
+            }
+            "#,
+    );
+    let body = function_body(&program);
+    assert_eq!(body.len(), 3);
+    for (iteration, (stmt, expected)) in body.iter().zip([1, 2, 3]).enumerate() {
+        let StmtKind::Block { stmts } = &stmt.kind else {
+            panic!("expected iteration block");
+        };
+        let StmtKind::VarDecl {
+            initializer: Some(initializer),
+            ..
+        } = &stmts[0].kind
+        else {
+            panic!("expected loop variable declaration");
+        };
+        assert!(
+            matches!(
+                initializer.kind,
+                ExprKind::Literal(Literal::Int(value)) if value == expected
+            ),
+            "iteration {iteration}"
+        );
+    }
+}
+
+#[test]
+fn does_not_unroll_foreach_over_stop_iteration() {
+    let program = optimize_source(
+        "
+            fun f() {
+                foreach (var x in (1, StopIteration, 2)) {
+                    print(x);
+                }
+            }
+            ",
+    );
+    let body = function_body(&program);
+    assert!(matches!(body[0].kind, StmtKind::Foreach { .. }));
+}
+
+#[test]
+fn unrolls_foreach_that_assigns_the_loop_variable() {
+    let program = optimize_source(
+        "
+            fun f() {
+                foreach (var x in (1, 2)) {
+                    x = x + 10;
+                    print(x);
+                }
+            }
+            ",
+    );
+    let body = function_body(&program);
+    assert_eq!(body.len(), 2);
+    for (stmt, expected) in body.iter().zip([1, 2]) {
+        let StmtKind::Block { stmts } = &stmt.kind else {
+            panic!("expected iteration block");
+        };
+        assert!(matches!(
+            stmts[0].kind,
+            StmtKind::VarDecl {
+                initializer: Some(ref initializer),
+                ..
+            } if matches!(initializer.kind, ExprKind::Literal(Literal::Int(value)) if value == expected)
+        ));
+        let StmtKind::Block { stmts: iteration } = &stmts[1].kind else {
+            panic!("expected iteration body block");
+        };
+        assert!(matches!(iteration[0].kind, StmtKind::Expression { .. }));
+    }
+}
+
+#[test]
+fn does_not_unroll_unsafe_foreach_loops() {
+    let cases = [
+        "foreach (var x in (1, 2, 3)) { break; }",
+        "foreach (var x in (1, 2, 3)) { continue; }",
+        "foreach (var x in (1, [2])) { print(x); }",
+        "foreach (var x in values) { print(x); }",
+    ];
+    for case in cases {
+        let source = format!("fun f() {{ {case} }}");
+        let program = optimize_source(&source);
+        let body = function_body(&program);
+        assert!(
+            matches!(body[0].kind, StmtKind::Foreach { .. }),
+            "unexpectedly unrolled {case}"
+        );
+    }
 }
 
 #[test]

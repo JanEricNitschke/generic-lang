@@ -34,6 +34,7 @@ fn walk_exprs<V: Visitor + ?Sized>(visitor: &mut V, exprs: &mut [Expr]) {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn walk_stmt_kind<V: Visitor + ?Sized>(visitor: &mut V, stmt: &mut StmtKind) {
     match stmt {
         StmtKind::Expression { expr } | StmtKind::Throw { expr, .. } => visitor.visit_expr(expr),

@@ -5,7 +5,7 @@
 //! the source. The frame stack (`Frame`) carries each function's locals,
 //! scope depths, upvalues, and loop state along the way.
 
-use rustc_hash::FxHashMap as HashMap;
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use shrinkwraprs::Shrinkwrap;
 
 use super::ast::{
@@ -238,9 +238,13 @@ impl<'heap, 'src> Codegen<'heap, 'src> {
     }
 
     /// Common tail for both entries: fail with the collected errors, or
-    /// return the finished script function.
+    /// return the finished script function. Unrolling can compile the same
+    /// source several times, so identical diagnostics keep only their first
+    /// occurrence.
     fn finish(&mut self) -> Result<Function, Vec<String>> {
         if self.had_error {
+            let mut seen = HashSet::default();
+            self.errors.retain(|error| seen.insert(error.clone()));
             Err(std::mem::take(&mut self.errors))
         } else {
             Ok(self.frames.pop().unwrap().function)
