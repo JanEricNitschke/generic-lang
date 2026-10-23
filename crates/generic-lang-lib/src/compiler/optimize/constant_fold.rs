@@ -1,7 +1,5 @@
-use super::super::ast::{
-    BinaryOp, ClassMemberKind, Expr, ExprKind, FstringPart, FunctionDef, LambdaBody, LambdaLit,
-    Literal, ParamList, Stmt, StmtKind, UnaryOp,
-};
+use super::super::ast::{BinaryOp, Expr, ExprKind, Literal, Stmt, UnaryOp};
+use super::walk::{Visitor, walk_expr};
 use crate::utils::repeat_string as repeat_checked;
 use num_bigint::{BigInt, Sign};
 use num_traits::{FromPrimitive, Signed, ToPrimitive, Zero};
@@ -11,213 +9,21 @@ use unicode_normalization::UnicodeNormalization;
 pub(super) const MAX_STRING_BYTES: usize = 64 * 1024;
 pub(super) const MAX_FOLDED_BIGINT_BITS: u64 = 4096;
 
-pub(super) fn fold_stmts(stmts: &mut [Stmt]) {
-    for stmt in stmts {
-        fold_stmt(&mut stmt.kind);
+struct ConstantFolder;
+
+impl Visitor for ConstantFolder {
+    fn visit_expr(&mut self, expr: &mut Expr) {
+        walk_expr(self, expr);
+        fold_literal_expr(expr);
     }
 }
 
-#[allow(clippy::too_many_lines)]
-fn fold_stmt(stmt: &mut StmtKind) {
-    match stmt {
-        StmtKind::Expression { expr } | StmtKind::Throw { expr, .. } => fold_expr(expr),
-        StmtKind::VarDecl { initializer, .. } => {
-            if let Some(initializer) = initializer {
-                fold_expr(initializer);
-            }
-        }
-        StmtKind::Block { stmts, .. } => fold_stmts(stmts),
-        StmtKind::FunctionDecl {
-            fn_lit, decorators, ..
-        } => {
-            fold_function(fn_lit);
-            fold_exprs(decorators);
-        }
-        StmtKind::Class(class) => {
-            if let Some((superclass, _)) = &mut class.superclass {
-                fold_expr(superclass);
-            }
-            for member in &mut class.members {
-                match &mut member.kind {
-                    ClassMemberKind::Variable(variable) => {
-                        if let Some(annotation) = &mut variable.annotation {
-                            fold_expr(annotation);
-                        }
-                        if let Some(default) = &mut variable.default {
-                            fold_expr(default);
-                        }
-                    }
-                    ClassMemberKind::Method(method) => fold_function(&mut method.fn_lit),
-                }
-            }
-            fold_exprs(&mut class.decorators);
-        }
-        StmtKind::Conditional {
-            condition,
-            then_block,
-            else_block,
-            ..
-        } => {
-            fold_expr(condition);
-            fold_stmts(then_block);
-            if let Some(else_block) = else_block {
-                fold_stmts(else_block);
-            }
-        }
-        StmtKind::Loop {
-            condition, body, ..
-        } => {
-            fold_expr(condition);
-            fold_stmts(body);
-        }
-        StmtKind::Break { .. }
-        | StmtKind::Continue { .. }
-        | StmtKind::Import { .. }
-        | StmtKind::ImportFrom { .. } => {}
-        StmtKind::For {
-            init,
-            condition,
-            increment,
-            body,
-            ..
-        } => {
-            if let Some(init) = init {
-                fold_stmt(init);
-            }
-            if let Some(condition) = condition {
-                fold_expr(condition);
-            }
-            if let Some(increment) = increment {
-                fold_expr(increment);
-            }
-            fold_stmts(body);
-        }
-        StmtKind::Foreach { iterable, body, .. } => {
-            fold_expr(iterable);
-            fold_stmts(body);
-        }
-        StmtKind::Return { value } => {
-            if let Some(value) = value {
-                fold_expr(value);
-            }
-        }
-        StmtKind::Try(try_stmt) => {
-            fold_stmts(&mut try_stmt.body);
-            for catch in &mut try_stmt.catches {
-                fold_exprs(&mut catch.matchers);
-                fold_stmts(&mut catch.body);
-            }
-            if let Some(else_block) = &mut try_stmt.else_block {
-                fold_stmts(else_block);
-            }
-        }
-        StmtKind::Switch { subject, cases, .. } => {
-            fold_expr(subject);
-            for case in cases {
-                if let Some(value) = &mut case.value {
-                    fold_expr(value);
-                }
-                fold_stmts(&mut case.body);
-            }
-        }
-    }
-}
-
-fn fold_function(function: &mut FunctionDef) {
-    fold_params(&mut function.parameters);
-    fold_stmts(&mut function.body);
-}
-
-fn fold_params(params: &mut ParamList) {
-    for param in &mut params.params {
-        if let Some(default) = &mut param.default {
-            fold_expr(default);
-        }
-    }
-    if let Some(rest) = &mut params.rest
-        && let Some(default) = &mut rest.default
-    {
-        fold_expr(default);
-    }
-}
-
-fn fold_lambda(lambda: &mut LambdaLit) {
-    fold_params(&mut lambda.parameters);
-    match &mut lambda.body {
-        LambdaBody::Block(stmts) => fold_stmts(stmts),
-        LambdaBody::Expression(expr) => fold_expr(expr),
-    }
-}
-
-fn fold_exprs(exprs: &mut [Expr]) {
-    for expr in exprs {
-        fold_expr(expr);
-    }
+pub(super) fn fold_stmts(stmts: &mut Vec<Stmt>) {
+    ConstantFolder.visit_stmts(stmts);
 }
 
 pub(super) fn fold_expr(expr: &mut Expr) {
-    match &mut expr.kind {
-        ExprKind::Literal(_) | ExprKind::Variable { .. } | ExprKind::Super { .. } => {}
-        ExprKind::Property { object, .. } => fold_expr(object),
-        ExprKind::Subscript { object, index, .. } => {
-            fold_expr(object);
-            fold_expr(index);
-        }
-        ExprKind::Call { callee, args, .. } => {
-            fold_expr(callee);
-            for arg in args {
-                fold_expr(&mut arg.value);
-            }
-        }
-        ExprKind::Unary { operand, .. } => fold_expr(operand),
-        ExprKind::Binary { lhs, rhs, .. } | ExprKind::Logical { lhs, rhs, .. } => {
-            fold_expr(lhs);
-            fold_expr(rhs);
-        }
-        ExprKind::Ternary {
-            condition,
-            then,
-            else_,
-            ..
-        } => {
-            fold_expr(condition);
-            fold_expr(then);
-            fold_expr(else_);
-        }
-        ExprKind::Grouping { inner } => fold_expr(inner),
-        ExprKind::Tuple { elements } => fold_exprs(elements),
-        ExprKind::ListLit { items } | ExprKind::SetLit { items } => fold_exprs(items),
-        ExprKind::DictLit { entries } => {
-            for (key, value) in entries {
-                fold_expr(key);
-                fold_expr(value);
-            }
-        }
-        ExprKind::Fstring { parts } => {
-            for part in parts {
-                if let FstringPart::Interp(expr) = part {
-                    fold_expr(expr);
-                }
-            }
-        }
-        ExprKind::Tstring(tstring) => {
-            for interpolation in &mut tstring.interpolations {
-                fold_expr(&mut interpolation.value);
-            }
-        }
-        ExprKind::Lambda(lambda) => fold_lambda(lambda),
-        ExprKind::Yield { operand } => {
-            if let Some(operand) = operand {
-                fold_expr(operand);
-            }
-        }
-        ExprKind::Assign { target, value, .. } | ExprKind::AugAssign { target, value, .. } => {
-            fold_expr(target);
-            fold_expr(value);
-        }
-    }
-
-    fold_literal_expr(expr);
+    ConstantFolder.visit_expr(expr);
 }
 
 fn fold_literal_expr(expr: &mut Expr) {
