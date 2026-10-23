@@ -946,6 +946,27 @@ impl<'comments> Formatter<'comments> {
                 self.out.push_str(value);
                 self.out.push('"');
             }
+            Literal::Rational {
+                numerator,
+                denominator,
+            } => {
+                self.out.push_str(&numerator.to_string());
+                self.out.push(':');
+                self.out.push_str(&denominator.to_string());
+            }
+            Literal::Tuple(items) => {
+                self.out.push('(');
+                for (index, item) in items.iter().enumerate() {
+                    if index > 0 {
+                        self.out.push_str(", ");
+                    }
+                    self.literal(item);
+                }
+                if items.len() == 1 {
+                    self.out.push(',');
+                }
+                self.out.push(')');
+            }
         }
     }
 

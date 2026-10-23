@@ -129,7 +129,7 @@ impl VM {
         } else {
             Ok(match value {
                 Value::Nil | Value::Bool(false) => true,
-                Value::Number(n) => n == 0.into(),
+                Value::Number(n) => n.eq(&Number::from(0_i64), &self.heap),
                 Value::String(id) => (id.to_value(&self.heap)).is_empty(),
                 _ => false,
             })

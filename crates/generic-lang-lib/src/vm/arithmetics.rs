@@ -1,5 +1,6 @@
 use super::VM;
 use crate::types::Comparison;
+use crate::utils::repeat_string;
 use crate::vm::ExceptionKind::{TypeError, ValueError};
 use crate::{
     value::{GenericRational, Number, Value},
@@ -166,18 +167,12 @@ impl VM {
                     );
                 };
 
-                if string
-                    .len()
-                    .checked_mul(count)
-                    .is_none_or(|n| n > isize::MAX as usize)
-                {
+                let Some(repeated) = repeat_string(string, count, isize::MAX as usize) else {
                     return self.throw(
                         ValueError,
                         "String repetition would overflow the maximum string size.",
                     );
-                }
-
-                let repeated = string.repeat(count);
+                };
                 let new_id = self.heap.string_id(&repeated);
                 self.stack.pop();
                 self.stack.pop();

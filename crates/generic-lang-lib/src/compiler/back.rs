@@ -23,7 +23,7 @@ use crate::{
         render_snippet_rows,
     },
     utils::get_file_stem,
-    value::{Function, GenericInt, Instance, Number, Tuple, Value},
+    value::{Function, GenericInt, GenericRational, Instance, Number, Tuple, Value},
 };
 
 /// Scope nesting depth: 0 is global scope, locals carry `-1` while
@@ -469,8 +469,15 @@ impl Codegen<'_, '_> {
             Value::Number(Number::Integer(GenericInt::Small(0))) => {
                 self.emit_byte(OpCode::LoadZero, location);
             }
-            Value::Number(Number::Float(0.0)) => self.emit_byte(OpCode::LoadZerof, location),
-            Value::Number(Number::Float(1.0)) => self.emit_byte(OpCode::LoadOnef, location),
+            // Float patterns compare with `==`, so match positive zero via its
+            // bits: a folded `-0.0` must stay a distinct constant to keep its
+            // sign (`1 / -0.0` is `-inf`).
+            Value::Number(Number::Float(value)) if value.to_bits() == 0.0f64.to_bits() => {
+                self.emit_byte(OpCode::LoadZerof, location);
+            }
+            Value::Number(Number::Float(1.0)) => {
+                self.emit_byte(OpCode::LoadOnef, location);
+            }
             _ => {
                 if !self.current_chunk_mut().write_constant(value, location) {
                     self.error("Too many constants in one chunk.");
@@ -2332,6 +2339,64 @@ impl Codegen<'_, '_> {
             Literal::BigInt(bigint) => {
                 let value = self.heap.add_big_int(bigint.clone());
                 self.emit_constant(value, location);
+            }
+            Literal::Rational {
+                numerator,
+                denominator,
+            } => {
+                let numerator = GenericInt::from_bigint(numerator.clone(), self.heap);
+                let denominator = GenericInt::from_bigint(denominator.clone(), self.heap);
+                let rational = GenericRational::new(numerator, denominator, self.heap)
+                    .expect("folded rational must have a nonzero denominator");
+                self.emit_constant(Number::Rational(rational).into(), location);
+            }
+            Literal::Tuple(items) => {
+                let items = items
+                    .iter()
+                    .map(|item| self.literal_to_value(item))
+                    .collect();
+                let instance = Instance::new(
+                    *self.heap.native_classes.get("Tuple").unwrap(),
+                    Some(Tuple::new(items).into()),
+                );
+                let value = self.heap.add_instance(instance);
+                self.emit_constant(value, location);
+            }
+        }
+    }
+
+    fn literal_to_value(&mut self, literal: &Literal) -> Value {
+        match literal {
+            Literal::Nil => Value::Nil,
+            Literal::True => Value::Bool(true),
+            Literal::False => Value::Bool(false),
+            Literal::StopIteration => Value::StopIteration,
+            Literal::Int(value) => (*value).into(),
+            Literal::BigInt(value) => self.heap.add_big_int(value.clone()),
+            Literal::Float(value) => (*value).into(),
+            Literal::Str(value) => self.heap.string_id(value).into(),
+            Literal::Rational {
+                numerator,
+                denominator,
+            } => {
+                let numerator = GenericInt::from_bigint(numerator.clone(), self.heap);
+                let denominator = GenericInt::from_bigint(denominator.clone(), self.heap);
+                Number::Rational(
+                    GenericRational::new(numerator, denominator, self.heap)
+                        .expect("folded rational must have a nonzero denominator"),
+                )
+                .into()
+            }
+            Literal::Tuple(items) => {
+                let items = items
+                    .iter()
+                    .map(|item| self.literal_to_value(item))
+                    .collect();
+                let instance = Instance::new(
+                    *self.heap.native_classes.get("Tuple").unwrap(),
+                    Some(Tuple::new(items).into()),
+                );
+                self.heap.add_instance(instance)
             }
         }
     }
