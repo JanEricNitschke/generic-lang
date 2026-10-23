@@ -10,6 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const CACHE_ENABLED: RunOptions = RunOptions {
     cache_read: true,
     cache_write: true,
+    optimize: true,
 };
 
 const OLD_TIMESTAMP_SECS: u64 = 1_000_000_000;
@@ -84,6 +85,7 @@ fn disabling_reads_recompiles_and_rewrites_the_cache() {
     let no_read = RunOptions {
         cache_read: false,
         cache_write: true,
+        optimize: true,
     };
     assert_eq!(run(&script_path, no_read), InterpretResult::Ok);
     assert_ne!(modified_secs(&cache_path), OLD_TIMESTAMP_SECS);
@@ -97,6 +99,7 @@ fn disabling_writes_creates_no_cache() {
     let no_write = RunOptions {
         cache_read: true,
         cache_write: false,
+        optimize: true,
     };
     assert_eq!(run(&script_path, no_write), InterpretResult::Ok);
     assert!(!directory.path().join("__generic_cache__").exists());
@@ -184,4 +187,24 @@ fn tstring_modules_use_the_disk_cache() {
     assert_eq!(run(&script_path, CACHE_ENABLED), InterpretResult::Ok);
     assert!(cache_file(directory.path()).is_file());
     assert_eq!(run(&script_path, CACHE_ENABLED), InterpretResult::Ok);
+}
+
+#[test]
+fn unoptimized_runs_do_not_write_the_cache() {
+    let directory = tempfile::tempdir().unwrap();
+    let (_, script_path) = write_module(directory.path());
+
+    assert_eq!(run(&script_path, CACHE_ENABLED), InterpretResult::Ok);
+    let cache_path = cache_file(directory.path());
+    set_modified(&cache_path, old_timestamp());
+
+    let unoptimized = RunOptions {
+        cache_read: true,
+        cache_write: true,
+        optimize: false,
+    };
+    assert_eq!(run(&script_path, unoptimized), InterpretResult::Ok);
+
+    assert_eq!(modified_secs(&cache_path), OLD_TIMESTAMP_SECS);
+    assert_eq!(cache_file(directory.path()), cache_path);
 }

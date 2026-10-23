@@ -52,6 +52,8 @@ pub struct RunOptions {
     pub cache_read: bool,
     /// Whether compiled imported modules may be written to the on-disk cache.
     pub cache_write: bool,
+    /// Whether to run the optimizer. Defaults to `true`.
+    pub optimize: bool,
 }
 
 impl RunOptions {
@@ -60,6 +62,7 @@ impl RunOptions {
         Self {
             cache_read: enabled,
             cache_write: enabled,
+            optimize: true,
         }
     }
 }

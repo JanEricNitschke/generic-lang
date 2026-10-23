@@ -16,7 +16,7 @@ workspace = true
 
 [dependencies]
 byteorder    = { workspace = true }
-convert_case = { workspace = true }
+convert_case = { workspace = true, optional = true }
 derivative   = { workspace = true }
 derive_more  = { workspace = true }
 generic-lang-api = { workspace = true, optional = true }
@@ -51,10 +51,10 @@ default                 = ["plugins"]
 # C-ABI native module loading (`import` of shared libraries). Off: none of
 # the plugin machinery exists and the crate has zero plugin dependencies.
 plugins                 = ["dep:generic-lang-api", "dep:libloading"]
-print_code              = []
+print_code              = ["dep:convert_case"]
 print_code_verbose      = ["print_code"]
 print_code_builtin      = ["print_code_verbose"]
-trace_execution         = []
+trace_execution         = ["dep:convert_case"]
 trace_execution_verbose = ["trace_execution"]
 trace_execution_builtin = ["trace_execution_verbose"]
 log_gc                  = ["dep:humansize"]

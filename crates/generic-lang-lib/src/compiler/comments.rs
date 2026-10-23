@@ -58,7 +58,7 @@ pub(super) struct Comment {
 ///
 /// Comments are also stored in source order so formatter round-trips can
 /// compare them independently of the positions, which change after formatting.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct CommentMap {
     /// Comments per insertion position.
     slots: BTreeMap<Position, Vec<Comment>>,

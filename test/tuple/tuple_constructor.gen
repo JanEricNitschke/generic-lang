@@ -11,5 +11,5 @@ var mixed_tuple = Tuple("hello", 42, nil, true);
 print(mixed_tuple); # expect: (hello, 42, nil, true)
 
 var explicit_init = mixed_tuple.__init__("a", 1);
-print(explicit_init); # expect: (a, 1)
-print(mixed_tuple); # expect: (a, 1)
+print(explicit_init); # expect: (hello, 42, nil, true)
+print(mixed_tuple); # expect: (hello, 42, nil, true)

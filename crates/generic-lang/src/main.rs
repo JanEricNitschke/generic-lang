@@ -75,6 +75,15 @@ struct Args {
     #[arg(long)]
     no_cache: bool,
 
+    /// Enable optimizations (the default). Must come before the file path;
+    /// overrides an earlier `--no-optimize`.
+    #[arg(long, overrides_with = "no_optimize")]
+    optimize: bool,
+
+    /// Disable optimizations. Must come before the file path.
+    #[arg(long, overrides_with = "optimize")]
+    no_optimize: bool,
+
     /// The file to run followed by its arguments (`os.argv[1:]`). The
     /// file path is the first positional, and it ends option parsing:
     /// everything after it reaches the script verbatim, even `-t` or
@@ -134,6 +143,7 @@ fn main() {
     let options = RunOptions {
         cache_read: defaults.cache_read && !args.no_cache && !args.no_cache_read,
         cache_write: defaults.cache_write && !args.no_cache && !args.no_cache_write,
+        optimize: args.optimize || !args.no_optimize,
     };
     let mut file_and_arguments = args.file_and_arguments.into_iter();
     let file = file_and_arguments.next().map(PathBuf::from);
@@ -327,6 +337,28 @@ mod tests {
     }
 
     #[test]
+    fn no_optimize_flag_before_the_file() {
+        let args = parse(&["generic", "--no-optimize", "script.gen", "alpha"]);
+        assert!(args.no_optimize);
+        assert_eq!(args.file_and_arguments, ["script.gen", "alpha"]);
+    }
+
+    #[test]
+    fn optimize_flag_overrides_no_optimize() {
+        let args = parse(&["generic", "--no-optimize", "--optimize", "script.gen"]);
+        assert!(!args.no_optimize);
+        assert!(args.optimize);
+        assert_eq!(args.file_and_arguments, ["script.gen"]);
+    }
+    #[test]
+    fn no_optimize_flag_overrides_optimize() {
+        let args = parse(&["generic", "--optimize", "--no-optimize", "script.gen"]);
+        assert!(args.no_optimize);
+        assert!(!args.optimize);
+        assert_eq!(args.file_and_arguments, ["script.gen"]);
+    }
+
+    #[test]
     fn cache_flags_after_the_file_go_to_the_script() {
         let args = parse(&[
             "generic",
@@ -347,6 +379,13 @@ mod tests {
                 "--no-cache-write"
             ]
         );
+    }
+
+    #[test]
+    fn no_optimize_after_the_file_goes_to_the_script() {
+        let args = parse(&["generic", "script.gen", "--no-optimize"]);
+        assert!(!args.no_optimize);
+        assert_eq!(args.file_and_arguments, ["script.gen", "--no-optimize"]);
     }
 
     #[test]

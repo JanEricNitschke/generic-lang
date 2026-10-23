@@ -44,8 +44,14 @@ class Suite {
   final String? expectationFile;
   final bool? isUnitTest;
 
+  /// Interpreter flags used only when a custom `--interpreter` is supplied.
+  final List<String> genericArgs;
+
   Suite(this.name, this.language, this.executable, this.args, this.tests,
-      {this.testGlobPattern, this.expectationFile, this.isUnitTest});
+      {this.testGlobPattern,
+      this.expectationFile,
+      this.isUnitTest,
+      this.genericArgs = const []});
 }
 
 void main(List<String> arguments) {
@@ -364,10 +370,9 @@ class Test {
 
   /// Invoke the interpreter and run the test.
   List<String> run() {
-    var args = [
-      if (_customInterpreter != null) ...?_customArguments else ..._suite!.args,
-      _path
-    ];
+    var args = _customInterpreter != null
+        ? [..._suite!.genericArgs, ...?_customArguments, _path]
+        : [..._suite!.args, _path];
 
     var result = Process.runSync(
       _customInterpreter ?? _suite!.executable,
@@ -519,9 +524,11 @@ class Test {
 }
 
 void _defineTestSuites() {
-  void c(String name, Map<String, String> tests) {
+  void c(String name, Map<String, String> tests,
+      {List<String> genericArgs = const []}) {
     var executable = name == "clox" ? "build/cloxd" : "build/$name";
-    _allSuites[name] = Suite(name, "c", executable, [], tests);
+    _allSuites[name] =
+        Suite(name, "c", executable, [], tests, genericArgs: genericArgs);
     _cSuites.add(name);
   }
 
@@ -912,7 +919,7 @@ void _defineTestSuites() {
     ...earlyChapters,
   });
 
-  c("clox", {
+  var cloxTests = {
     "test": "pass",
     ...earlyChapters,
     ...onlyImport,
@@ -921,14 +928,23 @@ void _defineTestSuites() {
     // `make plugin-lang-test`, which builds the plugins first. The Rust plugin
     // tests directly under test/plugin/ still run here as normal.
     "test/plugin/lang": "skip",
-  });
+  };
+
+  c("clox", {...cloxTests}, genericArgs: ["--no-optimize", "--no-cache"]);
 
   // Cross-language plugin tests. Built and run by `make plugin-lang-test`,
   // which compiles the C/C++/Zig example plugins into test/plugin/lang/ first.
   // Separate from `clox` so the normal suite needs no extra toolchains.
   _allSuites["plugin-lang"] = Suite(
       "plugin-lang", "c", "build/cloxd", [], {"test/plugin/lang": "pass"},
-      testGlobPattern: "test/plugin/lang/**.gen");
+      testGlobPattern: "test/plugin/lang/**.gen",
+      genericArgs: ["--no-optimize"]);
+
+  // The full reference suite with the optimizer enabled.
+  _allSuites["generic-optimized"] = Suite(
+      "generic-optimized", "c", "generic", [], {...cloxTests},
+      testGlobPattern: "test/**.gen",
+      genericArgs: ["--optimize", "--no-cache"]);
 
   // Unit testing functionality suite - using custom glob pattern to only find unit tests
   _allSuites["generic-unittest"] = Suite(
@@ -943,7 +959,8 @@ void _defineTestSuites() {
         "unittest_test/failures/test_failures.gen": "pass",
       },
       testGlobPattern: "unittest_test/**.gen",
-      isUnitTest: true);
+      isUnitTest: true,
+      genericArgs: ["--no-optimize"]);
 
   // Single file unit testing
   _allSuites["generic-unittest-single"] = Suite(
@@ -955,7 +972,8 @@ void _defineTestSuites() {
         "unittest_test/test_basic.gen": "pass",
       },
       testGlobPattern: "unittest_test/test_basic.gen",
-      isUnitTest: true);
+      isUnitTest: true,
+      genericArgs: ["--no-optimize"]);
 
   // Directory-based unit testing with external expectation file
   _allSuites["generic-unittest-directory"] = Suite(
@@ -967,5 +985,6 @@ void _defineTestSuites() {
         "unittest_test": "pass",
       },
       expectationFile: "unittest_test/directory_expectations.txt",
-      isUnitTest: true);
+      isUnitTest: true,
+      genericArgs: ["--no-optimize"]);
 }

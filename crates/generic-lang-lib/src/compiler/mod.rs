@@ -12,6 +12,7 @@ mod comments;
 mod error;
 mod fmt;
 mod front;
+mod optimize;
 mod rules;
 mod variables;
 
@@ -25,6 +26,7 @@ pub(crate) struct Compiler<'scanner, 'heap> {
     parser: Parser<'scanner>,
     codegen: Codegen<'heap, 'scanner>,
     name: String,
+    optimize: bool,
 }
 
 impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
@@ -33,6 +35,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         scanner: Scanner<'scanner>,
         heap: &'heap mut Heap,
         name: &str,
+        optimize: bool,
         #[cfg(any(feature = "print_code", feature = "debug_parser"))] is_builtin: bool,
     ) -> Self {
         let source = scanner.source();
@@ -49,6 +52,7 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
                 is_builtin,
             ),
             name: name.to_string(),
+            optimize,
         }
     }
 
@@ -71,9 +75,12 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
     /// Like [`Self::compile`], but return the compile errors instead of
     /// printing them.
     pub(crate) fn compile_collect(mut self) -> Result<Function, Vec<String>> {
-        let program = self.parser.parse_program();
+        let mut program = self.parser.parse_program();
         if self.parser.had_error {
             return Err(std::mem::take(&mut self.parser.errors));
+        }
+        if self.optimize {
+            program.optimize();
         }
         self.codegen.compile(&program, &self.name)
     }
@@ -89,9 +96,12 @@ impl<'scanner, 'heap> Compiler<'scanner, 'heap> {
         locals: &[String],
         kind: InjectedKind,
     ) -> Result<Function, Vec<String>> {
-        let program = self.parser.parse_injected(locals, kind);
+        let mut program = self.parser.parse_injected(locals, kind);
         if self.parser.had_error {
             return Err(std::mem::take(&mut self.parser.errors));
+        }
+        if self.optimize {
+            program.optimize();
         }
         self.codegen.compile_injected(&program, &self.name)
     }

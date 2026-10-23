@@ -976,16 +976,24 @@ impl PartialEq for RangeIterator {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct Tuple {
     items: Vec<Value>,
+    initialized: bool,
 }
 
 impl Tuple {
     #[must_use]
     pub(crate) const fn new(items: Vec<Value>) -> Self {
-        Self { items }
+        Self {
+            items,
+            initialized: true,
+        }
     }
 
     pub(crate) fn items(&self) -> &[Value] {
         &self.items
+    }
+
+    pub(crate) const fn is_initialized(&self) -> bool {
+        self.initialized
     }
 
     fn to_string(&self, heap: &Heap, depth: usize) -> String {
