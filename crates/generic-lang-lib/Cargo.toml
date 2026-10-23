@@ -20,6 +20,7 @@ convert_case = { workspace = true }
 derivative   = { workspace = true }
 derive_more  = { workspace = true }
 generic-lang-api = { workspace = true, optional = true }
+generic-lang-derive = { workspace = true }
 hashbrown    = { workspace = true }
 indexmap     = { workspace = true }
 humansize    = { workspace = true, optional = true }

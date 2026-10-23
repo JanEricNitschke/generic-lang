@@ -65,6 +65,26 @@ Now to use generic, in your terminal, run:
 generic
 ```
 
+## Formatting
+
+Format a source file to stdout with:
+
+```bash
+generic fmt path/to/file.gen
+```
+
+Rewrite one or more files in place with `-w` / `--write`:
+
+```bash
+generic fmt -w path/to/file.gen other.gen
+```
+
+The formatter parses the file and prints a canonical layout with four-space
+indentation by default. Use `--indent-width N` to choose a different number
+of spaces per level (at least one). Use `--line-length N` to set a soft maximum
+line length for comma-separated constructs; omit it or pass `0` to disable
+wrapping.
+
 ## Testing
 
 **Generic** supports two types of testing:

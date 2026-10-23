@@ -1,10 +1,12 @@
 # cargo-release configuration for the generic-lang workspace.
 #
-# The interpreter crates (generic-lang, generic-lang-lib) share the workspace
-# version via `version.workspace = true`, so cargo-release forces
+# The interpreter crates (generic-lang, generic-lang-lib,
+# generic-lang-derive) share the workspace version via
+# `version.workspace = true`, so cargo-release forces
 # `shared-version = "workspace"` and `consolidate-commits = true` automatically.
 # `dependent-version = "upgrade"` (the default) syncs the duplicate
-# `generic-lang-lib` dep pin in `[workspace.dependencies]` on every bump.
+# `generic-lang-lib` and `generic-lang-derive` dep pins in
+# `[workspace.dependencies]` on every bump.
 #
 # The API crate (generic-lang-api) is versioned independently (0.<abi>.<patch>)
 # and has its own `[package.metadata.release]` in its Cargo.toml.
