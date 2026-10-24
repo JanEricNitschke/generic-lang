@@ -93,33 +93,29 @@ impl Number {
     /// both are already integers and `b`is not negative.
     /// Everything else produces a float result.
     #[allow(clippy::option_if_let_else)]
-    pub(crate) fn pow(self, exp: Self, heap: &mut Heap) -> Self {
+    pub(crate) fn pow(self, exp: Self, heap: &mut Heap) -> Result<Self, String> {
         match (self, exp) {
-            (Self::Integer(a), Self::Integer(b)) if b.ge_i64(0, heap) => Self::Integer(
-                a.pow(b, heap)
-                    .expect("Only calling integer pow for exp >= 0"),
-            ),
-            (Self::Rational(a), Self::Integer(b)) => Self::Rational(
-                a.pow(b, heap)
-                    .expect("Rational power should not fail for integer exponent"),
-            ),
+            (Self::Integer(a), Self::Integer(b)) if b.ge_i64(0, heap) => {
+                Ok(Self::Integer(a.pow(b, heap)?))
+            }
+            (Self::Rational(a), Self::Integer(b)) => Ok(Self::Rational(a.pow(b, heap)?)),
             (Self::Integer(a), Self::Rational(b)) => {
-                Self::Float(a.to_f64(heap).powf(b.to_f64(heap)))
+                Ok(Self::Float(a.to_f64(heap).powf(b.to_f64(heap))))
             }
             (Self::Float(a), Self::Integer(b)) => match b.try_to_i32(heap) {
-                Ok(b) => Self::Float(a.powi(b)),
-                Err(_) => Self::Float(f64::INFINITY),
+                Ok(b) => Ok(Self::Float(a.powi(b))),
+                Err(_) => Ok(Self::Float(f64::INFINITY)),
             },
-            (Self::Integer(a), Self::Float(b)) => Self::Float(a.to_f64(heap).powf(b)),
-            (Self::Float(a), Self::Float(b)) => Self::Float(a.powf(b)),
-            (Self::Rational(a), Self::Float(b)) => Self::Float(a.to_f64(heap).powf(b)),
-            (Self::Float(a), Self::Rational(b)) => Self::Float(a.powf(b.to_f64(heap))),
+            (Self::Integer(a), Self::Float(b)) => Ok(Self::Float(a.to_f64(heap).powf(b))),
+            (Self::Float(a), Self::Float(b)) => Ok(Self::Float(a.powf(b))),
+            (Self::Rational(a), Self::Float(b)) => Ok(Self::Float(a.to_f64(heap).powf(b))),
+            (Self::Float(a), Self::Rational(b)) => Ok(Self::Float(a.powf(b.to_f64(heap)))),
             (Self::Rational(a), Self::Rational(b)) => {
-                Self::Float(a.to_f64(heap).powf(b.to_f64(heap)))
+                Ok(Self::Float(a.to_f64(heap).powf(b.to_f64(heap))))
             }
             (Self::Integer(a), Self::Integer(b)) => match b.try_to_i32(heap) {
-                Ok(b) => Self::Float(a.to_f64(heap).powi(b)),
-                Err(_) => Self::Float(f64::INFINITY),
+                Ok(b) => Ok(Self::Float(a.to_f64(heap).powi(b))),
+                Err(_) => Ok(Self::Float(f64::INFINITY)),
             },
         }
     }
@@ -494,6 +490,13 @@ impl GenericInt {
         }
     }
 
+    fn is_odd(&self, heap: &Heap) -> bool {
+        match self {
+            Self::Small(n) => n & 1 != 0,
+            Self::Big(n) => n.to_value(heap).bit(0),
+        }
+    }
+
     pub(crate) fn is_negative(&self, heap: &Heap) -> bool {
         match self {
             Self::Small(n) => n.is_negative(),
@@ -635,6 +638,17 @@ impl GenericInt {
         if rhs.lt_i64(0, heap) {
             return Err("Negative exponent".to_string());
         }
+        // These bases keep a defined value even when the exponent is too
+        // large to fit `u64`.
+        if self.is_zero(heap) {
+            return Ok(Self::Small(i64::from(rhs.is_zero(heap))));
+        }
+        if self.eq(&Self::Small(1), heap) {
+            return Ok(Self::Small(1));
+        }
+        if self.eq(&Self::Small(-1), heap) {
+            return Ok(Self::Small(if rhs.is_odd(heap) { -1 } else { 1 }));
+        }
         match (self, rhs) {
             (Self::Small(a), Self::Small(b)) => {
                 if let Ok(b_u32) = u32::try_from(b)
@@ -644,36 +658,33 @@ impl GenericInt {
                 } else {
                     // Fallback to `BigInt` exponentiation on overflow or for
                     // exponents that do not fit in `u32`.
+                    let exponent =
+                        u64::try_from(b).map_err(|_| "Exponent too large".to_string())?;
                     Ok(*heap
-                        .add_big_int(BigInt::from(a).pow(
-                            u64::try_from(b).expect("Previously checked that rhs is positive"),
-                        ))
+                        .add_big_int(BigInt::from(a).pow(exponent))
                         .as_generic_int())
                 }
             }
-            (Self::Big(a), Self::Big(b)) => Ok(*heap
-                .add_big_int(
-                    (a.to_value(heap)).clone().pow(
-                        u64::try_from((b.to_value(heap)).clone())
-                            .expect("Previously checked that rhs is positive"),
-                    ),
-                )
-                .as_generic_int()),
-            (Self::Small(a), Self::Big(b)) => Ok(*heap
-                .add_big_int(
-                    BigInt::from(a).pow(
-                        u64::try_from((b.to_value(heap)).clone())
-                            .expect("Previously checked that rhs is positive"),
-                    ),
-                )
-                .as_generic_int()),
-            (Self::Big(a), Self::Small(b)) => Ok(*heap
-                .add_big_int(
-                    (a.to_value(heap))
-                        .clone()
-                        .pow(u64::try_from(b).expect("Previously checked that rhs is positive")),
-                )
-                .as_generic_int()),
+            (Self::Big(a), Self::Big(b)) => {
+                let exponent = u64::try_from((b.to_value(heap)).clone())
+                    .map_err(|_| "Exponent too large".to_string())?;
+                Ok(*heap
+                    .add_big_int((a.to_value(heap)).clone().pow(exponent))
+                    .as_generic_int())
+            }
+            (Self::Small(a), Self::Big(b)) => {
+                let exponent = u64::try_from((b.to_value(heap)).clone())
+                    .map_err(|_| "Exponent too large".to_string())?;
+                Ok(*heap
+                    .add_big_int(BigInt::from(a).pow(exponent))
+                    .as_generic_int())
+            }
+            (Self::Big(a), Self::Small(b)) => {
+                let exponent = u64::try_from(b).map_err(|_| "Exponent too large".to_string())?;
+                Ok(*heap
+                    .add_big_int((a.to_value(heap)).clone().pow(exponent))
+                    .as_generic_int())
+            }
         }
     }
 

@@ -1,0 +1,21 @@
+fun report(label, f) {
+    try {
+        f();
+    } catch (ValueError) {
+        print(label + ": value error");
+        return;
+    }
+    print(label + ": no error");
+}
+
+report("small", ->() (2 ** 99999999999999999999)); # expect: small: value error
+report("big", ->() (99999999999999999999999999999999 ** 99999999999999999999)); # expect: big: value error
+report("rational", ->() ((1:2) ** 99999999999999999999)); # expect: rational: value error
+
+print(0 ** 0); # expect: 1
+print(0 ** 99999999999999999999); # expect: 0
+print(1 ** 99999999999999999999); # expect: 1
+print((-1) ** 99999999999999999999); # expect: -1
+print((-1) ** 100000000000000000000); # expect: 1
+
+print(2 ** 99999999999999999999); # expect runtime error: ValueError: Exponent too large
