@@ -1,0 +1,31 @@
+# floor division, exact zero divisors: int//int, int//rational, rational//int, rational//rational
+try { 1 // 0; } catch ValueError as e { print(e.message()); } # expect: Division by zero
+try { 1 // (0:1); } catch ValueError as e { print(e.message()); } # expect: Division by zero
+try { (1:2) // 0; } catch ValueError as e { print(e.message()); } # expect: Division by zero
+try { (1:2) // (0:1); } catch ValueError as e { print(e.message()); } # expect: Division by zero
+
+# floor division, float zero: int//float, float//int, float//float, rational//float, float//rational
+print(1 // 0.0); # expect: inf
+print(0 // 0.0); # expect: NaN
+print(1.0 // 0); # expect: inf
+print(0.0 // 0); # expect: NaN
+print(1.0 // 0.0); # expect: inf
+print(0.0 // 0.0); # expect: NaN
+print((1:2) // 0.0); # expect: inf
+print(1.0 // (0:1)); # expect: inf
+
+# remainder, exact zero divisor: int%int
+try { 1 % 0; } catch ValueError as e { print(e.message()); } # expect: Division by zero
+
+# remainder, all other zero divisors: int%float, float%int, float%float, rational%int, rational%float, rational%rational, int%rational, float%rational
+print(1 % 0.0); # expect: NaN
+print(0 % 0.0); # expect: NaN
+print(1.0 % 0); # expect: NaN
+print(0.0 % 0); # expect: NaN
+print(1.0 % 0.0); # expect: NaN
+print(0.0 % 0.0); # expect: NaN
+print((1:2) % 0); # expect: NaN
+print((1:2) % 0.0); # expect: NaN
+print((1:2) % (0:1)); # expect: NaN
+print(1 % (0:1)); # expect: NaN
+print(1.0 % (0:1)); # expect: NaN
