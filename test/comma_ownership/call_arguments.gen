@@ -1,0 +1,40 @@
+fun show(a, b, c) {
+    print("three");
+}
+
+fun invoke(a, f, c) {
+    print(a);
+    print(f());
+    print(c);
+}
+
+invoke(1, ->() 2, 3);
+
+var x = 0;
+show(1, x = 2, 3);
+print(x);
+
+class Box { var value = 0; }
+var box = Box();
+show(1, box.value = 2, 3);
+print(box.value);
+
+var xs = [0];
+show(1, xs[0] = 2, 3);
+print(xs[0]);
+
+invoke(1, ->() box.value = 2, 3);
+print(box.value);
+# expect: 1
+# expect: 2
+# expect: 3
+# expect: three
+# expect: 2
+# expect: three
+# expect: 2
+# expect: three
+# expect: 2
+# expect: 1
+# expect: 2
+# expect: 3
+# expect: 2

@@ -1,0 +1,48 @@
+fun invoke(a, f) {
+    print(a);
+    print(f());
+}
+
+invoke(1, ->() 2,);
+
+var x = 0;
+fun show(a, b) {
+    print(a);
+    print(b);
+}
+
+show(1, x = 2,);
+print(x);
+
+var list = [1, ->() 2,];
+print(list[1]());
+
+fun trailing(a = ->() 2,) {
+    print(a());
+}
+
+trailing();
+
+class Box { var value = 0; }
+var box = Box();
+fun ok(a, b) {
+    print("ok");
+}
+
+ok(1, box.value = 2,);
+print(box.value);
+
+var xs = [0];
+ok(1, xs[0] = 2,);
+print(xs[0]);
+# expect: 1
+# expect: 2
+# expect: 1
+# expect: 2
+# expect: 2
+# expect: 2
+# expect: 2
+# expect: ok
+# expect: 2
+# expect: ok
+# expect: 2

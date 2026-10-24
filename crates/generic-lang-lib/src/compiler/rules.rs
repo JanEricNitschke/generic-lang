@@ -381,8 +381,8 @@ impl Parser<'_> {
         }
     }
 
-    fn lambda(&mut self, _can_assign: bool, _ignore_operators: &[TK]) -> Expr {
-        let fn_lit = self.parse_lambda();
+    fn lambda(&mut self, _can_assign: bool, ignore_operators: &[TK]) -> Expr {
+        let fn_lit = self.parse_lambda(ignore_operators);
         let end = self.location();
         Expr {
             location: fn_lit.fn_location.merge_ordered(&end),
@@ -413,14 +413,20 @@ impl Parser<'_> {
     /// A following `(` is left to the call rule: `` object.name(args) ``
     /// becomes a `Call` whose callee is this property, which codegen
     /// turns into an `Invoke`.
-    fn dot(&mut self, can_assign: bool, _ignore_operators: &[TK], lhs: Expr) -> Expr {
+    fn dot(&mut self, can_assign: bool, ignore_operators: &[TK], lhs: Expr) -> Expr {
         // The `.` (or `?.` when entered through optional chaining) that
         // triggered this rule, already consumed by the caller.
-        self.finish_dot(can_assign, lhs, AccessMode::Direct)
+        self.finish_dot(can_assign, lhs, AccessMode::Direct, ignore_operators)
     }
 
     #[allow(clippy::too_many_lines)] // one cohesive property rule
-    fn finish_dot(&mut self, can_assign: bool, lhs: Expr, mode: AccessMode) -> Expr {
+    fn finish_dot(
+        &mut self,
+        can_assign: bool,
+        lhs: Expr,
+        mode: AccessMode,
+        ignore_operators: &[TK],
+    ) -> Expr {
         // An optional link anywhere in the chain's postfix spine makes
         // the whole chain unassignable.
         let can_assign = can_assign && !chain_has_optional_link(&lhs);
@@ -435,7 +441,7 @@ impl Parser<'_> {
 
         if can_assign && self.match_(TK::Equal) {
             let op_location = self.location();
-            let value = Box::new(self.expression());
+            let value = Box::new(self.expression_ignoring(ignore_operators));
             return Expr {
                 location: target_location.merge_ordered(&value.location),
                 kind: ExprKind::Assign {
@@ -456,7 +462,7 @@ impl Parser<'_> {
         }
         if can_assign && self.match_aug_operator() {
             let (op, op_location) = self.take_aug_operator();
-            let value = Box::new(self.expression());
+            let value = Box::new(self.expression_ignoring(ignore_operators));
             return Expr {
                 location: target_location.merge_ordered(&value.location),
                 kind: ExprKind::AugAssign {
@@ -493,16 +499,16 @@ impl Parser<'_> {
     fn optional_subscript(
         &mut self,
         _can_assign: bool,
-        _ignore_operators: &[TK],
+        ignore_operators: &[TK],
         lhs: Expr,
     ) -> Expr {
-        self.finish_subscript(false, lhs, AccessMode::NullSafe)
+        self.finish_subscript(false, lhs, AccessMode::NullSafe, ignore_operators)
     }
 
     /// `` ?.name `` - the optional-chaining link. Parses like `dot()`,
     /// never an assignment target; the chain keeps climbing afterwards.
-    fn optional_dot(&mut self, _can_assign: bool, _ignore_operators: &[TK], lhs: Expr) -> Expr {
-        self.finish_dot(false, lhs, AccessMode::NullSafe)
+    fn optional_dot(&mut self, _can_assign: bool, ignore_operators: &[TK], lhs: Expr) -> Expr {
+        self.finish_dot(false, lhs, AccessMode::NullSafe, ignore_operators)
     }
 
     /// Handles the four tokens that directly corresponds to values.
@@ -954,11 +960,17 @@ impl Parser<'_> {
     /// and setting.
     /// Also works by invoking `__getitem__` or `__setitem__`
     /// on the value to allow classes to overload how this operation works.
-    fn subscript(&mut self, can_assign: bool, _ignore_operators: &[TK], lhs: Expr) -> Expr {
-        self.finish_subscript(can_assign, lhs, AccessMode::Direct)
+    fn subscript(&mut self, can_assign: bool, ignore_operators: &[TK], lhs: Expr) -> Expr {
+        self.finish_subscript(can_assign, lhs, AccessMode::Direct, ignore_operators)
     }
 
-    fn finish_subscript(&mut self, can_assign: bool, lhs: Expr, mode: AccessMode) -> Expr {
+    fn finish_subscript(
+        &mut self,
+        can_assign: bool,
+        lhs: Expr,
+        mode: AccessMode,
+        ignore_operators: &[TK],
+    ) -> Expr {
         // See `finish_dot`: an optional link in the spine blocks
         // assignment to the whole chain.
         let can_assign = can_assign && !chain_has_optional_link(&lhs);
@@ -971,7 +983,7 @@ impl Parser<'_> {
 
         if can_assign && self.match_(TK::Equal) {
             let op_location = self.location();
-            let value = Box::new(self.expression());
+            let value = Box::new(self.expression_ignoring(ignore_operators));
             return Expr {
                 location: target_location.merge_ordered(&value.location),
                 kind: ExprKind::Assign {
@@ -992,7 +1004,7 @@ impl Parser<'_> {
         }
         if can_assign && self.match_aug_operator() {
             let (op, op_location) = self.take_aug_operator();
-            let value = Box::new(self.expression());
+            let value = Box::new(self.expression_ignoring(ignore_operators));
             return Expr {
                 location: target_location.merge_ordered(&value.location),
                 kind: ExprKind::AugAssign {
