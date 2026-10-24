@@ -1,5 +1,109 @@
+# Coverage: int/float/rational on either side.
+# Each group covers: positive, negative left, negative right, both negative.
+
+# right operand: int
+# int % int
 print(5 % 2); # expect: 1
-print(5.21 % 2); # expect: 1.21
-print(5 % 2.2); # expect: 0.5999999999999996
-print(5.11 % 2.2); # expect: 0.71
+print(-7 % 2); # expect: 1
+print(7 % -2); # expect: -1
+print(-7 % -2); # expect: -1
+# float % int
+print(5.0 % 2); # expect: 1.0
+print(-7.0 % 2); # expect: 1.0
+print(7.0 % -2); # expect: -1.0
+print(-7.0 % -2); # expect: -1.0
+# rational % int
+print((5:1) % 2); # expect: 1:1
+print((-7:1) % 2); # expect: 1:1
+print((7:1) % -2); # expect: -1:1
+print((-7:1) % -2); # expect: -1:1
+
+# right operand: float
+# int % float
+print(5 % 2.0); # expect: 1.0
+print(-7 % 2.0); # expect: 1.0
+print(7 % -2.0); # expect: -1.0
+print(-7 % -2.0); # expect: -1.0
+# float % float
+print(5.0 % 2.0); # expect: 1.0
+print(-7.0 % 2.0); # expect: 1.0
+print(7.0 % -2.0); # expect: -1.0
+print(-7.0 % -2.0); # expect: -1.0
+# rational % float
+print((5:1) % 2.0); # expect: 1.0
+print((-7:1) % 2.0); # expect: 1.0
+print((7:1) % -2.0); # expect: -1.0
+print((-7:1) % -2.0); # expect: -1.0
+
+# right operand: rational
+# int % rational
+print(5 % (2:1)); # expect: 1:1
+print(-7 % (2:1)); # expect: 1:1
+print(7 % (-2:1)); # expect: -1:1
+print(-7 % (-2:1)); # expect: -1:1
+# float % rational
+print(5.0 % (2:1)); # expect: 1.0
+print(-7.0 % (2:1)); # expect: 1.0
+print(7.0 % (-2:1)); # expect: -1.0
+print(-7.0 % (-2:1)); # expect: -1.0
+# rational % rational
+print((5:1) % (2:1)); # expect: 1:1
+print((-7:1) % (2:1)); # expect: 1:1
+print((7:1) % (-2:1)); # expect: -1:1
+print((-7:1) % (-2:1)); # expect: -1:1
+
+# non-whole operands
+# right operand: int
+# float % int
+print(5.5 % 2); # expect: 1.5
+print(-7.5 % 2); # expect: 0.5
+print(7.5 % -2); # expect: -0.5
+print(-7.5 % -2); # expect: -1.5
+# rational % int
+print((11:2) % 2); # expect: 3:2
+print((-15:2) % 2); # expect: 1:2
+print((15:2) % -2); # expect: -1:2
+print((-15:2) % -2); # expect: -3:2
+
+# right operand: float
+# int % float
+print(5 % 2.25); # expect: 0.5
+print(-7 % 2.25); # expect: 2.0
+print(7 % -2.25); # expect: -2.0
+print(-7 % -2.25); # expect: -0.25
+# float % float
+print(5.5 % 2.25); # expect: 1.0
+print(-7.5 % 2.25); # expect: 1.5
+print(7.5 % -2.25); # expect: -1.5
+print(-7.5 % -2.25); # expect: -0.75
+# rational % float
+print((11:2) % 2.25); # expect: 1.0
+print((-15:2) % 2.25); # expect: 1.5
+print((15:2) % -2.25); # expect: -1.5
+print((-15:2) % -2.25); # expect: -0.75
+
+# right operand: rational
+# int % rational
+print(5 % (9:4)); # expect: 1:2
+print(-7 % (9:4)); # expect: 2:1
+print(7 % (-9:4)); # expect: -2:1
+print(-7 % (-9:4)); # expect: -1:4
+# float % rational
+print(5.5 % (9:4)); # expect: 1.0
+print(-7.5 % (9:4)); # expect: 1.5
+print(7.5 % (-9:4)); # expect: -1.5
+print(-7.5 % (-9:4)); # expect: -0.75
+# rational % rational
+print((11:2) % (9:4)); # expect: 1:1
+print((-15:2) % (9:4)); # expect: 3:2
+print((15:2) % (-9:4)); # expect: -3:2
+print((-15:2) % (-9:4)); # expect: -3:4
+
+# signed zero
+print(-0.0 % 2.0); # expect: 0.0
+print(0.0 % -2.0); # expect: -0.0
+
+# BigInt
+print(9223372036854775808 % 3); # expect: 2
+print(-9223372036854775809 % 2); # expect: 1
 print(2 % "Test"); # expect runtime error: TypeError: Operands must be numbers or support `__mod__`. Got: [2, Test]

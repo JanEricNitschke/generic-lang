@@ -406,11 +406,21 @@ fn folds_division() {
 #[test]
 fn folds_floor_division_and_modulo() {
     assert_int("7 // 2", 3);
-    assert_int("-7 // 2", -3);
+    assert_int("-7 // 2", -4);
+    assert_int("7 // -2", -4);
+    assert_int("-7 // -2", 3);
     assert_int("7 % 3", 1);
-    assert_int("-7 % 3", -1);
+    assert_int("-7 % 3", 2);
+    assert_int("7 % -3", -2);
+    assert_int("-7 % -3", -1);
     assert_float("7.5 // 2", 3.0);
+    assert_float("-7.5 // 2", -4.0);
+    assert_float("7.5 // -2", -4.0);
+    assert_float("-7.5 // -2", 3.0);
     assert_float("7 % 2.5", 2.0);
+    assert_float("-7.5 % 2", 0.5);
+    assert_float("7.5 % -2", -0.5);
+    assert_float("-7.5 % -2", -1.5);
 
     assert_binary_kept("(-9223372036854775807 - 1) // -1", BinaryOp::FloorDiv);
     assert_int("(-9223372036854775807 - 1) % -1", 0);
