@@ -595,10 +595,13 @@ impl GenericInt {
         }
         match (self, rhs) {
             (Self::Small(a), Self::Small(b)) => {
-                if let Ok(b_u32) = u32::try_from(b) {
-                    Ok(Self::Small(a.pow(b_u32)))
+                if let Ok(b_u32) = u32::try_from(b)
+                    && let Some(value) = a.checked_pow(b_u32)
+                {
+                    Ok(Self::Small(value))
                 } else {
-                    // Fallback to `BigInt` exponentiation for large exponents
+                    // Fallback to `BigInt` exponentiation on overflow or for
+                    // exponents that do not fit in `u32`.
                     Ok(*heap
                         .add_big_int(BigInt::from(a).pow(
                             u64::try_from(b).expect("Previously checked that rhs is positive"),
