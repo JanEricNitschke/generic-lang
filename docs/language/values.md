@@ -61,6 +61,17 @@ Integer division with `/` produces a **rational** (`8 / 2` → `4:1`); use
 `//` for floor division to an integer/float. `0.0 / 0.0` is NaN, and
 `nan != nan` is `true`.
 
+`//` floors toward negative infinity, and `%` is the matching remainder with
+the divisor's sign: `a == (a // b) * b + (a % b)`. Integer and rational
+operands stay exact: integer/rational floor division yields an integer and
+rational modulo yields a rational. Any float operand makes the result a float.
+
+```generic
+print(-7 // 2);       # -4
+print(-7 % 3);        # 2
+print((-7:2) % 2);    # 1:2
+```
+
 ### Strings
 
 Strings are double-quoted and may span multiple lines literally.
@@ -213,7 +224,7 @@ exception classes.
 
 | Group | Operators |
 |---|---|
-| Arithmetic | `+` `-` `*` `/` (→ rational) `//` (floor) `%` `**` (power) |
+| Arithmetic | `+` `-` `*` `/` (→ rational) `//` (floor) `%` (matching remainder) `**` (power) |
 | Bitwise | `&` `\|` `^` |
 | Comparison | `<` `<=` `>` `>=` `==` `!=` |
 | Logical | `and` `or` (word operators, short-circuiting), `!` (negation) |

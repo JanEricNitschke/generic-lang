@@ -173,9 +173,10 @@ pub(super) fn tuple_bool_native(vm: &mut VM, receiver: &Value, _args: &[Value]) 
 /// Constructor for Tuple that accepts variable number of arguments.
 /// `Tuple()` creates empty tuple, `Tuple(1, 2, 3)` creates (1, 2, 3).
 pub(super) fn tuple_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmResult<Value> {
-    let items: Vec<Value> = args.to_vec();
     let tuple = receiver.as_tuple_mut(&mut vm.heap);
-    *tuple = Tuple::new(items);
+    if !tuple.is_initialized() {
+        *tuple = Tuple::new(args.to_vec());
+    }
     Ok(*receiver)
 }
 

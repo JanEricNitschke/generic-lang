@@ -1,0 +1,12 @@
+for 'outer (var i = 0; i < 2; i = i + 1) {
+    foreach (var j in (0, 1, 2)) {
+        if (j == 1) {
+            continue 'outer;
+        }
+        if (i == 1) {
+            break 'outer;
+        }
+        print(i * 10 + j); # expect: 0
+    }
+    print("bad");
+}

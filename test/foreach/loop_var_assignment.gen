@@ -1,0 +1,6 @@
+foreach (var x in (1, 2)) {
+    x = x + 10;
+    print(x);
+}
+# expect: 11
+# expect: 12

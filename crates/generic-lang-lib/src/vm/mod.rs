@@ -151,7 +151,8 @@ pub(crate) struct VM {
     /// command line; exposed to programs as `os.argv`. Empty in the REPL
     /// and in embedded uses that do not set it.
     pub(super) script_args: Vec<String>,
-    /// Options controlling this run, including module-cache access.
+    /// Options controlling this run, including module-cache access and
+    /// whether optimizations are enabled.
     pub(super) run_options: RunOptions,
     /// Must stay declared after `heap`: `Drop` for `Heap` runs plugin `drop`
     /// callbacks whose fn pointers live in the dylibs held here, and Rust drops
@@ -276,6 +277,7 @@ impl VM {
             scanner,
             &mut self.heap,
             name,
+            self.run_options.optimize,
             #[cfg(any(feature = "print_code", feature = "debug_parser"))]
             is_builtin,
         );
@@ -291,8 +293,12 @@ impl VM {
     ) -> Option<Function> {
         match origin {
             ModuleSource::OnDisk(path) => {
-                let metadata = std::fs::metadata(path).ok();
-                if self.run_options.cache_read
+                let cache_read = self.run_options.cache_read;
+                let cache_write = self.run_options.optimize && self.run_options.cache_write;
+                let metadata = (cache_read || cache_write)
+                    .then(|| std::fs::metadata(path).ok())
+                    .flatten();
+                if cache_read
                     && let Some(metadata) = metadata.as_ref()
                     && let Some(function) = cache::load(path, contents, metadata, &mut self.heap)
                 {
@@ -309,9 +315,7 @@ impl VM {
                     ))]
                     false,
                 )?;
-                if self.run_options.cache_write
-                    && let Some(metadata) = metadata.as_ref()
-                {
+                if cache_write && let Some(metadata) = metadata.as_ref() {
                     cache::store(path, contents, metadata, &function, &self.heap);
                 }
                 Some(function)
@@ -355,6 +359,7 @@ impl VM {
             scanner,
             &mut self.heap,
             &function_name,
+            self.run_options.optimize,
             #[cfg(any(feature = "print_code", feature = "debug_parser"))]
             false,
         );

@@ -1,0 +1,4 @@
+var f = ->() {
+    continue;
+};
+# [line 2] Error at 'continue': 'continue' outside a loop.

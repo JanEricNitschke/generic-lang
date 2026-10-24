@@ -245,6 +245,10 @@ plugin-valgrind-test: $(DEBUG_BIN) plugin-test-fixture plugin-lang-fixture
 custom-dart-test: $(DEBUG_BIN) plugin-test-fixture
 	dart tool/bin/test.dart clox --interpreter ./$(DEBUG_BIN)
 
+.PHONY: optimized-test
+optimized-test: $(DEBUG_BIN) setup-dart plugin-test-fixture
+	dart tool/bin/test.dart generic-optimized --interpreter ./$(DEBUG_BIN)
+
 .PHONY: unittest-test
 unittest-test: $(DEBUG_BIN)
 	dart tool/bin/test.dart generic-unittest --interpreter $(DEBUG_BIN) --arguments --test
@@ -259,10 +263,14 @@ unittest-test-directory: $(DEBUG_BIN)
 
 .PHONY: stress-gc-test
 stress-gc-test: $(STRESS_GC_BIN) plugin-test-fixture
-	dart tool/bin/test.dart clox --interpreter ./$(STRESS_GC_BIN)
+	dart tool/bin/test.dart clox --interpreter $(STRESS_GC_BIN)
+
+.PHONY: stress-gc-optimized-test
+stress-gc-optimized-test: $(STRESS_GC_BIN) setup-dart plugin-test-fixture
+	dart tool/bin/test.dart generic-optimized --interpreter $(STRESS_GC_BIN)
 
 .PHONY: test
-test: cargo-test setup-dart custom-dart-test stress-gc-test unittest-test unittest-test-single unittest-test-directory
+test: cargo-test setup-dart custom-dart-test optimized-test stress-gc-test stress-gc-optimized-test unittest-test unittest-test-single unittest-test-directory
 
 .PHONY: benchmark
 benchmark: fib-benchmark more-benchmark
