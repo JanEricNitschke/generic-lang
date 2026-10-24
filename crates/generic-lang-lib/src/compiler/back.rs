@@ -17,13 +17,13 @@ use super::ast::{
 use crate::{
     chunk::{Chunk, CodeOffset, ConstantIndex, ConstantLongIndex, OpCode},
     config::{LAMBDA_NAME, SPREAD_BITMAP_BYTES},
-    heap::{Heap, StringId},
+    heap::{Heap, InstanceId, StringId},
     types::{
         ConditionType, Location, LoopType, Mutability, NumberEncoding, OpcodeLocation, ReturnMode,
         render_snippet_rows,
     },
     utils::get_file_stem,
-    value::{Function, GenericInt, GenericRational, Instance, Number, Tuple, Value},
+    value::{Function, GenericInt, GenericRational, Instance, NativeClass, Number, Tuple, Value},
 };
 
 /// Scope nesting depth: 0 is global scope, locals carry `-1` while
@@ -479,11 +479,64 @@ impl Codegen<'_, '_> {
                 self.emit_byte(OpCode::LoadOnef, location);
             }
             _ => {
-                if !self.current_chunk_mut().write_constant(value, location) {
+                if let Some(index) = self.existing_constant(&value) {
+                    if !self
+                        .current_chunk_mut()
+                        .write_constant_index(index, location)
+                    {
+                        self.error("Too many constants in one chunk.");
+                    }
+                } else if !self.current_chunk_mut().write_constant(value, location) {
                     self.error("Too many constants in one chunk.");
                 }
             }
         }
+    }
+
+    /// Reuse an existing constant when the value is observably the same.
+    /// Scalars are compared by value and tuple instances structurally.
+    /// Other heap-allocated values (closures, functions, ...) keep their
+    /// separate identity.
+    fn existing_constant(&self, value: &Value) -> Option<usize> {
+        self.current_chunk()
+            .constants()
+            .iter()
+            .position(|constant| self.same_constant(constant, value))
+    }
+
+    fn same_constant(&self, lhs: &Value, rhs: &Value) -> bool {
+        match (lhs, rhs) {
+            (Value::Nil, Value::Nil) | (Value::StopIteration, Value::StopIteration) => true,
+            (Value::Bool(lhs), Value::Bool(rhs)) => lhs == rhs,
+            (Value::String(lhs), Value::String(rhs)) => lhs == rhs,
+            (Value::Number(lhs), Value::Number(rhs)) => match (lhs, rhs) {
+                (Number::Float(lhs), Number::Float(rhs)) => lhs.to_bits() == rhs.to_bits(),
+                (Number::Integer(lhs), Number::Integer(rhs)) => lhs.same_scalar(*rhs, self.heap),
+                (Number::Rational(lhs), Number::Rational(rhs)) => lhs.same_scalar(*rhs, self.heap),
+                _ => false,
+            },
+            (Value::Instance(lhs), Value::Instance(rhs)) => self.same_tuple(*lhs, *rhs),
+            _ => false,
+        }
+    }
+
+    fn same_tuple(&self, lhs: InstanceId, rhs: InstanceId) -> bool {
+        if lhs == rhs {
+            return true;
+        }
+        let lhs = lhs.to_value(self.heap);
+        let rhs = rhs.to_value(self.heap);
+        let (Some(NativeClass::Tuple(lhs)), Some(NativeClass::Tuple(rhs))) =
+            (&lhs.backing, &rhs.backing)
+        else {
+            return false;
+        };
+        lhs.items().len() == rhs.items().len()
+            && lhs
+                .items()
+                .iter()
+                .zip(rhs.items())
+                .all(|(lhs, rhs)| self.same_constant(lhs, rhs))
     }
 
     fn emit_jump(&mut self, instruction: OpCode, location: OpcodeLocation) -> CodeOffset {

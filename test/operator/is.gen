@@ -13,7 +13,11 @@ print(1.0 is 1.0); # expect: true
 print(1.0 is 2.0); # expect: false
 # Big ints are heap values, so identity compares object IDs
 print(99999999999999999999999999999999 == 99999999999999999999999999999999); # expect: true
-print(99999999999999999999999999999999 is 99999999999999999999999999999999); # expect: false
+print(99999999999999999999999999999999 is 99999999999999999999999999999999); # expect: true
+print((2 + 3) is 5); # expect: true
+var bigint1 = 99999999999999999999999999999999;
+var bigint2 = 100000000000000000000000000000000;
+print(bigint1 + 1 is bigint2); # expect: false
 
 # Test cross-type identity - should be false
 print(nil is false); # expect: false

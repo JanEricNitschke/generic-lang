@@ -193,8 +193,9 @@ pub(crate) enum Literal {
     /// With optimizations enabled, codegen emits this as a single prebuilt
     /// `Tuple` instance in the chunk's constant table, so repeatedly executing
     /// the same compiled literal expression (for example, in a loop body or
-    /// across function calls) yields the same object identity. That identity
-    /// is observable with `is`. The items themselves are immutable, but the
+    /// across function calls) yields the same object identity. Structurally
+    /// equal tuple literals also share one constant, so their identity is
+    /// equal with `is`. The items themselves are immutable, but the
     /// instance's fields are not: assigning a property to the tuple mutates
     /// the shared constant and is visible on every later evaluation.
     Tuple(Vec<Self>),
