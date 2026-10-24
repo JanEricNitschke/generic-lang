@@ -51,10 +51,10 @@ impl Codegen<'_, '_> {
 
 impl Parser<'_> {
     /// Handle a named variable based on the identifier of the last token.
-    pub(super) fn variable(&mut self, can_assign: bool, _ignore_operators: &[TK]) -> Expr {
+    pub(super) fn variable(&mut self, can_assign: bool, ignore_operators: &[TK]) -> Expr {
         let name = self.previous.as_ref().unwrap().as_str().to_string();
         let location = self.location();
-        self.named_variable(name, can_assign, location)
+        self.named_variable(name, can_assign, location, ignore_operators)
     }
 
     /// Handle a named variable with the given name.
@@ -67,10 +67,11 @@ impl Parser<'_> {
         name: String,
         can_assign: bool,
         location: Location,
+        ignore_operators: &[TK],
     ) -> Expr {
         if can_assign && self.match_(TK::Equal) {
             let op_location = self.location();
-            let value = Box::new(self.expression());
+            let value = Box::new(self.expression_ignoring(ignore_operators));
             return Expr {
                 location: location.merge_ordered(&value.location),
                 kind: ExprKind::Assign {
@@ -88,7 +89,7 @@ impl Parser<'_> {
         }
         if can_assign && self.match_aug_operator() {
             let (op, op_location) = self.take_aug_operator();
-            let value = Box::new(self.expression());
+            let value = Box::new(self.expression_ignoring(ignore_operators));
             return Expr {
                 location: location.merge_ordered(&value.location),
                 kind: ExprKind::AugAssign {

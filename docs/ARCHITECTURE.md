@@ -151,6 +151,9 @@ token after a `switch` subject.
   scope/codegen diagnostics (duplicate locals, const reassignment,
   own-initializer reads) are not emitted in the same run; fix syntax errors
   first.
+- In a comma-separated construct, an unparenthesized comma belongs to the
+  enclosing list. Lambda expression bodies and assignment right-hand sides
+  stop before that comma; parenthesize a tuple body or tuple RHS explicitly.
 - `debug_scanner`, `debug_parser`, and `print_code[_verbose]` provide debug
   output at their respective stages.
 

@@ -215,6 +215,12 @@ impl Parser<'_> {
     pub(super) fn expression(&mut self) -> Expr {
         self.parse_precedence(Precedence::Assignment)
     }
+
+    /// Parse a full expression (assignment precedence), ignoring the given
+    /// infix operators.
+    pub(super) fn expression_ignoring(&mut self, ignore_operators: &[TK]) -> Expr {
+        self.parse_precedence_ignoring(Precedence::Assignment, ignore_operators)
+    }
 }
 
 // Statements.
@@ -923,7 +929,7 @@ impl Parser<'_> {
     ///
     /// We support either single expressions, where no `return` is needed,
     /// or full blocks with a `return` statement.
-    pub(super) fn parse_lambda(&mut self) -> LambdaLit {
+    pub(super) fn parse_lambda(&mut self, ignore_operators: &[TK]) -> LambdaLit {
         let fn_location = self.location();
         self.function_stack
             .push(FunctionState::new(FunKind::Lambda));
@@ -934,7 +940,7 @@ impl Parser<'_> {
         let body = if self.match_(TK::LeftBrace) {
             LambdaBody::Block(self.block())
         } else {
-            LambdaBody::Expression(Box::new(self.expression()))
+            LambdaBody::Expression(Box::new(self.expression_ignoring(ignore_operators)))
         };
 
         self.function_stack.pop();
