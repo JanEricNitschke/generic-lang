@@ -128,33 +128,17 @@ impl Number {
     /// Otherwise the result is a floored float.
     pub(crate) fn floor_div(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
         match (self, rhs) {
-            (Self::Integer(a), Self::Integer(b)) => Ok(Self::Integer((a.div(b, heap))?)),
-            (Self::Rational(a), Self::Rational(b)) => {
-                let result = a.div(b, heap)?;
-                match result.to_int(heap) {
-                    Ok(int_result) => Ok(Self::Integer(int_result)),
-                    Err(_) => Ok(Self::Float(result.to_f64(heap).floor())),
-                }
-            }
+            (Self::Integer(a), Self::Integer(b)) => Ok(Self::Integer(a.floor_div(b, heap)?)),
+            (Self::Rational(a), Self::Rational(b)) => Ok(Self::Integer(a.floor_div(b, heap)?)),
             (Self::Float(a), Self::Integer(b)) => Ok(Self::Float((a / b.to_f64(heap)).floor())),
             (Self::Integer(a), Self::Float(b)) => Ok(Self::Float((a.to_f64(heap) / b).floor())),
             (Self::Float(a), Self::Float(b)) => Ok(Self::Float((a / b).floor())),
-            (Self::Rational(a), Self::Integer(b)) => {
-                let b_rat = GenericRational::new(b, GenericInt::Small(1), heap)?;
-                let result = a.div(b_rat, heap)?;
-                match result.to_int(heap) {
-                    Ok(int_result) => Ok(Self::Integer(int_result)),
-                    Err(_) => Ok(Self::Float(result.to_f64(heap).floor())),
-                }
-            }
-            (Self::Integer(a), Self::Rational(b)) => {
-                let a_rat = GenericRational::new(a, GenericInt::Small(1), heap)?;
-                let result = a_rat.div(b, heap)?;
-                match result.to_int(heap) {
-                    Ok(int_result) => Ok(Self::Integer(int_result)),
-                    Err(_) => Ok(Self::Float(result.to_f64(heap).floor())),
-                }
-            }
+            (Self::Rational(a), Self::Integer(b)) => Ok(Self::Integer(
+                a.floor_div(GenericRational::from_int(b), heap)?,
+            )),
+            (Self::Integer(a), Self::Rational(b)) => Ok(Self::Integer(
+                GenericRational::from_int(a).floor_div(b, heap)?,
+            )),
             (Self::Float(a), Self::Rational(b)) => Ok(Self::Float((a / b.to_f64(heap)).floor())),
             (Self::Rational(a), Self::Float(b)) => Ok(Self::Float((a.to_f64(heap) / b).floor())),
         }
@@ -279,23 +263,60 @@ impl Number {
         }
     }
 
+    /// Floored float remainder: the result has the divisor's sign, including
+    /// for exact zero results.
+    pub(crate) fn floor_mod_f64(lhs: f64, rhs: f64) -> f64 {
+        let remainder = lhs % rhs;
+        if remainder == 0.0 {
+            0.0_f64.copysign(rhs)
+        } else if (remainder < 0.0) != (rhs < 0.0) {
+            remainder + rhs
+        } else {
+            remainder
+        }
+    }
+
     pub(crate) fn rem(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
         match (self, rhs) {
-            (Self::Integer(a), Self::Integer(b)) => Ok(Self::Integer((a.rem(b, heap))?)),
-            (Self::Float(a), Self::Integer(b)) => Ok(Self::Float(a % b.to_f64(heap))),
-            (Self::Integer(a), Self::Float(b)) => Ok(Self::Float(a.to_f64(heap) % b)),
-            (Self::Float(a), Self::Float(b)) => Ok(Self::Float(a % b)),
+            (Self::Integer(a), Self::Integer(b)) => Ok(Self::Integer(a.floor_mod(b, heap)?)),
+            (Self::Float(a), Self::Integer(b)) => {
+                Ok(Self::Float(Self::floor_mod_f64(a, b.to_f64(heap))))
+            }
+            (Self::Integer(a), Self::Float(b)) => {
+                Ok(Self::Float(Self::floor_mod_f64(a.to_f64(heap), b)))
+            }
+            (Self::Float(a), Self::Float(b)) => Ok(Self::Float(Self::floor_mod_f64(a, b))),
             (Self::Rational(a), Self::Rational(b)) => {
-                Ok(Self::Float(a.to_f64(heap) % b.to_f64(heap)))
+                if b.numerator().is_zero(heap) {
+                    Ok(Self::Float(f64::NAN))
+                } else {
+                    Ok(Self::Rational(a.floor_mod(b, heap)?))
+                }
             }
             (Self::Rational(a), Self::Integer(b)) => {
-                Ok(Self::Float(a.to_f64(heap) % b.to_f64(heap)))
+                if b.is_zero(heap) {
+                    Ok(Self::Float(f64::NAN))
+                } else {
+                    Ok(Self::Rational(
+                        a.floor_mod(GenericRational::from_int(b), heap)?,
+                    ))
+                }
             }
             (Self::Integer(a), Self::Rational(b)) => {
-                Ok(Self::Float(a.to_f64(heap) % b.to_f64(heap)))
+                if b.numerator().is_zero(heap) {
+                    Ok(Self::Float(f64::NAN))
+                } else {
+                    Ok(Self::Rational(
+                        GenericRational::from_int(a).floor_mod(b, heap)?,
+                    ))
+                }
             }
-            (Self::Float(a), Self::Rational(b)) => Ok(Self::Float(a % b.to_f64(heap))),
-            (Self::Rational(a), Self::Float(b)) => Ok(Self::Float(a.to_f64(heap) % b)),
+            (Self::Float(a), Self::Rational(b)) => {
+                Ok(Self::Float(Self::floor_mod_f64(a, b.to_f64(heap))))
+            }
+            (Self::Rational(a), Self::Float(b)) => {
+                Ok(Self::Float(Self::floor_mod_f64(a.to_f64(heap), b)))
+            }
         }
     }
 
@@ -563,6 +584,27 @@ macro_rules! impl_div_rem {
 // Implementing div and rem
 impl_div_rem!(div, checked_div);
 impl_div_rem!(rem, checked_rem);
+
+impl GenericInt {
+    pub(crate) fn floor_div(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
+        let quotient = self.div(rhs, heap)?;
+        let remainder = self.rem(rhs, heap)?;
+        if (self.is_negative(heap) != rhs.is_negative(heap)) && !remainder.is_zero(heap) {
+            Ok(quotient.sub(Self::Small(1), heap))
+        } else {
+            Ok(quotient)
+        }
+    }
+
+    pub(crate) fn floor_mod(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
+        let remainder = self.rem(rhs, heap)?;
+        if (self.is_negative(heap) != rhs.is_negative(heap)) && !remainder.is_zero(heap) {
+            Ok(remainder.add(rhs, heap))
+        } else {
+            Ok(remainder)
+        }
+    }
+}
 
 // Implementing bitwise operations
 macro_rules! impl_bitwise_op {
@@ -952,6 +994,16 @@ impl GenericRational {
         let num = self.numerator.mul(rhs.denominator, heap);
         let den = self.denominator.mul(rhs.numerator, heap);
         Self::new(num, den, heap)
+    }
+
+    pub(crate) fn floor_div(self, rhs: Self, heap: &mut Heap) -> Result<GenericInt, String> {
+        let quotient = self.div(rhs, heap)?;
+        quotient.numerator.floor_div(quotient.denominator, heap)
+    }
+
+    pub(crate) fn floor_mod(self, rhs: Self, heap: &mut Heap) -> Result<Self, String> {
+        let quotient = Self::from_int(self.floor_div(rhs, heap)?);
+        Ok(self.sub(quotient.mul(rhs, heap), heap))
     }
 
     pub(crate) fn neg(self, heap: &mut Heap) -> Self {

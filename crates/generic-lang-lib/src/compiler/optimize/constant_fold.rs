@@ -1,6 +1,7 @@
 use super::super::ast::{BinaryOp, Expr, ExprKind, Literal, Stmt, UnaryOp};
 use super::walk::{Visitor, walk_expr};
 use crate::utils::repeat_string as repeat_checked;
+use crate::value::Number;
 use num_bigint::{BigInt, Sign};
 use num_traits::{FromPrimitive, Signed, ToPrimitive, Zero};
 use std::cmp::Ordering;
@@ -427,7 +428,13 @@ pub(super) fn fold_floor_div(lhs: &Literal, rhs: &Literal) -> Option<Literal> {
 }
 
 pub(super) fn fold_small_floor_div(lhs: i64, rhs: i64) -> Option<Literal> {
-    lhs.checked_div(rhs).map(Literal::Int)
+    let quotient = lhs.checked_div(rhs)?;
+    let remainder = lhs.checked_rem(rhs)?;
+    if ((lhs < 0) != (rhs < 0)) && remainder != 0 {
+        Some(Literal::Int(quotient.checked_sub(1)?))
+    } else {
+        Some(Literal::Int(quotient))
+    }
 }
 
 #[allow(clippy::cast_precision_loss)]
@@ -435,26 +442,32 @@ pub(super) fn fold_mod(lhs: &Literal, rhs: &Literal) -> Option<Literal> {
     match (lhs, rhs) {
         (Literal::Int(lhs), Literal::Int(rhs)) if *rhs != 0 => Some(fold_small_mod(*lhs, *rhs)),
         (Literal::Float(lhs), Literal::Float(rhs)) if *rhs != 0.0 => {
-            Some(Literal::Float(lhs % rhs))
+            Some(Literal::Float(Number::floor_mod_f64(*lhs, *rhs)))
         }
         (Literal::Int(lhs), Literal::Float(rhs)) if *rhs != 0.0 => {
-            Some(Literal::Float(*lhs as f64 % rhs))
+            Some(Literal::Float(Number::floor_mod_f64(*lhs as f64, *rhs)))
         }
         (Literal::Float(lhs), Literal::Int(rhs)) if *rhs != 0 => {
-            Some(Literal::Float(lhs % *rhs as f64))
+            Some(Literal::Float(Number::floor_mod_f64(*lhs, *rhs as f64)))
         }
         (Literal::BigInt(lhs), Literal::Float(rhs)) if *rhs != 0.0 => {
-            Some(Literal::Float(big_to_f64(lhs) % rhs))
+            Some(Literal::Float(Number::floor_mod_f64(big_to_f64(lhs), *rhs)))
         }
         (Literal::Float(lhs), Literal::BigInt(rhs)) if !rhs.is_zero() => {
-            Some(Literal::Float(lhs % big_to_f64(rhs)))
+            Some(Literal::Float(Number::floor_mod_f64(*lhs, big_to_f64(rhs))))
         }
         _ => None,
     }
 }
 
 pub(super) fn fold_small_mod(lhs: i64, rhs: i64) -> Literal {
-    Literal::Int(lhs.checked_rem(rhs).unwrap_or(0))
+    // The only `None` here is `i64::MIN % -1`, whose remainder is zero.
+    let remainder = lhs.checked_rem(rhs).unwrap_or(0);
+    if ((lhs < 0) != (rhs < 0)) && remainder != 0 {
+        Literal::Int(remainder + rhs)
+    } else {
+        Literal::Int(remainder)
+    }
 }
 
 pub(super) fn fold_exp(lhs: &Literal, rhs: &Literal) -> Option<Literal> {
