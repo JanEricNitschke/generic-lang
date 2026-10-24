@@ -702,6 +702,16 @@ impl GenericInt {
         }
     }
 
+    /// Whether two values use the same scalar representation. Unlike [`Self::eq`],
+    /// this does not promote a `Small` integer to compare it with a `Big` one.
+    pub(crate) fn same_scalar(self, other: Self, heap: &Heap) -> bool {
+        match (self, other) {
+            (Self::Small(a), Self::Small(b)) => a == b,
+            (Self::Big(a), Self::Big(b)) => a.to_value(heap) == b.to_value(heap),
+            _ => false,
+        }
+    }
+
     fn partial_cmp(&self, other: &Self, heap: &Heap) -> Option<Ordering> {
         match (self, other) {
             (Self::Small(a), Self::Small(b)) => a.partial_cmp(b),
@@ -859,6 +869,11 @@ pub(crate) struct GenericRational {
 }
 
 impl GenericRational {
+    pub(crate) fn same_scalar(self, other: Self, heap: &Heap) -> bool {
+        self.numerator.same_scalar(other.numerator, heap)
+            && self.denominator.same_scalar(other.denominator, heap)
+    }
+
     pub(crate) fn new(
         numerator: GenericInt,
         denominator: GenericInt,

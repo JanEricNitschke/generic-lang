@@ -257,14 +257,19 @@ impl Chunk {
     /// Create it in the constant table and write the index preceded by
     /// the corresponding `OpCode`.
     pub(super) fn write_constant(&mut self, what: Value, location: OpcodeLocation) -> bool {
-        let long_index = self.make_constant(what);
-        if let Ok(short_index) = u8::try_from(*long_index) {
+        let index = self.make_constant(what);
+        self.write_constant_index(*index, location)
+    }
+
+    /// Emit a load for a constant that is already in the table.
+    pub(super) fn write_constant_index(&mut self, index: usize, location: OpcodeLocation) -> bool {
+        if let Ok(short_index) = u8::try_from(index) {
             self.write(OpCode::Constant, location);
             self.write(short_index, location);
             true
         } else {
             self.write(OpCode::ConstantLong, location);
-            self.write_24bit_number(*long_index, location)
+            self.write_24bit_number(index, location)
         }
     }
 
