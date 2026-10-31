@@ -16,6 +16,7 @@ use super::front::Parser;
 use super::rules::Precedence;
 use crate::scanner::Scanner;
 use crate::types::{ConditionType, LoopType, Mutability};
+use std::collections::HashSet;
 
 #[derive(Clone, Copy)]
 struct Delimiters<'a> {
@@ -158,6 +159,7 @@ struct Formatter<'comments> {
     indent_unit: String,
     options: FormatOptions,
     comments: &'comments CommentMap,
+    emitted_comments: HashSet<Position>,
 }
 
 impl<'comments> Formatter<'comments> {
@@ -167,6 +169,7 @@ impl<'comments> Formatter<'comments> {
             indent_unit: " ".repeat(options.indent_width),
             options,
             comments,
+            emitted_comments: HashSet::new(),
         }
     }
 
@@ -189,10 +192,13 @@ impl<'comments> Formatter<'comments> {
     }
 
     fn has_comments(&self, position: Position) -> bool {
-        self.comments.has_comments(position)
+        !self.emitted_comments.contains(&position) && self.comments.has_comments(position)
     }
 
     fn emit_comments(&mut self, position: Position, level: usize) {
+        if !self.emitted_comments.insert(position) {
+            return;
+        }
         for comment in self.comments.get(position) {
             self.comment(comment, level);
         }
@@ -2180,6 +2186,26 @@ switch (x) {
         assert_eq!(
             format_source("# only a comment\n", options).unwrap(),
             "# only a comment\n"
+        );
+    }
+
+    #[test]
+    fn keeps_leading_comment_before_unparenthesized_tuple_once() {
+        assert_formatting(
+            "#x
+b, c;
+",
+            "#x
+b, c;
+",
+        );
+        assert_formatting(
+            "a; #x
+b, c;
+",
+            "a; #x
+b, c;
+",
         );
     }
 }

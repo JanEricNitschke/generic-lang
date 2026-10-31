@@ -48,16 +48,19 @@ coverage.
 
 ```sh
 # Formatter: 20 minutes.
-cargo +nightly fuzz run format target/fuzz-corpus-format -- \
+ASAN_OPTIONS=allocator_may_return_null=1 cargo +nightly fuzz run format target/fuzz-corpus-format -- \
     -max_total_time=1200 -timeout=10 -max_len=8192 -close_fd_mask=3 \
     -seed_inputs=@target/fuzz-seeds-format.txt
 
 # Interpreter: 20 minutes, in fork mode so timeouts do not stop the run.
-cargo +nightly fuzz run interpret target/fuzz-corpus-interpret -- \
+ASAN_OPTIONS=allocator_may_return_null=1 cargo +nightly fuzz run interpret target/fuzz-corpus-interpret -- \
     -fork=1 -ignore_timeouts=1 \
     -max_total_time=1200 -timeout=10 -max_len=8192 -close_fd_mask=3
 ```
 
+- `allocator_may_return_null=1` makes ASan return `NULL` for absurd allocation
+  requests instead of aborting, so the interpreter can report them as normal
+  language errors.
 - `-max_total_time=1200` sets the fuzzing budget to 20 minutes.
 - `-timeout=10` is the per-input liveness guard. The interpreter runs in fork
   mode, so the parent kills a timed-out child and continues; timeouts are
@@ -71,8 +74,8 @@ coverage-increasing inputs; they are ignored by git. Failures are written to
 `fuzz/artifacts/<target>/` (also ignored). Reproduce one with:
 
 ```sh
-cargo +nightly fuzz run interpret fuzz/artifacts/interpret/crash-<hash>
-cargo +nightly fuzz tmin interpret fuzz/artifacts/interpret/crash-<hash>
+ASAN_OPTIONS=allocator_may_return_null=1 cargo +nightly fuzz run interpret fuzz/artifacts/interpret/crash-<hash>
+ASAN_OPTIONS=allocator_may_return_null=1 cargo +nightly fuzz tmin interpret fuzz/artifacts/interpret/crash-<hash>
 ```
 
 Inspect new corpus entries after a run. Coverage-increasing inputs are

@@ -14,6 +14,7 @@ use super::ast::{
     LambdaBody, LambdaLit, Literal, Method, ParamList, Program, Stmt, StmtKind, SwitchCase,
     TryStmt, Tstring, UnaryOp,
 };
+use super::variables::{VariableOps, VariableResolution};
 use crate::{
     chunk::{Chunk, CodeOffset, ConstantIndex, ConstantLongIndex, OpCode},
     config::{LAMBDA_NAME, SPREAD_BITMAP_BYTES},
@@ -2516,7 +2517,12 @@ impl Codegen<'_, '_> {
         match &target.kind {
             ExprKind::Variable { name, .. } => {
                 let variable_location = target.location;
-                let (_, mut set_op, arg) = self.resolve_variable_ops(name, variable_location);
+                let VariableResolution::Resolved(VariableOps {
+                    mut set_op, arg, ..
+                }) = self.resolve_variable_ops(name, variable_location)
+                else {
+                    return;
+                };
                 // Get or set? / Generate the code. (the parser decided; here
                 // only the setter remains)
                 // Support for more than u8::MAX variables in a scope
@@ -2614,8 +2620,14 @@ impl Codegen<'_, '_> {
         match &target.kind {
             ExprKind::Variable { name, .. } => {
                 let variable_location = target.location;
-                let (mut get_op, mut set_op, arg) =
-                    self.resolve_variable_ops(name, variable_location);
+                let VariableResolution::Resolved(VariableOps {
+                    mut get_op,
+                    mut set_op,
+                    arg,
+                }) = self.resolve_variable_ops(name, variable_location)
+                else {
+                    return;
+                };
                 // Support for more than u8::MAX variables in a scope
                 let encoding = if arg > usize::from(u8::MAX) {
                     get_op = get_op.to_long();

@@ -1,2 +1,10 @@
 print((1,)); # expect: (1,)
 print((1, 2,)); # expect: (1, 2)
+var single = 1,;
+print(single); # expect: (1,)
+var pair = 1, 2,;
+print(pair); # expect: (1, 2)
+var signed = 1, -2,;
+print(signed); # expect: (1, -2)
+var flags = true, !false,;
+print(flags); # expect: (true, true)
