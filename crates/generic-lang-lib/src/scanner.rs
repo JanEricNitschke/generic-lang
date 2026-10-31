@@ -253,7 +253,7 @@ impl<'a> Scanner<'a> {
     }
 
     pub(crate) fn source_slice(&self, start: usize, end: usize) -> &'a str {
-        &self.source[start..end]
+        self.source.get(start..end).unwrap_or_default()
     }
 
     /// The full source being scanned. Used to render the snippet rows

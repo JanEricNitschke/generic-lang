@@ -122,9 +122,28 @@ pub fn run_file(
     Ok(vm.interpret(&contents, file))
 }
 
+/// Compile and run source that is already in memory.
+///
+/// The `path` identifies the script: it becomes `os.argv[0]` and is the
+/// base for resolving relative imports, exactly as in [`run_file`]. Pass a
+/// synthetic path for source that did not come from a file.
+///
+/// Language-level compile errors and uncaught exceptions are reported
+/// through the returned [`InterpretResult`]; they are not Rust errors.
+#[must_use]
+pub fn run_source(source: &str, path: PathBuf, options: RunOptions) -> InterpretResult {
+    let mut vm = VM::new(options);
+    vm.set_script_args(vec![path.to_string_lossy().into_owned()]);
+    vm.interpret(source, path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::RunOptions;
+    #[cfg(not(miri))]
+    use super::{InterpretResult, run_source};
+    #[cfg(not(miri))]
+    use std::path::PathBuf;
 
     #[test]
     fn cache_defaults_follow_the_build_profile() {
@@ -135,5 +154,29 @@ mod tests {
         let release = RunOptions::for_profile(false);
         assert!(release.cache_read);
         assert!(release.cache_write);
+    }
+
+    // The runtime-error case captures a stack trace, which probes source
+    // files; Miri isolation does not support filesystem access.
+    #[cfg(not(miri))]
+    #[test]
+    fn run_source_reports_language_status() {
+        let options = RunOptions {
+            cache_read: false,
+            cache_write: false,
+            optimize: true,
+        };
+        assert_eq!(
+            run_source("var x = 1 + 1;\n", PathBuf::from("<test>"), options),
+            InterpretResult::Ok
+        );
+        assert_eq!(
+            run_source("var = ;\n", PathBuf::from("<test>"), options),
+            InterpretResult::CompileError
+        );
+        assert_eq!(
+            run_source("missing();\n", PathBuf::from("<test>"), options),
+            InterpretResult::RuntimeError
+        );
     }
 }

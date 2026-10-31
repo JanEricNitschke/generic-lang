@@ -1,0 +1,28 @@
+[package]
+name = "generic-lang-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+generic-lang-lib = { path = "../crates/generic-lang-lib", default-features = false }
+
+[[bin]]
+name = "format"
+path = "fuzz_targets/format.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "interpret"
+path = "fuzz_targets/interpret.rs"
+test = false
+doc = false
+bench = false
