@@ -184,7 +184,7 @@ impl Collector {
     #[allow(clippy::too_many_lines)]
     fn statement(&mut self, statement: &Stmt) {
         match &statement.kind {
-            StmtKind::Expression { expr } | StmtKind::Throw { expr, .. } => self.expr(expr),
+            StmtKind::ExpressionStmt { expr } | StmtKind::Throw { expr, .. } => self.expr(expr),
             StmtKind::VarDecl {
                 initializer: Some(initializer),
                 ..
@@ -322,7 +322,7 @@ impl Collector {
 
     fn statement_kind(&mut self, statement: &StmtKind) {
         match statement {
-            StmtKind::Expression { expr } => self.expr(expr),
+            StmtKind::ExpressionStmt { expr } => self.expr(expr),
             StmtKind::VarDecl {
                 initializer: Some(initializer),
                 ..
@@ -400,7 +400,7 @@ impl Collector {
 
     fn class_member(&mut self, member: &ClassMember) {
         match &member.kind {
-            ClassMemberKind::Variable(variable) => {
+            ClassMemberKind::ClassVar(variable) => {
                 if let Some(annotation) = &variable.annotation {
                     self.expr(annotation);
                 }
@@ -512,7 +512,7 @@ impl Collector {
                 self.expr(else_);
             }
             ExprKind::Grouping { inner } => {
-                let previous_end_line = if let ExprKind::Tuple { elements } = &inner.kind {
+                let previous_end_line = if let ExprKind::TupleLit { elements } = &inner.kind {
                     elements.last().map(|element| element.location.end_line.0)
                 } else {
                     self.span_list(
@@ -531,7 +531,7 @@ impl Collector {
                 });
                 self.expr(inner);
             }
-            ExprKind::Tuple { elements } => {
+            ExprKind::TupleLit { elements } => {
                 let close = elements.is_empty().then(|| end_position(expr.location));
                 self.span_list(
                     elements.iter().map(|element| {
@@ -574,7 +574,7 @@ impl Collector {
             }
             ExprKind::Fstring { parts } => {
                 for part in parts {
-                    if let super::ast::FstringPart::Interp(expr) = part {
+                    if let super::ast::FstringPart::Interpolation(expr) = part {
                         self.expr(expr);
                     }
                 }
@@ -588,8 +588,8 @@ impl Collector {
                 }
             }
             ExprKind::Lambda(lambda) => self.lambda(lambda, end_position(expr.location)),
-            ExprKind::Yield { operand } => {
-                if let Some(operand) = operand {
+            ExprKind::Yield { value } => {
+                if let Some(operand) = value {
                     self.expr(operand);
                 }
             }

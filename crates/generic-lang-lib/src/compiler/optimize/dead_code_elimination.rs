@@ -43,7 +43,7 @@ fn eliminate_list(old: Vec<Stmt>) -> Vec<Stmt> {
 #[allow(clippy::too_many_lines)]
 pub(super) fn simplify_stmt(stmt: StmtKind) -> Vec<StmtKind> {
     match stmt {
-        StmtKind::Expression { expr } if is_pure_expr(&expr) => Vec::new(),
+        StmtKind::ExpressionStmt { expr } if is_pure_expr(&expr) => Vec::new(),
         StmtKind::Block { stmts, .. } if stmts.is_empty() => Vec::new(),
         StmtKind::Conditional {
             condition_type,
@@ -189,7 +189,7 @@ pub(super) fn is_terminator(stmt: &StmtKind) -> bool {
 
 pub(super) fn is_effect_free_stmt(stmt: &StmtKind) -> bool {
     match stmt {
-        StmtKind::Expression { expr } => is_pure_expr(expr),
+        StmtKind::ExpressionStmt { expr } => is_pure_expr(expr),
         StmtKind::VarDecl { initializer, .. } => initializer.as_deref().is_none_or(is_pure_expr),
         StmtKind::Block { stmts, .. } => stmts.iter().all(|stmt| is_effect_free_stmt(&stmt.kind)),
         _ => false,
@@ -197,7 +197,7 @@ pub(super) fn is_effect_free_stmt(stmt: &StmtKind) -> bool {
 }
 
 pub(super) fn is_pure_expression_stmt(stmt: &StmtKind) -> bool {
-    matches!(stmt, StmtKind::Expression { expr } if is_pure_expr(expr))
+    matches!(stmt, StmtKind::ExpressionStmt { expr } if is_pure_expr(expr))
 }
 
 pub(super) fn is_pure_expr(expr: &Expr) -> bool {

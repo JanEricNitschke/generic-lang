@@ -343,7 +343,7 @@ impl<'comments> Formatter<'comments> {
     #[allow(clippy::too_many_lines)]
     fn statement(&mut self, statement: &Stmt, level: usize) {
         match &statement.kind {
-            StmtKind::Expression { expr } => {
+            StmtKind::ExpressionStmt { expr } => {
                 self.indent(level);
                 self.expr(expr, Precedence::Assignment, level);
                 self.out.push_str(";\n");
@@ -584,7 +584,7 @@ impl<'comments> Formatter<'comments> {
         for member in &class.members {
             self.emit_comments(super::comments::start_position(member.location), level + 1);
             match &member.kind {
-                ClassMemberKind::Variable(variable) => self.class_variable(variable, level + 1),
+                ClassMemberKind::ClassVar(variable) => self.class_variable(variable, level + 1),
                 ClassMemberKind::Method(method) => {
                     self.method(method, end_position(member.location), level + 1);
                 }
@@ -639,7 +639,7 @@ impl<'comments> Formatter<'comments> {
             let matcher = &catch.matchers[0];
             let needs_catch_parentheses = match &matcher.kind {
                 ExprKind::Grouping { .. } => true,
-                ExprKind::Tuple { elements } => elements.is_empty(),
+                ExprKind::TupleLit { elements } => elements.is_empty(),
                 _ => false,
             };
             if needs_catch_parentheses {
@@ -745,7 +745,7 @@ impl<'comments> Formatter<'comments> {
                 initializer,
                 ..
             } => self.variable_declaration(name, *mutability, initializer.as_deref(), level),
-            StmtKind::Expression { expr } => {
+            StmtKind::ExpressionStmt { expr } => {
                 self.expr(expr, Precedence::Assignment, level);
             }
             _ => {}
@@ -797,7 +797,7 @@ impl<'comments> Formatter<'comments> {
     fn expr_single(&mut self, expr: &Expr, parent: Precedence, level: usize) {
         if matches!(
             &expr.kind,
-            ExprKind::Tuple { elements } if !elements.is_empty()
+            ExprKind::TupleLit { elements } if !elements.is_empty()
         ) {
             self.out.push('(');
             self.expr(expr, Precedence::None, level);
@@ -905,7 +905,7 @@ impl<'comments> Formatter<'comments> {
             ExprKind::Grouping { inner } => {
                 let close = Delimiters::new("(", ")").at(end_position(expr.location));
                 match &inner.kind {
-                    ExprKind::Tuple { elements } if !elements.is_empty() => {
+                    ExprKind::TupleLit { elements } if !elements.is_empty() => {
                         let delimiters = if elements.len() == 1 {
                             close.single_comma()
                         } else {
@@ -934,7 +934,7 @@ impl<'comments> Formatter<'comments> {
                     }
                 }
             }
-            ExprKind::Tuple { elements } => {
+            ExprKind::TupleLit { elements } => {
                 if elements.is_empty() {
                     self.comma_list(
                         elements,
@@ -996,8 +996,8 @@ impl<'comments> Formatter<'comments> {
                 self.out.push_str("f\"");
                 for part in parts {
                     match part {
-                        FstringPart::Str(text) => self.out.push_str(text),
-                        FstringPart::Interp(expr) => {
+                        FstringPart::Text(text) => self.out.push_str(text),
+                        FstringPart::Interpolation(expr) => {
                             self.out.push_str("${");
                             self.expr(expr, Precedence::Assignment, level);
                             self.out.push('}');
@@ -1041,9 +1041,9 @@ impl<'comments> Formatter<'comments> {
                 self.out.push_str("super.");
                 self.out.push_str(method);
             }
-            ExprKind::Yield { operand } => {
+            ExprKind::Yield { value } => {
                 self.out.push_str("yield");
-                if let Some(operand) = operand {
+                if let Some(operand) = value {
                     self.out.push(' ');
                     self.expr(operand, Precedence::Assignment, level);
                 }
@@ -1104,7 +1104,7 @@ impl<'comments> Formatter<'comments> {
             Literal::Int(value) => self.out.push_str(&value.to_string()),
             Literal::BigInt(value) => self.out.push_str(&value.to_string()),
             Literal::Float(value) => self.float(*value),
-            Literal::Str(value) => {
+            Literal::String(value) => {
                 self.out.push('"');
                 self.out.push_str(value);
                 self.out.push('"');
@@ -1198,7 +1198,7 @@ fn precedence(kind: &ExprKind) -> Precedence {
             Precedence::Call
         }
         ExprKind::Super { .. } => Precedence::Call,
-        ExprKind::Tuple { .. }
+        ExprKind::TupleLit { .. }
         | ExprKind::Literal(_)
         | ExprKind::Variable { .. }
         | ExprKind::Grouping { .. }
@@ -1729,7 +1729,7 @@ print(t);
 
         fn tuple(a: i64, b: i64) -> Expr {
             Expr {
-                kind: ExprKind::Tuple {
+                kind: ExprKind::TupleLit {
                     elements: vec![int(a), int(b)],
                 },
                 location: Location::default(),
@@ -1760,7 +1760,7 @@ print(t);
             location: Location::default(),
         };
         let nested = Expr {
-            kind: ExprKind::Tuple {
+            kind: ExprKind::TupleLit {
                 elements: vec![int(5), tuple(6, 7)],
             },
             location: Location::default(),
