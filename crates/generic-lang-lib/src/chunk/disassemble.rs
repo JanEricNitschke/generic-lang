@@ -1,5 +1,4 @@
 use super::{Chunk, CodeOffset, ConstantIndex, ConstantLongIndex, OpCode};
-#[cfg(feature = "print_code")]
 use crate::config::LAMBDA_NAME;
 use crate::{heap::Heap, value::Value};
 use convert_case::{Case, Casing};
@@ -16,8 +15,8 @@ fn max_name_length() -> usize {
         .unwrap_or(0)
 }
 
-#[cfg(feature = "print_code")]
 impl Chunk {
+    /// Render this chunk's bytecode as a human-readable listing.
     pub(crate) fn to_string(&self, heap: &Heap) -> String {
         let name = self.name.to_value(heap);
 
