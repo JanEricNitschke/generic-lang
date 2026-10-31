@@ -37,7 +37,9 @@ fn walk_exprs<V: Visitor + ?Sized>(visitor: &mut V, exprs: &mut [Expr]) {
 #[allow(clippy::too_many_lines)]
 pub(super) fn walk_stmt_kind<V: Visitor + ?Sized>(visitor: &mut V, stmt: &mut StmtKind) {
     match stmt {
-        StmtKind::Expression { expr } | StmtKind::Throw { expr, .. } => visitor.visit_expr(expr),
+        StmtKind::ExpressionStmt { expr } | StmtKind::Throw { expr, .. } => {
+            visitor.visit_expr(expr)
+        }
         StmtKind::VarDecl { initializer, .. } => {
             if let Some(initializer) = initializer {
                 visitor.visit_expr(initializer);
@@ -58,7 +60,7 @@ pub(super) fn walk_stmt_kind<V: Visitor + ?Sized>(visitor: &mut V, stmt: &mut St
             }
             for member in &mut class.members {
                 match &mut member.kind {
-                    ClassMemberKind::Variable(variable) => {
+                    ClassMemberKind::ClassVar(variable) => {
                         if let Some(annotation) = &mut variable.annotation {
                             visitor.visit_expr(annotation);
                         }
@@ -178,7 +180,7 @@ pub(super) fn walk_expr<V: Visitor + ?Sized>(visitor: &mut V, expr: &mut Expr) {
             visitor.visit_expr(else_);
         }
         ExprKind::Grouping { inner } => visitor.visit_expr(inner),
-        ExprKind::Tuple { elements } => walk_exprs(visitor, elements),
+        ExprKind::TupleLit { elements } => walk_exprs(visitor, elements),
         ExprKind::ListLit { items } | ExprKind::SetLit { items } => walk_exprs(visitor, items),
         ExprKind::DictLit { entries } => {
             for (key, value) in entries {
@@ -188,7 +190,7 @@ pub(super) fn walk_expr<V: Visitor + ?Sized>(visitor: &mut V, expr: &mut Expr) {
         }
         ExprKind::Fstring { parts } => {
             for part in parts {
-                if let FstringPart::Interp(expr) = part {
+                if let FstringPart::Interpolation(expr) = part {
                     visitor.visit_expr(expr);
                 }
             }
@@ -199,8 +201,8 @@ pub(super) fn walk_expr<V: Visitor + ?Sized>(visitor: &mut V, expr: &mut Expr) {
             }
         }
         ExprKind::Lambda(lambda) => walk_lambda(visitor, lambda),
-        ExprKind::Yield { operand } => {
-            if let Some(operand) = operand {
+        ExprKind::Yield { value } => {
+            if let Some(operand) = value {
                 visitor.visit_expr(operand);
             }
         }

@@ -311,7 +311,7 @@ impl Parser<'_> {
             self.error_at_current(
                 "Expect function or class declaration or another decorator call after a decorator call.",
             );
-            StmtKind::Expression {
+            StmtKind::ExpressionStmt {
                 expr: Box::new(self.dummy_expr()),
             }
         }
@@ -352,7 +352,7 @@ impl Parser<'_> {
         while !self.check(TK::RightBrace) && !self.check(TK::Eof) {
             let start = self.current_location();
             let kind = if self.match_(TK::Var) {
-                ClassMemberKind::Variable(self.class_variable_declaration())
+                ClassMemberKind::ClassVar(self.class_variable_declaration())
             } else {
                 ClassMemberKind::Method(self.method())
             };
@@ -430,12 +430,12 @@ impl Parser<'_> {
             self.import_from_statement()
         } else if self.match_(TK::Async) || self.match_(TK::Await) {
             self.error("Async and await are not yet implemented.");
-            StmtKind::Expression {
+            StmtKind::ExpressionStmt {
                 expr: Box::new(self.dummy_expr()),
             }
         } else if self.match_(TK::Finally) {
             self.error("Finally is not yet implemented.");
-            StmtKind::Expression {
+            StmtKind::ExpressionStmt {
                 expr: Box::new(self.dummy_expr()),
             }
         } else {
@@ -620,12 +620,15 @@ impl Parser<'_> {
             // Report and bail without consuming the `;` (its presence in
             // the stream drives the follow-up errors and synchronization).
             self.error("'continue' outside a loop.");
-            return StmtKind::Expression {
+            return StmtKind::ExpressionStmt {
                 expr: Box::new(self.dummy_expr()),
             };
         }
         self.consume(TK::Semicolon, "Expect ';' after 'continue'.");
-        StmtKind::Continue { label, location }
+        StmtKind::Continue {
+            label,
+            keyword_location: location,
+        }
     }
 
     fn break_statement(&mut self) -> StmtKind {
@@ -634,7 +637,7 @@ impl Parser<'_> {
             // Report and bail without consuming the `;` (its presence in
             // the stream drives the follow-up errors and synchronization).
             self.error("'break' outside a loop.");
-            return StmtKind::Expression {
+            return StmtKind::ExpressionStmt {
                 expr: Box::new(self.dummy_expr()),
             };
         }
@@ -886,7 +889,7 @@ impl Parser<'_> {
     fn expression_statement(&mut self) -> StmtKind {
         let expr = Box::new(self.expression());
         self.consume(TK::Semicolon, "Expect ';' after expression.");
-        StmtKind::Expression { expr }
+        StmtKind::ExpressionStmt { expr }
     }
 }
 

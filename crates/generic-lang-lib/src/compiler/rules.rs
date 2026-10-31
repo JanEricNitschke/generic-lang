@@ -4,7 +4,7 @@
 
 use super::ast::{
     AccessMode, BinaryOp, BoolOperator, Expr, ExprContext, ExprKind, FstringPart, FunKind, Literal,
-    Tstring, TstringInterp, UnaryOp,
+    Tstring, TstringInterpolation, UnaryOp,
 };
 use super::{back::Codegen, front::Parser};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -538,7 +538,7 @@ impl Parser<'_> {
             let close_location = self.location();
             return Expr {
                 location: open_location.merge_ordered(&close_location),
-                kind: ExprKind::Tuple {
+                kind: ExprKind::TupleLit {
                     elements: Vec::new(),
                 },
             };
@@ -610,7 +610,7 @@ impl Parser<'_> {
         let lexeme = self.previous.as_ref().unwrap().as_str();
         let value = lexeme[1..lexeme.len() - 1].to_string();
         Expr {
-            kind: ExprKind::Literal(Literal::Str(value)),
+            kind: ExprKind::Literal(Literal::String(value)),
             location: self.location(),
         }
     }
@@ -638,20 +638,20 @@ impl Parser<'_> {
             match token.kind {
                 TK::InterpolationStringPart => {
                     // raw slice of string part, no quotes
-                    parts.push(FstringPart::Str(token.as_str().to_string()));
+                    parts.push(FstringPart::Text(token.as_str().to_string()));
                 }
 
                 TK::InterpolationStart => {
                     // parse an expression until the matching `}`
                     let expr = self.expression();
                     self.consume(TK::InterpolationEnd, "Expected '}' after interpolation.");
-                    parts.push(FstringPart::Interp(Box::new(expr)));
+                    parts.push(FstringPart::Interpolation(Box::new(expr)));
                 }
 
                 TK::InterpolationStringEnd => {
                     // remove the trailing quote from the slice
                     let lexeme = token.as_str();
-                    parts.push(FstringPart::Str(lexeme[..lexeme.len() - 1].to_string()));
+                    parts.push(FstringPart::Text(lexeme[..lexeme.len() - 1].to_string()));
                     break; // done with the fstring
                 }
 
@@ -683,7 +683,7 @@ impl Parser<'_> {
     fn tstring(&mut self, _can_assign: bool, _ignore_operators: &[TK]) -> Expr {
         let open_location = self.location();
         let mut parts: Vec<String> = Vec::new();
-        let mut interpolations: Vec<TstringInterp> = Vec::new();
+        let mut interpolations: Vec<TstringInterpolation> = Vec::new();
         let mut interpolation_count = 0;
 
         if self.current_token_kind() == Some(TK::InterpolationStart) {
@@ -726,7 +726,7 @@ impl Parser<'_> {
                         .scanner
                         .source_slice(expr_start.index, expr_end.index)
                         .to_string();
-                    interpolations.push(TstringInterp {
+                    interpolations.push(TstringInterpolation {
                         value: Box::new(expr),
                         source_text,
                     });
@@ -842,7 +842,7 @@ impl Parser<'_> {
         let end_location = self.location();
         Expr {
             location: start_location.merge_ordered(&end_location),
-            kind: ExprKind::Tuple { elements },
+            kind: ExprKind::TupleLit { elements },
         }
     }
 
@@ -1157,12 +1157,12 @@ impl Parser<'_> {
             ParseResult::Success(operand) => Expr {
                 location: yield_location.merge_ordered(&operand.location),
                 kind: ExprKind::Yield {
-                    operand: Some(Box::new(operand)),
+                    value: Some(Box::new(operand)),
                 },
             },
             ParseResult::NoPrefix => Expr {
                 location: yield_location,
-                kind: ExprKind::Yield { operand: None },
+                kind: ExprKind::Yield { value: None },
             },
         }
     }

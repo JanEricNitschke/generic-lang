@@ -183,7 +183,7 @@ pub(crate) enum Literal {
     Int(i64),
     BigInt(BigInt),
     Float(f64),
-    Str(String),
+    String(String),
     Rational {
         numerator: BigInt,
         denominator: BigInt,
@@ -235,8 +235,8 @@ pub(crate) enum BoolOperator {
 #[derive(Debug, Clone, LocationLessEq)]
 pub(crate) enum FstringPart {
     /// Literal text. The final part carries the closing quote stripped.
-    Str(String),
-    Interp(Box<Expr>),
+    Text(String),
+    Interpolation(Box<Expr>),
 }
 
 /// A t-string: its static text and its interpolations, kept in two
@@ -248,11 +248,11 @@ pub(crate) struct Tstring {
     /// including empty strings for adjacent interpolations, plus the trailing
     /// text. The final part carries its closing quote stripped.
     pub parts: Vec<String>,
-    pub interpolations: Vec<TstringInterp>,
+    pub interpolations: Vec<TstringInterpolation>,
 }
 
 #[derive(Debug, Clone, LocationLessEq)]
-pub(crate) struct TstringInterp {
+pub(crate) struct TstringInterpolation {
     /// The interpolated expression.
     pub value: Box<Expr>,
     /// The interpolation's source text, kept in the template for
@@ -350,7 +350,7 @@ pub(crate) enum ExprKind {
     },
 
     /// A tuple, like `` a, b `` or the empty `` () ``.
-    Tuple {
+    TupleLit {
         elements: Vec<Expr>,
     },
 
@@ -389,7 +389,7 @@ pub(crate) enum ExprKind {
 
     /// `` yield expr? ``.
     Yield {
-        operand: Option<Box<Expr>>,
+        value: Option<Box<Expr>>,
     },
 
     /// `` target = value ``. The target is a `Variable`, `Property`, or
@@ -477,7 +477,7 @@ pub(crate) enum LambdaBody {
 #[derive(Debug, Clone, LocationLessEq)]
 pub(crate) enum StmtKind {
     /// `` expr; ``
-    Expression {
+    ExpressionStmt {
         expr: Box<Expr>,
     },
 
@@ -541,7 +541,7 @@ pub(crate) enum StmtKind {
     Continue {
         label: Option<String>,
         /// The `continue` keyword.
-        location: Location,
+        keyword_location: Location,
     },
 
     /// C-style `` for (init; cond; incr) { body } ``; every clause may
@@ -642,7 +642,7 @@ pub(crate) struct ClassMember {
 
 #[derive(Debug, Clone, LocationLessEq)]
 pub(crate) enum ClassMemberKind {
-    Variable(ClassVar),
+    ClassVar(ClassVar),
     Method(Method),
 }
 

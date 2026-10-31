@@ -995,7 +995,7 @@ impl Codegen<'_, '_> {
 
         for member in &decl.members {
             match &member.kind {
-                ClassMemberKind::Variable(class_var) => self.gen_class_variable(class_var),
+                ClassMemberKind::ClassVar(class_var) => self.gen_class_variable(class_var),
                 ClassMemberKind::Method(method) => self.gen_method(method),
             }
         }
@@ -1187,7 +1187,7 @@ impl Codegen<'_, '_> {
             }
             StmtKind::Continue {
                 label,
-                location: keyword_location,
+                keyword_location,
             } => {
                 let Some(loop_state) = self.loop_state_by_label_mut(label.as_deref()) else {
                     self.error("'continue' outside a loop.");
@@ -1323,7 +1323,7 @@ impl Codegen<'_, '_> {
                 statement_location,
                 ..
             } => self.gen_import_from(path, names, *path_location, *statement_location),
-            StmtKind::Expression { expr } => self.gen_expression_statement(expr),
+            StmtKind::ExpressionStmt { expr } => self.gen_expression_statement(expr),
         }
     }
 
@@ -1454,7 +1454,7 @@ impl Codegen<'_, '_> {
         let loop_var_name_mutable = match init {
             // No initializer
             None => None,
-            Some(StmtKind::Expression { expr }) => {
+            Some(StmtKind::ExpressionStmt { expr }) => {
                 self.gen_expression_statement(expr);
                 None
             }
@@ -2019,14 +2019,14 @@ impl Codegen<'_, '_> {
             ExprKind::Fstring { parts } => {
                 for part in parts {
                     match part {
-                        FstringPart::Str(value) => {
+                        FstringPart::Text(value) => {
                             let string_id = self.heap.string_id(value);
                             self.emit_constant(
                                 string_id.into(),
                                 OpcodeLocation::new(expr.location),
                             );
                         }
-                        FstringPart::Interp(interp) => self.gen_expr(interp),
+                        FstringPart::Interpolation(interp) => self.gen_expr(interp),
                     }
                 }
                 let count = self.collection_count(parts.len(), "f-string");
@@ -2044,7 +2044,7 @@ impl Codegen<'_, '_> {
                 let count = self.collection_count(items.len(), "list");
                 self.emit_bytes(OpCode::BuildList, count, OpcodeLocation::new(expr.location));
             }
-            ExprKind::Tuple { elements } => {
+            ExprKind::TupleLit { elements } => {
                 for element in elements {
                     self.gen_expr(element);
                 }
@@ -2125,8 +2125,8 @@ impl Codegen<'_, '_> {
                     );
                 }
             }
-            ExprKind::Yield { operand } => {
-                if let Some(operand) = operand {
+            ExprKind::Yield { value } => {
+                if let Some(operand) = value {
                     self.gen_expr(operand);
                     self.emit_byte(
                         OpCode::Yield,
@@ -2387,7 +2387,7 @@ impl Codegen<'_, '_> {
             Literal::StopIteration => self.emit_byte(OpCode::StopIteration, location),
             Literal::Int(value) => self.emit_constant((*value).into(), location),
             Literal::Float(value) => self.emit_constant((*value).into(), location),
-            Literal::Str(value) => {
+            Literal::String(value) => {
                 let string_id = self.heap.string_id(value);
                 self.emit_constant(string_id.into(), location);
             }
@@ -2429,7 +2429,7 @@ impl Codegen<'_, '_> {
             Literal::Int(value) => (*value).into(),
             Literal::BigInt(value) => self.heap.add_big_int(value.clone()),
             Literal::Float(value) => (*value).into(),
-            Literal::Str(value) => self.heap.string_id(value).into(),
+            Literal::String(value) => self.heap.string_id(value).into(),
             Literal::Rational {
                 numerator,
                 denominator,
