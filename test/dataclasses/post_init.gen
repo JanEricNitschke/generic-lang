@@ -1,0 +1,62 @@
+from "dataclasses" import dataclass;
+
+# __post_init__ runs after the generated __init__ fills the fields.
+@dataclass
+class Point {
+    var x;
+    var y = 0;
+
+    __post_init__() {
+        this.y = this.y + this.x;
+    }
+}
+
+print(Point(2)); # expect: Point(x=2, y=2)
+print(Point(2, 5)); # expect: Point(x=2, y=7)
+
+# An inherited __post_init__ also runs.
+class Base {
+    __post_init__() {
+        this.x = this.x + 1;
+    }
+}
+
+@dataclass
+class Derived < Base {
+    var x;
+}
+
+print(Derived(1).x); # expect: 2
+
+# A user-defined __init__ replaces the generated one, so __post_init__ is
+# not called automatically.
+@dataclass
+class Manual {
+    var x;
+
+    __init__(x) {
+        this.x = x;
+    }
+
+    __post_init__() {
+        this.x = 99;
+    }
+}
+
+print(Manual(1).x); # expect: 1
+
+# A throw from __post_init__ reaches the caller.
+@dataclass
+class Boom {
+    var x;
+
+    __post_init__() {
+        throw ValueError("boom");
+    }
+}
+
+try {
+    Boom(1);
+} catch ValueError as error {
+    print(error.message()); # expect: boom
+}
