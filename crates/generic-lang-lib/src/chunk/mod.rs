@@ -1,6 +1,5 @@
 //! Contains the `OpCode` enum as well as the chunks containing the bytecode to be interpreted.
 
-#[cfg(any(feature = "trace_execution", feature = "print_code"))]
 mod disassemble;
 #[cfg(feature = "trace_execution")]
 pub(crate) use disassemble::InstructionDisassembler;

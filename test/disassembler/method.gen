@@ -1,0 +1,48 @@
+import "disassembler";
+import "string";
+
+class Greeter {
+    var greeting = "Hello";
+
+    greet(name) {
+        return this.greeting + ", " + name;
+    }
+}
+
+class Polite < Greeter {
+    greet(name) {
+        return super.greet(name) + "!";
+    }
+}
+
+fun show(text) {
+    foreach (var line in text.split(string.newline)) {
+        if (line != "") {
+            print(line.strip());
+        }
+    }
+}
+
+show(disassembler.disassemble(Greeter().greet));
+# expect: == greet ==
+# expect: 0000    8 OP_GET_LOCAL                   0
+# expect: 0002    8 OP_GET_PROPERTY                0 'greeting'
+# expect: 0004    8 OP_CONSTANT                    1 ', '
+# expect: 0006    8 OP_ADD
+# expect: 0007    8 OP_GET_LOCAL                   1
+# expect: 0009    8 OP_ADD
+# expect: 0010    8 OP_RETURN
+# expect: 0011    7 OP_NIL
+# expect: 0012    | OP_RETURN
+
+show(disassembler.disassemble(Polite().greet));
+# expect: == greet ==
+# expect: 0000   14 OP_GET_LOCAL                   0
+# expect: 0002   14 OP_GET_LOCAL                   1
+# expect: 0004   14 OP_GET_UPVALUE                 0
+# expect: 0006   14 OP_SUPER_INVOKE (1 args)       0 'greet'
+# expect: 0009   14 OP_CONSTANT                    1 '!'
+# expect: 0011   14 OP_ADD
+# expect: 0012   14 OP_RETURN
+# expect: 0013   13 OP_NIL
+# expect: 0014    | OP_RETURN
