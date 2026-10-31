@@ -226,13 +226,13 @@ jobs:
     - name: Fuzz
       if: matrix.target == 'format'
       run: |
-        cargo +nightly fuzz run format target/fuzz-corpus-format -- \
+        ASAN_OPTIONS=allocator_may_return_null=1 cargo +nightly fuzz run format target/fuzz-corpus-format -- \
           -max_total_time=1200 -timeout=10 -max_len=8192 -close_fd_mask=3 \
           -seed_inputs=@target/fuzz-seeds-format.txt
     - name: Fuzz in fork mode
       if: matrix.target == 'interpret'
       run: |
-        cargo +nightly fuzz run interpret target/fuzz-corpus-interpret -- \
+        ASAN_OPTIONS=allocator_may_return_null=1 cargo +nightly fuzz run interpret target/fuzz-corpus-interpret -- \
           -fork=1 -ignore_timeouts=1 \
           -max_total_time=1200 -timeout=10 -max_len=8192 -close_fd_mask=3
     - name: Upload fuzz artifacts

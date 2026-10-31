@@ -15,6 +15,46 @@ use crate::{
     types::{Location, Mutability, NumberEncoding, OpcodeLocation},
 };
 
+/// The load and store instructions for a variable together with the local or
+/// upvalue slot, or global constant, they operate on.
+pub(super) struct VariableOps {
+    pub(super) get_op: OpCode,
+    pub(super) set_op: OpCode,
+    pub(super) arg: usize,
+}
+
+/// Outcome of resolving a variable name for a read or write.
+pub(super) enum VariableResolution {
+    /// The name resolved to a local slot, upvalue, or global.
+    Resolved(VariableOps),
+    /// The name is a local that is still being initialized. The
+    /// own-initializer error has already been reported, so callers must not
+    /// emit an instruction for it.
+    OwnInitializer,
+}
+
+/// Outcome of looking a name up among the current function's locals.
+enum LocalResolution {
+    /// The name names an initialized local in this slot.
+    Slot(usize),
+    /// The name names a local that is still being initialized. The
+    /// own-initializer error has already been reported.
+    OwnInitializer,
+    /// No local with that name exists in this function.
+    NotFound,
+}
+
+/// Outcome of looking a name up among the enclosing functions.
+enum UpvalueResolution {
+    /// The name names an upvalue in this slot.
+    Slot(u8),
+    /// The name names an enclosing local that is still being initialized.
+    /// The own-initializer error has already been reported.
+    OwnInitializer,
+    /// No upvalue with that name exists.
+    NotFound,
+}
+
 impl Codegen<'_, '_> {
     /// Start a new scope.
     pub(super) fn begin_scope(&mut self) {
@@ -153,32 +193,43 @@ impl Codegen<'_, '_> {
     /// belong to a global variable.
     /// Resolve `name` against the current scopes, innermost first: local
     /// slot, then upvalue, then global constant index. Returns the matching
-    /// get and set opcodes (short variants) along with the operand.
+    /// get and set opcodes (short variants) along with the operand, or
+    /// [`VariableResolution::OwnInitializer`] if the name is a local read
+    /// before it was initialized.
     pub(super) fn resolve_variable_ops(
         &mut self,
         name: &str,
         error_location: Location,
-    ) -> (OpCode, OpCode, usize) {
-        let mut get_op = OpCode::GetLocal;
-        let mut set_op = OpCode::SetLocal;
-        let mut arg = self.resolve_local(name, error_location);
-
-        // Upvalue?
-        if arg.is_none()
-            && let Some(upvalue_arg) = self.resolve_upvalue(name, error_location)
-        {
-            get_op = OpCode::GetUpvalue;
-            set_op = OpCode::SetUpvalue;
-            arg = Some(usize::from(upvalue_arg));
+    ) -> VariableResolution {
+        match self.resolve_local(name, error_location) {
+            LocalResolution::Slot(arg) => {
+                return VariableResolution::Resolved(VariableOps {
+                    get_op: OpCode::GetLocal,
+                    set_op: OpCode::SetLocal,
+                    arg,
+                });
+            }
+            LocalResolution::OwnInitializer => return VariableResolution::OwnInitializer,
+            LocalResolution::NotFound => {}
         }
 
-        // If neither local nor upvalue, then it must be a global
-        if arg.is_none() {
-            arg = Some(*self.identifier_constant(name));
-            get_op = OpCode::GetGlobal;
-            set_op = OpCode::SetGlobal;
+        match self.resolve_upvalue(name, error_location) {
+            UpvalueResolution::Slot(arg) => {
+                return VariableResolution::Resolved(VariableOps {
+                    get_op: OpCode::GetUpvalue,
+                    set_op: OpCode::SetUpvalue,
+                    arg: usize::from(arg),
+                });
+            }
+            UpvalueResolution::OwnInitializer => return VariableResolution::OwnInitializer,
+            UpvalueResolution::NotFound => {}
         }
-        (get_op, set_op, arg.unwrap())
+
+        VariableResolution::Resolved(VariableOps {
+            get_op: OpCode::GetGlobal,
+            set_op: OpCode::SetGlobal,
+            arg: *self.identifier_constant(name),
+        })
     }
 
     /// Emit a load of the local at `slot`. Used by decorated declarations,
@@ -207,7 +258,12 @@ impl Codegen<'_, '_> {
     /// Stack: `[.., value] -> [..]`
     pub(super) fn emit_variable_set_and_pop(&mut self, name: &str, variable_location: Location) {
         let location = OpcodeLocation::new(variable_location);
-        let (_, mut set_op, arg) = self.resolve_variable_ops(name, variable_location);
+        let VariableResolution::Resolved(VariableOps {
+            mut set_op, arg, ..
+        }) = self.resolve_variable_ops(name, variable_location)
+        else {
+            return;
+        };
 
         let encoding = if arg > usize::from(u8::MAX) {
             set_op = set_op.to_long();
@@ -226,7 +282,12 @@ impl Codegen<'_, '_> {
     /// Emit a plain read of `name`.
     pub(super) fn emit_named_read(&mut self, name: &str, variable_location: Location) {
         let location = OpcodeLocation::new(variable_location);
-        let (mut get_op, _, arg) = self.resolve_variable_ops(name, variable_location);
+        let VariableResolution::Resolved(VariableOps {
+            mut get_op, arg, ..
+        }) = self.resolve_variable_ops(name, variable_location)
+        else {
+            return;
+        };
         let encoding = if arg > usize::from(u8::MAX) {
             get_op = get_op.to_long();
             NumberEncoding::Long
@@ -258,34 +319,32 @@ impl Codegen<'_, '_> {
 
     /// Resolve a local variable by its name.
     ///
-    /// Iterate from the top of the locals backwards until one
-    /// with that name is found. If the variable is the most recent one,
-    /// than it is read during its own initializer, which is not allowed.
+    /// Iterate from the top of the locals backwards until one with that name
+    /// is found. If the variable is the most recent one, then it is read
+    /// during its own initializer, which is not allowed.
     ///
-    /// If it is not found at all, then `None` is returned.
-    /// (Current frame; reports the own-initializer error.)
-    fn resolve_local(&mut self, name: &str, error_location: Location) -> Option<usize> {
-        let retval = self
+    /// If it is not found at all, then [`LocalResolution::NotFound`] is
+    /// returned. (Current frame; reports the own-initializer error.)
+    fn resolve_local(&mut self, name: &str, error_location: Location) -> LocalResolution {
+        let Some((index, local)) = self
             .locals()
             .iter()
             .enumerate()
             .rev()
             .find(|(_, local)| local.name == name)
-            .map(|(index, local)| {
-                if *local.depth == -1 {
-                    self.locals().len()
-                } else {
-                    index
-                }
-            });
-        if retval == Some(self.locals().len()) {
+        else {
+            return LocalResolution::NotFound;
+        };
+        if *local.depth == -1 {
             self.error_at(
                 error_location,
                 name,
                 "Can't read local variable in its own initializer.",
             );
+            LocalResolution::OwnInitializer
+        } else {
+            LocalResolution::Slot(index)
         }
-        retval
     }
 
     pub(super) fn add_local(&mut self, name: String, mutability: Mutability) {
@@ -305,33 +364,36 @@ impl Codegen<'_, '_> {
     ///
     /// Iterates up the scopes checking if a local or upvalue with that name
     /// exists. If nothing is found or the current scope is the outermost,
-    /// then `None` is returned.
-    fn resolve_upvalue(&mut self, name: &str, error_location: Location) -> Option<u8> {
+    /// then [`UpvalueResolution::NotFound`] is returned.
+    fn resolve_upvalue(&mut self, name: &str, error_location: Location) -> UpvalueResolution {
         if !self.has_enclosing() {
-            return None;
+            return UpvalueResolution::NotFound;
         }
 
-        if let Some(local) =
-            self.in_enclosing(|codegen| codegen.resolve_local(name, error_location))
-        {
-            // `resolve_local` reports the own-initializer error and returns
-            // `locals.len()` as a sentinel index; mark the capture only when
-            // the index names a real slot and fail the resolution otherwise.
-            return self
-                .in_enclosing(|codegen| {
-                    codegen.locals_mut().get_mut(local)?.is_captured = true;
-                    Some(local)
-                })
-                .map(|local| self.add_upvalue(local, true, error_location, name));
+        match self.in_enclosing(|codegen| codegen.resolve_local(name, error_location)) {
+            LocalResolution::Slot(local) => {
+                self.in_enclosing(|codegen| codegen.locals_mut()[local].is_captured = true);
+                return UpvalueResolution::Slot(self.add_upvalue(
+                    local,
+                    true,
+                    error_location,
+                    name,
+                ));
+            }
+            LocalResolution::OwnInitializer => return UpvalueResolution::OwnInitializer,
+            LocalResolution::NotFound => {}
         }
 
-        if let Some(upvalue) =
-            self.in_enclosing(|codegen| codegen.resolve_upvalue(name, error_location))
-        {
-            return Some(self.add_upvalue(usize::from(upvalue), false, error_location, name));
+        match self.in_enclosing(|codegen| codegen.resolve_upvalue(name, error_location)) {
+            UpvalueResolution::Slot(upvalue) => UpvalueResolution::Slot(self.add_upvalue(
+                usize::from(upvalue),
+                false,
+                error_location,
+                name,
+            )),
+            UpvalueResolution::OwnInitializer => UpvalueResolution::OwnInitializer,
+            UpvalueResolution::NotFound => UpvalueResolution::NotFound,
         }
-
-        None
     }
 
     /// Resolve an upvalue or add a new one if it does not yet exist.

@@ -4,3 +4,5 @@
 # closure.
 fun f() { var x = ->() x; }  # Error at 'x': Can't read local variable in its own initializer.
 fun g() { var x = ->() ->() x; }  # Error at 'x': Can't read local variable in its own initializer.
+fun h() { var x = ->() (x = 1); }  # Error at 'x': Can't read local variable in its own initializer.
+fun i() { var x = ->() (x += 1); }  # Error at 'x': Can't read local variable in its own initializer.
