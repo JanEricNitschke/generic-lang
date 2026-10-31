@@ -110,6 +110,15 @@ To run the full integration test suite:
 make test
 ```
 
+### Fuzzing
+
+The `fuzz/` crate contains cargo-fuzz targets for the formatter and the
+in-memory scanner/compiler/VM path. They look for panics only; ordinary
+Generic compile errors and uncaught exceptions are expected. The normal
+integration tests under `test/` are used as the seed corpus; the interpreter
+target excludes the filesystem, network, and benchmark suites. See
+[fuzz/README.md](fuzz/README.md) for setup and commands.
+
 ## Module cache
 
 Release builds cache compiled imported `.gen` modules in `__generic_cache__/` next to the source, as `<stem>.generic-<major>.<minor>.genc`. Debug builds compile fresh by default. Cache files contain executable bytecode and are trusted local state; do not commit them.

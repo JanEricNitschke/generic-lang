@@ -26,12 +26,12 @@ until (true) {
   }
 }
 until (true) {
-  while (true) {
+  while (false) {
     1;
   }
 }
 until (true) {
-  for (;;) {
+  for (; false;) {
     1;
   }
 }
