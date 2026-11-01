@@ -13,6 +13,7 @@ use super::rules::Precedence;
 use rustc_hash::FxHashSet as HashSet;
 
 use crate::{
+    config::PARSER_MAX_DEPTH,
     scanner::{Scanner, Token, TokenKind as TK},
     types::{ConditionType, InjectedKind, Location, LoopType, Mutability},
 };
@@ -60,6 +61,24 @@ impl<'source> Parser<'source> {
             return Err(std::mem::take(&mut parser.errors));
         }
         Ok(expression)
+    }
+
+    /// Enter one level of parser recursion. At the limit, report an error and
+    /// consume the rest of the source so unwinding cannot recurse again.
+    pub(super) fn enter_nesting(&mut self) -> bool {
+        if self.nesting_depth >= PARSER_MAX_DEPTH {
+            self.error_at_current("Source is nested too deeply.");
+            while !self.check(TK::Eof) {
+                self.advance();
+            }
+            return false;
+        }
+        self.nesting_depth += 1;
+        true
+    }
+
+    pub(super) fn leave_nesting(&mut self) {
+        self.nesting_depth -= 1;
     }
 }
 
@@ -113,6 +132,9 @@ pub(crate) struct Parser<'scanner> {
     /// function: methods nest inside their class.
     pub(super) class_stack: Vec<ClassState>,
 
+    /// Current recursive nesting depth, bounded by [`PARSER_MAX_DEPTH`].
+    nesting_depth: usize,
+
     /// Whether the source is an embedded builtin; gates the
     /// `debug_parser` output.
     #[cfg(feature = "debug_parser")]
@@ -134,6 +156,7 @@ impl<'scanner> Parser<'scanner> {
             errors: Vec::new(),
             function_stack: vec![FunctionState::new(FunKind::Script)],
             class_stack: Vec::new(),
+            nesting_depth: 0,
             #[cfg(feature = "debug_parser")]
             is_builtin,
         }
@@ -277,6 +300,14 @@ impl Parser<'_> {
 
     fn declaration(&mut self) -> Stmt {
         let start = self.current_location();
+        if !self.enter_nesting() {
+            return Stmt {
+                kind: StmtKind::ExpressionStmt {
+                    expr: Box::new(self.dummy_expr()),
+                },
+                location: start,
+            };
+        }
         let kind = if self.match_(TK::Var) {
             self.var_declaration(Mutability::Mutable)
         } else if self.match_(TK::Const) {
@@ -292,9 +323,10 @@ impl Parser<'_> {
         } else {
             self.statement_kind()
         };
-        if self.panic_mode {
+        if self.panic_mode && !self.check(TK::Eof) {
             self.synchronize();
         }
+        self.leave_nesting();
         Stmt {
             kind,
             location: self.location_from(start),

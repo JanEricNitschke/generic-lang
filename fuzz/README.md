@@ -1,16 +1,23 @@
 # Fuzzing Generic
 
 This directory contains [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz)
-targets for the formatter and the in-memory scanner/compiler/VM path:
+targets for the formatter, the in-memory scanner/compiler/VM path, and the AST
+import/export round trips:
 
 - `format` feeds arbitrary bytes (decoded lossily to UTF-8) through the
   formatter with several option combinations.
 - `interpret` feeds arbitrary bytes through the in-memory
   [`run_source`](../crates/generic-lang-lib/src/lib.rs) API.
+- `ast_roundtrip` checks that converting the internal AST to the `ast`
+  representation and back preserves it.
+- `unparse` checks that formatting and reparsing the converted AST preserves
+  it.
 
-Language-level compile errors and uncaught exceptions are expected. A panic,
-abort, or sanitizer report is a failure. A timeout is only an operational guard
-and needs triage: valid Generic programs can loop forever by design.
+Language-level compile errors and uncaught exceptions are expected. Parse
+errors in the AST targets are skipped. AST comparisons ignore comments and
+locations. A panic, abort, or sanitizer report is a failure. A timeout is only
+an operational guard and needs triage: valid Generic programs can loop forever
+by design.
 
 The targets build `generic-lang-lib` without default features, so native
 plugins are disabled. The module cache is disabled by the harness, and the
@@ -26,14 +33,15 @@ cargo install cargo-fuzz --locked
 ## Seeds
 
 The normal integration tests under `test/` are the seed source. The formatter
-uses a comma-separated seed list; the interpreter uses a seed corpus directory
-because fork mode reads corpus directories rather than `-seed_inputs`.
+and AST targets use comma-separated seed lists; the interpreter uses a seed
+corpus directory because fork mode reads corpus directories rather than
+`-seed_inputs`.
 
 ```sh
-mkdir -p target/fuzz-corpus-format target/fuzz-corpus-interpret
+mkdir -p target/fuzz-corpus-format target/fuzz-corpus-interpret \
+    target/fuzz-corpus-ast_roundtrip target/fuzz-corpus-unparse
 
-find test -name '*.gen' -print | paste -sd, - \
-    > target/fuzz-seeds-format.txt
+find test -name '*.gen' -print | paste -sd, - > target/fuzz-seeds.txt
 
 rsync -a --delete --exclude='pathlib/' --exclude='requests/' \
     --exclude='benchmark/' --include='*/' --include='*.gen' --exclude='*' \
@@ -47,12 +55,13 @@ coverage.
 ## Running
 
 ```sh
-# Formatter: 20 minutes.
-ASAN_OPTIONS=allocator_may_return_null=1 cargo +nightly fuzz run format target/fuzz-corpus-format -- \
+# format, ast_roundtrip, or unparse
+TARGET=ast_roundtrip
+ASAN_OPTIONS=allocator_may_return_null=1 cargo +nightly fuzz run "$TARGET" target/fuzz-corpus-$TARGET -- \
     -max_total_time=1200 -timeout=10 -max_len=8192 -close_fd_mask=3 \
-    -seed_inputs=@target/fuzz-seeds-format.txt
+    -seed_inputs=@target/fuzz-seeds.txt
 
-# Interpreter: 20 minutes, in fork mode so timeouts do not stop the run.
+# The interpreter runs in fork mode so timeouts do not stop the run.
 ASAN_OPTIONS=allocator_may_return_null=1 cargo +nightly fuzz run interpret target/fuzz-corpus-interpret -- \
     -fork=1 -ignore_timeouts=1 \
     -max_total_time=1200 -timeout=10 -max_len=8192 -close_fd_mask=3

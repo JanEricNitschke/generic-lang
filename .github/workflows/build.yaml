@@ -200,7 +200,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [format, interpret]
+        target: [format, interpret, ast_roundtrip, unparse]
     steps:
     - name: Checkout repo
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -215,20 +215,20 @@ jobs:
     - name: Prepare seed corpus
       run: |
         mkdir -p target/fuzz-corpus-${{ matrix.target }}
-        if [ "${{ matrix.target }}" = "format" ]; then
-          find test -name '*.gen' -print | paste -sd, - \
-            > target/fuzz-seeds-format.txt
-        else
+        if [ "${{ matrix.target }}" = "interpret" ]; then
           rsync -a --delete --exclude='pathlib/' --exclude='requests/' \
             --exclude='benchmark/' --include='*/' --include='*.gen' \
             --exclude='*' test/ target/fuzz-corpus-interpret/test/
+        else
+          find test -name '*.gen' -print | paste -sd, - > target/fuzz-seeds.txt
         fi
     - name: Fuzz
-      if: matrix.target == 'format'
+      if: matrix.target != 'interpret'
       run: |
-        ASAN_OPTIONS=allocator_may_return_null=1 cargo +nightly fuzz run format target/fuzz-corpus-format -- \
+        ASAN_OPTIONS=allocator_may_return_null=1 cargo +nightly fuzz run ${{ matrix.target }} \
+          target/fuzz-corpus-${{ matrix.target }} -- \
           -max_total_time=1200 -timeout=10 -max_len=8192 -close_fd_mask=3 \
-          -seed_inputs=@target/fuzz-seeds-format.txt
+          -seed_inputs=@target/fuzz-seeds.txt
     - name: Fuzz in fork mode
       if: matrix.target == 'interpret'
       run: |

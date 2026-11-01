@@ -243,7 +243,10 @@ impl Parser<'_> {
         precedence: Precedence,
         ignore_operators: &[TK],
     ) -> ParseResult {
-        if let Some(prefix_rule) = rule(self.current.as_ref().unwrap().kind).prefix {
+        if !self.enter_nesting() {
+            return ParseResult::NoPrefix;
+        }
+        let result = if let Some(prefix_rule) = rule(self.current.as_ref().unwrap().kind).prefix {
             self.advance();
             let can_assign = precedence <= Precedence::Assignment;
             let expr = prefix_rule(self, can_assign, ignore_operators);
@@ -261,7 +264,9 @@ impl Parser<'_> {
             ParseResult::Success(expr)
         } else {
             ParseResult::NoPrefix
-        }
+        };
+        self.leave_nesting();
+        result
     }
 
     pub(super) fn parse_precedence_ignoring(

@@ -54,7 +54,7 @@ try {
 }
 
 var deep = ast.parse_expression("1");
-for (var i = 0; i < 200; i = i + 1) {
+for (var i = 0; i < 600; i = i + 1) {
     var wrapper = ast.parse_expression("1 + 2");
     wrapper.kind.lhs = deep;
     deep = wrapper;
