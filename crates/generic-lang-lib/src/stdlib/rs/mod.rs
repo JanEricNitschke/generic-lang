@@ -1,5 +1,6 @@
 //! Module for registering rust native stdlib modules.
 
+pub(crate) mod ast;
 mod builtins;
 mod dataclasses;
 mod functools;
@@ -22,6 +23,7 @@ pub(crate) fn register(vm: &mut VM) {
     os::register(vm);
     functools::register(vm);
     json::register(vm);
+    ast::register(vm);
     string::register(vm);
     requests::register(vm);
     pathlib::register(vm);

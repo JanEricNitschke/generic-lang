@@ -1,0 +1,127 @@
+import "ast";
+from "string" import quote;
+
+fun first(source) {
+    return ast.parse(source).declarations[0];
+}
+
+var program = ast.parse("var x = 1;");
+print(isinstance(program, ast.Program)); # expect: true
+print(len(program.declarations)); # expect: 1
+
+var var_decl = program.declarations[0];
+print(isinstance(var_decl, ast.Stmt)); # expect: true
+print(var_decl.location.start_line); # expect: 1
+print(isinstance(var_decl.kind, ast.VarDecl)); # expect: true
+print(var_decl.kind.name); # expect: x
+print(var_decl.kind.mutability); # expect: var
+print(var_decl.kind.initializer.kind); # expect: 1
+print(var_decl.kind.name_location.start_column); # expect: 5
+
+var const_decl = first("const y;");
+print(const_decl.kind.mutability); # expect: const
+print(const_decl.kind.initializer == nil); # expect: true
+
+var block = first("{ var x = 1; }");
+print(isinstance(block.kind, ast.Block)); # expect: true
+print(len(block.kind.stmts)); # expect: 1
+print(isinstance(block.kind.stmts[0], ast.Stmt)); # expect: true
+
+var conditional = first("if (x) { y; } else { z; }");
+print(isinstance(conditional.kind, ast.Conditional)); # expect: true
+print(conditional.kind.condition_type); # expect: if
+print(conditional.kind.condition.kind.inner.kind.name); # expect: x
+print(isinstance(conditional.kind.then_block[0], ast.Stmt)); # expect: true
+print(isinstance(conditional.kind.else_block[0], ast.Stmt)); # expect: true
+print(conditional.kind.keyword_location.start_column); # expect: 1
+
+var loop = first("while (x) { break; }");
+print(isinstance(loop.kind, ast.Loop)); # expect: true
+print(loop.kind.loop_type); # expect: while
+print(isinstance(loop.kind.body[0].kind, ast.Break)); # expect: true
+
+var until_stmt = first("until (x) { continue; }");
+print(until_stmt.kind.loop_type); # expect: until
+print(isinstance(until_stmt.kind.body[0].kind, ast.Continue)); # expect: true
+print(until_stmt.kind.body[0].kind.keyword_location.start_line); # expect: 1
+
+var for_stmt = first("for (var i = 0; i < 3; i = i + 1) { x; }");
+print(isinstance(for_stmt.kind, ast.For)); # expect: true
+print(for_stmt.kind.label == nil); # expect: true
+print(isinstance(for_stmt.kind.init, ast.VarDecl)); # expect: true
+print(for_stmt.kind.init.name); # expect: i
+print(isinstance(for_stmt.kind.condition.kind, ast.Binary)); # expect: true
+print(isinstance(for_stmt.kind.increment.kind, ast.Assign)); # expect: true
+print(isinstance(for_stmt.kind.body[0], ast.Stmt)); # expect: true
+
+var foreach_stmt = first("foreach (const x in xs) { x; }");
+print(isinstance(foreach_stmt.kind, ast.Foreach)); # expect: true
+print(foreach_stmt.kind.mutability); # expect: const
+print(foreach_stmt.kind.var_name); # expect: x
+print(foreach_stmt.kind.iterable.kind.name); # expect: xs
+
+var fun_decl = first("fun add(a, b = 2) { return a + b; }");
+print(isinstance(fun_decl.kind, ast.FunctionDecl)); # expect: true
+print(fun_decl.kind.name); # expect: add
+print(fun_decl.kind.kind); # expect: fun
+print(isinstance(fun_decl.kind.fn_lit, ast.FunctionDef)); # expect: true
+print(fun_decl.kind.fn_lit.parameters.params[0].name); # expect: a
+print(fun_decl.kind.fn_lit.parameters.params[1].default_value.kind); # expect: 2
+print(isinstance(fun_decl.kind.fn_lit.body[0], ast.Stmt)); # expect: true
+print(isinstance(fun_decl.kind.fn_lit.body[0].kind, ast.Return)); # expect: true
+print(isinstance(fun_decl.kind.fn_lit.body[0].kind.value.kind, ast.Binary)); # expect: true
+
+var gen_decl = first("gen g() { yield 1; }");
+print(isinstance(gen_decl.kind, ast.FunctionDecl)); # expect: true
+print(gen_decl.kind.kind); # expect: gen
+print(isinstance(gen_decl.kind.fn_lit.body[0].kind, ast.ExpressionStmt)); # expect: true
+print(isinstance(gen_decl.kind.fn_lit.body[0].kind.expression.kind, ast.Yield)); # expect: true
+print(gen_decl.kind.fn_lit.body[0].kind.expression.kind.value.kind); # expect: 1
+
+var class_decl = first("class C < B { var x = 1; m() { return x; } }");
+print(isinstance(class_decl.kind, ast.ClassDecl)); # expect: true
+print(class_decl.kind.name); # expect: C
+print(class_decl.kind.superclass == nil); # expect: false
+print(isinstance(class_decl.kind.members[0], ast.ClassMember)); # expect: true
+print(class_decl.kind.members[0].location.start_line); # expect: 1
+print(isinstance(class_decl.kind.members[0].kind, ast.ClassVar)); # expect: true
+print(class_decl.kind.members[0].kind.name); # expect: x
+print(class_decl.kind.members[0].kind.default_value.kind); # expect: 1
+print(isinstance(class_decl.kind.members[1].kind, ast.Method)); # expect: true
+print(class_decl.kind.members[1].kind.name); # expect: m
+print(class_decl.kind.members[1].kind.kind); # expect: method
+print(isinstance(class_decl.kind.members[1].kind.fn_lit.body[0].kind, ast.Return)); # expect: true
+
+var try_stmt = first("try { x; } catch (TypeError) as e { y; } else { z; }");
+print(isinstance(try_stmt.kind, ast.TryStmt)); # expect: true
+print(len(try_stmt.kind.body)); # expect: 1
+print(isinstance(try_stmt.kind.catches[0], ast.CatchClause)); # expect: true
+print(isinstance(try_stmt.kind.catches[0].matchers[0], ast.Expr)); # expect: true
+print(try_stmt.kind.catches[0].binding[0]); # expect: e
+print(isinstance(try_stmt.kind.else_block[0], ast.Stmt)); # expect: true
+
+var switch_stmt = first("switch (x) { case 1, 2: y; default: z; }");
+print(isinstance(switch_stmt.kind, ast.Switch)); # expect: true
+print(isinstance(switch_stmt.kind.cases[0], ast.SwitchCase)); # expect: true
+print(isinstance(switch_stmt.kind.cases[0].value.kind, ast.TupleLit)); # expect: true
+print(switch_stmt.kind.cases[0].value.kind.elements[0].kind); # expect: 1
+print(switch_stmt.kind.cases[0].value.kind.elements[1].kind); # expect: 2
+print(isinstance(switch_stmt.kind.cases[0].body[0], ast.Stmt)); # expect: true
+print(switch_stmt.kind.cases[1].value == nil); # expect: true
+print(isinstance(switch_stmt.kind.cases[1].body[0], ast.Stmt)); # expect: true
+
+var import_stmt = first(f"import ${quote}math${quote};");
+print(isinstance(import_stmt.kind, ast.Import)); # expect: true
+print(import_stmt.kind.path); # expect: math
+print(import_stmt.kind.alias == nil); # expect: true
+
+var from_stmt = first(f"from ${quote}math${quote} import sqrt, cos;");
+print(isinstance(from_stmt.kind, ast.ImportFrom)); # expect: true
+print(from_stmt.kind.path); # expect: math
+print(from_stmt.kind.names[0][0]); # expect: sqrt
+print(from_stmt.kind.names[1][0]); # expect: cos
+
+var throw_stmt = first(f"throw Error(${quote}x${quote});");
+print(isinstance(throw_stmt.kind, ast.Throw)); # expect: true
+print(isinstance(throw_stmt.kind.expr.kind, ast.Call)); # expect: true
+print(throw_stmt.kind.throw_location.start_column); # expect: 1

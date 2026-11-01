@@ -5,8 +5,10 @@
 //! always come last in a node.
 
 use super::comments::CommentMap;
+use crate::ast_export::{Converter, ToAst};
 use crate::types::{ConditionType, Location, LoopType, Mutability};
-use generic_lang_derive::LocationLessEq;
+use crate::value::Value;
+use generic_lang_derive::{LocationLessEq, ToAst};
 use num_bigint::BigInt;
 
 /// A parsed program: the top-level declarations.
@@ -35,7 +37,7 @@ macro_rules! impl_located {
 }
 
 /// One statement with its full source location.
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct Stmt {
     pub kind: StmtKind,
     pub location: Location,
@@ -131,7 +133,7 @@ impl From<MethodKind> for FunKind {
 
 /// A single call argument. `` *expr `` spreads: the iterable's elements
 /// become the arguments.
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct Arg {
     pub value: Expr,
     pub is_spread: bool,
@@ -232,7 +234,7 @@ pub(crate) enum BoolOperator {
 
 /// One part of an f-string: a literal text run or an interpolated
 /// expression.
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) enum FstringPart {
     /// Literal text. The final part carries the closing quote stripped.
     Text(String),
@@ -241,7 +243,7 @@ pub(crate) enum FstringPart {
 
 /// A t-string: its static text and its interpolations, kept in two
 /// parallel lists (they interleave in the source).
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct Tstring {
     /// Static text boundaries, in order. This always contains exactly one
     /// more entry than `interpolations`: the text before each interpolation,
@@ -251,7 +253,7 @@ pub(crate) struct Tstring {
     pub interpolations: Vec<TstringInterpolation>,
 }
 
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct TstringInterpolation {
     /// The interpolated expression.
     pub value: Box<Expr>,
@@ -264,13 +266,13 @@ pub(crate) struct TstringInterpolation {
 ///
 /// `location` covers the expression's whole extent in the source (first
 /// token .. last token).
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct Expr {
     pub kind: ExprKind,
     pub location: Location,
 }
 
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) enum ExprKind {
     Literal(Literal),
 
@@ -339,6 +341,7 @@ pub(crate) enum ExprKind {
     Ternary {
         condition: Box<Expr>,
         then: Box<Expr>,
+        #[ast(name = "else_block")]
         else_: Box<Expr>,
         /// The `?`: the origin of the branch jumps.
         question_location: Location,
@@ -425,17 +428,18 @@ impl ExprKind {
     }
 }
 
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct Param {
     pub name: String,
     /// Evaluated once, when the function is defined.
+    #[ast(name = "default_value")]
     pub default: Option<Box<Expr>>,
     pub location: Location,
 }
 
 /// A function's parameters: the named parameters plus the trailing
 /// `*rest` parameter, if any.
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct ParamList {
     pub params: Vec<Param>,
     pub rest: Option<Param>,
@@ -449,7 +453,7 @@ pub(crate) struct ParamList {
 /// its own type ([`LambdaLit`]).
 ///
 /// `fn_location` is the function's name token.
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct FunctionDef {
     pub name: String,
     pub parameters: ParamList,
@@ -460,24 +464,27 @@ pub(crate) struct FunctionDef {
 /// A `` -> `` lambda literal: parameters plus either a block body or a
 /// bare expression (an implicit `return`). Unlike a function it binds no
 /// name. `fn_location` is the `` -> `` token.
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct LambdaLit {
     pub parameters: ParamList,
     pub body: LambdaBody,
     pub fn_location: Location,
 }
 
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
+#[ast(variant_prefix = "Lambda")]
 pub(crate) enum LambdaBody {
+    #[ast(field = "statements")]
     Block(Vec<Stmt>),
     /// A bare expression (implicit `` return <expr> ``).
     Expression(Box<Expr>),
 }
 
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) enum StmtKind {
     /// `` expr; ``
     ExpressionStmt {
+        #[ast(name = "expression")]
         expr: Box<Expr>,
     },
 
@@ -623,7 +630,7 @@ pub(crate) enum StmtKind {
 /// `superclass` holds the superclass expression (a plain identifier
 /// read) and the `<` token. `members` keeps class variables and methods
 /// in source order: codegen evaluates their expressions in that order.
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct ClassDecl {
     pub name: String,
     pub superclass: Option<(Box<Expr>, Location)>,
@@ -634,13 +641,13 @@ pub(crate) struct ClassDecl {
 }
 
 /// One item of a class body, in source order.
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct ClassMember {
     pub kind: ClassMemberKind,
     pub location: Location,
 }
 
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) enum ClassMemberKind {
     ClassVar(ClassVar),
     Method(Method),
@@ -650,17 +657,18 @@ pub(crate) enum ClassMemberKind {
 /// body. `default` distinguishes an explicit `` = nil `` from an omitted
 /// default: it is `Some` of a nil literal exactly when `` = nil `` was
 /// written.
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct ClassVar {
     pub name: String,
     pub annotation: Option<Box<Expr>>,
+    #[ast(name = "default_value")]
     pub default: Option<Box<Expr>>,
     pub name_location: Location,
     pub semicolon_location: Location,
 }
 
 /// A class member: name plus the function literal.
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct Method {
     pub name: String,
     pub kind: MethodKind,
@@ -670,7 +678,7 @@ pub(crate) struct Method {
 
 /// `` try``/``catch``/``else``. `try_location` is the `try` keyword:
 /// the jump-over size-limit sites of the emitted jump ladder.
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct TryStmt {
     pub body: Vec<Stmt>,
     pub catches: Vec<CatchClause>,
@@ -684,7 +692,7 @@ pub(crate) struct TryStmt {
 /// one entry for `` catch (X) `` / `` catch X ``, several for
 /// `` catch (X, Y) `` (the parser always requires at least one). The
 /// pending exception is compared against each matcher in order.
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct CatchClause {
     pub matchers: Vec<Expr>,
     /// The whole `( ... )` matcher list, when one was written.
@@ -695,7 +703,7 @@ pub(crate) struct CatchClause {
     pub body_location: Location,
 }
 
-#[derive(Debug, Clone, LocationLessEq)]
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct SwitchCase {
     /// `None` for the `default:` branch.
     pub value: Option<Box<Expr>>,
@@ -707,3 +715,85 @@ pub(crate) struct SwitchCase {
 }
 
 impl_located!(Stmt, ClassMember, SwitchCase);
+
+impl std::fmt::Display for FunctionKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Function => "fun",
+            Self::Generator => "gen",
+        })
+    }
+}
+
+impl std::fmt::Display for MethodKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Initializer => "initializer",
+            Self::Method => "method",
+        })
+    }
+}
+
+impl std::fmt::Display for AccessMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Direct => "direct",
+            Self::NullSafe => "null_safe",
+        })
+    }
+}
+
+impl std::fmt::Display for ExprContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Load => "load",
+            Self::Store => "store",
+        })
+    }
+}
+
+impl std::fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Neg => "-",
+            Self::Not => "!",
+        })
+    }
+}
+
+impl std::fmt::Display for BoolOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::And => "and",
+            Self::Or => "or",
+        })
+    }
+}
+
+impl std::fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Add => "+",
+            Self::Sub => "-",
+            Self::Mul => "*",
+            Self::Div => "/",
+            Self::FloorDiv => "//",
+            Self::Mod => "%",
+            Self::Exp => "**",
+            Self::BitAnd => "&",
+            Self::BitOr => "|",
+            Self::BitXor => "^",
+            Self::Equal => "==",
+            Self::NotEqual => "!=",
+            Self::Greater => ">",
+            Self::GreaterEqual => ">=",
+            Self::Less => "<",
+            Self::LessEqual => "<=",
+            Self::In => "in",
+            Self::Is => "is",
+            Self::RangeInclusive => "..=",
+            Self::RangeExclusive => "..<",
+            Self::Rational => ":",
+        })
+    }
+}

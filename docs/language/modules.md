@@ -113,6 +113,10 @@ print(isinstance(ns, Module));      # true
 
 The bundled modules:
 
+- **`ast`** - parse source without executing it: `ast.parse(source)` returns a
+  `Program`, `ast.parse_expression(source)` returns an `Expr`, and `ast.dump`
+  prints either as a tree. Both parsers accept an optional `true` to
+  optimize.
 - **`math`** - numeric helpers (`math.sqrt(x)`, `math.pi`).
 - **`dataclasses`** - `@dataclass` generates `__init__`, `__str__`,
   `__eq__`, and `__hash__` from a class's

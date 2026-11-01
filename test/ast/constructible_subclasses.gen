@@ -1,0 +1,44 @@
+import "ast";
+from "ast" import Node, Location, Expr, Stmt, Program, VarDecl, Binary, LambdaBlock, ClassVar;
+
+class NodeSubclass < Node {}
+class LocationSubclass < Location {}
+class ExprSubclass < Expr {}
+class StmtSubclass < Stmt {}
+class ProgramSubclass < Program {}
+class VarDeclSubclass < VarDecl {}
+class BinarySubclass < Binary {}
+class LambdaBlockSubclass < LambdaBlock {}
+class ClassVarSubclass < ClassVar {}
+
+print(NodeSubclass());                      # expect: <NodeSubclass instance>
+print(LocationSubclass());                  # expect: <LocationSubclass instance>
+print(ExprSubclass());                      # expect: <ExprSubclass instance>
+print(StmtSubclass());                      # expect: <StmtSubclass instance>
+print(ProgramSubclass());                   # expect: <ProgramSubclass instance>
+print(VarDeclSubclass());                   # expect: <VarDeclSubclass instance>
+print(BinarySubclass());                    # expect: <BinarySubclass instance>
+print(LambdaBlockSubclass());               # expect: <LambdaBlockSubclass instance>
+print(ClassVarSubclass());                  # expect: <ClassVarSubclass instance>
+
+print(isinstance(NodeSubclass(), ast.Node));                # expect: true
+print(isinstance(LocationSubclass(), ast.Location));        # expect: true
+print(isinstance(LocationSubclass(), ast.Node));            # expect: false
+print(isinstance(ExprSubclass(), ast.Expr));                # expect: true
+print(isinstance(StmtSubclass(), ast.Stmt));                # expect: true
+print(isinstance(ProgramSubclass(), ast.Program));          # expect: true
+print(isinstance(VarDeclSubclass(), ast.VarDecl));          # expect: true
+print(isinstance(BinarySubclass(), ast.Binary));            # expect: true
+print(isinstance(LambdaBlockSubclass(), ast.LambdaBlock));  # expect: true
+print(isinstance(ClassVarSubclass(), ast.ClassVar));        # expect: true
+
+print(ast.dump(NodeSubclass()));            # expect: NodeSubclass()
+print(ast.dump(ExprSubclass()));            # expect: ExprSubclass()
+print(ast.dump(ProgramSubclass()));         # expect: ProgramSubclass()
+print(ast.dump(BinarySubclass()));          # expect: BinarySubclass()
+print(ast.dump(ClassVarSubclass()));        # expect: ClassVarSubclass()
+
+var expr_class = type(ast.parse_expression("1"));
+print(expr_class());                        # expect: <Expr instance>
+print(isinstance(expr_class(), ast.Node));  # expect: true
+print(isinstance(expr_class(), ast.Expr));  # expect: true

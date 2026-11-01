@@ -59,8 +59,10 @@ fn new_string(vm: &mut VM, s: &str) -> Value {
 /// `Set`, …), empty.
 fn new_container(vm: &mut VM, kind: &str) -> Value {
     let class = get_native_class_id(&vm.heap, kind);
-    vm.heap
-        .add_instance(Instance::new(class, Some(NativeClass::new(kind))))
+    vm.heap.add_instance(Instance::new(
+        class,
+        Some(NativeClass::new(kind).expect("test container has a native backing")),
+    ))
 }
 
 fn new_list(vm: &mut VM) -> Value {

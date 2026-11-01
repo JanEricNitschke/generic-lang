@@ -7,7 +7,7 @@ mod walk;
 #[cfg(test)]
 mod tests;
 
-use super::ast::{InjectedBody, InjectedProgram, Program, Stmt};
+use super::ast::{Expr, InjectedBody, InjectedProgram, Program, Stmt};
 use constant_fold::{fold_expr, fold_stmts};
 use dead_code_elimination::eliminate_dead_code;
 
@@ -20,6 +20,13 @@ impl Program {
     /// Run all AST optimizations over the parsed declarations.
     pub(crate) fn optimize(&mut self) {
         optimize_stmts(&mut self.declarations);
+    }
+}
+
+impl Expr {
+    /// Run all AST optimizations over a standalone expression.
+    pub(crate) fn optimize(&mut self) {
+        fold_expr(self);
     }
 }
 
