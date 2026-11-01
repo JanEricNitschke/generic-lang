@@ -1,0 +1,210 @@
+import "ast";
+from "string" import quote;
+
+fun unparse(source) {
+    return ast.unparse(ast.parse(source));
+}
+
+fun unparse_expression(source, optimize = false) {
+    return ast.unparse(ast.parse_expression(source, optimize));
+}
+
+var dollar = "$";
+
+print(ast.unparse(ast.parse("")) == ""); # expect: true
+
+print(unparse("var x = 1;"));
+# expect: var x = 1;
+
+print(unparse("var x;"));
+# expect: var x;
+
+print(unparse("var x = nil;"));
+# expect: var x = nil;
+
+print(unparse("fun add(a, b = 2) { return a + b; }"));
+# expect: fun add(a, b=2) {
+# expect:     return a + b;
+# expect: }
+
+print(unparse("class C < B { var x = 1; m(a) { return a; } }"));
+# expect: class C < B {
+# expect:     var x = 1;
+# expect:     m(a) {
+# expect:         return a;
+# expect:     }
+# expect: }
+
+print(unparse("class C { var x; }"));
+# expect: class C {
+# expect:     var x;
+# expect: }
+
+print(unparse("if (x) { y; } else { z; }"));
+# expect: if (x) {
+# expect:     y;
+# expect: } else {
+# expect:     z;
+# expect: }
+
+print(unparse("unless (x) { y; }"));
+# expect: unless (x) {
+# expect:     y;
+# expect: }
+
+print(unparse("while 'outer (x) { break 'outer; }"));
+# expect: while 'outer (x) {
+# expect:     break 'outer;
+# expect: }
+
+print(unparse("for 'outer (var i = 0; i < 3; i = i + 1) { continue 'outer; }"));
+# expect: for 'outer (var i = 0; i < 3; i = i + 1) {
+# expect:     continue 'outer;
+# expect: }
+
+print(unparse("foreach (const x in xs) { x; }"));
+# expect: foreach (const x in xs) {
+# expect:     x;
+# expect: }
+
+print(unparse("try { x; } catch (A, B) as e { y; } else { z; }"));
+# expect: try {
+# expect:     x;
+# expect: } catch (A, B) as e {
+# expect:     y;
+# expect: } else {
+# expect:     z;
+# expect: }
+
+print(unparse("switch (x) { case 1, 2: y; default: z; }"));
+# expect: switch (x) {
+# expect:     case 1, 2:
+# expect:         y;
+# expect:     default:
+# expect:         z;
+# expect: }
+
+print(unparse("switch (x) { case nil: y; default: z; }"));
+# expect: switch (x) {
+# expect:     case nil:
+# expect:         y;
+# expect:     default:
+# expect:         z;
+# expect: }
+
+print(unparse(f"import ${quote}math${quote};"));
+# expect: import "math";
+
+print(unparse(f"from ${quote}math${quote} import sqrt, cos;"));
+# expect: from "math" import (sqrt, cos);
+
+print(unparse("var f = ->(x) x + 1;"));
+# expect: var f = -> (x) x + 1;
+
+print(unparse("var f = ->(x) { return x; };"));
+# expect: var f = -> (x) {
+# expect:     return x;
+# expect: };
+
+print(unparse("var e = 1 + 2 * 3;"));
+# expect: var e = 1 + 2 * 3;
+
+print(unparse("var e = (1 + 2) * 3;"));
+# expect: var e = (1 + 2) * 3;
+
+print(unparse("var e = 1, 2;"));
+# expect: var e = 1, 2;
+
+print(unparse("var e = [1, 2];"));
+# expect: var e = [1, 2];
+
+print(unparse("var e = {1, 2};"));
+# expect: var e = {1, 2};
+
+print(unparse("var e = {" + quote + "a" + quote + ": 1};"));
+# expect: var e = {"a": 1};
+
+print(unparse("f(1, *xs);"));
+# expect: f(1, *xs);
+
+print(unparse("a?.b?[0];"));
+# expect: a?.b?[0];
+
+print(unparse(f"var s = f${quote}a ${dollar}{1 + 2}b${quote};"));
+# expect: var s = f"a ${1 + 2}b";
+
+print(unparse(f"var t = t${quote}a ${dollar}{1 + 2}b${quote};"));
+# expect: var t = t"a ${1 + 2}b";
+
+print(unparse(f"var s = ${quote}hi${quote};"));
+# expect: var s = "hi";
+
+print(unparse(f"throw Error(${quote}x${quote});"));
+# expect: throw Error("x");
+
+print(unparse("a = b = 1;"));
+# expect: a = b = 1;
+
+print(unparse("a += 2;"));
+# expect: a += 2;
+
+print(unparse("fun f() { return; }"));
+# expect: fun f() {
+# expect:     return;
+# expect: }
+
+print(unparse("fun f() { return nil; }"));
+# expect: fun f() {
+# expect:     return nil;
+# expect: }
+
+print(unparse("gen g() { yield; }"));
+# expect: gen g() {
+# expect:     yield;
+# expect: }
+
+print(unparse("gen g() { yield nil; }"));
+# expect: gen g() {
+# expect:     yield nil;
+# expect: }
+
+print(unparse("@dec fun f() {}"));
+# expect: @dec
+# expect: fun f() {}
+
+print(unparse("var x = 1; # note"));
+# expect: var x = 1;
+
+print(ast.unparse(ast.parse("var x = 1;").declarations[0]));
+# expect: var x = 1;
+
+print(unparse_expression("1 + 2"));
+# expect: 1 + 2
+
+print(unparse_expression("nil"));
+# expect: nil
+
+print(unparse_expression("1, 2"));
+# expect: 1, 2
+
+print(unparse_expression("1 + 2", true));
+# expect: 3
+
+print(unparse_expression("1 / 2", true));
+# expect: 1:2
+
+print(unparse_expression("1, 2", true));
+# expect: (1, 2)
+
+var node = ast.parse_expression("1 + 2");
+node.kind.rhs.kind = 5;
+print(ast.unparse(node));
+# expect: 1 + 5
+
+var constructed = ast.Expr();
+constructed.kind = 1;
+print(ast.unparse(constructed));
+# expect: 1
+
+print(ast.unparse(ast.Program()) == "");
+# expect: true

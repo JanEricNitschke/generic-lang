@@ -6,7 +6,9 @@
 //! that only add a source location are flattened into the variant class.
 
 use crate::ast_export::{Converter, ToAst, ast_class_names};
-use crate::compiler::Parser;
+use crate::ast_import::{FromAst, ImportError, Importer};
+use crate::compiler::ast::{Expr, Program, Stmt};
+use crate::compiler::{Parser, format_expression_ast, format_program_ast, format_statement_ast};
 use crate::config::AST_DUMP_MAX_DEPTH;
 use crate::heap::{ClassId, InstanceId};
 use crate::value::{ModuleContents, ModuleExport, NativeClass, Value, value_isinstance};
@@ -99,6 +101,52 @@ fn dump_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
     let mut out = String::new();
     Dumper.dump(vm, args[0], &mut out, 0)?;
     Ok(vm.heap.string_id(&out).into())
+}
+
+fn unparse_native(vm: &mut VM, args: &[Value]) -> VmResult<Value> {
+    let value = args[0];
+    let Some(class) = Importer::new(&vm.heap).class_name(value) else {
+        return Err(vm
+            .throw(
+                TypeError,
+                &format!(
+                    "expected Program, Stmt, or Expr, got: {}",
+                    value.to_string(&vm.heap)
+                ),
+            )
+            .unwrap_err());
+    };
+
+    let result = {
+        let mut importer = Importer::new(&vm.heap);
+        match class.as_str() {
+            "Program" => <Program as FromAst>::from_ast(&mut importer, Some(value))
+                .map(|program| format_program_ast(&program)),
+            "Stmt" => <Stmt as FromAst>::from_ast(&mut importer, Some(value))
+                .map(|statement| format_statement_ast(&statement)),
+            "Expr" => <Expr as FromAst>::from_ast(&mut importer, Some(value))
+                .map(|expression| format_expression_ast(&expression)),
+            _ => {
+                return Err(vm
+                    .throw(
+                        TypeError,
+                        &format!("expected Program, Stmt, or Expr, got: {class}"),
+                    )
+                    .unwrap_err());
+            }
+        }
+    };
+
+    match result {
+        Ok(source) => {
+            let source = source.strip_suffix('\n').unwrap_or(&source);
+            Ok(vm.heap.string_id(&source).into())
+        }
+        Err(ImportError::Type(message)) => Err(vm.throw(TypeError, &message).unwrap_err()),
+        Err(ImportError::Recursion) => Err(vm
+            .throw(RecursionError, "maximum recursion depth exceeded")
+            .unwrap_err()),
+    }
 }
 
 struct Dumper;
@@ -299,6 +347,11 @@ fn module() -> ModuleContents {
             name: "dump",
             arity: &[1],
             fun: dump_native,
+        },
+        ModuleExport::Function {
+            name: "unparse",
+            arity: &[1],
+            fun: unparse_native,
         },
     ]);
     exports

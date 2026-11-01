@@ -262,6 +262,88 @@ fn is_ignored(field: &syn::Field) -> syn::Result<bool> {
 /// //     ("statements", ToAst::to_ast(value, converter)),
 /// // ])
 /// ```
+///
+/// # Reverse conversion
+///
+/// The same derive generates `FromAst`, which rebuilds the internal node from
+/// an exported instance. Class names and field names come from the same
+/// attributes as the forward direction.
+///
+/// A struct:
+///
+/// ```ignore
+/// // impl FromAst for Param {
+/// //     fn from_ast(importer, value) -> Result<Self, ImportError> {
+/// //         importer.enter()?;
+/// //         let result = (|| {
+/// //             let value = importer.required(value, "Param")?;
+/// //             let instance = importer.instance(value, "Param")?;
+/// //             Ok(Self {
+/// //                 name: <String as FromAst>::from_ast(
+/// //                     importer,
+/// //                     importer.field(instance, "name"),
+/// //                 )?,
+/// //                 location: <Location as FromAst>::from_ast(
+/// //                     importer,
+/// //                     importer.field(instance, "location"),
+/// //                 )?,
+/// //             })
+/// //         })();
+/// //         importer.leave();
+/// //         result
+/// //     }
+/// // }
+/// ```
+///
+/// A unit variant, a struct-like variant, and a `Vec` newtype variant:
+///
+/// ```ignore
+/// // match importer.class_name(value) {
+/// //     Some(class) => match class.as_str() {
+/// //         "Break" => return Ok(Self::Break { label: ... }),
+/// //         "Return" => {
+/// //             let instance = importer.instance(value, "Return")?;
+/// //             return Ok(Self::Return { value: ... });
+/// //         }
+/// //         "LambdaBlock" => {
+/// //             let instance = importer.instance(value, "LambdaBlock")?;
+/// //             return Ok(Self::Block(
+/// //                 <Vec<Stmt> as FromAst>::from_ast(
+/// //                     importer,
+/// //                     importer.field(instance, "statements"),
+/// //                 )?,
+/// //             ));
+/// //         }
+/// //         _ => {}
+/// //     },
+/// // }
+/// ```
+///
+/// A transparent newtype variant has no class of its own. Its payload is
+/// exported directly, so the reverse arm matches the payload's class:
+///
+/// ```ignore
+/// // "ClassDecl" => return Ok(Self::Class(
+/// //     <Box<ClassDecl> as FromAst>::from_ast(importer, Some(value))?,
+/// // )),
+/// ```
+///
+/// Transparent payloads that export as raw values have no class to match:
+///
+/// ```ignore
+/// // if let Value::String(_) = value {
+/// //     return Ok(Self::Text(<String as FromAst>::from_ast(
+/// //         importer,
+/// //         Some(value),
+/// //     )?));
+/// // }
+/// //
+/// // // `ExprKind::Literal`: raw nil/bool/number/string/tuple fallback.
+/// // return Ok(Self::Literal(<Literal as FromAst>::from_ast(
+/// //     importer,
+/// //     Some(value),
+/// // )?));
+/// ```
 #[proc_macro_derive(ToAst, attributes(ast))]
 pub fn derive_to_ast(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -415,10 +497,12 @@ fn derive_struct(name: syn::Ident, fields: &Fields) -> syn::Result<TokenStream> 
     };
 
     let mut entries = Vec::new();
+    let mut from_fields = Vec::new();
     for field in &fields.named {
         let attrs = parse_field_attrs(&field.attrs)?;
         let field_name = field.ident.as_ref().expect("named field");
         if is_compiler_only_field(field) {
+            from_fields.push(quote! { #field_name: Default::default() });
             continue;
         }
         let default_name = field_name.to_string();
@@ -426,6 +510,13 @@ fn derive_struct(name: syn::Ident, fields: &Fields) -> syn::Result<TokenStream> 
         let exported_name = syn::LitStr::new(exported_name, field.span());
         entries.push(quote! {
             (#exported_name, ToAst::to_ast(&self.#field_name, converter))
+        });
+        let ty = &field.ty;
+        from_fields.push(quote! {
+            #field_name: <#ty as crate::ast_import::FromAst>::from_ast(
+                importer,
+                importer.field(instance, #exported_name),
+            )?
         });
     }
 
@@ -446,12 +537,93 @@ fn derive_struct(name: syn::Ident, fields: &Fields) -> syn::Result<TokenStream> 
             }
         }
 
+        impl crate::ast_import::FromAst for #name {
+            fn from_ast(
+                importer: &mut crate::ast_import::Importer<'_>,
+                value: Option<Value>,
+            ) -> Result<Self, crate::ast_import::ImportError> {
+                importer.enter()?;
+                let result = (|| -> Result<Self, crate::ast_import::ImportError> {
+                    let value = importer.required(value, #class)?;
+                    let instance = importer.instance(value, #class)?;
+                    Ok(Self { #(#from_fields),* })
+                })();
+                importer.leave();
+                result
+            }
+        }
+
         inventory::submit! { crate::ast_export::AstClass(&[#class]) }
     }
     .into())
 }
 
-/// Generate `ToAst` and the class registration for an enum.
+/// Strip one `Box<T>` layer, if present.
+fn unbox_type(ty: &syn::Type) -> &syn::Type {
+    let syn::Type::Path(path) = ty else {
+        return ty;
+    };
+    let Some(segment) = path.path.segments.last() else {
+        return ty;
+    };
+    if segment.ident != "Box" {
+        return ty;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+        return ty;
+    };
+    let Some(syn::GenericArgument::Type(inner)) = args.args.first() else {
+        return ty;
+    };
+    inner
+}
+
+/// The last identifier of a path type.
+fn type_ident(ty: &syn::Type) -> Option<&syn::Ident> {
+    let syn::Type::Path(path) = ty else {
+        return None;
+    };
+    path.path.segments.last().map(|segment| &segment.ident)
+}
+
+/// The class name a transparent newtype variant is exported as.
+///
+/// Transparent variants have no class of their own: `StmtKind::Class(
+/// Box<ClassDecl>)` is exported as a `ClassDecl` instance,
+/// `ExprKind::Tstring(Box<Tstring>)` as a `Tstring`, and so on. Reverse
+/// dispatch therefore unboxes `Box<T>` and uses `T`'s class name as the match
+/// key.
+///
+/// `String` and `Literal` payloads are different: they are exported as raw
+/// values, not class instances, so they have no class name here. They are
+/// handled by the raw-string and literal-fallback paths instead.
+fn transparent_payload_class_name(ty: &syn::Type) -> Option<String> {
+    let ident = type_ident(unbox_type(ty))?;
+    if ident == "String" || ident == "Literal" {
+        return None;
+    }
+    Some(ident.to_string())
+}
+
+/// Generate one `FromAst` field initializer.
+fn from_ast_field(
+    field: &syn::Field,
+    exported_name: &syn::LitStr,
+) -> syn::Result<proc_macro2::TokenStream> {
+    let field_name = field.ident.as_ref().expect("named field");
+    if is_compiler_only_field(field) {
+        return Ok(quote! { #field_name: Default::default() });
+    }
+    let ty = &field.ty;
+    Ok(quote! {
+        #field_name: <#ty as crate::ast_import::FromAst>::from_ast(
+            importer,
+            importer.field(instance, #exported_name),
+        )?
+    })
+}
+
+/// Generate `ToAst`, `FromAst`, and the class registration for an enum.
 fn derive_enum(
     name: syn::Ident,
     attrs: &[syn::Attribute],
@@ -460,6 +632,22 @@ fn derive_enum(
     let enum_attrs = parse_enum_attrs(attrs)?;
     let mut classes = Vec::new();
     let mut arms = Vec::new();
+    // Reverse arms are grouped by how the exported value identifies the
+    // variant:
+    //
+    // - class_arms match `importer.class_name(value)`:
+    //     "Break", "Return", "LambdaBlock", and transparent payload classes
+    //     such as "ClassDecl" or "Tstring".
+    // - raw_string_arms match a raw `Value::String`:
+    //     currently only `FstringPart::Text`.
+    // - fallback_arms are unconditional and catch all remaining raw values:
+    //     currently only `ExprKind::Literal` (nil, bool, number, string, tuple).
+    //
+    // Class arms run first so class instances are never mistaken for raw
+    // values. At most one fallback arm is allowed.
+    let mut class_arms = Vec::new();
+    let mut raw_string_arms = Vec::new();
+    let mut fallback_arms = Vec::new();
 
     for variant in variants {
         let variant_name = &variant.ident;
@@ -472,17 +660,22 @@ fn derive_enum(
                 arms.push(quote! {
                     Self::#variant_name => converter.class(#class, vec![])
                 });
+                class_arms.push(quote! {
+                    #class => return Ok(Self::#variant_name)
+                });
             }
             Fields::Named(fields) => {
                 classes.push(class.clone());
                 let mut bindings = Vec::new();
                 let mut entries = Vec::new();
+                let mut from_fields = Vec::new();
                 for field in &fields.named {
                     let field_attrs = parse_field_attrs(&field.attrs)?;
+                    let field_name = field.ident.as_ref().expect("named field");
                     if is_compiler_only_field(field) {
+                        from_fields.push(quote! { #field_name: Default::default() });
                         continue;
                     }
-                    let field_name = field.ident.as_ref().expect("named field");
                     let binding = quote::format_ident!("field_{field_name}");
                     bindings.push(quote! { #field_name: #binding });
                     let default_name = field_name.to_string();
@@ -491,11 +684,18 @@ fn derive_enum(
                     entries.push(quote! {
                         (#exported_name, ToAst::to_ast(#binding, converter))
                     });
+                    from_fields.push(from_ast_field(field, &exported_name)?);
                 }
                 arms.push(quote! {
                     Self::#variant_name { #(#bindings),*, .. } => {
                         let fields = vec![#(#entries),*];
                         converter.class(#class, fields)
+                    }
+                });
+                class_arms.push(quote! {
+                    #class => {
+                        let instance = importer.instance(value, #class)?;
+                        return Ok(Self::#variant_name { #(#from_fields),* });
                     }
                 });
             }
@@ -517,13 +717,76 @@ fn derive_enum(
                             converter.class(#class, vec![(#field_name, value)])
                         }
                     });
+                    let ty = &field.ty;
+                    class_arms.push(quote! {
+                        #class => {
+                            let instance = importer.instance(value, #class)?;
+                            let value = <#ty as crate::ast_import::FromAst>::from_ast(
+                                importer,
+                                importer.field(instance, #field_name),
+                            )?;
+                            return Ok(Self::#variant_name(value));
+                        }
+                    });
                 } else {
                     arms.push(quote! {
                         Self::#variant_name(value) => ToAst::to_ast(value, converter)
                     });
+                    let ty = &field.ty;
+                    let payload = unbox_type(ty);
+                    // A transparent newtype variant has no exported class of
+                    // its own; its payload is exported directly. The reverse
+                    // arm therefore depends on the payload shape:
+                    //
+                    // - String payload: exported as a raw string
+                    //   (`FstringPart::Text`), so match `Value::String`.
+                    // - Literal payload: exported as a raw literal
+                    //   (`ExprKind::Literal`), so use the unconditional
+                    //   fallback after all class arms.
+                    // - Any other payload: exported as its payload class
+                    //   (`StmtKind::Class` -> "ClassDecl",
+                    //   `ExprKind::Tstring` -> "Tstring"), so match that class.
+                    if type_ident(payload).is_some_and(|ident| ident == "String") {
+                        raw_string_arms.push(quote! {
+                            if let Value::String(_) = value {
+                                return Ok(Self::#variant_name(
+                                    <#ty as crate::ast_import::FromAst>::from_ast(
+                                        importer,
+                                        Some(value),
+                                    )?,
+                                ));
+                            }
+                        });
+                    } else if type_ident(payload).is_some_and(|ident| ident == "Literal") {
+                        fallback_arms.push(quote! {
+                            return Ok(Self::#variant_name(
+                                <#ty as crate::ast_import::FromAst>::from_ast(
+                                    importer,
+                                    Some(value),
+                                )?,
+                            ));
+                        });
+                    } else if let Some(payload_class) = transparent_payload_class_name(ty) {
+                        let payload_class = syn::LitStr::new(&payload_class, field.span());
+                        class_arms.push(quote! {
+                            #payload_class => return Ok(Self::#variant_name(
+                                <#ty as crate::ast_import::FromAst>::from_ast(
+                                    importer,
+                                    Some(value),
+                                )?,
+                            ))
+                        });
+                    }
                 }
             }
         }
+    }
+
+    if fallback_arms.len() > 1 {
+        return Err(syn::Error::new_spanned(
+            &name,
+            "at most one transparent fallback variant is supported",
+        ));
     }
 
     let registration = if classes.is_empty() {
@@ -534,12 +797,41 @@ fn derive_enum(
         }
     };
 
+    let enum_name = syn::LitStr::new(&name.to_string(), name.span());
+    let from_fallback = if fallback_arms.is_empty() {
+        quote! { Err(importer.unexpected(#enum_name, value)) }
+    } else {
+        quote! { #(#fallback_arms)* }
+    };
+
     Ok(quote! {
         impl ToAst for #name {
             fn to_ast(&self, converter: &mut Converter<'_>) -> Value {
                 match self {
                     #(#arms),*
                 }
+            }
+        }
+
+        impl crate::ast_import::FromAst for #name {
+            fn from_ast(
+                importer: &mut crate::ast_import::Importer<'_>,
+                value: Option<Value>,
+            ) -> Result<Self, crate::ast_import::ImportError> {
+                importer.enter()?;
+                let result = (|| -> Result<Self, crate::ast_import::ImportError> {
+                    let value = importer.required(value, #enum_name)?;
+                    if let Some(class) = importer.class_name(value) {
+                        match class.as_str() {
+                            #(#class_arms),*,
+                            _ => {}
+                        }
+                    }
+                    #(#raw_string_arms)*
+                    #from_fallback
+                })();
+                importer.leave();
+                result
             }
         }
 

@@ -19,6 +19,7 @@ mod variables;
 use crate::{heap::Heap, scanner::Scanner, types::InjectedKind, value::Function};
 use back::Codegen;
 pub use fmt::{FormatError, FormatOptions, format_source, format_source_with_default};
+pub(crate) use fmt::{format_expression_ast, format_program_ast, format_statement_ast};
 pub(crate) use front::Parser;
 
 /// Main compiler struct that turns tokens into bytecode.

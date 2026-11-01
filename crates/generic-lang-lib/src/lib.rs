@@ -29,6 +29,7 @@ use vm::VM;
 mod testing;
 
 mod ast_export;
+mod ast_import;
 mod bitwise;
 mod chunk;
 mod compiler;
