@@ -10,6 +10,7 @@ use crate::types::{ConditionType, Location, LoopType, Mutability};
 use crate::value::Value;
 use generic_lang_derive::{LocationLessEq, ToAst};
 use num_bigint::BigInt;
+use strum_macros::{Display, EnumString};
 
 /// A parsed program: the top-level declarations.
 #[derive(Debug, Clone, LocationLessEq)]
@@ -62,20 +63,24 @@ pub(crate) enum InjectedBody {
 }
 
 /// The kinds a top-level function declaration can have.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString)]
 pub(crate) enum FunctionKind {
     /// A `fun` declaration.
+    #[strum(serialize = "fun")]
     Function,
     /// A `gen` declaration.
+    #[strum(serialize = "gen")]
     Generator,
 }
 
 /// The kinds a class member can have.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString)]
 pub(crate) enum MethodKind {
     /// An `__init__` method.
+    #[strum(serialize = "initializer")]
     Initializer,
     /// Any other method.
+    #[strum(serialize = "method")]
     Method,
 }
 
@@ -142,34 +147,57 @@ pub(crate) struct Arg {
 /// The operators of two-operand expressions: everything that sits
 /// between its operands, from `+` to `..=` to `:`. Compound assignment
 /// (`+=` and friends) reuses the arithmetic subset of this enum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString)]
 pub(crate) enum BinaryOp {
+    #[strum(serialize = "+")]
     Add,
+    #[strum(serialize = "-")]
     Sub,
+    #[strum(serialize = "*")]
     Mul,
+    #[strum(serialize = "/")]
     Div,
+    #[strum(serialize = "//")]
     FloorDiv,
+    #[strum(serialize = "%")]
     Mod,
+    #[strum(serialize = "**")]
     Exp,
+    #[strum(serialize = "&")]
     BitAnd,
+    #[strum(serialize = "|")]
     BitOr,
+    #[strum(serialize = "^")]
     BitXor,
+    #[strum(serialize = "==")]
     Equal,
+    #[strum(serialize = "!=")]
     NotEqual,
+    #[strum(serialize = ">")]
     Greater,
+    #[strum(serialize = ">=")]
     GreaterEqual,
+    #[strum(serialize = "<")]
     Less,
+    #[strum(serialize = "<=")]
     LessEqual,
+    #[strum(serialize = "in")]
     In,
+    #[strum(serialize = "is")]
     Is,
+    #[strum(serialize = "..=")]
     RangeInclusive,
+    #[strum(serialize = "..<")]
     RangeExclusive,
+    #[strum(serialize = ":")]
     Rational,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString)]
 pub(crate) enum UnaryOp {
+    #[strum(serialize = "-")]
     Neg,
+    #[strum(serialize = "!")]
     Not,
 }
 
@@ -208,27 +236,33 @@ pub(crate) enum Literal {
 /// `NullSafe` marks the `?.` / `?[` links of an optional chain: if the
 /// value arriving at the link is nil, the rest of the chain is skipped
 /// and the nil becomes the chain's value.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString)]
 pub(crate) enum AccessMode {
     /// A plain `.name` / `[index]`.
+    #[strum(serialize = "direct")]
     Direct,
     /// A `?.name` / `?[index]` link inside an optional chain.
+    #[strum(serialize = "null_safe")]
     NullSafe,
 }
 
 /// Whether an expression names something to read or something to write.
 /// Only `Variable`, `Property`, and `Subscript` can hold `Store`; they
 /// appear that way as the target of an assignment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString)]
 pub(crate) enum ExprContext {
+    #[strum(serialize = "load")]
     Load,
+    #[strum(serialize = "store")]
     Store,
 }
 
 /// The short-circuiting boolean operators.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString)]
 pub(crate) enum BoolOperator {
+    #[strum(serialize = "and")]
     And,
+    #[strum(serialize = "or")]
     Or,
 }
 
@@ -715,85 +749,3 @@ pub(crate) struct SwitchCase {
 }
 
 impl_located!(Stmt, ClassMember, SwitchCase);
-
-impl std::fmt::Display for FunctionKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Function => "fun",
-            Self::Generator => "gen",
-        })
-    }
-}
-
-impl std::fmt::Display for MethodKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Initializer => "initializer",
-            Self::Method => "method",
-        })
-    }
-}
-
-impl std::fmt::Display for AccessMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Direct => "direct",
-            Self::NullSafe => "null_safe",
-        })
-    }
-}
-
-impl std::fmt::Display for ExprContext {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Load => "load",
-            Self::Store => "store",
-        })
-    }
-}
-
-impl std::fmt::Display for UnaryOp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Neg => "-",
-            Self::Not => "!",
-        })
-    }
-}
-
-impl std::fmt::Display for BoolOperator {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::And => "and",
-            Self::Or => "or",
-        })
-    }
-}
-
-impl std::fmt::Display for BinaryOp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Add => "+",
-            Self::Sub => "-",
-            Self::Mul => "*",
-            Self::Div => "/",
-            Self::FloorDiv => "//",
-            Self::Mod => "%",
-            Self::Exp => "**",
-            Self::BitAnd => "&",
-            Self::BitOr => "|",
-            Self::BitXor => "^",
-            Self::Equal => "==",
-            Self::NotEqual => "!=",
-            Self::Greater => ">",
-            Self::GreaterEqual => ">=",
-            Self::Less => "<",
-            Self::LessEqual => "<=",
-            Self::In => "in",
-            Self::Is => "is",
-            Self::RangeInclusive => "..=",
-            Self::RangeExclusive => "..<",
-            Self::Rational => ":",
-        })
-    }
-}

@@ -124,6 +124,7 @@ num-bigint   = { version = "0.5.1" }
 num-traits   = "0.2.19"
 num_enum     = "0.7.6"
 paste        = "1.0.15"
+proc-macro2  = "1"
 quote        = "1.0.45"
 path-slash   = "0.2.1"
 rand         = "0.10.1"

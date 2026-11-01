@@ -136,6 +136,25 @@ pub fn format_source_with_default(source: &str) -> Result<String, FormatError> {
     format_source(source, FormatOptions::default())
 }
 
+pub(crate) fn format_program_ast(program: &Program) -> String {
+    let comments = CommentMap::default();
+    Formatter::new(FormatOptions::default(), &comments).format_program(program)
+}
+
+pub(crate) fn format_statement_ast(statement: &Stmt) -> String {
+    let comments = CommentMap::default();
+    let mut formatter = Formatter::new(FormatOptions::default(), &comments);
+    formatter.statement(statement, 0);
+    formatter.out
+}
+
+pub(crate) fn format_expression_ast(expression: &Expr) -> String {
+    let comments = CommentMap::default();
+    let mut formatter = Formatter::new(FormatOptions::default(), &comments);
+    formatter.expr(expression, Precedence::None, 0);
+    formatter.out
+}
+
 struct Formatter<'comments> {
     out: String,
     indent_unit: String,
@@ -608,7 +627,7 @@ impl<'comments> Formatter<'comments> {
             self.out.push_str(" else ");
             self.block(
                 else_block,
-                end_position(try_stmt.else_location.expect("else block has a location")),
+                end_position(try_stmt.else_location.unwrap_or_default()),
                 level,
             );
         }

@@ -1,0 +1,73 @@
+import "ast";
+from "ast" import Expr;
+
+try {
+    ast.unparse(1);
+} catch TypeError as e {
+    print(e.message()); # expect: expected Program, Stmt, or Expr, got: 1
+}
+
+try {
+    ast.unparse(ast.Node());
+} catch TypeError as e {
+    print(e.message()); # expect: expected Program, Stmt, or Expr, got: Node
+}
+
+try {
+    ast.unparse(ast.Location());
+} catch TypeError as e {
+    print(e.message()); # expect: expected Program, Stmt, or Expr, got: Location
+}
+
+try {
+    ast.unparse([]);
+} catch TypeError as e {
+    print(e.message()); # expect: expected Program, Stmt, or Expr, got: List
+}
+
+try {
+    ast.unparse(ast.Expr());
+} catch TypeError as e {
+    print(e.message()); # expect: missing ExprKind
+}
+
+try {
+    ast.unparse(ast.Stmt());
+} catch TypeError as e {
+    print(e.message()); # expect: missing StmtKind
+}
+
+try {
+    var node = ast.Expr();
+    node.kind = node;
+    ast.unparse(node);
+} catch TypeError as e {
+    print(e.message()); # expect: expected literal, got: Expr
+}
+
+try {
+    var node = ast.parse_expression("1 + 2");
+    node.kind.lhs = node;
+    ast.unparse(node);
+} catch RecursionError as e {
+    print(e.message()); # expect: maximum recursion depth exceeded
+}
+
+var deep = ast.parse_expression("1");
+for (var i = 0; i < 200; i = i + 1) {
+    var wrapper = ast.parse_expression("1 + 2");
+    wrapper.kind.lhs = deep;
+    deep = wrapper;
+}
+try {
+    ast.unparse(deep);
+} catch RecursionError as e {
+    print(e.message()); # expect: maximum recursion depth exceeded
+}
+
+class ExprSubclass < Expr {}
+try {
+    ast.unparse(ExprSubclass());
+} catch TypeError as e {
+    print(e.message()); # expect: expected Program, Stmt, or Expr, got: ExprSubclass
+}
