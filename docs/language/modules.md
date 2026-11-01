@@ -74,7 +74,8 @@ These are always in scope (no import needed):
 | `zip(a, b)` | Lazy generator of pairs, stopping at the shorter. |
 | `reversed(iter)` | A reversed list (eager). |
 | `enumerate(iter[, start])` | A generator of `(index, item)` tuples, indices counting from `start` (default `0`). |
-| `object()` | The bare root class; instances are method-less and compare by identity (a handy unique sentinel). |
+| `object()` | An empty class; instances compare by identity. |
+| `sentinel(name)` | A unique value with the given display name; compare it with `is`. |
 | `assert(x)` | Raise `AssertionError` if `x` is falsey. |
 | `getattr/setattr/hasattr/delattr(obj, name, …)` | Reflective attribute access on instances, classes, and modules. |
 | `clock()`, `sleep(s)`, `input(prompt)` | Time, delay, read a line. |
