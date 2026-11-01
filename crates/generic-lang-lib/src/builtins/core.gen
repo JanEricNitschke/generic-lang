@@ -1,9 +1,22 @@
 # Core builtin functions implemented in Generic language
 
-# The root class. It carries no methods of its own; instances compare by
-# identity and render as `<object instance>`. Chiefly useful as a unique,
-# never-colliding sentinel via `object()`.
+# An empty class. Instances compare by identity and render as
+# `<object instance>`.
 class object {}
+
+# A named, unique value for identity checks.
+class sentinel {
+    __init__(name) {
+        if (!isinstance(name, String)) {
+            throw TypeError("sentinel name must be a string");
+        }
+        this.__name__ = name;
+    }
+
+    __str__() {
+        return this.__name__;
+    }
+}
 
 fun all(iterable) {
     foreach (var item in iterable) {

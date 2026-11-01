@@ -1,0 +1,31 @@
+# `sentinel(name)` creates a unique value with a readable display name.
+print(sentinel); # expect: <class sentinel>
+
+var missing = sentinel("MISSING");
+print(missing); # expect: MISSING
+print(str(missing)); # expect: MISSING
+print(missing.__name__); # expect: MISSING
+
+# Distinct calls produce distinct objects; identity checks distinguish them.
+print(missing is missing); # expect: true
+print(missing is sentinel("MISSING")); # expect: false
+print(missing == missing); # expect: true
+print(missing == sentinel("MISSING")); # expect: false
+print(isinstance(missing, sentinel)); # expect: true
+
+# Sentinels are truthy.
+if (missing) {
+    print("truthy"); # expect: truthy
+}
+
+try {
+    sentinel(1);
+} catch TypeError as e {
+    print(e.message()); # expect: sentinel name must be a string
+}
+
+try {
+    sentinel();
+} catch TypeError as e {
+    print(e.message()); # expect: Expected 1 argument but got 0.
+}
