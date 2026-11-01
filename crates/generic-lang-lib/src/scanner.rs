@@ -208,7 +208,7 @@ impl<'a> Token<'a> {
 enum ScannerMode {
     Normal,
     InterpolationString,
-    Interpolation(u8),
+    Interpolation(usize),
 }
 
 /// A raw `#` comment captured while scanning.
@@ -281,7 +281,7 @@ impl<'a> Scanner<'a> {
             .expect("Internal Error: Scanner mode underflow")
     }
 
-    fn unclosed_braces(&mut self) -> &mut u8 {
+    fn unclosed_braces(&mut self) -> &mut usize {
         match self.mode_mut() {
             ScannerMode::Interpolation(unclosed_braces) => unclosed_braces,
             _ => unreachable!("Should only call `unclosed_braces` while in Interpolation mode!"),
@@ -962,6 +962,22 @@ mod tests {
                 TK::InterpolationEnd,
                 TK::InterpolationStringEnd,
             ],
+        );
+    }
+
+    #[test]
+    fn interpolation_brace_depth_does_not_overflow() {
+        let mut source = String::from("f\"${");
+        source.push_str(&"{".repeat(300));
+        source.push_str(&"}".repeat(301));
+        source.push('"');
+
+        let tokens = scan_tokens(&source);
+
+        assert!(
+            tokens
+                .iter()
+                .any(|token| token.kind == TK::InterpolationEnd)
         );
     }
 

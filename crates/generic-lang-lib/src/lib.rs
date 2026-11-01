@@ -44,6 +44,7 @@ mod utils;
 mod value;
 mod vm;
 
+pub use ast_import::{check_ast_roundtrip, check_unparse_roundtrip};
 pub use testing::{TestRunResult, run_tests};
 pub use vm::InterpretResult;
 

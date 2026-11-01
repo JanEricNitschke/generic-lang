@@ -24,8 +24,14 @@ pub(crate) const REENTRY_MAX: usize = 1024;
 /// stack while being formatted. Kept small: this only formats values inside
 /// error messages, where deep nesting is noise.
 pub(crate) const REPR_MAX_DEPTH: usize = 10;
+/// Maximum parser recursion depth for nested statements and expressions.
+pub(crate) const PARSER_MAX_DEPTH: usize = 128;
 /// Maximum nesting depth `ast.dump` descends before raising `RecursionError`.
 pub(crate) const AST_DUMP_MAX_DEPTH: usize = 128;
+/// Maximum nesting depth importing an AST from the `ast` representation
+/// descends before raising `RecursionError`. Parsed trees may be deeper than
+/// dump's display cap.
+pub(crate) const AST_IMPORT_MAX_DEPTH: usize = 512;
 /// Maximum nesting depth `json.dumps` serializes before raising. The
 /// dumper recurses on the host stack, so unbounded depth would overflow
 /// it; the cap matches the parser's (serde's) 128-level recursion limit,

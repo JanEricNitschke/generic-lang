@@ -1,13 +1,17 @@
 //! Conversion of `ast` module values back into compiler AST nodes.
 
+use crate::RunOptions;
+use crate::ast_export::{Converter, ToAst};
 use crate::compiler::ast::{
-    AccessMode, BinaryOp, BoolOperator, ExprContext, FunctionKind, Literal, MethodKind, Program,
-    Stmt, UnaryOp,
+    AccessMode, BinaryOp, BoolOperator, Expr, ExprContext, FunctionKind, Literal, MethodKind,
+    Program, Stmt, UnaryOp,
 };
-use crate::config::AST_DUMP_MAX_DEPTH;
+use crate::compiler::{LocationLessEq, Parser, format_expression_ast, format_program_ast};
+use crate::config::AST_IMPORT_MAX_DEPTH;
 use crate::heap::Heap;
 use crate::types::{ConditionType, Location, LoopType, Mutability};
 use crate::value::{GenericInt, Instance, NativeClass, Number, Value};
+use crate::vm::VM;
 
 /// Why importing an exported AST value failed.
 ///
@@ -16,6 +20,7 @@ use crate::value::{GenericInt, Instance, NativeClass, Number, Value};
 /// - `Type` -> `TypeError`: missing field, wrong class/value, invalid enum
 ///   string, or an unrepresentable raw value.
 /// - `Recursion` -> `RecursionError`: the AST is cyclic or too deeply nested.
+#[derive(Debug)]
 pub(crate) enum ImportError {
     Type(String),
     Recursion,
@@ -38,7 +43,7 @@ impl<'a> Importer<'a> {
     }
 
     pub(crate) fn enter(&mut self) -> Result<(), ImportError> {
-        if self.depth >= AST_DUMP_MAX_DEPTH {
+        if self.depth >= AST_IMPORT_MAX_DEPTH {
             return Err(ImportError::Recursion);
         }
         self.depth += 1;
@@ -297,3 +302,128 @@ impl_enum_from_ast!(
     BoolOperator,
     BinaryOp,
 );
+
+fn import_program(program: &Program) -> Result<Program, ImportError> {
+    let mut vm = VM::new(RunOptions::default());
+    let value = program.to_ast(&mut Converter::new(&mut vm));
+    Program::from_ast(&mut Importer::new(&vm.heap), Some(value))
+}
+
+fn import_expression(expression: &Expr) -> Result<Expr, ImportError> {
+    let mut vm = VM::new(RunOptions::default());
+    let value = expression.to_ast(&mut Converter::new(&mut vm));
+    Expr::from_ast(&mut Importer::new(&vm.heap), Some(value))
+}
+
+fn check_program_ast(source: &str, optimize: bool) {
+    let Ok(mut program) = Parser::parse_source(source) else {
+        return;
+    };
+    if optimize {
+        program.optimize();
+    }
+    let imported = match import_program(&program) {
+        Ok(imported) => imported,
+        Err(ImportError::Recursion) => return,
+        Err(error) => panic!("AST import failed: {error:?}"),
+    };
+    assert!(
+        program.loc_eq(&imported),
+        "program AST changed after export/import:\nsource: {source:?}"
+    );
+}
+
+fn check_expression_ast(source: &str, optimize: bool) {
+    let Ok(mut expression) = Parser::parse_expression_source(source) else {
+        return;
+    };
+    if optimize {
+        expression.optimize();
+    }
+    let imported = match import_expression(&expression) {
+        Ok(imported) => imported,
+        Err(ImportError::Recursion) => return,
+        Err(error) => panic!("AST import failed: {error:?}"),
+    };
+    assert!(
+        expression.loc_eq(&imported),
+        "expression AST changed after export/import:\nsource: {source:?}"
+    );
+}
+
+fn check_program_unparse(source: &str) {
+    let Ok(program) = Parser::parse_source(source) else {
+        return;
+    };
+    let imported = match import_program(&program) {
+        Ok(imported) => imported,
+        Err(ImportError::Recursion) => return,
+        Err(error) => panic!("AST import failed: {error:?}"),
+    };
+    let output = format_program_ast(&imported);
+    let reparsed = Parser::parse_source(&output).unwrap_or_else(|errors| {
+        panic!("unparsed program did not parse: {errors:?}\nsource: {source:?}\noutput: {output:?}")
+    });
+    assert!(
+        program.loc_eq(&reparsed),
+        "program AST changed after unparse round trip:\nsource: {source:?}\noutput: {output:?}"
+    );
+}
+
+fn check_expression_unparse(source: &str) {
+    let Ok(expression) = Parser::parse_expression_source(source) else {
+        return;
+    };
+    let imported = match import_expression(&expression) {
+        Ok(imported) => imported,
+        Err(ImportError::Recursion) => return,
+        Err(error) => panic!("AST import failed: {error:?}"),
+    };
+    let output = format_expression_ast(&imported);
+    let reparsed = Parser::parse_expression_source(&output).unwrap_or_else(|errors| {
+        panic!(
+            "unparsed expression did not parse: {errors:?}\nsource: {source:?}\noutput: {output:?}"
+        )
+    });
+    assert!(
+        expression.loc_eq(&reparsed),
+        "expression AST changed after unparse round trip:\nsource: {source:?}\noutput: {output:?}"
+    );
+}
+
+/// Check the internal AST -> exported AST -> internal AST round trip.
+pub fn check_ast_roundtrip(source: &str, optimize: bool) {
+    check_program_ast(source, optimize);
+    check_expression_ast(source, optimize);
+}
+
+/// Check the full parse -> export -> import -> format -> reparse round trip.
+pub fn check_unparse_roundtrip(source: &str) {
+    check_program_unparse(source);
+    check_expression_unparse(source);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SOURCES: &[&str] = &[
+        "",
+        "var x = 1; # comment",
+        "class C < B { var x = 1; m(a) { return a; } }",
+        "try { x; } catch (A) as e { y; } else { z; }",
+        "switch (x) { case nil: y; default: z; }",
+        r#"var t = t"a ${1 + 2}b";"#,
+        "fun f() { return nil; }",
+    ];
+
+    #[test]
+    fn round_trips() {
+        for source in SOURCES {
+            for optimize in [false, true] {
+                check_ast_roundtrip(source, optimize);
+            }
+            check_unparse_roundtrip(source);
+        }
+    }
+}
