@@ -5,6 +5,7 @@
 //! not preserve the original line breaks. Comments are kept in a side map
 //! keyed by AST list slots, so formatting a file keeps them in source order.
 
+use super::Parser;
 use super::ast::{
     AccessMode, BinaryOp, BoolOperator, CatchClause, ClassDecl, ClassMemberKind, ClassVar, Expr,
     ExprKind, FstringPart, FunctionKind, Literal, Method, ParamList, Program, Stmt, StmtKind,
@@ -12,9 +13,7 @@ use super::ast::{
 };
 use super::ast_eq::LocationLessEq;
 use super::comments::{Comment, CommentMap, Position, end_position, start_position};
-use super::front::Parser;
 use super::rules::Precedence;
-use crate::scanner::Scanner;
 use crate::types::{ConditionType, LoopType, Mutability};
 use std::collections::HashSet;
 
@@ -102,10 +101,10 @@ impl Default for FormatOptions {
 /// Returns [`FormatError::Syntax`] when the input does not parse, or
 /// [`FormatError::Internal`] if the formatted output does not round-trip.
 pub fn format_source(source: &str, options: FormatOptions) -> Result<String, FormatError> {
-    let program = parse(source).map_err(FormatError::Syntax)?;
+    let program = Parser::parse_source(source).map_err(FormatError::Syntax)?;
     let formatted = Formatter::new(options, &program.comments).format_program(&program);
 
-    let reparsed = parse(&formatted).map_err(|errors| {
+    let reparsed = Parser::parse_source(&formatted).map_err(|errors| {
         FormatError::Internal(vec![format!(
             "internal formatter error: formatted output failed to parse:\n{}",
             errors.join("\n")
@@ -135,23 +134,6 @@ pub fn format_source(source: &str, options: FormatOptions) -> Result<String, For
 /// [`FormatError::Internal`] if the formatted source does not round-trip.
 pub fn format_source_with_default(source: &str) -> Result<String, FormatError> {
     format_source(source, FormatOptions::default())
-}
-
-fn parse(source: &str) -> Result<Program, Vec<String>> {
-    let mut parser = Parser::new(
-        Scanner::new(
-            source,
-            #[cfg(feature = "debug_scanner")]
-            false,
-        ),
-        #[cfg(feature = "debug_parser")]
-        false,
-    );
-    let program = parser.parse_program();
-    if parser.had_error {
-        return Err(std::mem::take(&mut parser.errors));
-    }
-    Ok(program)
 }
 
 struct Formatter<'comments> {
@@ -868,10 +850,10 @@ impl<'comments> Formatter<'comments> {
                     op,
                     BinaryOp::RangeInclusive | BinaryOp::RangeExclusive | BinaryOp::Rational
                 ) {
-                    self.out.push_str(binary_operator(*op));
+                    self.out.push_str(&op.to_string());
                 } else {
                     self.out.push(' ');
-                    self.out.push_str(binary_operator(*op));
+                    self.out.push_str(&op.to_string());
                     self.out.push(' ');
                 }
                 self.expr_single(rhs, binary_rhs_parent(*op, rhs), level);
@@ -1058,7 +1040,7 @@ impl<'comments> Formatter<'comments> {
             } => {
                 self.expr(target, Precedence::Assignment, level);
                 self.out.push(' ');
-                self.out.push_str(binary_operator(*op));
+                self.out.push_str(&op.to_string());
                 self.out.push_str("= ");
                 self.expr(value, Precedence::Assignment, level);
             }
@@ -1227,32 +1209,6 @@ const fn binary_precedence(op: BinaryOp) -> Precedence {
         BinaryOp::RangeInclusive | BinaryOp::RangeExclusive => Precedence::Range,
         BinaryOp::Exp => Precedence::Exponent,
         BinaryOp::Rational => Precedence::Rational,
-    }
-}
-
-const fn binary_operator(op: BinaryOp) -> &'static str {
-    match op {
-        BinaryOp::Add => "+",
-        BinaryOp::Sub => "-",
-        BinaryOp::Mul => "*",
-        BinaryOp::Div => "/",
-        BinaryOp::FloorDiv => "//",
-        BinaryOp::Mod => "%",
-        BinaryOp::Exp => "**",
-        BinaryOp::BitAnd => "&",
-        BinaryOp::BitOr => "|",
-        BinaryOp::BitXor => "^",
-        BinaryOp::Equal => "==",
-        BinaryOp::NotEqual => "!=",
-        BinaryOp::Greater => ">",
-        BinaryOp::GreaterEqual => ">=",
-        BinaryOp::Less => "<",
-        BinaryOp::LessEqual => "<=",
-        BinaryOp::In => "in",
-        BinaryOp::Is => "is",
-        BinaryOp::RangeInclusive => "..=",
-        BinaryOp::RangeExclusive => "..<",
-        BinaryOp::Rational => ":",
     }
 }
 

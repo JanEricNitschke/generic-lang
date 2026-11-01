@@ -1,9 +1,87 @@
 //! Methods of the native `Template` and `Interpolation` classes.
 
 use crate::{
-    value::{Instance, TemplateIterator, Tuple, Value},
+    value::{Instance, Interpolation, NativeClass, Template, TemplateIterator, Tuple, Value},
+    vm::ExceptionKind::TypeError,
     vm::{VM, errors::VmResult},
 };
+
+/// Build an interpolation from a value and an optional expression string.
+pub(super) fn interpolation_init_native(
+    vm: &mut VM,
+    receiver: &Value,
+    args: &[Value],
+) -> VmResult<Value> {
+    let instance = *receiver.as_instance();
+    let value = args[0];
+    let expression = match args.get(1) {
+        Some(Value::String(string_id)) => *string_id,
+        Some(value) => {
+            return Err(vm
+                .throw(
+                    TypeError,
+                    &format!(
+                        "'Interpolation' expects a string expression, got: {}",
+                        value.to_string(&vm.heap)
+                    ),
+                )
+                .unwrap_err());
+        }
+        None => vm.heap.string_id(&""),
+    };
+
+    let interpolation = Interpolation::new(value, expression);
+    instance.to_value_mut(&mut vm.heap).backing = Some(NativeClass::Interpolation(interpolation));
+    Ok(*receiver)
+}
+
+/// Build a template from a sequence of strings and interpolations.
+pub(super) fn template_init_native(
+    vm: &mut VM,
+    receiver: &Value,
+    args: &[Value],
+) -> VmResult<Value> {
+    let instance = *receiver.as_instance();
+    let interpolation_class = *vm
+        .heap
+        .native_classes
+        .get("Interpolation")
+        .expect("Interpolation class is registered");
+    let mut strings = Vec::new();
+    let mut interpolations = Vec::new();
+    let mut current_text = None::<String>;
+
+    for arg in args {
+        match arg {
+            Value::String(string_id) => current_text
+                .get_or_insert_with(String::new)
+                .push_str(string_id.to_value(&vm.heap)),
+            Value::Instance(instance)
+                if instance.to_value(&vm.heap).class == interpolation_class =>
+            {
+                let text = current_text.take().unwrap_or_default();
+                strings.push(vm.heap.string_id(&text));
+                interpolations.push(*instance);
+            }
+            value => {
+                return Err(vm
+                    .throw(
+                        TypeError,
+                        &format!(
+                            "'Template' expects arguments of type String or Interpolation, got: {}",
+                            value.to_string(&vm.heap)
+                        ),
+                    )
+                    .unwrap_err());
+            }
+        }
+    }
+
+    strings.push(vm.heap.string_id(&current_text.unwrap_or_default()));
+    let template = Template::new(interpolations, strings);
+    instance.to_value_mut(&mut vm.heap).backing = Some(NativeClass::Template(template));
+    Ok(*receiver)
+}
 
 /// Produce an iterator over the template `var iter = template.__iter__()`.
 /// Used by `foreach (var a in template)`.

@@ -199,11 +199,16 @@ plugin-lint:
 # macOS ships only a dynamic ASan runtime for dylibs, which cannot be
 # dlopen'ed into a statically-sanitized host ("loaded too late"), so there
 # they get trap-mode UBSan only (runtime-free; UB aborts the test).
+# ASan also cannot link the macOS host while `inventory` is in the dependency
+# graph (https://github.com/dtolnay/inventory/issues/90), so the host and Rust
+# plugin are left uninstrumented there.
+ASAN_PLUGIN_RUSTFLAGS := -Zsanitizer=address
 ifeq ($(shell uname -s),Darwin)
 ASAN_PLUGIN_CC       := $(CC)
 ASAN_PLUGIN_CXX      := $(CXX)
 ASAN_PLUGIN_SANITIZE := -fsanitize=undefined -fsanitize-trap=undefined
-ASAN_HOST_RUSTFLAGS  := -Zsanitizer=address
+ASAN_HOST_RUSTFLAGS  :=
+ASAN_PLUGIN_RUSTFLAGS :=
 else
 ASAN_PLUGIN_CC       := clang
 ASAN_PLUGIN_CXX      := clang++
@@ -220,7 +225,7 @@ ASAN_BIN    := target/$(ASAN_TARGET)/debug/generic
 .PHONY: plugin-asan-test
 plugin-asan-test: plugin-bad-fixture
 	RUSTFLAGS="$(ASAN_HOST_RUSTFLAGS)" cargo +nightly build --target $(ASAN_TARGET) -p generic-lang
-	RUSTFLAGS=-Zsanitizer=address cargo +nightly build --target $(ASAN_TARGET) --manifest-path plugin-examples/rust/Cargo.toml
+	RUSTFLAGS="$(ASAN_PLUGIN_RUSTFLAGS)" cargo +nightly build --target $(ASAN_TARGET) --manifest-path plugin-examples/rust/Cargo.toml
 	rm -f test/plugin/rust/rust_demo_plugin.$(DYLIB_EXT)
 	cp plugin-examples/rust/target/$(ASAN_TARGET)/debug/$(PLUGIN_LIB) test/plugin/rust/rust_demo_plugin.$(DYLIB_EXT)
 	mkdir -p test/plugin/lang

@@ -1,0 +1,24 @@
+import "ast";
+from "string" import quote;
+
+var nil_node = ast.parse_expression("nil");
+print(isinstance(nil_node, ast.Expr)); # expect: true
+print(nil_node.kind == nil); # expect: true
+
+var truth = ast.parse_expression("true");
+print(truth.kind); # expect: true
+
+var falsity = ast.parse_expression("false");
+print(falsity.kind); # expect: false
+
+var integer = ast.parse_expression("1");
+print(integer.kind); # expect: 1
+
+var big = ast.parse_expression("123456789012345678901234567890");
+print(big.kind); # expect: 123456789012345678901234567890
+
+var float = ast.parse_expression("3.5");
+print(float.kind); # expect: 3.5
+
+var text = ast.parse_expression(f"${quote}hello${quote}");
+print(text.kind); # expect: hello

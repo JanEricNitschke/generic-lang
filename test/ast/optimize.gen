@@ -1,0 +1,30 @@
+import "ast";
+
+var unoptimized = ast.parse_expression("1 + 2");
+print(isinstance(unoptimized.kind, ast.Binary)); # expect: true
+
+var explicitly_unoptimized = ast.parse_expression("1 + 2", false);
+print(isinstance(explicitly_unoptimized.kind, ast.Binary)); # expect: true
+
+var optimized = ast.parse_expression("1 + 2", true);
+print(optimized.kind); # expect: 3
+
+var program = ast.parse("var x = 1 + 2;");
+print(isinstance(program.declarations[0].kind.initializer.kind, ast.Binary)); # expect: true
+
+var optimized_program = ast.parse("var x = 1 + 2;", true);
+print(optimized_program.declarations[0].kind.initializer.kind); # expect: 3
+
+var tuple = ast.parse_expression("1, 2", true);
+print(len(tuple.kind)); # expect: 2
+print(tuple.kind[0]); # expect: 1
+print(tuple.kind[1]); # expect: 2
+
+var rational = ast.parse_expression("1 / 2", true);
+print(rational.kind); # expect: 1:2
+
+try {
+    ast.parse("1", 1);
+} catch TypeError as e {
+    print(e.message()); # expect: 'parse' expects a bool as its second argument, got: 1
+}

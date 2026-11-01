@@ -1,0 +1,26 @@
+var interpolation = Interpolation(1, "1 + 1");
+print(interpolation);                    # expect: Interpolation(value=1, expression=1 + 1)
+print(interpolation.value());            # expect: 1
+print(interpolation.expression());       # expect: 1 + 1
+
+print(Interpolation(3));                 # expect: Interpolation(value=3, expression=)
+print(Interpolation(nil));               # expect: Interpolation(value=nil, expression=)
+print(Interpolation("text", "name"));    # expect: Interpolation(value=text, expression=name)
+
+try {
+    Interpolation(1, 2);
+} catch TypeError as e {
+    print(e.message()); # expect: 'Interpolation' expects a string expression, got: 2
+}
+
+try {
+    Interpolation(1, nil);
+} catch TypeError as e {
+    print(e.message()); # expect: 'Interpolation' expects a string expression, got: nil
+}
+
+try {
+    Interpolation(1, true);
+} catch TypeError as e {
+    print(e.message()); # expect: 'Interpolation' expects a string expression, got: true
+}

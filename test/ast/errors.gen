@@ -1,0 +1,65 @@
+import "ast";
+from "string" import newline;
+
+try {
+    ast.parse("var x = ;");
+} catch SyntaxError as e {
+    print(e.message().split(newline)[0]); # expect: [line 1] Error at ';': Expect expression.
+}
+
+try {
+    ast.parse_expression("1 2");
+} catch SyntaxError as e {
+    print(e.message().split(newline)[0]); # expect: [line 1] Error at '2': Expect end of expression.
+}
+
+try {
+    ast.parse(1);
+} catch TypeError as e {
+    print(e.message()); # expect: 'parse' expects a string, got: 1
+}
+
+try {
+    ast.parse_expression(nil);
+} catch TypeError as e {
+    print(e.message()); # expect: 'parse_expression' expects a string, got: nil
+}
+
+try {
+    ast.dump([]);
+} catch TypeError as e {
+    print(e.message()); # expect: expected AST, got: List
+}
+
+var cyclic_node = ast.parse_expression("1");
+cyclic_node.kind = cyclic_node;
+try {
+    ast.dump(cyclic_node);
+} catch RecursionError as e {
+    print(e.message()); # expect: maximum recursion depth exceeded
+}
+
+var deep_node = ast.parse_expression("1");
+for (var i = 0; i < 200; i = i + 1) {
+    var wrapper = ast.parse_expression("1");
+    wrapper.kind = deep_node;
+    deep_node = wrapper;
+}
+try {
+    ast.dump(deep_node);
+} catch RecursionError as e {
+    print(e.message()); # expect: maximum recursion depth exceeded
+}
+
+class Throws {
+    __str__() {
+        throw ValueError("boom");
+    }
+}
+var user_node = ast.parse_expression("1");
+user_node.kind = Throws();
+try {
+    ast.dump(user_node);
+} catch ValueError as e {
+    print(e.message()); # expect: boom
+}

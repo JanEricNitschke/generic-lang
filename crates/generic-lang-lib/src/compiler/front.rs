@@ -24,6 +24,45 @@ pub(super) struct FunctionState {
     loop_labels: Vec<Option<String>>,
 }
 
+impl<'source> Parser<'source> {
+    pub(crate) fn from_source(source: &'source str) -> Self {
+        Self::new(
+            Scanner::new(
+                source,
+                #[cfg(feature = "debug_scanner")]
+                false,
+            ),
+            #[cfg(feature = "debug_parser")]
+            false,
+        )
+    }
+
+    /// Parse a whole source file into the internal AST without running codegen
+    /// or executing anything. Returns the parser's diagnostics on failure.
+    pub(crate) fn parse_source(source: &'source str) -> Result<Program, Vec<String>> {
+        let mut parser = Self::from_source(source);
+        let program = parser.parse_program();
+        if parser.had_error {
+            return Err(std::mem::take(&mut parser.errors));
+        }
+        Ok(program)
+    }
+
+    /// Parse a single expression into the internal AST. Trailing tokens are an
+    /// error, so `parse_expression_source("1; 2")` fails instead of silently
+    /// ignoring the rest of the input.
+    pub(crate) fn parse_expression_source(source: &'source str) -> Result<Expr, Vec<String>> {
+        let mut parser = Self::from_source(source);
+        parser.advance();
+        let expression = parser.expression();
+        parser.consume(TK::Eof, "Expect end of expression.");
+        if parser.had_error {
+            return Err(std::mem::take(&mut parser.errors));
+        }
+        Ok(expression)
+    }
+}
+
 impl FunctionState {
     fn new(kind: FunKind) -> Self {
         Self {

@@ -1,0 +1,232 @@
+import "ast";
+
+print(ast.dump(ast.parse("")));
+# expect: Program(
+# expect:   declarations=[])
+
+print(ast.dump(ast.parse_expression("1")));
+# expect: Expr(
+# expect:   kind=1,
+# expect:   location=Location(
+# expect:     end_column=2,
+# expect:     end_line=1,
+# expect:     start_column=1,
+# expect:     start_line=1,
+# expect:     start_offset=0))
+
+print(ast.dump(ast.parse_expression("1 + 2")));
+# expect: Expr(
+# expect:   kind=Binary(
+# expect:     lhs=Expr(
+# expect:       kind=1,
+# expect:       location=Location(
+# expect:         end_column=2,
+# expect:         end_line=1,
+# expect:         start_column=1,
+# expect:         start_line=1,
+# expect:         start_offset=0)),
+# expect:     op="+",
+# expect:     op_location=Location(
+# expect:       end_column=4,
+# expect:       end_line=1,
+# expect:       start_column=3,
+# expect:       start_line=1,
+# expect:       start_offset=2),
+# expect:     rhs=Expr(
+# expect:       kind=2,
+# expect:       location=Location(
+# expect:         end_column=6,
+# expect:         end_line=1,
+# expect:         start_column=5,
+# expect:         start_line=1,
+# expect:         start_offset=4))),
+# expect:   location=Location(
+# expect:     end_column=6,
+# expect:     end_line=1,
+# expect:     start_column=1,
+# expect:     start_line=1,
+# expect:     start_offset=0))
+
+print(ast.dump(ast.parse_expression("true")));
+# expect: Expr(
+# expect:   kind=true,
+# expect:   location=Location(
+# expect:     end_column=5,
+# expect:     end_line=1,
+# expect:     start_column=1,
+# expect:     start_line=1,
+# expect:     start_offset=0))
+
+print(ast.dump(ast.parse_expression("nil")));
+# expect: Expr(
+# expect:   kind=nil,
+# expect:   location=Location(
+# expect:     end_column=4,
+# expect:     end_line=1,
+# expect:     start_column=1,
+# expect:     start_line=1,
+# expect:     start_offset=0))
+
+print(ast.dump(ast.parse("var x = 1;")));
+# expect: Program(
+# expect:   declarations=[
+# expect:     Stmt(
+# expect:       kind=VarDecl(
+# expect:         initializer=Expr(
+# expect:           kind=1,
+# expect:           location=Location(
+# expect:             end_column=10,
+# expect:             end_line=1,
+# expect:             start_column=9,
+# expect:             start_line=1,
+# expect:             start_offset=8)),
+# expect:         mutability="var",
+# expect:         name="x",
+# expect:         name_location=Location(
+# expect:           end_column=6,
+# expect:           end_line=1,
+# expect:           start_column=5,
+# expect:           start_line=1,
+# expect:           start_offset=4)),
+# expect:       location=Location(
+# expect:         end_column=11,
+# expect:         end_line=1,
+# expect:         start_column=1,
+# expect:         start_line=1,
+# expect:         start_offset=0))])
+
+var node = ast.parse_expression("1");
+
+node.kind = 42;
+print(ast.dump(node));
+# expect: Expr(
+# expect:   kind=42,
+# expect:   location=Location(
+# expect:     end_column=2,
+# expect:     end_line=1,
+# expect:     start_column=1,
+# expect:     start_line=1,
+# expect:     start_offset=0))
+
+node.kind = nil;
+print(ast.dump(node));
+# expect: Expr(
+# expect:   kind=nil,
+# expect:   location=Location(
+# expect:     end_column=2,
+# expect:     end_line=1,
+# expect:     start_column=1,
+# expect:     start_line=1,
+# expect:     start_offset=0))
+
+node.kind = [1, 2];
+print(ast.dump(node));
+# expect: Expr(
+# expect:   kind=[
+# expect:     1,
+# expect:     2],
+# expect:   location=Location(
+# expect:     end_column=2,
+# expect:     end_line=1,
+# expect:     start_column=1,
+# expect:     start_line=1,
+# expect:     start_offset=0))
+
+node.kind = (1, 2);
+print(ast.dump(node));
+# expect: Expr(
+# expect:   kind=(
+# expect:     1,
+# expect:     2),
+# expect:   location=Location(
+# expect:     end_column=2,
+# expect:     end_line=1,
+# expect:     start_column=1,
+# expect:     start_line=1,
+# expect:     start_offset=0))
+
+node.kind = {"a": 1};
+print(ast.dump(node));
+# expect: Expr(
+# expect:   kind={a: 1},
+# expect:   location=Location(
+# expect:     end_column=2,
+# expect:     end_line=1,
+# expect:     start_column=1,
+# expect:     start_line=1,
+# expect:     start_offset=0))
+
+class Noisy {
+    __str__() {
+        return "noisy";
+    }
+}
+node.kind = Noisy();
+print(ast.dump(node));
+# expect: Expr(
+# expect:   kind=noisy,
+# expect:   location=Location(
+# expect:     end_column=2,
+# expect:     end_line=1,
+# expect:     start_column=1,
+# expect:     start_line=1,
+# expect:     start_offset=0))
+
+delattr(node, "kind");
+print(ast.dump(node));
+# expect: Expr(
+# expect:   location=Location(
+# expect:     end_column=2,
+# expect:     end_line=1,
+# expect:     start_column=1,
+# expect:     start_line=1,
+# expect:     start_offset=0))
+
+
+var mutation_node = ast.parse_expression("1");
+
+class MutatingString {
+    __str__() {
+        mutation_node.location = nil;
+        return "mut";
+    }
+}
+
+mutation_node.kind = MutatingString();
+print(ast.dump(mutation_node));
+# expect: Expr(
+# expect:   kind=mut,
+# expect:   location=Location(
+# expect:     end_column=2,
+# expect:     end_line=1,
+# expect:     start_column=1,
+# expect:     start_line=1,
+# expect:     start_offset=0))
+
+var list_node = ast.parse_expression("1");
+
+class ClearList {
+    __str__() {
+        list_node.kind = [];
+        return "first";
+    }
+}
+
+class Later {
+    __str__() {
+        return "second";
+    }
+}
+
+list_node.kind = [ClearList(), Later()];
+print(ast.dump(list_node));
+# expect: Expr(
+# expect:   kind=[
+# expect:     first,
+# expect:     second],
+# expect:   location=Location(
+# expect:     end_column=2,
+# expect:     end_line=1,
+# expect:     start_column=1,
+# expect:     start_line=1,
+# expect:     start_offset=0))

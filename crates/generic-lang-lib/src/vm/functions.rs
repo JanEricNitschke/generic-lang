@@ -305,6 +305,24 @@ impl VM {
         }
     }
 
+    /// Create the backing for an instance of the given native superclass.
+    fn native_backing(&mut self, class_id: ClassId) -> VmResult<NativeClass> {
+        let name = {
+            let class = class_id.to_value(&self.heap);
+            // Plugin class: a Plugin backing with a null opaque ptr;
+            // `__init__` installs the real pointer via set_opaque.
+            #[cfg(feature = "plugins")]
+            if matches!(class.kind, ClassKind::Plugin(_)) {
+                return Ok(NativeClass::Plugin(PluginInstance::empty()));
+            }
+            class.name.to_value(&self.heap).clone()
+        };
+        NativeClass::new(&name).ok_or_else(|| {
+            self.throw(TypeError, &format!("cannot create '{name}' instances"))
+                .unwrap_err()
+        })
+    }
+
     /// Call the passed value with the passed number of arguments.
     ///
     /// The arguments should reside on top of the stack with the first (leftmost) argument
@@ -339,18 +357,10 @@ impl VM {
                     .get(&self.heap.builtin_constants().init_string)
                     .copied();
 
-                let backing = class_data.get_native_superclass(&self.heap, class).map(
-                    |native_superclass_id| {
-                        let native_superclass = native_superclass_id.to_value(&self.heap);
-                        // Plugin class: a Plugin backing with a null opaque ptr;
-                        // `__init__` installs the real pointer via set_opaque.
-                        #[cfg(feature = "plugins")]
-                        if matches!(native_superclass.kind, ClassKind::Plugin(_)) {
-                            return NativeClass::Plugin(PluginInstance::empty());
-                        }
-                        NativeClass::new(native_superclass.name.to_value(&self.heap))
-                    },
-                );
+                let backing = match class_data.get_native_superclass(&self.heap, class) {
+                    None => None,
+                    Some(native_superclass_id) => Some(self.native_backing(native_superclass_id)?),
+                };
 
                 let instance_id = self.heap.add_instance(Instance::new(class, backing));
                 let stack_index = self.stack.len() - usize::from(arg_count) - 1;

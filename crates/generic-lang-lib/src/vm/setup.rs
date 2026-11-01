@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use crate::{
     heap::StringId,
     value::{
-        Class, Closure, Module, ModuleContents, NativeFunction, NativeFunctionImpl, NativeMethod,
-        NativeMethodImpl,
+        Class, ClassKind, Closure, Module, ModuleContents, NativeFunction, NativeFunctionImpl,
+        NativeMethod, NativeMethodImpl,
     },
 };
 
@@ -69,12 +69,10 @@ impl VM {
         );
     }
 
-    /// Define a native class by adding it to the heap and optionally the VM builtins.
-    pub(crate) fn define_native_class<T: ToString>(&mut self, name: &T, add_to_builtins: bool) {
+    /// Define a class by adding it to the heap and optionally the VM builtins.
+    fn define_class<T: ToString>(&mut self, name: &T, kind: ClassKind, add_to_builtins: bool) {
         let name_id = self.heap.string_id(name);
-        let value = self
-            .heap
-            .add_class(Class::new(name_id, crate::value::ClassKind::Native));
+        let value = self.heap.add_class(Class::new(name_id, kind));
         if add_to_builtins {
             self.builtins.insert(
                 name_id,
@@ -87,6 +85,19 @@ impl VM {
         self.heap
             .native_classes
             .insert(name_id.to_value(&self.heap).clone(), *value.as_class());
+    }
+
+    /// Define a native class by adding it to the heap and optionally the VM builtins.
+    pub(crate) fn define_native_class<T: ToString>(&mut self, name: &T, add_to_builtins: bool) {
+        self.define_class(name, ClassKind::Native, add_to_builtins);
+    }
+
+    /// Define a plain class exported by a Rust stdlib module.
+    ///
+    /// Plain classes behave like classes declared in Generic: they have no
+    /// native backing, so their instances are created with `backing = None`.
+    pub(crate) fn define_plain_class<T: ToString>(&mut self, name: &T, add_to_builtins: bool) {
+        self.define_class(name, ClassKind::User, add_to_builtins);
     }
 
     /// Define a native method by adding it to the heap and the class.
