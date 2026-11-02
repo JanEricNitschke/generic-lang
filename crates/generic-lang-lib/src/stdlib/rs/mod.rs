@@ -4,7 +4,6 @@ pub(crate) mod ast;
 mod builtins;
 mod dataclasses;
 mod disassembler;
-mod functools;
 mod json;
 mod keyword;
 mod math;
@@ -22,7 +21,6 @@ use crate::vm::VM;
 pub(crate) fn register(vm: &mut VM) {
     math::register(vm);
     os::register(vm);
-    functools::register(vm);
     json::register(vm);
     ast::register(vm);
     string::register(vm);

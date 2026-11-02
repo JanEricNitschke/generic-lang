@@ -660,12 +660,6 @@ impl Heap {
                     self.strings.gray.push(interpolation.expression());
                     gray_value!(self, &interpolation.value());
                 }
-                NativeClass::Partial(partial) => {
-                    gray_value!(self, &partial.func);
-                    for item in &partial.args {
-                        gray_value!(self, item);
-                    }
-                }
                 NativeClass::Field(field) => {
                     gray_value!(self, &field.factory);
                 }

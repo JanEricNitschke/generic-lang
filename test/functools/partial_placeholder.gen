@@ -1,0 +1,42 @@
+import "functools";
+from "functools" import partial, Placeholder;
+
+print(Placeholder is functools.Placeholder); # expect: true
+
+fun triple(a, b, c) {
+    return (a, b, c);
+}
+
+print(partial(triple)(1, 2, 3)); # expect: (1, 2, 3)
+
+# Placeholder at the start, middle, and end.
+print(partial(triple, Placeholder, 2, 3)(1)); # expect: (1, 2, 3)
+print(partial(triple, 1, Placeholder, 3)(2)); # expect: (1, 2, 3)
+print(partial(triple, 1, 2, Placeholder)(3)); # expect: (1, 2, 3)
+
+# Two and three placeholders.
+print(partial(triple, Placeholder, Placeholder, 3)(1, 2)); # expect: (1, 2, 3)
+print(partial(triple, Placeholder, Placeholder, Placeholder)(1, 2, 3)); # expect: (1, 2, 3)
+
+# Extra call arguments are appended after the bound arguments.
+fun collect(*args) {
+    return args;
+}
+
+print(partial(collect, Placeholder, 2)(1, 3, 4)); # expect: (1, 2, 3, 4)
+
+# A placeholder inside an outer partial reaches the inner partial.
+var base = partial(triple, Placeholder, 2);
+var nested = partial(base, Placeholder, 3);
+print(nested(1)); # expect: (1, 2, 3)
+
+# Not enough call arguments to fill every placeholder.
+try {
+    partial(triple, Placeholder, Placeholder, 3)(1);
+} catch TypeError as e {
+    print(e.message()); # expect: partial() cannot fill all placeholders.
+}
+
+# The final call fills a placeholder and reaches the wrapped function with
+# the wrong arity.
+partial(triple, Placeholder, 2, 3)(1, 4); # expect runtime error: TypeError: Expected 3 arguments but got 4.

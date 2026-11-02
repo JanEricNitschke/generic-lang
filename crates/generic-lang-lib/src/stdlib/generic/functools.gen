@@ -1,13 +1,54 @@
 # Tools for working with functions and callables.
-# `partial` comes from the native half of the module and is re-exported
-# here; `reduce` and `cmp_to_key` are pure generic.
 
-from "_functools" import partial;
 from "collections" import OrderedDict;
+
+# A sentinel reserving a positional slot in `partial`.
+const Placeholder = sentinel("functools.Placeholder");
+
+# Bind leading arguments; Placeholder slots are filled from call arguments.
+class partial {
+    __init__(function, *args) {
+        this._function = function;
+        this._args = args;
+    }
+
+    __call__(*args) {
+        var bound = [];
+        var index = 0;
+        foreach (var argument in this._args) {
+            if (argument is Placeholder) {
+                if (index >= len(args)) {
+                    throw TypeError("partial() cannot fill all placeholders.");
+                }
+                bound.append(args[index]);
+                index = index + 1;
+            } else {
+                bound.append(argument);
+            }
+        }
+        for (; index < len(args); index = index + 1) {
+            bound.append(args[index]);
+        }
+        if (len(bound) > 255) {
+            throw TypeError("'partial' call exceeds 255 arguments.");
+        }
+        return this._function(*bound);
+    }
+
+    __str__() {
+        var parts = ["partial(", str(this._function)];
+        foreach (var argument in this._args) {
+            parts.append(", ");
+            parts.append(str(argument));
+        }
+        parts.append(")");
+        return "".join(parts);
+    }
+}
 
 # A private sentinel distinguishing "no initial value given" from an
 # explicit `nil` initial, so a caller can never collide with it.
-var _no_initial = sentinel("functools._no_initial");
+const _no_initial = sentinel("functools._no_initial");
 
 # Fold an iterable into a single value with a callable taking
 # `(accumulator, item)`. Without an initial value the fold starts from the
@@ -65,7 +106,7 @@ fun cmp_to_key(cmp) {
 # A private sentinel: a cached result can be any value including nil,
 # so misses are detected by identity against a value a caller cannot
 # produce.
-var _miss = sentinel("functools._miss");
+const _miss = sentinel("functools._miss");
 
 # A memoizing wrapper around a callable: results are cached by the
 # positional-argument tuple. `maxsize` of nil means unbounded; an

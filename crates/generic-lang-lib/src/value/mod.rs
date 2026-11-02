@@ -23,8 +23,8 @@ pub(crate) use natives::PluginInstance;
 pub(crate) use natives::{
     CreatorContext, Dict, DictIterMode, DictIterator, Exception, Field, Generator, GeneratorState,
     Interpolation, List, ListIterator, ModuleContents, ModuleExport, NativeClass, NativeFunction,
-    NativeFunctionImpl, NativeMethod, NativeMethodImpl, Partial, Path, Range, RangeIterator,
-    Response, Set, SetIterator, Template, TemplateIterator, Tuple, TupleIterator,
+    NativeFunctionImpl, NativeMethod, NativeMethodImpl, Path, Range, RangeIterator, Response, Set,
+    SetIterator, Template, TemplateIterator, Tuple, TupleIterator,
 };
 pub(crate) use number::{GenericInt, GenericRational, Number};
 
@@ -361,7 +361,6 @@ impl Value {
         Template,
         TemplateIterator,
         Interpolation,
-        Partial,
         Field,
         Response,
         Path,
@@ -381,7 +380,6 @@ impl Value {
         Exception,
         Generator,
         TemplateIterator,
-        Partial,
     );
 }
 
