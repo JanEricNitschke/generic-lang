@@ -313,7 +313,16 @@ pub(super) fn value_kind_of(heap: &Heap, value: Value) -> u32 {
             None => ValueKind::Instance,
             #[cfg(feature = "plugins")]
             Some(NativeClass::Plugin(_)) => ValueKind::Instance,
-            Some(NativeClass::Field(_) | NativeClass::Path(_)) => ValueKind::Instance,
+            Some(
+                NativeClass::Field(_)
+                | NativeClass::Path(_)
+                | NativeClass::Date(_)
+                | NativeClass::Time(_)
+                | NativeClass::DateTime(_)
+                | NativeClass::Timedelta(_)
+                | NativeClass::Timezone(_)
+                | NativeClass::Offset(_),
+            ) => ValueKind::Instance,
             Some(NativeClass::List(_)) => ValueKind::List,
             Some(NativeClass::Tuple(_)) => ValueKind::Tuple,
             Some(NativeClass::Dict(_)) => ValueKind::Dict,

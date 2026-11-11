@@ -1,0 +1,95 @@
+import "datetime";
+
+# --- Timezones -----------------------------------------------------------
+
+# Equal time zones must hash equally, including aliases and UTC spellings.
+assert(datetime.Timezone(0) == datetime.Timezone("UTC"));
+assert(datetime.Timezone("US/Eastern") == datetime.Timezone("America/New_York"));
+assert(datetime.Timezone("Asia/Calcutta") == datetime.Timezone("Asia/Kolkata"));
+# Only exact UTC normalizes to the fixed UTC zone; Etc/UTC is a named zone.
+assert(datetime.Timezone(0) != datetime.Timezone("Etc/UTC"));
+
+var zones = [
+    datetime.Timezone(0),
+    datetime.Timezone("UTC"),
+    datetime.Timezone("Etc/UTC"),
+    datetime.Timezone(-90),
+    datetime.Timezone("US/Eastern"),
+    datetime.Timezone("America/New_York"),
+    datetime.Timezone("Asia/Calcutta"),
+    datetime.Timezone("Asia/Kolkata"),
+];
+
+foreach (var a in zones) {
+    foreach (var b in zones) {
+        if (a == b) {
+            assert(hash(a) == hash(b));
+        }
+    }
+}
+
+# --- DateTimes -----------------------------------------------------------
+
+# Same instant, different offsets or zones.
+var instants = [
+    datetime.DateTime(2020, 1, 2, 12, 0, 0, datetime.Timezone(120)),
+    datetime.DateTime(2020, 1, 2, 10, 0, 0, datetime.Timezone(0)),
+    datetime.DateTime(2020, 1, 2, 6, 0, 0, datetime.Timezone(-240)),
+    datetime.DateTime(2020, 1, 2, 5, 0, 0, datetime.Timezone("America/New_York")),
+];
+
+assert(instants[0] == instants[1]);
+assert(!(instants[0] != instants[1]));
+assert(instants[0] == instants[3]);
+
+foreach (var a in instants) {
+    foreach (var b in instants) {
+        if (a == b) {
+            assert(hash(a) == hash(b));
+        }
+    }
+}
+
+# --- Offsets -------------------------------------------------------------
+
+var plus_two = datetime.DateTime(2020, 1, 2, 12, 0, 0, datetime.Timezone(120)).offset();
+var other_plus_two = datetime.DateTime(2020, 1, 2, 13, 0, 0, datetime.Timezone(120)).offset();
+assert(plus_two == other_plus_two);
+assert(plus_two == datetime.Offset(120));
+assert(hash(plus_two) == hash(other_plus_two));
+
+var offsets = [
+    plus_two,
+    other_plus_two,
+    datetime.DateTime(2020, 1, 2, 10, 0, 0, datetime.Timezone(0)).offset(),
+];
+
+foreach (var a in offsets) {
+    foreach (var b in offsets) {
+        if (a == b) {
+            assert(hash(a) == hash(b));
+        }
+    }
+}
+
+# --- Dates, Times, and Timedeltas ----------------------------------------
+
+var dates = [datetime.Date(2020, 1, 2), datetime.Date(2020, 1, 2)];
+var times = [datetime.Time(12, 34, 56), datetime.Time(12, 34, 56)];
+var deltas = [datetime.Timedelta(1.5), datetime.Timedelta(1.5)];
+
+assert(dates[0] == dates[1]);
+assert(times[0] == times[1]);
+assert(deltas[0] == deltas[1]);
+
+foreach (var values in [dates, times, deltas]) {
+    foreach (var a in values) {
+        foreach (var b in values) {
+            if (a == b) {
+                assert(hash(a) == hash(b));
+            }
+        }
+    }
+}
+
+print("ok"); # expect: ok

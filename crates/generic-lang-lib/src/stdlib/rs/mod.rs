@@ -3,6 +3,7 @@
 pub(crate) mod ast;
 mod builtins;
 mod dataclasses;
+mod datetime;
 mod disassembler;
 mod json;
 mod keyword;
@@ -28,6 +29,7 @@ pub(crate) fn register(vm: &mut VM) {
     pathlib::register(vm);
     random::register(vm);
     dataclasses::register(vm);
+    datetime::register(vm);
     disassembler::register(vm);
     keyword::register(vm);
     builtins::register(vm);
