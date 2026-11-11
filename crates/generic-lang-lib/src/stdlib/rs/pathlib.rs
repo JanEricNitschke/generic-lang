@@ -52,7 +52,7 @@ fn make_path(vm: &mut VM, path: &StdPath) -> Value {
 }
 
 /// Decode a `Path` instance or a plain string into a `PathBuf`.
-fn as_path_buf(vm: &mut VM, value: Value, what: &str) -> VmResult<PathBuf> {
+pub(super) fn as_path_buf(vm: &mut VM, value: Value, what: &str) -> VmResult<PathBuf> {
     match value {
         Value::String(string_id) => Ok(PathBuf::from(vm.heap.strings[string_id].as_str())),
         Value::Instance(id)
