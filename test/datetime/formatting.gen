@@ -1,0 +1,43 @@
+import "datetime";
+
+# --- Date and Time -------------------------------------------------------
+
+print(datetime.Date(2020, 1, 2)); # expect: 2020-01-02
+print(datetime.Time(1, 2, 3)); # expect: 01:02:03
+print(datetime.Time(12, 34, 56, 123456)); # expect: 12:34:56.123456
+
+# --- DateTime ------------------------------------------------------------
+
+var plus_two = datetime.DateTime(2020, 1, 2, 12, 34, 56, datetime.Timezone(120));
+print(plus_two); # expect: 2020-01-02T12:34:56+02:00
+
+var new_york = datetime.DateTime(2024, 7, 1, 12, 0, 0, datetime.Timezone("America/New_York"));
+print(new_york); # expect: 2024-07-01T12:00:00-04:00[America/New_York]
+
+var utc = datetime.DateTime(2020, 1, 2, 12, 0, 0, datetime.Timezone(0));
+print(utc); # expect: 2020-01-02T12:00:00+00:00[UTC]
+
+print(datetime.DateTime("2020-01-02T12:34:56+02:00")); # expect: 2020-01-02T12:34:56+02:00
+
+# --- Timezone ------------------------------------------------------------
+
+print(datetime.Timezone(120)); # expect: +02:00
+print(datetime.Timezone(-90)); # expect: -01:30
+print(datetime.Timezone(0)); # expect: UTC
+print(datetime.Timezone("UTC")); # expect: UTC
+print(datetime.Timezone("America/New_York")); # expect: America/New_York
+
+# --- Offset --------------------------------------------------------------
+
+# DateTime.offset() is always a numeric offset, even for UTC.
+print(plus_two.offset()); # expect: +02:00
+print(utc.offset()); # expect: +00:00
+
+print(datetime.Offset(120)); # expect: +02:00
+print(datetime.Offset(-90)); # expect: -01:30
+print(datetime.Offset(0)); # expect: +00:00
+
+# --- Timedelta -----------------------------------------------------------
+
+print(datetime.Timedelta(3661.5)); # expect: 1h 1m 1s 500ms
+print(datetime.Timedelta(-1.5)); # expect: -1s 500ms

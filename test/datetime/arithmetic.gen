@@ -1,0 +1,55 @@
+import "datetime";
+
+# --- Date arithmetic -----------------------------------------------------
+
+var date = datetime.Date(2020, 1, 2);
+print(date + datetime.Timedelta(86400)); # expect: 2020-01-03
+print(date - datetime.Timedelta(86400)); # expect: 2020-01-01
+print(date + datetime.Timedelta(1)); # expect: 2020-01-02
+print(date - datetime.Timedelta(1)); # expect: 2020-01-02
+print(date + datetime.Timedelta(-129600)); # expect: 2020-01-01
+print(date == datetime.Date(2020, 1, 2)); # expect: true
+
+# --- DateTime arithmetic -------------------------------------------------
+
+var datetime_value = datetime.DateTime(2020, 1, 2, 12, 0, 0, datetime.Timezone(0));
+print(datetime_value + datetime.Timedelta(3661)); # expect: 2020-01-02T13:01:01+00:00[UTC]
+print(datetime_value - datetime.Timedelta(3661)); # expect: 2020-01-02T10:58:59+00:00[UTC]
+
+var aware = datetime.DateTime(2020, 1, 2, 12, 0, 0, 0, datetime.Timezone(120));
+print(aware + datetime.Timedelta(3661)); # expect: 2020-01-02T13:01:01+02:00
+print(aware + datetime.Timedelta(-3600)); # expect: 2020-01-02T11:00:00+02:00
+
+# --- Timedelta arithmetic ------------------------------------------------
+
+print(datetime.Timedelta(3661) + datetime.Timedelta(39)); # expect: 1h 1m 40s
+print(datetime.Timedelta(3661) - datetime.Timedelta(39)); # expect: 1h 22s
+
+# --- DST gap -------------------------------------------------------------
+
+# A gap is a wall-clock interval skipped by a forward DST transition.
+# 2024-03-10 02:00-02:59 does not exist in New York.
+var new_york = datetime.Timezone("America/New_York");
+var before_gap = datetime.DateTime(2024, 3, 10, 1, 59, 0, new_york);
+var after_gap = before_gap + datetime.Timedelta(3600);
+print(before_gap); # expect: 2024-03-10T01:59:00-05:00[America/New_York]
+print(before_gap.offset()); # expect: -05:00
+print(after_gap); # expect: 2024-03-10T03:59:00-04:00[America/New_York]
+print(after_gap.hour()); # expect: 3
+print(after_gap.offset()); # expect: -04:00
+print(after_gap - datetime.Timedelta(3600)); # expect: 2024-03-10T01:59:00-05:00[America/New_York]
+print(datetime.DateTime(2024, 3, 10, 2, 30, 0, new_york)); # expect: 2024-03-10T03:30:00-04:00[America/New_York]
+
+# --- DST fold ------------------------------------------------------------
+
+# A fold is a wall-clock interval repeated by a backward DST transition.
+# 2024-11-03 01:00-01:59 happens twice in New York.
+var before_fold = datetime.DateTime(2024, 11, 3, 0, 59, 0, new_york);
+var first_fold = before_fold + datetime.Timedelta(3600);
+var second_fold = first_fold + datetime.Timedelta(3600);
+print(first_fold); # expect: 2024-11-03T01:59:00-04:00[America/New_York]
+print(first_fold.offset()); # expect: -04:00
+print(second_fold); # expect: 2024-11-03T01:59:00-05:00[America/New_York]
+print(second_fold.offset()); # expect: -05:00
+print(second_fold - datetime.Timedelta(3600)); # expect: 2024-11-03T01:59:00-04:00[America/New_York]
+print(datetime.DateTime(2024, 11, 3, 1, 30, 0, new_york)); # expect: 2024-11-03T01:30:00-04:00[America/New_York]

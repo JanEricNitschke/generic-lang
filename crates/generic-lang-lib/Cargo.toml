@@ -26,6 +26,7 @@ indexmap     = { workspace = true }
 inventory    = { workspace = true }
 humansize    = { workspace = true, optional = true }
 include_dir  = { workspace = true }
+jiff         = { workspace = true }
 libloading   = { workspace = true, optional = true }
 num-bigint   = { workspace = true }
 num-traits   = { workspace = true }

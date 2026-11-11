@@ -664,7 +664,14 @@ impl Heap {
                     gray_value!(self, &field.factory);
                 }
                 // Plain Rust data, no references to gray.
-                NativeClass::Response(_) | NativeClass::Path(_) => {}
+                NativeClass::Response(_)
+                | NativeClass::Path(_)
+                | NativeClass::Date(_)
+                | NativeClass::Time(_)
+                | NativeClass::DateTime(_)
+                | NativeClass::Timedelta(_)
+                | NativeClass::Timezone(_)
+                | NativeClass::Offset(_) => {}
                 // Proxy classes don't contain any references to gray
                 NativeClass::BoolProxy
                 | NativeClass::ModuleProxy

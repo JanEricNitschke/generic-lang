@@ -11,12 +11,20 @@ use crate::{
 #[cfg(feature = "plugins")]
 use core::{ffi::c_void, ptr};
 use std::borrow::Cow;
+use std::fmt::Write;
 use std::mem;
 
 #[cfg(feature = "plugins")]
 use generic_lang_api::{PluginFn, PluginMethodFn};
 use hashbrown::HashTable;
 use hashbrown::hash_table::Entry;
+pub(crate) use jiff::civil::{Date, Time};
+use jiff::fmt::friendly::{Direction, SpanPrinter};
+use jiff::fmt::strtime::BrokenDownTime;
+pub(crate) use jiff::tz::Offset;
+use jiff::tz::TimeZone;
+use jiff::{SignedDuration, ZonedDateTime};
+pub(crate) type DateTime = ZonedDateTime;
 use tinyvec::TinyVec;
 
 use super::Value;
@@ -182,6 +190,12 @@ pub(crate) enum NativeClass {
     Field(Field),
     Response(Response),
     Path(Path),
+    Date(Date),
+    Time(Time),
+    DateTime(DateTime),
+    Timedelta(Timedelta),
+    Timezone(Timezone),
+    Offset(Offset),
     // Proxy classes for value type constructors
     BoolProxy,
     ModuleProxy,
@@ -260,6 +274,12 @@ impl NativeClass {
             "Field" => Some(Self::Field(Field::default())),
             "Response" => Some(Self::Response(Response::default())),
             "Path" => Some(Self::Path(Path::default())),
+            "Date" => Some(Self::Date(Date::MIN)),
+            "Time" => Some(Self::Time(Time::midnight())),
+            "DateTime" => Some(Self::DateTime(DateTime::UNIX_EPOCH)),
+            "Timedelta" => Some(Self::Timedelta(Timedelta::default())),
+            "Timezone" => Some(Self::Timezone(Timezone::default())),
+            "Offset" => Some(Self::Offset(Offset::UTC)),
             // Proxy classes for value type constructors
             "Bool" => Some(Self::BoolProxy),
             "Module" => Some(Self::ModuleProxy),
@@ -294,6 +314,12 @@ impl NativeClass {
             Self::Field(field) => field.to_string(heap, depth),
             Self::Response(response) => response.to_string(heap, depth),
             Self::Path(path) => path.to_string(heap, depth),
+            Self::Date(date) => date.to_string(),
+            Self::Time(time) => time.to_string(),
+            Self::DateTime(datetime) => format_datetime(datetime),
+            Self::Timedelta(timedelta) => TIMEDELTA_PRINTER.duration_to_string(&timedelta.0),
+            Self::Timezone(timezone) => format_timezone(&timezone.0),
+            Self::Offset(offset) => format_offset(*offset),
             // Proxy classes should never be accessed for string conversion
             Self::BoolProxy => unreachable!("BoolProxy should never be converted to string"),
             Self::ModuleProxy => {
@@ -382,6 +408,74 @@ pub(crate) struct Path {
 impl Path {
     fn to_string(&self, _heap: &Heap, _depth: usize) -> String {
         format!("Path({})", self.path.to_string_lossy())
+    }
+}
+
+/// Format a fixed UTC offset as `±HH:MM[:SS]`.
+fn format_offset(offset: Offset) -> String {
+    let mut tm = BrokenDownTime::default();
+    tm.set_offset(Some(offset));
+    let format = if offset.seconds() % 60 == 0 {
+        "%:z"
+    } else {
+        "%::z"
+    };
+    tm.to_string(format)
+        .expect("formatting a fixed offset cannot fail")
+}
+
+/// Print an IANA time zone by name; fixed offsets without a name keep the
+/// numeric form.
+fn format_timezone(timezone: &TimeZone) -> String {
+    timezone.iana_name().map_or_else(
+        || {
+            timezone.to_fixed_offset().map_or_else(
+                // Unreachable: unknown zones are rejected, and every other
+                // non-fixed zone has an IANA name handled by the outer branch.
+                |_| "Etc/Unknown".to_string(),
+                format_offset,
+            )
+        },
+        str::to_string,
+    )
+}
+
+/// Print a zoned datetime using Jiff's native form. Fixed offsets without a
+/// name omit the redundant `[+02:00]` annotation, and offsets with second
+/// precision are printed losslessly.
+fn format_datetime(datetime: &DateTime) -> String {
+    let name = datetime.time_zone().iana_name();
+    let offset = datetime.offset();
+    if offset.seconds() % 60 == 0 {
+        return if name.is_some() {
+            datetime.to_string()
+        } else {
+            datetime.timestamp().display_with_offset(offset).to_string()
+        };
+    }
+    let mut formatted = format!("{}{}", datetime.datetime(), format_offset(offset));
+    if let Some(name) = name {
+        write!(formatted, "[{name}]").expect("writing to a String cannot fail");
+    }
+    formatted
+}
+
+/// Timedelta rendering: Jiff's friendly format, but with a leading `-` for
+/// negative values instead of a trailing `ago`.
+static TIMEDELTA_PRINTER: SpanPrinter = SpanPrinter::new().direction(Direction::Sign);
+
+/// Backing of the `Timedelta` native class.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct Timedelta(pub(crate) SignedDuration);
+
+/// Backing of the `Timezone` native class: either an IANA time zone or a
+/// fixed offset from UTC.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Timezone(pub(crate) TimeZone);
+
+impl Default for Timezone {
+    fn default() -> Self {
+        Self(TimeZone::UTC)
     }
 }
 

@@ -1,0 +1,85 @@
+import "datetime";
+
+# --- Fixed offsets -------------------------------------------------------
+
+var plus_two = datetime.Timezone(120);
+print(plus_two.name()); # expect: nil
+print(plus_two.is_fixed()); # expect: true
+print(plus_two.minutes()); # expect: 120
+print(plus_two.seconds()); # expect: 7200
+print(plus_two.offset()); # expect: +02:00
+print(plus_two.offset().seconds()); # expect: 7200
+print(plus_two.offset().timezone()); # expect: +02:00
+
+var minus_ninety = datetime.Timezone(-90);
+print(minus_ninety.minutes()); # expect: -90
+print(minus_ninety.seconds()); # expect: -5400
+
+var offset = datetime.Offset(120);
+print(offset); # expect: +02:00
+print(offset.minutes()); # expect: 120
+print(offset.seconds()); # expect: 7200
+print(offset.timezone()); # expect: +02:00
+print(datetime.Offset(0).timezone()); # expect: UTC
+
+# --- UTC -----------------------------------------------------------------
+
+var utc = datetime.Timezone(0);
+print(utc.name()); # expect: UTC
+print(utc.is_fixed()); # expect: true
+print(utc.minutes()); # expect: 0
+print(utc.seconds()); # expect: 0
+print(datetime.Timezone("UTC").name()); # expect: UTC
+print(datetime.Timezone("Etc/UTC").is_fixed()); # expect: false
+print(datetime.Timezone("Etc/UTC") == datetime.Timezone(0)); # expect: false
+
+# --- Named zones ---------------------------------------------------------
+
+var new_york = datetime.Timezone("America/New_York");
+print(new_york.name()); # expect: America/New_York
+print(new_york.is_fixed()); # expect: false
+
+# --- DateTime offset and timezone ----------------------------------------
+
+var aware = datetime.DateTime(2020, 1, 2, 12, 0, 0, plus_two);
+print(aware.offset()); # expect: +02:00
+print(aware.offset().minutes()); # expect: 120
+print(aware.offset().seconds()); # expect: 7200
+print(aware.timezone()); # expect: +02:00
+print(aware.timezone().is_fixed()); # expect: true
+print(aware.timezone().minutes()); # expect: 120
+
+var utc_datetime = datetime.DateTime(2020, 1, 2, 12, 0, 0, utc);
+print(utc_datetime.offset()); # expect: +00:00
+print(utc_datetime.offset().minutes()); # expect: 0
+print(utc_datetime.offset().seconds()); # expect: 0
+print(utc_datetime.timezone()); # expect: UTC
+print(utc_datetime.timezone().name()); # expect: UTC
+
+var summer = datetime.DateTime(2024, 7, 1, 12, 0, 0, new_york);
+print(summer.offset()); # expect: -04:00
+print(summer.offset().minutes()); # expect: -240
+print(summer.offset().seconds()); # expect: -14400
+print(summer.timezone()); # expect: America/New_York
+print(summer.timezone().name()); # expect: America/New_York
+print(summer.timezone().is_fixed()); # expect: false
+
+var winter = datetime.DateTime(2024, 1, 1, 12, 0, 0, new_york);
+print(winter.offset()); # expect: -05:00
+
+# --- Second-precision offsets --------------------------------------------
+
+var sub_minute = datetime.DateTime("2020-01-02T12:00:00+00:00:30");
+print(sub_minute.offset()); # expect: +00:00:30
+print(sub_minute.offset().seconds()); # expect: 30
+print(datetime.DateTime(str(sub_minute)) == sub_minute); # expect: true
+
+# --- Historical zones ----------------------------------------------------
+
+var monrovia = datetime.Timezone("Africa/Monrovia");
+var historical = datetime.DateTime(1970, 1, 1, 12, 0, 0, monrovia);
+print(historical); # expect: 1970-01-01T12:00:00-00:44:30[Africa/Monrovia]
+print(historical.offset()); # expect: -00:44:30
+print(historical.offset().seconds()); # expect: -2670
+print(historical.timezone()); # expect: Africa/Monrovia
+print(datetime.DateTime(str(historical)) == historical); # expect: true
