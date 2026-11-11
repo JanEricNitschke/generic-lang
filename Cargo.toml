@@ -139,6 +139,7 @@ tempfile     = "3"
 strum_macros = "0.28"
 syn          = { version = "3.0.3", features = ["derive"] }
 thiserror    = "2.0.18"
+toml         = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
 tinyvec      = { version = "1.10.0", features = ["alloc"] }
 unicode-normalization = "0.1.25"
 unicode-segmentation  = "1.13.2"

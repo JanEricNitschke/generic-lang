@@ -16,6 +16,8 @@ mod reentrant_import;
 mod requests;
 mod string;
 mod time;
+mod tomllib;
+mod utils;
 
 use crate::vm::VM;
 
@@ -30,6 +32,7 @@ pub(crate) fn register(vm: &mut VM) {
     random::register(vm);
     dataclasses::register(vm);
     datetime::register(vm);
+    tomllib::register(vm);
     disassembler::register(vm);
     keyword::register(vm);
     builtins::register(vm);

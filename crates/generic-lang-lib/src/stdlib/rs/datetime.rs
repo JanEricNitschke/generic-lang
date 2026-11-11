@@ -13,27 +13,12 @@ use jiff::tz::{Offset, TimeZone};
 use jiff::{SignedDuration, ZonedDateTime};
 use rustc_hash::FxHasher;
 
+use super::utils::{type_error, value_error};
 use crate::value::{
     Instance, ModuleContents, ModuleExport, NativeClass, Number, Timedelta, Timezone, Value,
 };
-use crate::vm::ExceptionKind::{TypeError, ValueError};
 use crate::vm::VM;
-use crate::vm::errors::{VmErrorKind, VmResult};
-
-fn type_error(vm: &mut VM, what: &str, expected: &str, value: Value) -> VmErrorKind {
-    vm.throw(
-        TypeError,
-        &format!(
-            "'{what}' expects {expected}, got: {}",
-            value.to_string(&vm.heap)
-        ),
-    )
-    .unwrap_err()
-}
-
-fn value_error(vm: &mut VM, message: &str) -> VmErrorKind {
-    vm.throw(ValueError, message).unwrap_err()
-}
+use crate::vm::errors::VmResult;
 
 fn int_arg(vm: &mut VM, value: Value, what: &str) -> VmResult<i64> {
     let Value::Number(Number::Integer(integer)) = value else {
