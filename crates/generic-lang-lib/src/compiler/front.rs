@@ -588,10 +588,9 @@ impl Parser<'_> {
 
     fn find_loop_label(&self, label: Option<&str>) -> bool {
         let labels = &self.function_stack.last().unwrap().loop_labels;
-        label.map_or_else(
-            || !labels.is_empty(),
-            |label| labels.iter().any(|state| state.as_deref() == Some(label)),
-        )
+        label.map_or(!labels.is_empty(), |label| {
+            labels.iter().any(|state| state.as_deref() == Some(label))
+        })
     }
 
     fn loop_statement(&mut self, loop_type: LoopType) -> StmtKind {
