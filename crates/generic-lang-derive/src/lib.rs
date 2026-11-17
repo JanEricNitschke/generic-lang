@@ -271,7 +271,7 @@ fn is_ignored(field: &syn::Field) -> syn::Result<bool> {
 ///
 /// A struct:
 ///
-/// ```ignore
+/// ```text
 /// // impl FromAst for Param {
 /// //     fn from_ast(importer, value) -> Result<Self, ImportError> {
 /// //         importer.enter()?;
@@ -297,7 +297,7 @@ fn is_ignored(field: &syn::Field) -> syn::Result<bool> {
 ///
 /// A unit variant, a struct-like variant, and a `Vec` newtype variant:
 ///
-/// ```ignore
+/// ```text
 /// // match importer.class_name(value) {
 /// //     Some(class) => match class.as_str() {
 /// //         "Break" => return Ok(Self::Break { label: ... }),
@@ -322,7 +322,7 @@ fn is_ignored(field: &syn::Field) -> syn::Result<bool> {
 /// A transparent newtype variant has no class of its own. Its payload is
 /// exported directly, so the reverse arm matches the payload's class:
 ///
-/// ```ignore
+/// ```text
 /// // "ClassDecl" => return Ok(Self::Class(
 /// //     <Box<ClassDecl> as FromAst>::from_ast(importer, Some(value))?,
 /// // )),
@@ -330,7 +330,7 @@ fn is_ignored(field: &syn::Field) -> syn::Result<bool> {
 ///
 /// Transparent payloads that export as raw values have no class to match:
 ///
-/// ```ignore
+/// ```text
 /// // if let Value::String(_) = value {
 /// //     return Ok(Self::Text(<String as FromAst>::from_ast(
 /// //         importer,
@@ -480,14 +480,14 @@ fn class_name(attrs: &EnumAttrs, variant: &syn::Ident) -> syn::LitStr {
 fn try_derive_to_ast(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = input.ident;
     match input.data {
-        Data::Struct(data) => derive_struct(name, &data.fields),
-        Data::Enum(data) => derive_enum(name, &input.attrs, &data.variants),
+        Data::Struct(data) => derive_struct(&name, &data.fields),
+        Data::Enum(data) => derive_enum(&name, &input.attrs, &data.variants),
         Data::Union(_) => Err(syn::Error::new_spanned(name, "unions cannot derive ToAst")),
     }
 }
 
 /// Generate `ToAst` and the field helper for a struct.
-fn derive_struct(name: syn::Ident, fields: &Fields) -> syn::Result<TokenStream> {
+fn derive_struct(name: &syn::Ident, fields: &Fields) -> syn::Result<TokenStream> {
     let class = syn::LitStr::new(&name.to_string(), name.span());
     let Fields::Named(fields) = fields else {
         return Err(syn::Error::new_spanned(
@@ -606,26 +606,24 @@ fn transparent_payload_class_name(ty: &syn::Type) -> Option<String> {
 }
 
 /// Generate one `FromAst` field initializer.
-fn from_ast_field(
-    field: &syn::Field,
-    exported_name: &syn::LitStr,
-) -> syn::Result<proc_macro2::TokenStream> {
+fn from_ast_field(field: &syn::Field, exported_name: &syn::LitStr) -> proc_macro2::TokenStream {
     let field_name = field.ident.as_ref().expect("named field");
     if is_compiler_only_field(field) {
-        return Ok(quote! { #field_name: Default::default() });
+        return quote! { #field_name: Default::default() };
     }
     let ty = &field.ty;
-    Ok(quote! {
+    quote! {
         #field_name: <#ty as crate::ast_import::FromAst>::from_ast(
             importer,
             importer.field(instance, #exported_name),
         )?
-    })
+    }
 }
 
 /// Generate `ToAst`, `FromAst`, and the class registration for an enum.
+#[allow(clippy::too_many_lines)]
 fn derive_enum(
-    name: syn::Ident,
+    name: &syn::Ident,
     attrs: &[syn::Attribute],
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::token::Comma>,
 ) -> syn::Result<TokenStream> {
@@ -684,7 +682,7 @@ fn derive_enum(
                     entries.push(quote! {
                         (#exported_name, ToAst::to_ast(#binding, converter))
                     });
-                    from_fields.push(from_ast_field(field, &exported_name)?);
+                    from_fields.push(from_ast_field(field, &exported_name));
                 }
                 arms.push(quote! {
                     Self::#variant_name { #(#bindings),*, .. } => {
@@ -784,7 +782,7 @@ fn derive_enum(
 
     if fallback_arms.len() > 1 {
         return Err(syn::Error::new_spanned(
-            &name,
+            name,
             "at most one transparent fallback variant is supported",
         ));
     }
