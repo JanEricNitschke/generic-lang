@@ -6,6 +6,7 @@ use crate::compiler::ast::{
     AccessMode, BinaryOp, BoolOperator, Expr, ExprContext, FunctionKind, Literal, MethodKind,
     Program, Stmt, UnaryOp,
 };
+use crate::compiler::comments::CommentMap;
 use crate::compiler::{LocationLessEq, Parser, format_expression_ast, format_program_ast};
 use crate::config::AST_IMPORT_MAX_DEPTH;
 use crate::heap::Heap;
@@ -80,10 +81,14 @@ impl<'a> Importer<'a> {
         Ok(instance)
     }
 
+    // Kept as methods so generated code reads `importer.field(...)` and
+    // `importer.required(...)`.
+    #[allow(clippy::unused_self)]
     pub(crate) fn field(&self, instance: &Instance, name: &str) -> Option<Value> {
         instance.fields.get(name).copied()
     }
 
+    #[allow(clippy::unused_self)]
     pub(crate) fn required(
         &self,
         value: Option<Value>,
@@ -192,9 +197,9 @@ impl FromAst for Program {
                 importer,
                 importer.field(instance, "declarations"),
             )?;
-            Ok(Program {
+            Ok(Self {
                 declarations,
-                comments: Default::default(),
+                comments: CommentMap::default(),
             })
         })();
         importer.leave();
@@ -218,14 +223,14 @@ impl FromAst for bool {
 
 impl FromAst for Location {
     fn from_ast(_importer: &mut Importer<'_>, _value: Option<Value>) -> Result<Self, ImportError> {
-        Ok(Location::default())
+        Ok(Self::default())
     }
 }
 
 impl<T: FromAst> FromAst for Box<T> {
     fn from_ast(importer: &mut Importer<'_>, value: Option<Value>) -> Result<Self, ImportError> {
         let value = importer.required(value, "value")?;
-        Ok(Box::new(T::from_ast(importer, Some(value))?))
+        Ok(Self::new(T::from_ast(importer, Some(value))?))
     }
 }
 
@@ -241,12 +246,12 @@ impl<T: FromAst> FromAst for Option<T> {
 impl<T: FromAst> FromAst for Vec<T> {
     fn from_ast(importer: &mut Importer<'_>, value: Option<Value>) -> Result<Self, ImportError> {
         let Some(value) = value else {
-            return Ok(Vec::new());
+            return Ok(Self::new());
         };
         if matches!(value, Value::Nil) {
-            return Ok(Vec::new());
+            return Ok(Self::new());
         }
-        let mut items = Vec::new();
+        let mut items = Self::new();
         for item in importer.list_items(value)? {
             items.push(T::from_ast(importer, Some(item))?);
         }

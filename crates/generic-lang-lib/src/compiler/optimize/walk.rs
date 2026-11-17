@@ -38,7 +38,7 @@ fn walk_exprs<V: Visitor + ?Sized>(visitor: &mut V, exprs: &mut [Expr]) {
 pub(super) fn walk_stmt_kind<V: Visitor + ?Sized>(visitor: &mut V, stmt: &mut StmtKind) {
     match stmt {
         StmtKind::ExpressionStmt { expr } | StmtKind::Throw { expr, .. } => {
-            visitor.visit_expr(expr)
+            visitor.visit_expr(expr);
         }
         StmtKind::VarDecl { initializer, .. } => {
             if let Some(initializer) = initializer {
