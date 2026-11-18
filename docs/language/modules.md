@@ -214,11 +214,25 @@ The bundled modules:
   `assert_not_nil`, `assert_throws`. Each takes an optional trailing
   `message` and raises `AssertionError` with a descriptive message on
   failure. See [Testing](testing.md).
+- **`disassembler`** - bytecode disassembly:
+  `disassembler.disassemble(f)` returns a human-readable listing of a
+  Generic function's instructions. It accepts functions, closures, and
+  bound methods; native callables and other values raise `TypeError`.
 - **`zen`** - a tiny example module.
 
 ```generic
 import "testing";
 testing.assert_equal(2 + 2, 4, "math works");
+```
+
+```generic
+import "disassembler";
+
+fun square(x) {
+    return x * x;
+}
+
+print(disassembler.disassemble(square));
 ```
 
 ## Native plugins

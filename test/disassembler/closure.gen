@@ -1,0 +1,35 @@
+import "disassembler";
+import "string";
+
+fun make_adder(n) {
+    fun add(x) {
+        return n + x;
+    }
+    return add;
+}
+
+fun show(text) {
+    foreach (var line in text.split(string.newline)) {
+        if (line != "") {
+            print(line.strip());
+        }
+    }
+}
+
+show(disassembler.disassemble(make_adder));
+# expect: == make_adder ==
+# expect: 0000    5 OP_CLOSURE                     0 <fn add>
+# expect: 0002    |                                  local 1
+# expect: 0004    8 OP_GET_LOCAL                   2
+# expect: 0006    | OP_RETURN
+# expect: 0007    4 OP_NIL
+# expect: 0008    | OP_RETURN
+
+show(disassembler.disassemble(make_adder(3)));
+# expect: == add ==
+# expect: 0000    6 OP_GET_UPVALUE                 0
+# expect: 0002    6 OP_GET_LOCAL                   1
+# expect: 0004    6 OP_ADD
+# expect: 0005    6 OP_RETURN
+# expect: 0006    5 OP_NIL
+# expect: 0007    | OP_RETURN

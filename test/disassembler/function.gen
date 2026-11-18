@@ -1,0 +1,21 @@
+import "disassembler";
+import "string";
+
+fun add(a, b) {
+    return a + b;
+}
+
+var lines = disassembler.disassemble(add).split(string.newline);
+foreach (var line in lines) {
+    if (line != "") {
+        print(line.strip());
+    }
+}
+
+# expect: == add ==
+# expect: 0000    5 OP_GET_LOCAL                   1
+# expect: 0002    5 OP_GET_LOCAL                   2
+# expect: 0004    5 OP_ADD
+# expect: 0005    5 OP_RETURN
+# expect: 0006    4 OP_NIL
+# expect: 0007    | OP_RETURN

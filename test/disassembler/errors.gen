@@ -1,0 +1,31 @@
+import "disassembler";
+
+class Greeter {
+    greet() { return "hi"; }
+}
+
+fun report(thunk) {
+    try {
+        thunk();
+    } catch TypeError as e {
+        print(e.message());
+    }
+}
+
+report(->() { disassembler.disassemble(42); });
+# expect: 'disassemble' expects a function, closure, or bound method, got: 42
+
+report(->() { disassembler.disassemble("not a function"); });
+# expect: 'disassemble' expects a function, closure, or bound method, got: not a function
+
+report(->() { disassembler.disassemble(print); });
+# expect: 'disassemble' expects a function, closure, or bound method, got: <native fn print>
+
+report(->() { disassembler.disassemble(nil); });
+# expect: 'disassemble' expects a function, closure, or bound method, got: nil
+
+report(->() { disassembler.disassemble([].append); });
+# expect: 'disassemble' expects a function, closure, or bound method, got: <bound method List.append of []>
+
+report(->() { disassembler.disassemble(Greeter); });
+# expect: 'disassemble' expects a function, closure, or bound method, got: <class Greeter>
