@@ -9,7 +9,8 @@
 //! to the fields of a dataclass base); like any class variable it is
 //! copied down at inheritance, so the methods of a subclass see the
 //! frozen list, not later additions. All four methods read it from the
-//! receiver's class at call time.
+//! receiver's class at call time. The generated `__init__` calls
+//! `__post_init__`, when present, after filling the fields.
 
 use crate::heap::{ClassId, Heap, InstanceId, StringId};
 use crate::natives::VARIADIC_0_PLUS;
@@ -252,6 +253,11 @@ fn dataclass_init_native(vm: &mut VM, receiver: &Value, args: &[Value]) -> VmRes
             .to_value_mut(&mut vm.heap)
             .fields
             .insert(name, value);
+    }
+
+    let post_init = vm.heap.string_id(&"__post_init__".to_string());
+    if class_id.to_value(&vm.heap).methods.contains_key(&post_init) {
+        vm.invoke_method_by_name(&[*receiver], "__post_init__")?;
     }
     Ok(*receiver)
 }

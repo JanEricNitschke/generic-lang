@@ -127,7 +127,9 @@ The bundled modules:
   `_`-prefixed names are skipped, a dataclass base's fields come first,
   and variables added after decoration (or by undecorated subclasses)
   stay ordinary class variables. `field(factory)` wraps a default so
-  each instance gets a fresh value.
+  each instance gets a fresh value. When the generated `__init__` runs,
+  it calls `__post_init__()` after filling the fields if the class has
+  one.
 - **`keyword`** - the language's reserved words: `keyword.kwlist` (a
   list of strings, `true`/`false`/`nil`/`StopIteration` included) and
   `keyword.iskeyword(name)`.
