@@ -231,7 +231,7 @@ plugin-asan-test: plugin-bad-fixture
 	cp plugin-examples/zig/zig-out/$(ZIG_OUT_LIB) test/plugin/lang/zig_demo_plugin.$(DYLIB_EXT)
 	for f in test/plugin/rust/*.gen test/plugin/lang/*.gen; do \
 		echo "asan $$f"; \
-		ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 ./$(ASAN_BIN) $$f >/dev/null || { echo "sanitizer failure in $$f"; exit 1; }; \
+		ASAN_OPTIONS=detect_leaks=0:allocator_may_return_null=1 UBSAN_OPTIONS=halt_on_error=1 ./$(ASAN_BIN) $$f >/dev/null || { echo "sanitizer failure in $$f"; exit 1; }; \
 	done
 	$(MAKE) plugin-test-fixture plugin-lang-fixture  # restore uninstrumented fixtures
 

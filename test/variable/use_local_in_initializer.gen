@@ -1,4 +1,7 @@
 var a = "outer";
 {
   var a = a; # Error at 'a': Can't read local variable in its own initializer.
+  var b = b = 1; # Error at 'b': Can't read local variable in its own initializer.
+  var c = (c += 1); # Error at 'c': Can't read local variable in its own initializer.
+  const d = d = 1; # Error at 'd': Can't read local variable in its own initializer.
 }

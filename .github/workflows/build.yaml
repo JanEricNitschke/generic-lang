@@ -194,6 +194,55 @@ jobs:
     - name: Check formatter on all tracked .gen files
       run: make fmt-all-gen-check
 
+  fuzz:
+    name: Fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [format, interpret]
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Set up Rust
+      uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+      with:
+        toolchain: nightly
+        components: rust-src
+        build-warnings: ""
+    - name: Install cargo-fuzz
+      run: cargo install cargo-fuzz --locked
+    - name: Prepare seed corpus
+      run: |
+        mkdir -p target/fuzz-corpus-${{ matrix.target }}
+        if [ "${{ matrix.target }}" = "format" ]; then
+          find test -name '*.gen' -print | paste -sd, - \
+            > target/fuzz-seeds-format.txt
+        else
+          rsync -a --delete --exclude='pathlib/' --exclude='requests/' \
+            --exclude='benchmark/' --include='*/' --include='*.gen' \
+            --exclude='*' test/ target/fuzz-corpus-interpret/test/
+        fi
+    - name: Fuzz
+      if: matrix.target == 'format'
+      run: |
+        ASAN_OPTIONS=allocator_may_return_null=1 cargo +nightly fuzz run format target/fuzz-corpus-format -- \
+          -max_total_time=1200 -timeout=10 -max_len=8192 -close_fd_mask=3 \
+          -seed_inputs=@target/fuzz-seeds-format.txt
+    - name: Fuzz in fork mode
+      if: matrix.target == 'interpret'
+      run: |
+        ASAN_OPTIONS=allocator_may_return_null=1 cargo +nightly fuzz run interpret target/fuzz-corpus-interpret -- \
+          -fork=1 -ignore_timeouts=1 \
+          -max_total_time=1200 -timeout=10 -max_len=8192 -close_fd_mask=3
+    - name: Upload fuzz artifacts
+      if: failure()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+      with:
+        name: fuzz-${{ matrix.target }}
+        path: fuzz/artifacts/${{ matrix.target }}/
+        if-no-files-found: ignore
+
   powerset:
     # Feature powerset build + per-feature clippy on the lib crate, where the
     # features are defined (the bin crate's features are pure forwards).

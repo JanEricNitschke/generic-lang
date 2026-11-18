@@ -23,6 +23,13 @@ try {
     print(e);  # expect: String repetition would overflow the maximum string size.
 }
 
+# Count fits usize, but the allocation is impossibly large
+try {
+    "x" * 401189802742906879;
+} catch ValueError as e {
+    print(e);  # expect: String repetition would overflow the maximum string size.
+}
+
 # String * float is an error
 try {
     "ab" * 2.0;

@@ -815,10 +815,21 @@ impl Parser<'_> {
     fn tuple(&mut self, _can_assign: bool, ignore_operators: &[TK], lhs: Expr) -> Expr {
         let start_location = lhs.location;
         let mut elements = vec![lhs];
-        while let ParseResult::Success(item) = self.try_parse_precedence_ignoring(
-            Precedence::Ternary,
-            &[&[TK::Comma], ignore_operators].concat(),
-        ) {
+        loop {
+            let next = self.current.as_ref().unwrap().kind;
+            if !self.current_starts_expression()
+                && !ignore_operators.contains(&next)
+                && rule(next).infix.is_some()
+            {
+                self.error_at_current("Expect expression.");
+                break;
+            }
+            let ParseResult::Success(item) = self.try_parse_precedence_ignoring(
+                Precedence::Ternary,
+                &[&[TK::Comma], ignore_operators].concat(),
+            ) else {
+                break;
+            };
             if elements.len() == 255 {
                 self.error("Can't have more than 255 items in a tuple literal.");
                 break;

@@ -1,0 +1,8 @@
+a,,; # Error at ',': Expect expression.
+a,.x; # Error at '.': Expect expression.
+a,+b; # Error at '+': Expect expression.
+a,*b; # Error at '*': Expect expression.
+a,in b; # Error at 'in': Expect expression.
+var a = (1,,); # Error at ',': Expect expression.
+var b = (1, 2,,); # Error at ',': Expect expression.
+var c = (1,.x); # Error at '.': Expect expression.

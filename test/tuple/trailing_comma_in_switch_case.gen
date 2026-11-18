@@ -1,0 +1,5 @@
+var pair = (1, 2);
+switch (pair) {
+  case 1, 2,: print("tuple"); # expect: tuple
+  default: print("no");
+}
