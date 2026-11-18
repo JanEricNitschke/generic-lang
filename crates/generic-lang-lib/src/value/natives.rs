@@ -179,7 +179,6 @@ pub(crate) enum NativeClass {
     Template(Template),
     TemplateIterator(TemplateIterator),
     Interpolation(Interpolation),
-    Partial(Partial),
     Field(Field),
     Response(Response),
     Path(Path),
@@ -258,7 +257,6 @@ impl NativeClass {
             "Exception" => Some(Self::Exception(Exception::default())),
             "Template" => Some(Self::Template(Template::default())),
             "Interpolation" => Some(Self::Interpolation(Interpolation::default())),
-            "partial" => Some(Self::Partial(Partial::default())),
             "Field" => Some(Self::Field(Field::default())),
             "Response" => Some(Self::Response(Response::default())),
             "Path" => Some(Self::Path(Path::default())),
@@ -293,7 +291,6 @@ impl NativeClass {
             Self::Template(template) => template.to_string(heap),
             Self::TemplateIterator(template_iter) => template_iter.to_string(heap),
             Self::Interpolation(interpolation) => interpolation.to_string(heap),
-            Self::Partial(partial) => partial.to_string(heap, depth),
             Self::Field(field) => field.to_string(heap, depth),
             Self::Response(response) => response.to_string(heap, depth),
             Self::Path(path) => path.to_string(heap, depth),
@@ -349,38 +346,10 @@ impl_from_for_native_class!(
     Template,
     TemplateIterator,
     Interpolation,
-    Partial,
     Field,
     Path,
     Response,
 );
-
-/// Backing of the `partial` class of the `functools` stdlib module: the
-/// wrapped callable and the bound leading arguments. Calling the instance
-/// calls `func` with the bound arguments followed by the call's own.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct Partial {
-    pub(crate) func: Value,
-    pub(crate) args: Vec<Value>,
-}
-
-impl Partial {
-    fn to_string(&self, heap: &Heap, depth: usize) -> String {
-        let mut parts = vec![self.func.to_string_capped(heap, depth + 1)];
-        parts.extend(
-            self.args
-                .iter()
-                .map(|arg| arg.to_string_capped(heap, depth + 1)),
-        );
-        format!("partial({})", parts.join(", "))
-    }
-}
-
-impl std::fmt::Display for Partial {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad("<partial Value>")
-    }
-}
 
 /// Backing of the `Field` marker class of the `dataclasses` stdlib
 /// module: a per-instance default factory. A dataclass `__init__` calls
