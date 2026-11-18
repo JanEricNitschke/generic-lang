@@ -1,5 +1,5 @@
-# `object` is the bare root builtin class: instantiable, method-less, and
-# handy as a unique identity sentinel.
+# `object` is an empty builtin class: instantiable, method-less, and
+# compared by identity.
 print(object); # expect: <class object>
 
 var a = object();

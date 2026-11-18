@@ -67,3 +67,15 @@ print(fib_cached(5));
 # expect: n=1
 # expect: n=0
 # expect: 5
+
+# A cached nil result is a real value, not a miss.
+@cache
+fun always_nil(n) {
+    print(f"n=${n}");
+    return nil;
+}
+print(always_nil(1));
+# expect: n=1
+# expect: nil
+print(always_nil(1)); # expect: nil
+print(always_nil.cache_info()); # expect: (1, 1, nil, 1)

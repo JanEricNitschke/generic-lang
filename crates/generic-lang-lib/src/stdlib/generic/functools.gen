@@ -6,9 +6,8 @@ from "_functools" import partial;
 from "collections" import OrderedDict;
 
 # A private sentinel distinguishing "no initial value given" from an
-# explicit `nil` initial. A fresh `object` compared by identity, so a
-# caller can never collide with it.
-var _no_initial = object();
+# explicit `nil` initial, so a caller can never collide with it.
+var _no_initial = sentinel("functools._no_initial");
 
 # Fold an iterable into a single value with a callable taking
 # `(accumulator, item)`. Without an initial value the fold starts from the
@@ -64,9 +63,9 @@ fun cmp_to_key(cmp) {
 }
 
 # A private sentinel: a cached result can be any value including nil,
-# so misses are detected by identity against a fresh object a caller
-# can never produce.
-var _miss = object();
+# so misses are detected by identity against a value a caller cannot
+# produce.
+var _miss = sentinel("functools._miss");
 
 # A memoizing wrapper around a callable: results are cached by the
 # positional-argument tuple. `maxsize` of nil means unbounded; an

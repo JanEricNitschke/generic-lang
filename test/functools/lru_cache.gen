@@ -33,6 +33,18 @@ print(square(1));
 print(square(2)); # expect: 4
 print(square.cache_info()); # expect: (4, 4, 2, 2)
 
+# A cached nil result is a real value, not a miss.
+@lru_cache(1)
+fun always_nil(n) {
+    print(f"n=${n}");
+    return nil;
+}
+print(always_nil(1));
+# expect: n=1
+# expect: nil
+print(always_nil(1)); # expect: nil
+print(always_nil.cache_info()); # expect: (1, 1, 1, 1)
+
 try {
     lru_cache(0);
 } catch ValueError as e {
