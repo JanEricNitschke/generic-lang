@@ -21,10 +21,11 @@ pub(crate) use functions::{Function, Module, Upvalue};
 #[cfg(feature = "plugins")]
 pub(crate) use natives::PluginInstance;
 pub(crate) use natives::{
-    CreatorContext, Dict, DictIterMode, DictIterator, Exception, Field, Generator, GeneratorState,
-    Interpolation, List, ListIterator, ModuleContents, ModuleExport, NativeClass, NativeFunction,
-    NativeFunctionImpl, NativeMethod, NativeMethodImpl, Path, Range, RangeIterator, Response, Set,
-    SetIterator, Template, TemplateIterator, Tuple, TupleIterator,
+    CreatorContext, Date, DateTime, Dict, DictIterMode, DictIterator, Exception, Field, Generator,
+    GeneratorState, Interpolation, List, ListIterator, ModuleContents, ModuleExport, NativeClass,
+    NativeFunction, NativeFunctionImpl, NativeMethod, NativeMethodImpl, Offset, Path, Range,
+    RangeIterator, Response, Set, SetIterator, Template, TemplateIterator, Time, Timedelta,
+    Timezone, Tuple, TupleIterator,
 };
 pub(crate) use number::{GenericInt, GenericRational, Number};
 
@@ -233,6 +234,36 @@ impl From<i64> for Value {
     }
 }
 
+impl From<i32> for Value {
+    fn from(value: i32) -> Self {
+        i64::from(value).into()
+    }
+}
+
+impl From<i16> for Value {
+    fn from(value: i16) -> Self {
+        i64::from(value).into()
+    }
+}
+
+impl From<i8> for Value {
+    fn from(value: i8) -> Self {
+        i64::from(value).into()
+    }
+}
+
+impl From<u32> for Value {
+    fn from(value: u32) -> Self {
+        i64::from(value).into()
+    }
+}
+
+impl From<u8> for Value {
+    fn from(value: u8) -> Self {
+        i64::from(value).into()
+    }
+}
+
 impl From<GenericInt> for Value {
     fn from(i: GenericInt) -> Self {
         Self::Number(Number::Integer(i))
@@ -364,6 +395,12 @@ impl Value {
         Field,
         Response,
         Path,
+        Date,
+        Time,
+        DateTime,
+        Timedelta,
+        Timezone,
+        Offset,
     );
 
     impl_as_native_class_mut!(

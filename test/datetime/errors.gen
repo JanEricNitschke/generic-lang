@@ -1,0 +1,264 @@
+import "datetime";
+
+# --- Date errors ---------------------------------------------------------
+
+try {
+    datetime.Date(2020, 1, 32);
+} catch ValueError as e {
+    print(e.message()); # expect: invalid date: parameter 'day' for `2020-01` is invalid, must be in range `1..=31`
+}
+
+try {
+    datetime.Date("not-a-date");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid date: expected an ISO 8601 date
+}
+
+try {
+    datetime.Date(2020, 1);
+} catch TypeError as e {
+    print(e.message()); # expect: Native method '__init__' of class Date expected any of [1, 3] arguments, got 2.
+}
+
+# --- Time errors ---------------------------------------------------------
+
+try {
+    datetime.Time(25, 0, 0);
+} catch ValueError as e {
+    print(e.message()); # expect: invalid time: parameter 'hour' is not in the required range of 0..=23
+}
+
+try {
+    datetime.Time("not-a-time");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid time: expected an ISO 8601 time
+}
+
+try {
+    datetime.Time("12:00:00+02:00");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid time: expected an ISO 8601 time
+}
+
+try {
+    datetime.Time("12:00:00Z");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid time: expected an ISO 8601 time
+}
+
+# --- DateTime construction errors ---------------------------------------
+
+try {
+    datetime.DateTime(2020, 1, 1, 0, 0, 0, 0, 1);
+} catch TypeError as e {
+    print(e.message()); # expect: 'timezone' expects a Timezone, got: 1
+}
+
+try {
+    datetime.DateTime(2020, 1, 1, 0, 0, 0);
+} catch TypeError as e {
+    print(e.message()); # expect: Native method '__init__' of class DateTime expected any of [1, 7, 8] arguments, got 6.
+}
+
+try {
+    datetime.DateTime(9999, 12, 31, 23, 59, 59, datetime.Timezone(0));
+} catch ValueError as e {
+    print(e.message()); # expect: invalid datetime: error converting datetime to instant in time zone UTC: converting datetime with time zone offset `+00` to timestamp overflowed: parameter 'Unix timestamp seconds' is not in the required range of -377705023201..=253402207200
+}
+
+# --- Timezone errors -----------------------------------------------------
+
+try {
+    datetime.Timezone("Not/AZone");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid timezone: failed to find time zone `Not/AZone` in time zone database
+}
+
+try {
+    datetime.Timezone("Etc/Unknown");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid timezone: unknown time zone
+}
+
+try {
+    datetime.Timezone(nil);
+} catch TypeError as e {
+    print(e.message()); # expect: 'Timezone' expects an integer offset in minutes or an IANA time zone name, got: nil
+}
+
+try {
+    datetime.Timezone(2000);
+} catch ValueError as e {
+    print(e.message()); # expect: invalid offset: 2000 minutes (120000 seconds): parameter 'time zone offset total seconds' is not in the required range of -93599..=93599
+}
+
+try {
+    datetime.Timezone(-2000);
+} catch ValueError as e {
+    print(e.message()); # expect: invalid offset: -2000 minutes (-120000 seconds): parameter 'time zone offset total seconds' is not in the required range of -93599..=93599
+}
+
+try {
+    datetime.Timezone("America/New_York").minutes();
+} catch ValueError as e {
+    print(e.message()); # expect: 'America/New_York' does not have a fixed offset
+}
+
+try {
+    datetime.Timezone("America/New_York").seconds();
+} catch ValueError as e {
+    print(e.message()); # expect: 'America/New_York' does not have a fixed offset
+}
+
+try {
+    datetime.Timezone("America/New_York").offset();
+} catch ValueError as e {
+    print(e.message()); # expect: 'America/New_York' does not have a fixed offset
+}
+
+try {
+    datetime.Timezone("Etc/UTC").offset();
+} catch ValueError as e {
+    print(e.message()); # expect: 'Etc/UTC' does not have a fixed offset
+}
+
+# --- Offset errors -------------------------------------------------------
+
+try {
+    datetime.DateTime("2020-01-02T12:00:00+00:00:30").offset().minutes();
+} catch ValueError as e {
+    print(e.message()); # expect: offset is not a whole number of minutes
+}
+
+try {
+    datetime.Offset(2000);
+} catch ValueError as e {
+    print(e.message()); # expect: invalid offset: 2000 minutes (120000 seconds): parameter 'time zone offset total seconds' is not in the required range of -93599..=93599
+}
+
+try {
+    datetime.Offset(nil);
+} catch TypeError as e {
+    print(e.message()); # expect: 'offset' expects an integer, got: nil
+}
+
+# --- DateTime parsing errors --------------------------------------------
+
+try {
+    datetime.DateTime("2020-01-02T12:34:56");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid datetime: expected an ISO 8601 datetime with a UTC offset or time zone
+}
+
+try {
+    datetime.DateTime("not-a-datetime");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid datetime: expected an ISO 8601 datetime with a UTC offset or time zone
+}
+
+try {
+    datetime.DateTime("2024-01-01T12:00:00+02:00[Europe/Paris]");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid datetime: offset does not match the time zone
+}
+
+try {
+    datetime.DateTime("2024-01-01T12:00:00[Not/AZone]");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid datetime: unknown time zone
+}
+
+try {
+    datetime.DateTime("2020-01-02T12:00:00Z[Etc/Unknown]");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid datetime: unknown time zone
+}
+
+try {
+    datetime.DateTime("2020-01-02T12:00:00+01:00[Etc/Unknown]");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid datetime: unknown time zone
+}
+
+try {
+    datetime.DateTime("2024-03-10T02:30:00-04:00[America/New_York]");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid datetime: local time does not exist in the time zone
+}
+
+try {
+    datetime.DateTime("2024-03-10T02:30:00-05:00[America/New_York]");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid datetime: local time does not exist in the time zone
+}
+
+try {
+    datetime.DateTime("9999-12-31T23:59:59+00:00[Pacific/Kiritimati]");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid datetime: error converting datetime to instant in time zone Pacific/Kiritimati: converting datetime with time zone offset `+14` to timestamp overflowed: parameter 'Unix timestamp seconds' is not in the required range of -377705023201..=253402207200
+}
+
+try {
+    datetime.DateTime("9999-12-31T23:59:59+00:00[UTC]");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid datetime: error converting datetime to instant in time zone UTC: converting datetime with time zone offset `+00` to timestamp overflowed: parameter 'Unix timestamp seconds' is not in the required range of -377705023201..=253402207200
+}
+
+try {
+    datetime.DateTime("9999-12-31T23:59:59+00:00");
+} catch ValueError as e {
+    print(e.message()); # expect: invalid datetime: error converting datetime to instant in time zone UTC: converting datetime with time zone offset `+00` to timestamp overflowed: parameter 'Unix timestamp seconds' is not in the required range of -377705023201..=253402207200
+}
+
+# --- Timedelta errors ----------------------------------------------------
+
+try {
+    datetime.Timedelta("x");
+} catch TypeError as e {
+    print(e.message()); # expect: 'seconds' expects a number, got: x
+}
+
+try {
+    datetime.Timedelta(10000000000000000000);
+} catch ValueError as e {
+    print(e.message()); # expect: timedelta is out of range
+}
+
+try {
+    datetime.Timedelta(10000000000000000000.0);
+} catch ValueError as e {
+    print(e.message()); # expect: timedelta is out of range
+}
+
+try {
+    datetime.Timedelta(0.0 / 0.0);
+} catch ValueError as e {
+    print(e.message()); # expect: 'seconds' must be finite
+}
+
+# --- Arithmetic overflow -------------------------------------------------
+
+try {
+    datetime.Timedelta(9000000000000000000) + datetime.Timedelta(9000000000000000000);
+} catch ValueError as e {
+    print(e.message()); # expect: timedelta arithmetic is out of range
+}
+
+try {
+    datetime.Timedelta(9000000000000000000) - datetime.Timedelta(-9000000000000000000);
+} catch ValueError as e {
+    print(e.message()); # expect: timedelta arithmetic is out of range
+}
+
+try {
+    datetime.Date(2020, 1, 2) - datetime.Timedelta(-9223372036854775808);
+} catch ValueError as e {
+    print(e.message()); # expect: date arithmetic is out of range
+}
+
+try {
+    datetime.DateTime(2020, 1, 2, 0, 0, 0, datetime.Timezone(0)) -
+        datetime.Timedelta(-9223372036854775808);
+} catch ValueError as e {
+    print(e.message()); # expect: datetime arithmetic is out of range
+}

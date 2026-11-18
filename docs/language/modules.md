@@ -130,6 +130,16 @@ The bundled modules:
   each instance gets a fresh value. When the generated `__init__` runs,
   it calls `__post_init__()` after filling the fields if the class has
   one.
+- **`datetime`** - `Date`, `Time`, `DateTime`, `Timedelta`, `Timezone`, and
+  `Offset`. `Timezone` accepts offset minutes or an IANA name; `Offset`
+  accepts minutes. `DateTime.offset()` returns an `Offset`;
+  `DateTime.timezone()` returns a `Timezone`; `Timezone.offset()` and
+  `Offset.timezone()` convert fixed values. `minutes()` and `seconds()`
+  require a fixed offset. `Date` arithmetic truncates sub-day durations
+  toward zero. Timezone strings reject DST gaps, while component
+  construction shifts them forward. Only exact `UTC` is treated as fixed;
+  other UTC aliases remain named zones. Printed datetimes include the
+  offset and, when known, the zone name.
 - **`keyword`** - the language's reserved words: `keyword.kwlist` (a
   list of strings, `true`/`false`/`nil`/`StopIteration` included) and
   `keyword.iskeyword(name)`.

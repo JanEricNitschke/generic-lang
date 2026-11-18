@@ -1,0 +1,56 @@
+import "datetime";
+
+# --- Dates ---------------------------------------------------------------
+
+var date = datetime.Date(2020, 1, 2);
+print(date.year()); # expect: 2020
+print(date.month()); # expect: 1
+print(date.day()); # expect: 2
+
+# --- Times ---------------------------------------------------------------
+
+var time = datetime.Time(12, 34, 56, 123456);
+print(time.hour()); # expect: 12
+print(time.minute()); # expect: 34
+print(time.second()); # expect: 56
+print(time.microsecond()); # expect: 123456
+
+# --- DateTimes -----------------------------------------------------------
+
+var datetime_value = datetime.DateTime(2020, 1, 2, 12, 34, 56, 123456, datetime.Timezone(0));
+print(datetime_value.year()); # expect: 2020
+print(datetime_value.month()); # expect: 1
+print(datetime_value.day()); # expect: 2
+print(datetime_value.hour()); # expect: 12
+print(datetime_value.minute()); # expect: 34
+print(datetime_value.second()); # expect: 56
+print(datetime_value.microsecond()); # expect: 123456
+print(datetime_value.date()); # expect: 2020-01-02
+print(datetime_value.time()); # expect: 12:34:56.123456
+
+# --- Timedeltas ----------------------------------------------------------
+
+var delta = datetime.Timedelta(3661.5);
+print(delta.days()); # expect: 0
+print(delta.seconds()); # expect: 3661
+print(delta.microseconds()); # expect: 500000
+print(delta.total_seconds()); # expect: 3661.5
+print(datetime.Timedelta(9007199254740993).seconds()); # expect: 9007199254740993
+
+var negative = datetime.Timedelta(-1.5);
+print(negative.days()); # expect: 0
+print(negative.seconds()); # expect: -1
+print(negative.microseconds()); # expect: -500000
+print(negative.total_seconds()); # expect: -1.5
+
+# --- ISO parsing ---------------------------------------------------------
+
+print(datetime.Date("2020-01-02").day()); # expect: 2
+print(datetime.Time("12:34:56.123456").microsecond()); # expect: 123456
+print(datetime.DateTime("2020-01-02T12:34:56+02:00").hour()); # expect: 12
+print(datetime.DateTime("2024-07-01T12:00:00-04:00[America/New_York]").year()); # expect: 2024
+print(datetime.DateTime("2020-01-02T12:00:00+01:00[Europe/Berlin]").offset()); # expect: +01:00
+print(datetime.DateTime("2024-11-03T01:30:00-04:00[America/New_York]").offset()); # expect: -04:00
+print(datetime.DateTime("2024-11-03T01:30:00-05:00[America/New_York]").offset()); # expect: -05:00
+print(datetime.DateTime("2020-01-02T12:00:00Z").offset()); # expect: +00:00
+print(datetime.DateTime("2020-01-02T12:00:00Z").timezone().name()); # expect: UTC
