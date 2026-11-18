@@ -37,7 +37,7 @@ fn folded_literal(expr: &Expr) -> Option<Literal> {
     match &expr.kind {
         ExprKind::Unary { op, operand, .. } => fold_unary(*op, literal(operand)?),
         ExprKind::Binary { op, lhs, rhs, .. } => fold_binary(*op, literal(lhs)?, literal(rhs)?),
-        ExprKind::Tuple { elements } => Some(Literal::Tuple(
+        ExprKind::TupleLit { elements } => Some(Literal::Tuple(
             elements
                 .iter()
                 .map(|element| literal(element).cloned())
@@ -79,7 +79,7 @@ pub(super) fn fold_neg(operand: &Literal) -> Option<Literal> {
         | Literal::True
         | Literal::False
         | Literal::StopIteration
-        | Literal::Str(_)
+        | Literal::String(_)
         | Literal::Tuple(_) => None,
     }
 }
@@ -92,7 +92,7 @@ pub(super) fn literal_truthy(operand: &Literal) -> bool {
         Literal::Float(value) => *value != 0.0,
         Literal::Rational { numerator, .. } => !numerator.is_zero(),
         Literal::Int(value) => *value != 0,
-        Literal::Str(value) => !value.is_empty(),
+        Literal::String(value) => !value.is_empty(),
         Literal::Tuple(items) => !items.is_empty(),
     }
 }
@@ -108,12 +108,12 @@ pub(super) fn fold_not(operand: &Literal) -> Literal {
 pub(super) fn fold_binary(op: BinaryOp, lhs: &Literal, rhs: &Literal) -> Option<Literal> {
     match op {
         BinaryOp::Add => match (lhs, rhs) {
-            (Literal::Str(lhs), Literal::Str(rhs)) => fold_string_concat(lhs, rhs),
+            (Literal::String(lhs), Literal::String(rhs)) => fold_string_concat(lhs, rhs),
             _ => fold_numeric(op, lhs, rhs),
         },
         BinaryOp::Sub => fold_numeric(op, lhs, rhs),
         BinaryOp::Mul => match (lhs, rhs) {
-            (Literal::Str(value), count) | (count, Literal::Str(value)) => {
+            (Literal::String(value), count) | (count, Literal::String(value)) => {
                 fold_string_repeat(value, count)
             }
             _ => fold_numeric(op, lhs, rhs),
@@ -146,7 +146,7 @@ impl Literal {
 
 fn fold_equality(lhs: &Literal, rhs: &Literal) -> Option<bool> {
     match (lhs, rhs) {
-        (Literal::Str(lhs), Literal::Str(rhs)) => Some(lhs.nfc().eq(rhs.nfc())),
+        (Literal::String(lhs), Literal::String(rhs)) => Some(lhs.nfc().eq(rhs.nfc())),
         (Literal::True, Literal::True) | (Literal::False, Literal::False) => Some(true),
         (Literal::True, Literal::False) | (Literal::False, Literal::True) => Some(false),
         (Literal::Nil, Literal::Nil) | (Literal::StopIteration, Literal::StopIteration) => {
@@ -169,7 +169,7 @@ fn fold_equality(lhs: &Literal, rhs: &Literal) -> Option<bool> {
 
 fn fold_ordering(lhs: &Literal, rhs: &Literal) -> Option<Ordering> {
     match (lhs, rhs) {
-        (Literal::Str(lhs), Literal::Str(rhs)) => Some(lhs.nfc().cmp(rhs.nfc())),
+        (Literal::String(lhs), Literal::String(rhs)) => Some(lhs.nfc().cmp(rhs.nfc())),
         _ if lhs.is_number() && rhs.is_number() => numeric_ordering(lhs, rhs),
         _ => None,
     }
@@ -248,28 +248,28 @@ pub(super) fn fold_string_concat(lhs: &str, rhs: &str) -> Option<Literal> {
     let mut value = String::with_capacity(len);
     value.push_str(lhs);
     value.push_str(rhs);
-    Some(Literal::Str(value))
+    Some(Literal::String(value))
 }
 
 pub(super) fn fold_string_repeat(value: &str, count: &Literal) -> Option<Literal> {
     match count {
         Literal::Int(count) => {
             if *count <= 0 {
-                return Some(Literal::Str(String::new()));
+                return Some(Literal::String(String::new()));
             }
             if value.is_empty() {
-                return Some(Literal::Str(String::new()));
+                return Some(Literal::String(String::new()));
             }
             let count = usize::try_from(*count).ok()?;
             repeat_string(value, count)
         }
         Literal::BigInt(count) => {
             match count.sign() {
-                Sign::Minus | Sign::NoSign => return Some(Literal::Str(String::new())),
+                Sign::Minus | Sign::NoSign => return Some(Literal::String(String::new())),
                 Sign::Plus => {}
             }
             if value.is_empty() {
-                return Some(Literal::Str(String::new()));
+                return Some(Literal::String(String::new()));
             }
             let count = count.to_usize()?;
             repeat_string(value, count)
@@ -279,7 +279,7 @@ pub(super) fn fold_string_repeat(value: &str, count: &Literal) -> Option<Literal
 }
 
 pub(super) fn repeat_string(value: &str, count: usize) -> Option<Literal> {
-    repeat_checked(value, count, MAX_STRING_BYTES).map(Literal::Str)
+    repeat_checked(value, count, MAX_STRING_BYTES).map(Literal::String)
 }
 
 #[allow(clippy::cast_precision_loss)]

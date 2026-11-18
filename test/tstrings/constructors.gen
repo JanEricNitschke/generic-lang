@@ -1,0 +1,43 @@
+var one = Interpolation(1, "1");
+var two = Interpolation(2, "2");
+
+print(Template());                       # expect: Template(strings=("",), interpolations=())
+print(Template("a"));                    # expect: Template(strings=("a",), interpolations=())
+print(Template("a", "b"));               # expect: Template(strings=("ab",), interpolations=())
+print(Template("", ""));                 # expect: Template(strings=("",), interpolations=())
+
+print(Template(one));                    # expect: Template(strings=("", ""), interpolations=(Interpolation(value=1, expression=1),))
+print(Template("a", one, "b"));          # expect: Template(strings=("a", "b"), interpolations=(Interpolation(value=1, expression=1),))
+print(Template("a", one));               # expect: Template(strings=("a", ""), interpolations=(Interpolation(value=1, expression=1),))
+print(Template(one, "b"));               # expect: Template(strings=("", "b"), interpolations=(Interpolation(value=1, expression=1),))
+print(Template("", one, ""));            # expect: Template(strings=("", ""), interpolations=(Interpolation(value=1, expression=1),))
+print(Template(one, two));               # expect: Template(strings=("", "", ""), interpolations=(Interpolation(value=1, expression=1), Interpolation(value=2, expression=2)))
+print(Template(one, "x", two));          # expect: Template(strings=("", "x", ""), interpolations=(Interpolation(value=1, expression=1), Interpolation(value=2, expression=2)))
+
+var template = Template("a", one, "b");
+print(template.strings());               # expect: (a, b)
+print(template.interpolations());        # expect: (Interpolation(value=1, expression=1),)
+
+try {
+    Template(1);
+} catch TypeError as e {
+    print(e.message()); # expect: 'Template' expects arguments of type String or Interpolation, got: 1
+}
+
+try {
+    Template(nil);
+} catch TypeError as e {
+    print(e.message()); # expect: 'Template' expects arguments of type String or Interpolation, got: nil
+}
+
+try {
+    Template(true);
+} catch TypeError as e {
+    print(e.message()); # expect: 'Template' expects arguments of type String or Interpolation, got: true
+}
+
+try {
+    Template(t"x");
+} catch TypeError as e {
+    print(e.message()); # expect: 'Template' expects arguments of type String or Interpolation, got: Template(strings=("x",), interpolations=())
+}

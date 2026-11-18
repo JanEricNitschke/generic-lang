@@ -4,11 +4,11 @@
 //! defined in [`ast`]; [`back`] (with [`variables`]) walks the tree and
 //! emits bytecode.
 
-mod ast;
+pub(crate) mod ast;
 mod ast_eq;
 mod back;
 pub(crate) mod cache;
-mod comments;
+pub(crate) mod comments;
 mod error;
 mod fmt;
 mod front;
@@ -17,9 +17,11 @@ mod rules;
 mod variables;
 
 use crate::{heap::Heap, scanner::Scanner, types::InjectedKind, value::Function};
+pub(crate) use ast_eq::LocationLessEq;
 use back::Codegen;
 pub use fmt::{FormatError, FormatOptions, format_source, format_source_with_default};
-use front::Parser;
+pub(crate) use fmt::{format_expression_ast, format_program_ast, format_statement_ast};
+pub(crate) use front::Parser;
 
 /// Main compiler struct that turns tokens into bytecode.
 pub(crate) struct Compiler<'scanner, 'heap> {

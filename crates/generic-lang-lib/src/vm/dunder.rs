@@ -173,16 +173,47 @@ impl VM {
         Ok(Some(self.stack.drain(items_start..).collect()))
     }
 
+    /// Root each `Value` on the VM stack, call `f` with it and its paired
+    /// item data, then unroot them. Keeps the values reachable for the GC
+    /// while `f` re-enters the interpreter (e.g. through `__hash__`/`__eq__`
+    /// or `__str__`).
+    ///
+    /// Only the `Value` half of each pair is rooted. `T` must be plain data
+    /// or host-owned data; it must not be the only owner of a heap `Value`,
+    /// because such a value could be collected during re-entry.
+    ///
+    /// `f` must be stack-neutral on success: it may push and pop while it
+    /// runs, but must return with the stack at the depth it was called with.
+    /// On error the roots are left on the stack below the pending exception;
+    /// the eventual handler resolution truncates them.
+    pub(crate) fn for_each_rooted_with<T, I, F>(&mut self, items: I, mut f: F) -> VmResult
+    where
+        I: IntoIterator<Item = (Value, T)>,
+        F: FnMut(&mut Self, Value, T) -> VmResult,
+    {
+        let items = items.into_iter().collect::<Vec<_>>();
+        let start = self.stack.len();
+        self.stack.extend(items.iter().map(|(value, _)| *value));
+        let end = self.stack.len();
+        for (value, data) in items {
+            f(self, value, data)?;
+            debug_assert_eq!(
+                self.stack.len(),
+                end,
+                "for_each_rooted callback must be stack-neutral"
+            );
+        }
+        self.stack.truncate(start);
+        Ok(None)
+    }
+
     /// Root `values` on the VM stack, call `f` for each in order, then unroot
     /// them. Keeps the values reachable for the GC while `f` re-enters the
-    /// interpreter (e.g. through `__hash__`/`__eq__`).
+    /// interpreter.
     ///
-    /// `f` must be stack-neutral: it may push and pop while it runs (any
-    /// interpreter re-entry does), but must return with the stack at the
-    /// depth it was called with - the rooted values are addressed by index.
-    ///
-    /// On error the values are left on the stack below the pending
-    /// exception; the eventual handler resolution truncates them.
+    /// `f` must be stack-neutral on success. On error the roots are left on
+    /// the stack below the pending exception; handler resolution truncates
+    /// them.
     pub(crate) fn for_each_rooted<F>(&mut self, values: Vec<Value>, mut f: F) -> VmResult
     where
         F: FnMut(&mut Self, Value) -> VmResult,
@@ -192,8 +223,9 @@ impl VM {
         let end = self.stack.len();
         for index in start..end {
             f(self, self.stack[index])?;
-            debug_assert!(
-                self.stack.len() == end,
+            debug_assert_eq!(
+                self.stack.len(),
+                end,
                 "for_each_rooted callback must be stack-neutral"
             );
         }

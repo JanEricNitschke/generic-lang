@@ -28,6 +28,8 @@ use vm::VM;
 
 mod testing;
 
+mod ast_export;
+mod ast_import;
 mod bitwise;
 mod chunk;
 mod compiler;
@@ -42,6 +44,7 @@ mod utils;
 mod value;
 mod vm;
 
+pub use ast_import::{check_ast_roundtrip, check_unparse_roundtrip};
 pub use testing::{TestRunResult, run_tests};
 pub use vm::InterpretResult;
 

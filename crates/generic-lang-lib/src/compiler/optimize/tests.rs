@@ -57,7 +57,7 @@ struct RecordingVisitor {
 impl Visitor for RecordingVisitor {
     fn visit_stmt_kind(&mut self, stmt: &mut StmtKind) {
         self.statements.push(match stmt {
-            StmtKind::Expression { .. } => "expression",
+            StmtKind::ExpressionStmt { .. } => "expression",
             StmtKind::VarDecl { .. } => "var",
             StmtKind::Block { .. } => "block",
             StmtKind::FunctionDecl { .. } => "function",
@@ -88,7 +88,7 @@ fn function_body(program: &Program) -> &[Stmt] {
 
 fn expression_statement_expr(stmt: &StmtKind) -> &Expr {
     match stmt {
-        StmtKind::Expression { expr } => expr,
+        StmtKind::ExpressionStmt { expr } => expr,
         other => panic!("expected expression statement, got {other:?}"),
     }
 }
@@ -148,7 +148,7 @@ fn assert_bool(source: &str, expected: bool) {
 
 fn assert_str(source: &str, expected: &str) {
     match folded_literal(source) {
-        Literal::Str(value) => assert_eq!(value, expected, "{source}"),
+        Literal::String(value) => assert_eq!(value, expected, "{source}"),
         other => panic!("expected string for {source}, got {other:?}"),
     }
 }
@@ -183,7 +183,7 @@ fn assert_tuple_kept(source: &str) {
 
 fn tuple_expr(expr: &Expr) -> bool {
     match &expr.kind {
-        ExprKind::Tuple { .. } => true,
+        ExprKind::TupleLit { .. } => true,
         ExprKind::Grouping { inner } => tuple_expr(inner),
         _ => false,
     }
@@ -311,8 +311,8 @@ fn folds_inside_fstring_and_tstring_interpolations() {
     let (expr, _) = fold(r#"f"${1 + 2}""#);
     match expr.kind {
         ExprKind::Fstring { parts } => match &parts[0] {
-            FstringPart::Str(_) => panic!("expected interpolation first"),
-            FstringPart::Interp(expr) => {
+            FstringPart::Text(_) => panic!("expected interpolation first"),
+            FstringPart::Interpolation(expr) => {
                 assert!(matches!(expr.kind, ExprKind::Literal(Literal::Int(3))));
             }
         },
@@ -561,7 +561,7 @@ fn simplifies_constant_conditionals() {
                     ExprKind::Call { args, .. } => {
                         assert!(matches!(
                             &args[0].value.kind,
-                            ExprKind::Literal(Literal::Str(value)) if value == expected
+                            ExprKind::Literal(Literal::String(value)) if value == expected
                         ));
                     }
                     other => panic!("expected call, got {other:?}"),

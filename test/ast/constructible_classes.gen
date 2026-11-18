@@ -1,0 +1,60 @@
+import "ast";
+
+print(ast.Node());                          # expect: <Node instance>
+print(ast.Location());                      # expect: <Location instance>
+print(ast.Program());                       # expect: <Program instance>
+print(ast.Stmt());                          # expect: <Stmt instance>
+print(ast.Expr());                          # expect: <Expr instance>
+print(ast.ClassMember());                   # expect: <ClassMember instance>
+print(ast.Arg());                           # expect: <Arg instance>
+print(ast.Tstring());                       # expect: <Tstring instance>
+print(ast.TstringInterpolation());          # expect: <TstringInterpolation instance>
+print(ast.Param());                         # expect: <Param instance>
+print(ast.ParamList());                     # expect: <ParamList instance>
+print(ast.FunctionDef());                   # expect: <FunctionDef instance>
+print(ast.LambdaLit());                     # expect: <LambdaLit instance>
+print(ast.ClassDecl());                     # expect: <ClassDecl instance>
+print(ast.ClassVar());                      # expect: <ClassVar instance>
+print(ast.Method());                        # expect: <Method instance>
+print(ast.TryStmt());                       # expect: <TryStmt instance>
+print(ast.CatchClause());                   # expect: <CatchClause instance>
+print(ast.SwitchCase());                    # expect: <SwitchCase instance>
+print(ast.ExpressionStmt());                # expect: <ExpressionStmt instance>
+print(ast.VarDecl());                       # expect: <VarDecl instance>
+print(ast.Block());                         # expect: <Block instance>
+print(ast.FunctionDecl());                  # expect: <FunctionDecl instance>
+print(ast.Conditional());                   # expect: <Conditional instance>
+print(ast.Loop());                          # expect: <Loop instance>
+print(ast.Break());                         # expect: <Break instance>
+print(ast.Continue());                      # expect: <Continue instance>
+print(ast.For());                           # expect: <For instance>
+print(ast.Foreach());                       # expect: <Foreach instance>
+print(ast.Return());                        # expect: <Return instance>
+print(ast.Throw());                         # expect: <Throw instance>
+print(ast.Switch());                        # expect: <Switch instance>
+print(ast.Import());                        # expect: <Import instance>
+print(ast.ImportFrom());                    # expect: <ImportFrom instance>
+print(ast.Variable());                      # expect: <Variable instance>
+print(ast.Property());                      # expect: <Property instance>
+print(ast.Subscript());                     # expect: <Subscript instance>
+print(ast.Call());                          # expect: <Call instance>
+print(ast.Unary());                         # expect: <Unary instance>
+print(ast.Binary());                        # expect: <Binary instance>
+print(ast.Logical());                       # expect: <Logical instance>
+print(ast.Ternary());                       # expect: <Ternary instance>
+print(ast.Grouping());                      # expect: <Grouping instance>
+print(ast.TupleLit());                      # expect: <TupleLit instance>
+print(ast.ListLit());                       # expect: <ListLit instance>
+print(ast.SetLit());                        # expect: <SetLit instance>
+print(ast.DictLit());                       # expect: <DictLit instance>
+print(ast.Fstring());                       # expect: <Fstring instance>
+print(ast.Super());                         # expect: <Super instance>
+print(ast.Yield());                         # expect: <Yield instance>
+print(ast.Assign());                        # expect: <Assign instance>
+print(ast.AugAssign());                     # expect: <AugAssign instance>
+print(ast.LambdaBlock());                   # expect: <LambdaBlock instance>
+
+print(ast.dump(ast.Node()));                # expect: Node()
+print(ast.dump(ast.Program()));             # expect: Program()
+print(ast.dump(ast.Stmt()));                # expect: Stmt()
+print(ast.dump(ast.Expr()));                # expect: Expr()

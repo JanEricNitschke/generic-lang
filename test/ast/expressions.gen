@@ -1,0 +1,108 @@
+import "ast";
+from "string" import quote;
+
+var binary = ast.parse_expression("1 + 2");
+print(isinstance(binary, ast.Expr)); # expect: true
+print(isinstance(binary.kind, ast.Binary)); # expect: true
+print(binary.kind.op); # expect: +
+print(binary.kind.lhs.kind); # expect: 1
+print(binary.kind.rhs.kind); # expect: 2
+
+var rational = ast.parse_expression("1:2");
+print(isinstance(rational.kind, ast.Binary)); # expect: true
+print(rational.kind.op); # expect: :
+
+var logic = ast.parse_expression("true and false");
+print(isinstance(logic.kind, ast.Logical)); # expect: true
+print(logic.kind.op); # expect: and
+print(logic.kind.lhs.kind); # expect: true
+print(logic.kind.rhs.kind); # expect: false
+
+var unary = ast.parse_expression("-7");
+print(isinstance(unary.kind, ast.Unary)); # expect: true
+print(unary.kind.op); # expect: -
+print(unary.kind.operand.kind); # expect: 7
+
+var ternary = ast.parse_expression("true ? 1 : 2");
+print(isinstance(ternary.kind, ast.Ternary)); # expect: true
+print(ternary.kind.condition.kind); # expect: true
+print(ternary.kind.then.kind); # expect: 1
+print(ternary.kind.else_block.kind); # expect: 2
+
+var group = ast.parse_expression("(1)");
+print(isinstance(group.kind, ast.Grouping)); # expect: true
+print(group.kind.inner.kind); # expect: 1
+
+var tuple = ast.parse_expression("1, 2");
+print(isinstance(tuple.kind, ast.TupleLit)); # expect: true
+print(tuple.kind.elements[0].kind); # expect: 1
+print(tuple.kind.elements[1].kind); # expect: 2
+
+var list = ast.parse_expression("[1, 2]");
+print(isinstance(list.kind, ast.ListLit)); # expect: true
+print(list.kind.items[0].kind); # expect: 1
+print(list.kind.items[1].kind); # expect: 2
+
+var set = ast.parse_expression("{1, 2}");
+print(isinstance(set.kind, ast.SetLit)); # expect: true
+print(set.kind.items[0].kind); # expect: 1
+
+var dict = ast.parse_expression(f"{${quote}a${quote}: 1}");
+print(isinstance(dict.kind, ast.DictLit)); # expect: true
+print(dict.kind.entries[0][0].kind); # expect: a
+print(dict.kind.entries[0][1].kind); # expect: 1
+
+var call = ast.parse_expression("f(1, 2)");
+print(isinstance(call.kind, ast.Call)); # expect: true
+print(isinstance(call.kind.callee.kind, ast.Variable)); # expect: true
+print(call.kind.callee.kind.name); # expect: f
+print(isinstance(call.kind.args[0], ast.Arg)); # expect: true
+print(call.kind.args[0].value.kind); # expect: 1
+print(call.kind.args[1].value.kind); # expect: 2
+
+var prop = ast.parse_expression("a.b");
+print(isinstance(prop.kind, ast.Property)); # expect: true
+print(prop.kind.name); # expect: b
+print(prop.kind.object.kind.name); # expect: a
+
+var sub = ast.parse_expression("a[0]");
+print(isinstance(sub.kind, ast.Subscript)); # expect: true
+print(sub.kind.index.kind); # expect: 0
+print(sub.kind.object.kind.name); # expect: a
+
+var assign = ast.parse_expression("a = 1");
+print(isinstance(assign.kind, ast.Assign)); # expect: true
+print(assign.kind.target.kind.name); # expect: a
+print(assign.kind.value.kind); # expect: 1
+
+var aug = ast.parse_expression("a += 2");
+print(isinstance(aug.kind, ast.AugAssign)); # expect: true
+print(aug.kind.op); # expect: +
+print(aug.kind.value.kind); # expect: 2
+
+var fstring = ast.parse_expression("f" + quote + "a ${1}" + quote);
+print(isinstance(fstring.kind, ast.Fstring)); # expect: true
+print(fstring.kind.parts[0] == "a "); # expect: true
+print(isinstance(fstring.kind.parts[1], ast.Expr)); # expect: true
+print(fstring.kind.parts[1].kind); # expect: 1
+
+var tstring = ast.parse_expression("t" + quote + "a ${b}" + quote);
+print(isinstance(tstring.kind, ast.Tstring)); # expect: true
+print(tstring.kind.parts[0] == "a "); # expect: true
+print(isinstance(tstring.kind.interpolations[0], ast.TstringInterpolation)); # expect: true
+print(tstring.kind.interpolations[0].value.kind.name); # expect: b
+print(tstring.kind.interpolations[0].source_text); # expect: b
+
+var lambda = ast.parse_expression("->(x, y = 2) x + y");
+print(isinstance(lambda.kind, ast.LambdaLit)); # expect: true
+print(isinstance(lambda.kind.parameters, ast.ParamList)); # expect: true
+print(lambda.kind.parameters.params[0].name); # expect: x
+print(lambda.kind.parameters.params[1].default_value.kind); # expect: 2
+print(isinstance(lambda.kind.body, ast.Expr)); # expect: true
+print(isinstance(lambda.kind.body.kind, ast.Binary)); # expect: true
+
+var block_lambda = ast.parse_expression("->(x) { return x; }");
+print(isinstance(block_lambda.kind.body, ast.LambdaBlock)); # expect: true
+print(isinstance(block_lambda.kind.body.statements[0], ast.Stmt)); # expect: true
+print(isinstance(block_lambda.kind.body.statements[0].kind, ast.Return)); # expect: true
+print(block_lambda.kind.body.statements[0].kind.value.kind.name); # expect: x

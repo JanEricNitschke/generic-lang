@@ -26,3 +26,17 @@ path = "fuzz_targets/interpret.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "ast_roundtrip"
+path = "fuzz_targets/ast_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "unparse"
+path = "fuzz_targets/unparse.rs"
+test = false
+doc = false
+bench = false

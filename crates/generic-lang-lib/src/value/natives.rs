@@ -248,28 +248,30 @@ impl PartialEq for PluginInstance {
 }
 
 impl NativeClass {
-    pub(crate) fn new(kind: &str) -> Self {
+    pub(crate) fn new(kind: &str) -> Option<Self> {
         match kind {
-            "List" => Self::List(List::default()),
-            "Set" => Self::Set(Set::default()),
-            "Dict" => Self::Dict(Dict::default()),
-            "Range" => Self::Range(Range::default()),
-            "Tuple" => Self::Tuple(Tuple::default()),
-            "Exception" => Self::Exception(Exception::default()),
-            "partial" => Self::Partial(Partial::default()),
-            "Field" => Self::Field(Field::default()),
-            "Response" => Self::Response(Response::default()),
-            "Path" => Self::Path(Path::default()),
+            "List" => Some(Self::List(List::default())),
+            "Set" => Some(Self::Set(Set::default())),
+            "Dict" => Some(Self::Dict(Dict::default())),
+            "Range" => Some(Self::Range(Range::default())),
+            "Tuple" => Some(Self::Tuple(Tuple::default())),
+            "Exception" => Some(Self::Exception(Exception::default())),
+            "Template" => Some(Self::Template(Template::default())),
+            "Interpolation" => Some(Self::Interpolation(Interpolation::default())),
+            "partial" => Some(Self::Partial(Partial::default())),
+            "Field" => Some(Self::Field(Field::default())),
+            "Response" => Some(Self::Response(Response::default())),
+            "Path" => Some(Self::Path(Path::default())),
             // Proxy classes for value type constructors
-            "Bool" => Self::BoolProxy,
-            "Module" => Self::ModuleProxy,
-            "String" => Self::StringProxy,
-            "Integer" => Self::IntegerProxy,
-            "Float" => Self::FloatProxy,
-            "Rational" => Self::RationalProxy,
-            "NilType" => Self::NilProxy,
-            "StopIterationType" => Self::StopIterationProxy,
-            _ => unreachable!("Unknown native class `{}`.", kind),
+            "Bool" => Some(Self::BoolProxy),
+            "Module" => Some(Self::ModuleProxy),
+            "String" => Some(Self::StringProxy),
+            "Integer" => Some(Self::IntegerProxy),
+            "Float" => Some(Self::FloatProxy),
+            "Rational" => Some(Self::RationalProxy),
+            "NilType" => Some(Self::NilProxy),
+            "StopIterationType" => Some(Self::StopIterationProxy),
+            _ => None,
         }
     }
 

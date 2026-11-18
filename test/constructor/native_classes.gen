@@ -1,0 +1,45 @@
+gen numbers() {
+    yield 1;
+}
+
+try {
+    type(iter([]))();
+} catch TypeError as e {
+    print(e.message()); # expect: cannot create 'ListIterator' instances
+}
+
+try {
+    type(iter(()))();
+} catch TypeError as e {
+    print(e.message()); # expect: cannot create 'TupleIterator' instances
+}
+
+try {
+    type(iter(Set()))();
+} catch TypeError as e {
+    print(e.message()); # expect: cannot create 'SetIterator' instances
+}
+
+try {
+    type(iter(Dict()))();
+} catch TypeError as e {
+    print(e.message()); # expect: cannot create 'DictIterator' instances
+}
+
+try {
+    type(iter(Range(0, 1)))();
+} catch TypeError as e {
+    print(e.message()); # expect: cannot create 'RangeIterator' instances
+}
+
+try {
+    type(iter(t"x"))();
+} catch TypeError as e {
+    print(e.message()); # expect: cannot create 'TemplateIterator' instances
+}
+
+try {
+    type(numbers())();
+} catch TypeError as e {
+    print(e.message()); # expect: cannot create 'Generator' instances
+}

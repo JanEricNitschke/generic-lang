@@ -481,9 +481,10 @@ impl VM {
             .methods
             .get(&init_method_id)
             .expect("Exception classes always define __init__");
-        let instance = self
-            .heap
-            .add_instance(Instance::new(class_id, Some(NativeClass::new("Exception"))));
+        let instance = self.heap.add_instance(Instance::new(
+            class_id,
+            Some(NativeClass::new("Exception").expect("Exception has a native backing")),
+        ));
         self.stack.push(instance);
         self.invoke_and_run_function(init_method_id, 0)?;
         Ok(self

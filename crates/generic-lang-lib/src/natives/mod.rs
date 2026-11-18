@@ -74,10 +74,10 @@ use string::{
 };
 
 use template::{
-    interpolation_expression_native, interpolation_str_native, interpolation_value_native,
-    template_interpolations_native, template_iter_iter_native, template_iter_native,
-    template_iter_next_native, template_iter_str_native, template_str_native,
-    template_strings_native,
+    interpolation_expression_native, interpolation_init_native, interpolation_str_native,
+    interpolation_value_native, template_init_native, template_interpolations_native,
+    template_iter_iter_native, template_iter_native, template_iter_next_native,
+    template_iter_str_native, template_str_native, template_strings_native,
 };
 
 use tuple::{
@@ -268,9 +268,13 @@ pub(crate) fn define(vm: &mut VM) {
     vm.define_native_method(&"Generator", &"close", &[0], generator_close_native);
     vm.define_native_method(&"Generator", &"raise", &[1], generator_raise_native);
 
-    // Will possibly add inits later
-    // Might also take these out of builtins and add them to a stdlib module
     vm.define_native_class(&"Template", true);
+    vm.define_native_method(
+        &"Template",
+        &"__init__",
+        &VARIADIC_0_PLUS,
+        template_init_native,
+    );
     vm.define_native_method(&"Template", &"__iter__", &[0], template_iter_native);
     vm.define_native_method(&"Template", &"strings", &[0], template_strings_native);
     vm.define_native_method(
@@ -302,6 +306,12 @@ pub(crate) fn define(vm: &mut VM) {
     );
 
     vm.define_native_class(&"Interpolation", true);
+    vm.define_native_method(
+        &"Interpolation",
+        &"__init__",
+        &[1, 2],
+        interpolation_init_native,
+    );
     vm.define_native_method(&"Interpolation", &"value", &[0], interpolation_value_native);
     vm.define_native_method(
         &"Interpolation",

@@ -5,7 +5,7 @@
 use shrinkwraprs::Shrinkwrap;
 use std::cmp::Ordering;
 use std::fmt::Write;
-use strum_macros::{Display, EnumIter};
+use strum_macros::{Display, EnumIter, EnumString};
 
 #[derive(Shrinkwrap, PartialEq, Eq, Clone, Copy, Debug, PartialOrd)]
 #[shrinkwrap(mutable)]
@@ -202,23 +202,29 @@ impl OpcodeLocation {
 }
 
 /// Enum for variable mutability
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString)]
 pub(crate) enum Mutability {
+    #[strum(serialize = "var")]
     Mutable,
+    #[strum(serialize = "const")]
     Immutable,
 }
 
 /// Enum for conditional statement types
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString)]
 pub(crate) enum ConditionType {
+    #[strum(serialize = "if")]
     If,
+    #[strum(serialize = "unless")]
     Unless,
 }
 
 /// Enum for loop statement types
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString)]
 pub(crate) enum LoopType {
+    #[strum(serialize = "while")]
     While,
+    #[strum(serialize = "until")]
     Until,
 }
 

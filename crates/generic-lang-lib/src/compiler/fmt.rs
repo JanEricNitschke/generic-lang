@@ -5,6 +5,7 @@
 //! not preserve the original line breaks. Comments are kept in a side map
 //! keyed by AST list slots, so formatting a file keeps them in source order.
 
+use super::Parser;
 use super::ast::{
     AccessMode, BinaryOp, BoolOperator, CatchClause, ClassDecl, ClassMemberKind, ClassVar, Expr,
     ExprKind, FstringPart, FunctionKind, Literal, Method, ParamList, Program, Stmt, StmtKind,
@@ -12,9 +13,7 @@ use super::ast::{
 };
 use super::ast_eq::LocationLessEq;
 use super::comments::{Comment, CommentMap, Position, end_position, start_position};
-use super::front::Parser;
 use super::rules::Precedence;
-use crate::scanner::Scanner;
 use crate::types::{ConditionType, LoopType, Mutability};
 use std::collections::HashSet;
 
@@ -102,10 +101,10 @@ impl Default for FormatOptions {
 /// Returns [`FormatError::Syntax`] when the input does not parse, or
 /// [`FormatError::Internal`] if the formatted output does not round-trip.
 pub fn format_source(source: &str, options: FormatOptions) -> Result<String, FormatError> {
-    let program = parse(source).map_err(FormatError::Syntax)?;
+    let program = Parser::parse_source(source).map_err(FormatError::Syntax)?;
     let formatted = Formatter::new(options, &program.comments).format_program(&program);
 
-    let reparsed = parse(&formatted).map_err(|errors| {
+    let reparsed = Parser::parse_source(&formatted).map_err(|errors| {
         FormatError::Internal(vec![format!(
             "internal formatter error: formatted output failed to parse:\n{}",
             errors.join("\n")
@@ -137,21 +136,23 @@ pub fn format_source_with_default(source: &str) -> Result<String, FormatError> {
     format_source(source, FormatOptions::default())
 }
 
-fn parse(source: &str) -> Result<Program, Vec<String>> {
-    let mut parser = Parser::new(
-        Scanner::new(
-            source,
-            #[cfg(feature = "debug_scanner")]
-            false,
-        ),
-        #[cfg(feature = "debug_parser")]
-        false,
-    );
-    let program = parser.parse_program();
-    if parser.had_error {
-        return Err(std::mem::take(&mut parser.errors));
-    }
-    Ok(program)
+pub(crate) fn format_program_ast(program: &Program) -> String {
+    let comments = CommentMap::default();
+    Formatter::new(FormatOptions::default(), &comments).format_program(program)
+}
+
+pub(crate) fn format_statement_ast(statement: &Stmt) -> String {
+    let comments = CommentMap::default();
+    let mut formatter = Formatter::new(FormatOptions::default(), &comments);
+    formatter.statement(statement, 0);
+    formatter.out
+}
+
+pub(crate) fn format_expression_ast(expression: &Expr) -> String {
+    let comments = CommentMap::default();
+    let mut formatter = Formatter::new(FormatOptions::default(), &comments);
+    formatter.expr(expression, Precedence::None, 0);
+    formatter.out
 }
 
 struct Formatter<'comments> {
@@ -343,7 +344,7 @@ impl<'comments> Formatter<'comments> {
     #[allow(clippy::too_many_lines)]
     fn statement(&mut self, statement: &Stmt, level: usize) {
         match &statement.kind {
-            StmtKind::Expression { expr } => {
+            StmtKind::ExpressionStmt { expr } => {
                 self.indent(level);
                 self.expr(expr, Precedence::Assignment, level);
                 self.out.push_str(";\n");
@@ -584,7 +585,7 @@ impl<'comments> Formatter<'comments> {
         for member in &class.members {
             self.emit_comments(super::comments::start_position(member.location), level + 1);
             match &member.kind {
-                ClassMemberKind::Variable(variable) => self.class_variable(variable, level + 1),
+                ClassMemberKind::ClassVar(variable) => self.class_variable(variable, level + 1),
                 ClassMemberKind::Method(method) => {
                     self.method(method, end_position(member.location), level + 1);
                 }
@@ -626,7 +627,7 @@ impl<'comments> Formatter<'comments> {
             self.out.push_str(" else ");
             self.block(
                 else_block,
-                end_position(try_stmt.else_location.expect("else block has a location")),
+                end_position(try_stmt.else_location.unwrap_or_default()),
                 level,
             );
         }
@@ -639,7 +640,7 @@ impl<'comments> Formatter<'comments> {
             let matcher = &catch.matchers[0];
             let needs_catch_parentheses = match &matcher.kind {
                 ExprKind::Grouping { .. } => true,
-                ExprKind::Tuple { elements } => elements.is_empty(),
+                ExprKind::TupleLit { elements } => elements.is_empty(),
                 _ => false,
             };
             if needs_catch_parentheses {
@@ -745,7 +746,7 @@ impl<'comments> Formatter<'comments> {
                 initializer,
                 ..
             } => self.variable_declaration(name, *mutability, initializer.as_deref(), level),
-            StmtKind::Expression { expr } => {
+            StmtKind::ExpressionStmt { expr } => {
                 self.expr(expr, Precedence::Assignment, level);
             }
             _ => {}
@@ -797,7 +798,7 @@ impl<'comments> Formatter<'comments> {
     fn expr_single(&mut self, expr: &Expr, parent: Precedence, level: usize) {
         if matches!(
             &expr.kind,
-            ExprKind::Tuple { elements } if !elements.is_empty()
+            ExprKind::TupleLit { elements } if !elements.is_empty()
         ) {
             self.out.push('(');
             self.expr(expr, Precedence::None, level);
@@ -868,10 +869,10 @@ impl<'comments> Formatter<'comments> {
                     op,
                     BinaryOp::RangeInclusive | BinaryOp::RangeExclusive | BinaryOp::Rational
                 ) {
-                    self.out.push_str(binary_operator(*op));
+                    self.out.push_str(&op.to_string());
                 } else {
                     self.out.push(' ');
-                    self.out.push_str(binary_operator(*op));
+                    self.out.push_str(&op.to_string());
                     self.out.push(' ');
                 }
                 self.expr_single(rhs, binary_rhs_parent(*op, rhs), level);
@@ -905,7 +906,7 @@ impl<'comments> Formatter<'comments> {
             ExprKind::Grouping { inner } => {
                 let close = Delimiters::new("(", ")").at(end_position(expr.location));
                 match &inner.kind {
-                    ExprKind::Tuple { elements } if !elements.is_empty() => {
+                    ExprKind::TupleLit { elements } if !elements.is_empty() => {
                         let delimiters = if elements.len() == 1 {
                             close.single_comma()
                         } else {
@@ -934,7 +935,7 @@ impl<'comments> Formatter<'comments> {
                     }
                 }
             }
-            ExprKind::Tuple { elements } => {
+            ExprKind::TupleLit { elements } => {
                 if elements.is_empty() {
                     self.comma_list(
                         elements,
@@ -996,8 +997,8 @@ impl<'comments> Formatter<'comments> {
                 self.out.push_str("f\"");
                 for part in parts {
                     match part {
-                        FstringPart::Str(text) => self.out.push_str(text),
-                        FstringPart::Interp(expr) => {
+                        FstringPart::Text(text) => self.out.push_str(text),
+                        FstringPart::Interpolation(expr) => {
                             self.out.push_str("${");
                             self.expr(expr, Precedence::Assignment, level);
                             self.out.push('}');
@@ -1041,9 +1042,9 @@ impl<'comments> Formatter<'comments> {
                 self.out.push_str("super.");
                 self.out.push_str(method);
             }
-            ExprKind::Yield { operand } => {
+            ExprKind::Yield { value } => {
                 self.out.push_str("yield");
-                if let Some(operand) = operand {
+                if let Some(operand) = value {
                     self.out.push(' ');
                     self.expr(operand, Precedence::Assignment, level);
                 }
@@ -1058,7 +1059,7 @@ impl<'comments> Formatter<'comments> {
             } => {
                 self.expr(target, Precedence::Assignment, level);
                 self.out.push(' ');
-                self.out.push_str(binary_operator(*op));
+                self.out.push_str(&op.to_string());
                 self.out.push_str("= ");
                 self.expr(value, Precedence::Assignment, level);
             }
@@ -1104,7 +1105,7 @@ impl<'comments> Formatter<'comments> {
             Literal::Int(value) => self.out.push_str(&value.to_string()),
             Literal::BigInt(value) => self.out.push_str(&value.to_string()),
             Literal::Float(value) => self.float(*value),
-            Literal::Str(value) => {
+            Literal::String(value) => {
                 self.out.push('"');
                 self.out.push_str(value);
                 self.out.push('"');
@@ -1198,7 +1199,7 @@ fn precedence(kind: &ExprKind) -> Precedence {
             Precedence::Call
         }
         ExprKind::Super { .. } => Precedence::Call,
-        ExprKind::Tuple { .. }
+        ExprKind::TupleLit { .. }
         | ExprKind::Literal(_)
         | ExprKind::Variable { .. }
         | ExprKind::Grouping { .. }
@@ -1227,32 +1228,6 @@ const fn binary_precedence(op: BinaryOp) -> Precedence {
         BinaryOp::RangeInclusive | BinaryOp::RangeExclusive => Precedence::Range,
         BinaryOp::Exp => Precedence::Exponent,
         BinaryOp::Rational => Precedence::Rational,
-    }
-}
-
-const fn binary_operator(op: BinaryOp) -> &'static str {
-    match op {
-        BinaryOp::Add => "+",
-        BinaryOp::Sub => "-",
-        BinaryOp::Mul => "*",
-        BinaryOp::Div => "/",
-        BinaryOp::FloorDiv => "//",
-        BinaryOp::Mod => "%",
-        BinaryOp::Exp => "**",
-        BinaryOp::BitAnd => "&",
-        BinaryOp::BitOr => "|",
-        BinaryOp::BitXor => "^",
-        BinaryOp::Equal => "==",
-        BinaryOp::NotEqual => "!=",
-        BinaryOp::Greater => ">",
-        BinaryOp::GreaterEqual => ">=",
-        BinaryOp::Less => "<",
-        BinaryOp::LessEqual => "<=",
-        BinaryOp::In => "in",
-        BinaryOp::Is => "is",
-        BinaryOp::RangeInclusive => "..=",
-        BinaryOp::RangeExclusive => "..<",
-        BinaryOp::Rational => ":",
     }
 }
 
@@ -1729,7 +1704,7 @@ print(t);
 
         fn tuple(a: i64, b: i64) -> Expr {
             Expr {
-                kind: ExprKind::Tuple {
+                kind: ExprKind::TupleLit {
                     elements: vec![int(a), int(b)],
                 },
                 location: Location::default(),
@@ -1760,7 +1735,7 @@ print(t);
             location: Location::default(),
         };
         let nested = Expr {
-            kind: ExprKind::Tuple {
+            kind: ExprKind::TupleLit {
                 elements: vec![int(5), tuple(6, 7)],
             },
             location: Location::default(),
