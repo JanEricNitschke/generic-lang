@@ -159,6 +159,12 @@ The bundled modules:
   `json.dumps(value, indent)` serializes lists, tuples (as arrays),
   dicts with string keys, strings, numbers, booleans, and `nil`.
   Circular references and non-serializable values raise.
+- **`tomllib`** - `tomllib.loads(source)` parses a TOML document and
+  `tomllib.load(path)` reads and parses a file. Tables become dicts,
+  arrays become lists, and TOML values map to the corresponding generic
+  types. Local dates/times become `Date`/`Time`; offset date-times
+  become `DateTime`. Local date-times without an offset and leap seconds
+  are rejected. `load` accepts a string path or a `Path`.
 - **`requests`** - a blocking HTTP client: `requests.get(url[, headers])`
   and `post`/`put`/`delete(url[, body][, headers])` return a `Response`
   with `.status_code()`, `.ok()`, `.text()`, `.json()`, and

@@ -1,0 +1,22 @@
+import "tomllib";
+from "pathlib" import Path;
+
+print(tomllib.load(Path("test/tomllib/fixture.toml"))["name"]); # expect: from-file
+print(tomllib.load("test/tomllib/fixture.toml")["enabled"]); # expect: true
+
+try {
+    tomllib.load("test/tomllib/missing.toml");
+} catch IoError as e {
+    print("missing file"); # expect: missing file
+}
+
+try {
+    tomllib.load("test/tomllib/invalid.toml");
+} catch ValueError as e {
+    print(e.message());
+    # expect: Invalid TOML: TOML parse error at line 1, column 8
+    # expect:   |
+    # expect: 1 | bad = [
+    # expect:   |        ^
+    # expect: unclosed array, expected `]`
+}

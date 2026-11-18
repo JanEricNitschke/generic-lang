@@ -1,0 +1,49 @@
+import "tomllib";
+
+var data = tomllib.loads("
+title = 'TOML Example'
+enabled = true
+count = 3
+ratio = 1.5
+
+[owner]
+name = 'Tom'
+ports = [8001, 8002]
+
+[owner.point]
+x = 1
+when = 2020-01-02T12:34:56+02:00
+date = 2020-01-02
+time = 12:34:56
+");
+
+print(data["title"]); # expect: TOML Example
+print(data["enabled"]); # expect: true
+print(data["count"]); # expect: 3
+print(data["ratio"]); # expect: 1.5
+print(data["owner"]["name"]); # expect: Tom
+print(data["owner"]["ports"]); # expect: [8001, 8002]
+print(data["owner"]["point"]["x"]); # expect: 1
+print(data["owner"]["point"]["when"]); # expect: 2020-01-02T12:34:56+02:00
+print(data["owner"]["point"]["date"]); # expect: 2020-01-02
+print(data["owner"]["point"]["time"]); # expect: 12:34:56
+
+var advanced = tomllib.loads("
+[products]
+[[products.items]]
+name = 'a'
+[[products.items]]
+name = 'b'
+inline = { x = 1, y = 2 }
+");
+print(advanced["products"]["items"][0]["name"]); # expect: a
+print(advanced["products"]["items"][1]["name"]); # expect: b
+print(advanced["products"]["items"][1]["inline"]["x"]); # expect: 1
+
+print(tomllib.loads("z = 2020-01-02T12:34:56Z")["z"]); # expect: 2020-01-02T12:34:56+00:00[UTC]
+print(tomllib.loads("n = 2020-01-02T12:34:56-05:30")["n"]); # expect: 2020-01-02T12:34:56-05:30
+print(tomllib.loads("f = 12:34:56.123456789")["f"]); # expect: 12:34:56.123456
+
+print(tomllib.loads("i = 0x10")["i"]); # expect: 16
+print(tomllib.loads("i = 9223372036854775807")["i"]); # expect: 9223372036854775807
+print(tomllib.loads("t = 12:34")["t"]); # expect: 12:34:00

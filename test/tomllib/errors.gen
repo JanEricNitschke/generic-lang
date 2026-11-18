@@ -1,0 +1,42 @@
+import "tomllib";
+
+try {
+    tomllib.loads(1);
+} catch TypeError as e {
+    print(e.message()); # expect: 'loads' expects a string, got: 1
+}
+
+try {
+    tomllib.loads("dt = 2020-01-02T12:34:56");
+} catch ValueError as e {
+    print(e.message()); # expect: TOML local date-times are not supported
+}
+
+try {
+    tomllib.loads("nested = { dt = 2020-01-02T12:34:56 }");
+} catch ValueError as e {
+    print(e.message()); # expect: TOML local date-times are not supported
+}
+
+try {
+    tomllib.loads("t = 23:59:60");
+} catch ValueError as e {
+    print(e.message()); # expect: TOML leap seconds are not supported
+}
+
+try {
+    tomllib.load(1);
+} catch TypeError as e {
+    print(e.message()); # expect: 'load' expects a path or string, got: 1
+}
+
+try {
+    tomllib.loads("bad = [");
+} catch ValueError as e {
+    print(e.message());
+    # expect: Invalid TOML: TOML parse error at line 1, column 8
+    # expect:   |
+    # expect: 1 | bad = [
+    # expect:   |        ^
+    # expect: unclosed array, expected `]`
+}
