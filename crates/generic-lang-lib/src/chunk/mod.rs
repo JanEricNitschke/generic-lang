@@ -155,6 +155,10 @@ pub(crate) enum OpCode {
     CompareException,
     Throw,
     Reraise,
+
+    // Lazy default prologue: operand is the zero-based fixed-parameter
+    // index; pushes whether the caller supplied that argument.
+    ArgSupplied,
 }
 
 #[cfg(test)]

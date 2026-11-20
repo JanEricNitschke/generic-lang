@@ -15,6 +15,10 @@ pub(crate) struct CallFrame {
     pub ip: usize,
     pub stack_base: usize,
     pub is_module: bool,
+    /// Number of explicit arguments the caller supplied. The parameter at
+    /// zero-based fixed index `i` was supplied exactly when `arg_count > i`.
+    /// A method's receiver is not counted.
+    pub arg_count: u8,
 }
 
 impl CallFrame {
@@ -28,6 +32,7 @@ impl CallFrame {
             ip: 0,
             stack_base: 0,
             is_module: false,
+            arg_count: 0,
         }
     }
 }
@@ -78,12 +83,19 @@ impl CallStack {
         self.set_currents(heap);
     }
 
-    pub(super) fn push(&mut self, closure: ClosureId, stack_base: usize, heap: &Heap) {
+    pub(super) fn push(
+        &mut self,
+        closure: ClosureId,
+        stack_base: usize,
+        arg_count: u8,
+        heap: &Heap,
+    ) {
         self.frames.push(CallFrame {
             closure,
             ip: 0,
             stack_base,
             is_module: closure.to_value(heap).is_module,
+            arg_count,
         });
         self.current_closure = Some(closure);
         self.current_function = Some(closure.to_value(heap).function);

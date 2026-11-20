@@ -97,7 +97,7 @@ var lambda = ast.parse_expression("->(x, y = 2) x + y");
 print(isinstance(lambda.kind, ast.LambdaLit)); # expect: true
 print(isinstance(lambda.kind.parameters, ast.ParamList)); # expect: true
 print(lambda.kind.parameters.params[0].name); # expect: x
-print(lambda.kind.parameters.params[1].default_value.kind); # expect: 2
+print(lambda.kind.parameters.params[1].default_value.expr.kind); # expect: 2
 print(isinstance(lambda.kind.body, ast.Expr)); # expect: true
 print(isinstance(lambda.kind.body.kind, ast.Binary)); # expect: true
 

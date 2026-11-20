@@ -420,6 +420,7 @@ mod tests {
         "switch (x) { case nil: y; default: z; }",
         r#"var t = t"a ${1 + 2}b";"#,
         "fun f() { return nil; }",
+        "fun f(a, b = 1, c => a + b) { return c; }",
     ];
 
     #[test]

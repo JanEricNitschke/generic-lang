@@ -1,0 +1,106 @@
+# A lazy default fills an omitted trailing argument; a supplied argument
+# wins.
+fun greet(name, greeting=>"Hello") {
+    return f"${greeting}, ${name}";
+}
+print(greet("world")); # expect: Hello, world
+print(greet("world", "Hi")); # expect: Hi, world
+
+# An explicit nil is a supplied argument, so it suppresses the default.
+fun fallback(value, other=>f"${value}") {
+    return other;
+}
+print(fallback(1)); # expect: 1
+print(fallback(1, nil)); # expect: nil
+
+# A supplied argument skips the default expression entirely.
+var calls = 0;
+fun bump() {
+    calls = calls + 1;
+    return calls;
+}
+fun bump_value(value=>bump()) {
+    return value;
+}
+print(bump_value(10)); # expect: 10
+print(calls); # expect: 0
+print(bump_value()); # expect: 1
+print(calls); # expect: 1
+
+# Multiple lazy defaults are evaluated left to right.
+var order = [];
+fun note(label, value) {
+    order.append(label);
+    return value;
+}
+fun sequence(a=>note("a", 1), b=>note("b", a + 1), c=>note("c", b + 1)) {
+    return a + b + c;
+}
+print(sequence()); # expect: 6
+print(order); # expect: [a, b, c]
+
+# Variadic surplus skips the lazy default and collects the rest.
+fun variadic(first=>1, *rest) {
+    return f"${first} ${rest}";
+}
+print(variadic()); # expect: 1 ()
+print(variadic(2, 3, 4)); # expect: 2 (3, 4)
+
+# Unpacking supplies fixed arguments like a plain call.
+fun spread_value(x, y=>x * 10) {
+    return y;
+}
+print(spread_value(*[7])); # expect: 70
+print(spread_value(*[7, 3])); # expect: 3
+
+# An eager mutable default is one shared value; a lazy one is rebuilt for
+# each call.
+fun eager_collect(item, into=[]) {
+    into.append(item);
+    return into;
+}
+fun lazy_collect(item, into=>[]) {
+    into.append(item);
+    return into;
+}
+print(eager_collect(1)); # expect: [1]
+print(eager_collect(2)); # expect: [1, 2]
+print(lazy_collect(1)); # expect: [1]
+print(lazy_collect(2)); # expect: [2]
+
+# Decorators preserving the argument list preserve lazy defaults too.
+fun twice(func) {
+    fun wrapper(*args) {
+        return func(*args) * 2;
+    }
+    return wrapper;
+}
+@twice
+fun decorated(a, b=>a + 1) {
+    return a + b;
+}
+print(decorated(3)); # expect: 14
+print(decorated(3, 5)); # expect: 16
+
+# An eager default runs at definition time, a lazy one at call time, so
+# their exceptions surface at different points.
+fun explode() {
+    throw ValueError("boom");
+}
+try {
+    fun eager_maybe(value=explode()) {
+        return value;
+    }
+} catch ValueError as e {
+    print(e.message()); # expect: boom
+}
+
+fun lazy_maybe(value=>explode()) {
+    return value;
+}
+try {
+    lazy_maybe();
+} catch ValueError as e {
+    print(e.message()); # expect: boom
+}
+print(lazy_maybe(5)); # expect: 5

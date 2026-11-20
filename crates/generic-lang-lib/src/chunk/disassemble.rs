@@ -80,7 +80,7 @@ impl<'chunk, 'heap> InstructionDisassembler<'chunk, 'heap> {
                 Constant | DupN | GetLocal | SetLocal | GetGlobal | SetGlobal | DefineGlobal
                 | DefineGlobalConst | GetUpvalue | SetUpvalue | Call | Class | Method
                 | GetProperty | SetProperty | GetSuper | BuildList | BuildTuple | BuildSet
-                | BuildDict | BuildFstring => 1,
+                | BuildDict | BuildFstring | ArgSupplied => 1,
                 Jump | JumpIfNil | JumpIfFalse | JumpIfTrue | PopJumpIfFalse | PopJumpIfTrue
                 | JumpIfFalseOrPop | JumpIfTrueOrPop | Loop | Invoke | SuperInvoke
                 | ClassVariable | Import | RegisterCatches => 2,
@@ -581,6 +581,7 @@ impl Debug for InstructionDisassembler<'_, '_> {
                 BuildDict,
                 BuildFstring,
                 DupN,
+                ArgSupplied,
             ),
             byte_long(GetLocalLong, SetLocalLong),
             jump(

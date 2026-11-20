@@ -87,9 +87,10 @@ pub(crate) enum MethodKind {
 /// Characterizes the types of functions.
 ///
 /// - Function is a `fun` declaration: it binds its name in the enclosing
-///   scope, which stays uninitialized through the parameter list (the
-///   defaults run before the closure exists) and initializes ahead of
-///   the body so it can self-reference for recursion.
+///   scope, which stays uninitialized while eager defaults compile (they run
+///   before the closure exists), and initializes before the body so it can
+///   self-reference for recursion. Lazy defaults compile into the body
+///   prologue after the name is initialized.
 /// - Generator is a `gen` declaration: like Function, plus the
 ///   generator return protocol.
 /// - Lambda is a `->` literal: the only form whose body may be a bare
@@ -462,12 +463,41 @@ impl ExprKind {
     }
 }
 
+/// A parameter's default: none, evaluated at definition time (`=`), or
+/// evaluated on each call (`=>`).
+#[derive(Debug, Clone, LocationLessEq, ToAst)]
+#[ast(variant_prefix = "ParamDefault")]
+pub(crate) enum ParamDefault {
+    Required,
+    Eager { expr: Box<Expr> },
+    Lazy { expr: Box<Expr> },
+}
+
+impl ParamDefault {
+    pub(crate) fn expr(&self) -> Option<&Expr> {
+        match self {
+            Self::Required => None,
+            Self::Eager { expr } | Self::Lazy { expr } => Some(expr),
+        }
+    }
+
+    pub(crate) fn expr_mut(&mut self) -> Option<&mut Expr> {
+        match self {
+            Self::Required => None,
+            Self::Eager { expr } | Self::Lazy { expr } => Some(expr),
+        }
+    }
+
+    pub(crate) const fn is_required(&self) -> bool {
+        matches!(self, Self::Required)
+    }
+}
+
 #[derive(Debug, Clone, LocationLessEq, ToAst)]
 pub(crate) struct Param {
     pub name: String,
-    /// Evaluated once, when the function is defined.
     #[ast(name = "default_value")]
-    pub default: Option<Box<Expr>>,
+    pub default: ParamDefault,
     pub location: Location,
 }
 

@@ -84,6 +84,9 @@ The compiler lives in `src/compiler/`:
   bare expression) are separate types. Both use `ParamList` (`params` plus
   `*rest`). Function and method kinds are named at the declaration site;
   codegen widens them into `FunKind`.
+- `Param.default` is `ParamDefault::{Required, Eager { expr }, Lazy { expr }}`
+  and exports as `ParamDefaultRequired`, `ParamDefaultEager`, or
+  `ParamDefaultLazy`.
 - Decorators live on the function/class declaration node.
 - A `for` initializer is an `Option<Box<StmtKind>>`: a `VarDecl` or an
   expression statement.
@@ -92,9 +95,10 @@ The compiler lives in `src/compiler/`:
 - A class variable with no default is `None`; an explicit `= nil` is
   `Some(nil)`.
 - Class variables and methods share one ordered `members` list.
-  Class-variable initializers and method parameter defaults run at definition
-  time in source order, so a class variable declared after a method can use an
-  instance of the class (for example `Ordered().answer()`).
+  Class-variable initializers and eager (`=`) method parameter defaults run at
+  definition time in source order, so a class variable declared after a
+  method can use an instance of the class (for example `Ordered().answer()`).
+  Lazy (`=>`) defaults run in the method's scope on each call.
 - Blocks, bodies, and the program hold `StmtKind` values directly.
 - Location fields come after the payload fields. A node keeps a location only
   when a user-visible runtime or compile error can point at it; instructions
@@ -288,11 +292,16 @@ state on the VM.
 ## Argument passing: defaults, `*rest`, and unpacking
 
 A `Function` records `arity` (fixed parameters), `required_params` (the
-leading required ones), and `is_variadic` (a trailing `*rest`). Defaults are
-evaluated once at closure creation and stored on the `Closure`
-(`default_values`); `execute_call` fills omitted trailing optionals from
-them, and for a variadic function collects the surplus positional arguments
-into a tuple bound to the rest parameter.
+leading required ones), and `is_variadic` (a trailing `*rest`). Eager (`=`)
+defaults are evaluated once at closure creation and stored in
+`Closure.default_values`. Lazy (`=>`) defaults store a `nil` placeholder there
+and emit a body prologue: `OP_ARG_SUPPLIED` compares
+`CallFrame.arg_count` (explicit arguments, excluding a method receiver) with
+the parameter index; an omitted argument evaluates the expression into the
+parameter slot. `execute_call` fills omitted slots from `default_values` and
+collects surplus arguments into the rest tuple; the prologue replaces lazy
+placeholders. Generator prologues run after `OP_RETURN_GENERATOR`, on first
+advance.
 
 Call-site unpacking (`f(a, *xs, b)`) is compiled differently because the
 argument count is unknown until run time. Each written argument is a

@@ -1,0 +1,103 @@
+# A lazy default can read parameters declared before it.
+fun earlier(a=>1, b=>a + 1) {
+    return b;
+}
+print(earlier()); # expect: 2
+print(earlier(5)); # expect: 6
+
+# A lazy default can reference the rest parameter.
+fun rest_default(value=>len(rest), *rest) {
+    return value;
+}
+print(rest_default()); # expect: 0
+print(rest_default(5, 6, 7)); # expect: 5
+
+# It can read required parameters, and eager-bound parameters declared
+# after it.
+fun required_then_lazy(a, b=>a + 1) {
+    return b;
+}
+print(required_then_lazy(10)); # expect: 11
+
+fun later_eager(a=>b + 1, b=2) {
+    return a;
+}
+print(later_eager()); # expect: 3
+print(later_eager(10)); # expect: 10
+
+# A lazy default can call the function itself; the explicit argument stops
+# the recursion.
+fun recursive_default(value=>recursive_default(1)) {
+    return value;
+}
+print(recursive_default()); # expect: 1
+
+# A local function can call itself in a lazy default too.
+fun make_local_default() {
+    fun local_default(value=>local_default(1)) {
+        return value;
+    }
+    return local_default;
+}
+var local_default = make_local_default();
+print(local_default()); # expect: 1
+
+# A lazy default reads globals and outer locals at call time; an eager
+# default captures them at definition time.
+var captured = 1;
+fun eager_global(value=captured) {
+    return value;
+}
+fun lazy_global(value=>captured) {
+    return value;
+}
+captured = 2;
+print(eager_global()); # expect: 1
+print(lazy_global()); # expect: 2
+
+fun make_eager_reader(value) {
+    fun read(x=value) {
+        return x;
+    }
+    value = value + 1;
+    return read;
+}
+fun make_lazy_reader(value) {
+    fun read(x=>value) {
+        return x;
+    }
+    value = value + 1;
+    return read;
+}
+print(make_eager_reader(10)()); # expect: 10
+print(make_lazy_reader(10)()); # expect: 11
+
+# Parameter names win over outer bindings in lazy defaults; eager defaults
+# use the enclosing scope.
+var x = 100;
+fun eager_shadow(x, y=x) {
+    return y;
+}
+fun lazy_shadow(x, y=>x) {
+    return y;
+}
+print(eager_shadow(1)); # expect: 100
+print(lazy_shadow(1)); # expect: 1
+
+var shadowed = 100;
+fun eager_later(value=shadowed + 1, shadowed=2) {
+    return value;
+}
+fun lazy_later(value=>shadowed + 1, shadowed=2) {
+    return value;
+}
+print(eager_later()); # expect: 101
+print(lazy_later()); # expect: 3
+
+# Body locals are not visible to defaults.
+var body_name = "global";
+fun body_shadow(value=>body_name) {
+    var body_name = "body";
+    return value;
+}
+print(body_shadow()); # expect: global

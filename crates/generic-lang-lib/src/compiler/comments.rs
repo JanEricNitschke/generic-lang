@@ -354,7 +354,7 @@ impl Collector {
             .map(|parameter| {
                 let end_line = parameter
                     .default
-                    .as_deref()
+                    .expr()
                     .map_or(parameter.location.end_line.0, |default| {
                         default.location.end_line.0
                     });
@@ -366,12 +366,12 @@ impl Collector {
         }
         self.span_list(spans, Some(end_position(parameters.location)), None);
         for parameter in &parameters.params {
-            if let Some(default) = &parameter.default {
+            if let Some(default) = parameter.default.expr() {
                 self.expr(default);
             }
         }
         if let Some(rest) = &parameters.rest
-            && let Some(default) = &rest.default
+            && let Some(default) = rest.default.expr()
         {
             self.expr(default);
         }
