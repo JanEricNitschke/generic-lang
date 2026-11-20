@@ -421,6 +421,7 @@ impl VM {
                 function.is_variadic,
             )
         };
+        let frame_arg_count = arg_count;
         let arg_count = usize::from(arg_count);
         // A variadic function has no upper bound; a fixed one caps at `arity`.
         if arg_count < required || (!is_variadic && arg_count > arity) {
@@ -453,8 +454,12 @@ impl VM {
                 self.stack_push(rest);
             }
         }
-        self.callstack
-            .push(*closure_id.as_closure(), stack_base, &self.heap);
+        self.callstack.push(
+            *closure_id.as_closure(),
+            stack_base,
+            frame_arg_count,
+            &self.heap,
+        );
         Ok(None)
     }
 

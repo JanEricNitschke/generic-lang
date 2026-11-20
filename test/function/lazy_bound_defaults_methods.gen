@@ -1,0 +1,71 @@
+# A method lazy default runs in the method scope, so `this` is the call
+# receiver.
+class Box {
+    __init__(value) {
+        this.value = value;
+    }
+    doubled(x=>this.value * 2) {
+        return x;
+    }
+}
+var box = Box(3);
+print(box.doubled()); # expect: 6
+print(box.doubled(5)); # expect: 5
+print(box.doubled(nil)); # expect: nil
+
+# Bound methods fill omitted defaults from their receiver.
+var bound = box.doubled;
+print(bound()); # expect: 6
+print(bound(7)); # expect: 7
+
+# Initializers take lazy defaults too.
+class Point {
+    __init__(x=>10, y=>x + 1) {
+        this.x = x;
+        this.y = y;
+    }
+}
+var point = Point();
+print(point.x); # expect: 10
+print(point.y); # expect: 11
+var partial = Point(3);
+print(partial.x); # expect: 3
+print(partial.y); # expect: 4
+
+# Spread calls and bound methods use the same supplied-count path.
+print(box.doubled(*[8])); # expect: 8
+
+# A superclass method with a lazy default.
+class Base {
+    value(x=>1) {
+        return x;
+    }
+}
+class Derived < Base {
+    value() {
+        return super.value();
+    }
+    derived(x=>super.value()) {
+        return x;
+    }
+}
+print(Derived().value()); # expect: 1
+print(Derived().derived()); # expect: 1
+
+# Instances with a __call__ method take lazy defaults too.
+class Callable {
+    __call__(x=>7) {
+        return x;
+    }
+}
+var callable = Callable();
+print(callable()); # expect: 7
+print(callable(3)); # expect: 3
+
+# A method can call itself through `this` in a lazy default.
+class LazyWidget {
+    lazy_method_own_name(value=>this.lazy_method_own_name(1)) {
+        return value;
+    }
+}
+print(LazyWidget().lazy_method_own_name()); # expect: 1

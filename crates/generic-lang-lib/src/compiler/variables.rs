@@ -518,6 +518,17 @@ impl Codegen<'_, '_> {
         }
     }
 
+    /// Mark the local in `slot` initialized in the current scope.
+    pub(super) fn mark_local_initialized_at(&mut self, slot: usize) {
+        let depth = self.scope_depth();
+        if *depth == 0 {
+            return;
+        }
+        if let Some(local) = self.locals_mut().get_mut(slot) {
+            local.depth = depth;
+        }
+    }
+
     /// Emit bytecode for defining a variable..
     ///
     /// If it is local it just gets marked as initialized.

@@ -1,0 +1,4 @@
+# Lambda parameters take lazy defaults too.
+var scale = ->(a, b=>a * 2) b;
+print(scale(3)); # expect: 6
+print(scale(3, 4)); # expect: 4

@@ -87,7 +87,7 @@ macro_rules! make_rules {
             prefix: None,
             infix: None,
             precedence: Precedence::None,
-        }; 94];
+        }; 95];
         $(
             rules[TK::$token as usize] = Rule {
                 prefix: make_rules!(@parse_fn $prefix),
@@ -100,7 +100,7 @@ macro_rules! make_rules {
 }
 
 #[rustfmt::skip]
-const fn make_rules() -> [Rule; 94] {
+const fn make_rules() -> [Rule; 95] {
     make_rules!(
         LeftParen                = [grouping,        call,               Call       ],
         RightParen               = [None,            None,               None       ],
@@ -134,6 +134,7 @@ const fn make_rules() -> [Rule; 94] {
         Colon                    = [None,            binary,             Rational   ],
         Bang                     = [unary,           None,               None       ],
         Equal                    = [None,            None,               None       ],
+        FatArrow                 = [None,            None,               None       ],
         QuestionMark             = [None,            ternary,            Ternary    ],
         QuestionDot              = [None,            optional_dot,       Call       ],
         QuestionBracket          = [None,            optional_subscript, Call       ],
@@ -199,7 +200,7 @@ const fn make_rules() -> [Rule; 94] {
     )
 }
 
-static RULES: [Rule; 94] = make_rules();
+static RULES: [Rule; 95] = make_rules();
 
 fn rule(kind: TK) -> Rule {
     RULES[kind as usize]

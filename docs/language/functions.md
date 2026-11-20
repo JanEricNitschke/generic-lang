@@ -16,10 +16,14 @@ print(greet("world"));
 
 ## Default parameters
 
-A parameter may declare a default with `= expression`, making it optional.
+A parameter may declare a default with `=` or `=>`, making it optional.
 Any parameter with a default must come after all required ones (a required
 parameter cannot follow an optional one). Calling with too few or too many
 arguments reports the accepted range.
+
+`=` is eager: evaluated once when the function is defined, in the enclosing
+scope. `=>` is lazy: evaluated on each call, only when the argument is
+omitted, in the function's own scope.
 
 ```generic
 fun greet(name, greeting="Hello") {
@@ -27,26 +31,57 @@ fun greet(name, greeting="Hello") {
 }
 print(greet("world"));         # Hello, world
 print(greet("world", "Hi"));   # Hi, world
+
+fun welcome(name, greeting=>f"hello ${name}") {
+    return greeting;
+}
+print(welcome("world"));        # hello world
+print(welcome("world", "Hi"));  # Hi
 ```
 
-Defaults are evaluated **once, at definition time**, in the scope enclosing
-the function - not on each call. A default therefore captures the value in
-force when the function is defined, and a mutable default is shared across
-calls:
+Eager defaults are evaluated once at definition time, so later changes to a
+referenced value do not affect them. A mutable eager default is shared across
+calls. Lazy defaults run on every call and rebuild mutable values:
 
 ```generic
 var base = 100;
-fun offset(x, origin=base) { return x + origin; }
+fun eager_offset(x, origin=base) { return x + origin; }
+fun lazy_offset(x, origin=>base) { return x + origin; }
 base = 999;
-print(offset(1));   # 101 - `origin` captured 100 at definition
+print(eager_offset(1));   # 101 - captured 100 at definition
+print(lazy_offset(1));    # 1000 - read 999 at call time
 
-fun collect(item, into=[]) {
+fun eager_collect(item, into=[]) {
     into.append(item);
     return into;
 }
-print(collect(1));  # [1]
-print(collect(2));  # [1, 2] - the same list, evaluated once
+fun lazy_collect(item, into=>[]) {
+    into.append(item);
+    return into;
+}
+print(eager_collect(1));  # [1]
+print(eager_collect(2));  # [1, 2] - the same list
+print(lazy_collect(1));   # [1]
+print(lazy_collect(2));   # [2] - a fresh list
 ```
+
+Lazy defaults are evaluated left to right and may reference earlier
+parameters, required parameters, eager parameters (including ones declared
+later), `*rest`, and outer or global names. They may not reference themselves
+or a later lazy parameter, and body locals are not visible.
+
+```generic
+fun scale(value, factor=>value * 2) { return factor; }
+print(scale(3));     # 6
+print(scale(3, 5));  # 5
+
+fun later(a=>b + 1, b=2) { return a; }
+print(later());      # 3 - the eager parameter b is already bound
+```
+
+In a method, a lazy default runs in the method scope, so `this` is the call
+receiver. In a generator, lazy defaults run when iteration first advances the
+generator, not when the generator object is created.
 
 ## Rest parameters (`*rest`)
 

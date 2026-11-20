@@ -10,6 +10,9 @@ print(ast.Arg());                           # expect: <Arg instance>
 print(ast.Tstring());                       # expect: <Tstring instance>
 print(ast.TstringInterpolation());          # expect: <TstringInterpolation instance>
 print(ast.Param());                         # expect: <Param instance>
+print(ast.ParamDefaultRequired());          # expect: <ParamDefaultRequired instance>
+print(ast.ParamDefaultEager());             # expect: <ParamDefaultEager instance>
+print(ast.ParamDefaultLazy());              # expect: <ParamDefaultLazy instance>
 print(ast.ParamList());                     # expect: <ParamList instance>
 print(ast.FunctionDef());                   # expect: <FunctionDef instance>
 print(ast.LambdaLit());                     # expect: <LambdaLit instance>
