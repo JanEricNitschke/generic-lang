@@ -372,9 +372,17 @@ mod tests {
     /// A one-shot HTTP/1.1 server: accepts one connection, reads the
     /// request, and replies with `status`/`body`, echoing back the
     /// request's method and the `X-Probe` header so the test can assert
-    /// what the client sent. Returns the bound `127.0.0.1` URL.
-    fn serve_once(status: u16, body: &'static str) -> String {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    /// what the client sent. Returns the bound `127.0.0.1` URL, or `None`
+    /// when the environment cannot create local sockets.
+    fn serve_once(status: u16, body: &'static str) -> Option<String> {
+        let listener = match TcpListener::bind("127.0.0.1:0") {
+            Ok(listener) => listener,
+            Err(error) if error.kind() == std::io::ErrorKind::Unsupported => {
+                eprintln!("skipping request test: local sockets unavailable: {error}");
+                return None;
+            }
+            Err(error) => panic!("failed to bind test server: {error}"),
+        };
         let url = format!("http://{}/", listener.local_addr().unwrap());
         thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
@@ -421,13 +429,15 @@ mod tests {
             );
             stream.write_all(response.as_bytes()).unwrap();
         });
-        url
+        Some(url)
     }
 
     #[test]
     fn get_returns_status_headers_and_body() {
         let mut vm = VM::default();
-        let url = serve_once(200, "hello");
+        let Some(url) = serve_once(200, "hello") else {
+            return;
+        };
         let url_value = Value::String(vm.heap.string_id(&url));
         let response = get_native(&mut vm, &[url_value]).unwrap();
         let response = response.as_response(&vm.heap);
@@ -444,7 +454,9 @@ mod tests {
     #[test]
     fn post_sends_body_and_header() {
         let mut vm = VM::default();
-        let url = serve_once(201, "created");
+        let Some(url) = serve_once(201, "created") else {
+            return;
+        };
         let url_value = Value::String(vm.heap.string_id(&url));
         let body_value = Value::String(vm.heap.string_id(&"payload".to_string()));
         // headers dict: {"X-Probe": "yes"}
@@ -465,7 +477,9 @@ mod tests {
     #[test]
     fn error_status_is_a_response_not_a_throw() {
         let mut vm = VM::default();
-        let url = serve_once(404, "nope");
+        let Some(url) = serve_once(404, "nope") else {
+            return;
+        };
         let url_value = Value::String(vm.heap.string_id(&url));
         let response = get_native(&mut vm, &[url_value]).unwrap();
         let response = response.as_response(&vm.heap);
