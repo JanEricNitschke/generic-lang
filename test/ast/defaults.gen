@@ -1,0 +1,16 @@
+import "ast";
+
+var source = "fun f(a, b = 1, c => a + b) { return c; }";
+var function = ast.parse(source).declarations[0];
+var params = function.kind.fn_lit.parameters.params;
+
+print(isinstance(params[0].default_value, ast.ParamDefaultRequired)); # expect: true
+print(isinstance(params[1].default_value, ast.ParamDefaultEager)); # expect: true
+print(isinstance(params[2].default_value, ast.ParamDefaultLazy)); # expect: true
+print(isinstance(params[2].default_value.expr.kind, ast.Binary)); # expect: true
+print(ast.dump(params[0].default_value)); # expect: ParamDefaultRequired()
+
+print(ast.unparse(ast.parse(source)));
+# expect: fun f(a, b=1, c=>a + b) {
+# expect:     return c;
+# expect: }

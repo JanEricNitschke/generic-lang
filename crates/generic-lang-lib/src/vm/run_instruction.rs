@@ -179,6 +179,14 @@ macro_rules! run_instruction {
                 $self.callstack.current_mut().ip -= offset;
                 Ok(None)
             }
+            // Operand is the zero-based fixed-parameter index. Pushes whether
+            // the caller supplied that argument.
+            OpCode::ArgSupplied => {
+                let parameter_index = usize::from($self.read_byte());
+                let supplied = usize::from($self.callstack.current().arg_count) > parameter_index;
+                $self.stack_push(Value::Bool(supplied));
+                Ok(None)
+            }
             // Get the function with the actual bytecode as a value from the operand
             // Capture the upvalues and push the closure onto the stack
             OpCode::Closure => {

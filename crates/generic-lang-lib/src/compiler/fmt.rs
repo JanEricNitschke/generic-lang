@@ -8,8 +8,8 @@
 use super::Parser;
 use super::ast::{
     AccessMode, BinaryOp, BoolOperator, CatchClause, ClassDecl, ClassMemberKind, ClassVar, Expr,
-    ExprKind, FstringPart, FunctionKind, Literal, Method, ParamList, Program, Stmt, StmtKind,
-    SwitchCase, TryStmt, UnaryOp,
+    ExprKind, FstringPart, FunctionKind, Literal, Method, ParamDefault, ParamList, Program, Stmt,
+    StmtKind, SwitchCase, TryStmt, UnaryOp,
 };
 use super::ast_eq::LocationLessEq;
 use super::comments::{Comment, CommentMap, Position, end_position, start_position};
@@ -773,9 +773,16 @@ impl<'comments> Formatter<'comments> {
                     formatter.out.push('*');
                 }
                 formatter.out.push_str(&parameter.name);
-                if let Some(default) = &parameter.default {
-                    formatter.out.push('=');
-                    formatter.expr_single(default, Precedence::Tuple, level);
+                match &parameter.default {
+                    ParamDefault::Required => {}
+                    ParamDefault::Eager { expr } => {
+                        formatter.out.push('=');
+                        formatter.expr_single(expr, Precedence::Tuple, level);
+                    }
+                    ParamDefault::Lazy { expr } => {
+                        formatter.out.push_str("=>");
+                        formatter.expr_single(expr, Precedence::Tuple, level);
+                    }
                 }
             },
         );
@@ -1255,6 +1262,15 @@ mod tests {
     fn invalid_input_is_a_syntax_error() {
         let error = format_source_with_default("var").unwrap_err();
         assert!(matches!(error, FormatError::Syntax(_)));
+    }
+
+    #[test]
+    fn formats_eager_and_lazy_defaults() {
+        assert_formatting(
+            "fun f(a => 1, b=2, *rest) {}",
+            "fun f(a=>1, b=2, *rest) {}\n",
+        );
+        assert_formatting("var f = ->(a => 1, b=2) a;", "var f = -> (a=>1, b=2) a;\n");
     }
 
     #[test]

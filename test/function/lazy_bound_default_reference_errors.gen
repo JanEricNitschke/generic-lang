@@ -1,0 +1,5 @@
+# [line 3] Error at 'a': Can't read local variable in its own initializer.
+# [line 5] Error at 'b': Can't read local variable in its own initializer.
+fun self_ref(a=>a) { return a; }
+
+fun forward_ref(a=>b, b=>2) { return a + b; }

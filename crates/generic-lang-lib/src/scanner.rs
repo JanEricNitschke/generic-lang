@@ -46,6 +46,7 @@ pub(crate) enum TokenKind {
     Colon,
     Bang,
     Equal,
+    FatArrow,
     QuestionMark,
     QuestionDot,
     QuestionBracket,
@@ -524,6 +525,8 @@ impl<'a> Scanner<'a> {
             b'=' => {
                 if self.match_(b'=') {
                     TK::EqualEqual
+                } else if self.match_(b'>') {
+                    TK::FatArrow
                 } else {
                     TK::Equal
                 }
@@ -914,6 +917,12 @@ mod tests {
         assert_eq!(tokens[0].as_str(), "123");
         let tokens = scan_tokens("456.789");
         assert_eq!(tokens[0].as_str(), "456.789");
+    }
+
+    #[test]
+    fn test_fat_arrow() {
+        assert_token_kinds("=>", &[TK::FatArrow]);
+        assert_token_kinds("= >", &[TK::Equal, TK::Greater]);
     }
 
     #[test]

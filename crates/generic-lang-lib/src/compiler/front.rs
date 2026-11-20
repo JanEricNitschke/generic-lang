@@ -5,7 +5,8 @@
 use super::ast::{
     CatchClause, ClassDecl, ClassMember, ClassMemberKind, ClassVar, Expr, ExprContext, ExprKind,
     FunKind, FunctionDef, FunctionKind, InjectedBody, InjectedProgram, LambdaBody, LambdaLit,
-    Literal, Method, MethodKind, Param, ParamList, Program, Stmt, StmtKind, SwitchCase, TryStmt,
+    Literal, Method, MethodKind, Param, ParamDefault, ParamList, Program, Stmt, StmtKind,
+    SwitchCase, TryStmt,
 };
 use super::comments;
 use super::rules::Precedence;
@@ -23,6 +24,13 @@ use crate::{
 pub(super) struct FunctionState {
     pub(super) kind: FunKind,
     loop_labels: Vec<Option<String>>,
+}
+
+/// Whether a parameter default is evaluated at definition or call time.
+#[derive(Clone, Copy)]
+enum DefaultKind {
+    Eager,
+    Lazy,
 }
 
 impl<'source> Parser<'source> {
@@ -972,11 +980,10 @@ impl Parser<'_> {
     /// declaration site that called this.
     fn parse_function_def(&mut self, name: String, context: FunKind) -> FunctionDef {
         let fn_location = self.location();
-        // The name local stays uninitialized while the parameter list
-        // compiles: default expressions run in the enclosing scope before
-        // the closure exists, so reading the name there is the
-        // own-initializer error. Codegen marks it initialized ahead of
-        // the body, which may self-reference for recursion.
+        // Eager defaults are evaluated in the enclosing scope before the
+        // closure exists, so reading the name there is the own-initializer
+        // error. Lazy defaults run in the callee's prologue after codegen
+        // initializes the name, so they may reference the function itself.
         self.function_stack.push(FunctionState::new(context));
 
         self.consume(TK::LeftParen, "Expect '(' after function name.");
@@ -1024,15 +1031,35 @@ impl Parser<'_> {
         }
     }
 
-    /// Parse a parameter default in the enclosing function's context.
-    ///
-    /// Defaults run at definition time in the enclosing frame.
-    fn parse_parameter_default(&mut self) -> Expr {
-        let state = self.function_stack.pop().unwrap();
-        // Non-assigning and no comma rule.
-        let default = self.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Comma]);
+    /// Run `f` with the current function temporarily removed, so
+    /// `return`/`yield` validity is checked against the enclosing function.
+    fn in_enclosing_function<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        let state = self
+            .function_stack
+            .pop()
+            .expect("the parser always has a function context");
+        let result = f(self);
         self.function_stack.push(state);
-        default
+        result
+    }
+
+    /// Parse a parameter default.
+    ///
+    /// Eager defaults run at definition time in the enclosing frame, so they
+    /// parse in the enclosing function's context. Lazy defaults run in the
+    /// callee's frame, so they parse in the current function's context.
+    fn parse_parameter_default(&mut self, kind: DefaultKind) -> Expr {
+        // Non-assigning and no comma rule.
+        let parse = |parser: &mut Self| {
+            parser.parse_precedence_ignoring(Precedence::non_assigning(), &[TK::Comma])
+        };
+        match kind {
+            DefaultKind::Eager => self.in_enclosing_function(parse),
+            DefaultKind::Lazy => parse(self),
+        }
     }
 
     fn parse_params(&mut self) -> ParamList {
@@ -1046,7 +1073,7 @@ impl Parser<'_> {
                 let (name, location) = self.parse_variable("Expect rest parameter name.");
                 rest = Some(Param {
                     name,
-                    default: None,
+                    default: ParamDefault::Required,
                     location,
                 });
                 if self.match_(TK::Comma) {
@@ -1071,16 +1098,26 @@ impl Parser<'_> {
             }
             let (name, location) = self.parse_variable("Expect parameter name.");
             let default = if self.match_(TK::Equal) {
-                Some(Box::new(self.parse_parameter_default()))
+                ParamDefault::Eager {
+                    expr: Box::new(self.parse_parameter_default(DefaultKind::Eager)),
+                }
+            } else if self.match_(TK::FatArrow) {
+                ParamDefault::Lazy {
+                    expr: Box::new(self.parse_parameter_default(DefaultKind::Lazy)),
+                }
             } else {
                 // Required parameters must form a prefix: once a default
                 // has appeared, `arity` outruns the required count, so a
                 // later required parameter shows up as the two diverging.
-                let required = params.iter().filter(|p| p.default.is_none()).count() + 1;
+                let required = params
+                    .iter()
+                    .filter(|param| param.default.is_required())
+                    .count()
+                    + 1;
                 if required != params.len() + 1 {
                     self.error("A required parameter cannot follow an optional one.");
                 }
-                None
+                ParamDefault::Required
             };
             params.push(Param {
                 name,

@@ -1551,7 +1551,7 @@ fn module_exports_survive_gc_during_value_creation() {
     let stack_base = vm.stack.len();
     vm.stack.push(closure_value);
     vm.callstack
-        .push(*closure_value.as_closure(), stack_base, &vm.heap);
+        .push(*closure_value.as_closure(), stack_base, 0, &vm.heap);
 
     let plugin_name = vm.heap.string_id(&"gc_probe");
     let path = PathBuf::from("gc_probe");

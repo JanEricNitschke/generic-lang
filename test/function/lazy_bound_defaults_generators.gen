@@ -1,0 +1,30 @@
+# A generator's lazy defaults are evaluated when it is first advanced, not
+# when the generator object is created.
+var events = [];
+fun record(value) {
+    events.append(value);
+    return value;
+}
+gen run(value=>record("default")) {
+    yield value;
+}
+var pending = run();
+print(events); # expect: []
+print(next(pending)); # expect: default
+print(events); # expect: [default]
+
+# A lazy default may yield; the first advance yields the default value, and
+# resuming it assigns the sent value to the parameter.
+gen lazy_yield(value=>(yield "default")) {
+    yield value;
+}
+var it = lazy_yield();
+print(next(it)); # expect: default
+print(it.send("body")); # expect: body
+
+# A generator function can reference itself in a lazy default.
+gen generator_self(value=>generator_self) {
+    yield value;
+}
+var generator = generator_self();
+print(next(generator) is generator_self); # expect: true

@@ -27,9 +27,11 @@ pub(crate) struct Closure {
     pub(crate) function: FunctionId,
     pub(crate) upvalues: Vec<UpvalueId>,
     pub(crate) upvalue_count: usize,
-    /// Default values for the trailing optional parameters, evaluated once at
-    /// closure creation (definition time). Indexed by optional position: entry
-    /// `j` fills parameter slot `required_params + j` when the caller omits it.
+    /// Default values for the trailing optional parameters. Eager (`=`)
+    /// defaults store their definition-time value; lazy (`=>`) defaults store
+    /// a `nil` placeholder that the callee prologue replaces when the argument
+    /// is omitted. Indexed by optional position: entry `j` fills parameter
+    /// slot `required_params + j` when the caller omits it.
     #[derivative(PartialOrd = "ignore")]
     pub(crate) default_values: Vec<Value>,
     pub(crate) is_module: bool,

@@ -11,8 +11,8 @@ use shrinkwraprs::Shrinkwrap;
 use super::ast::{
     AccessMode, Arg, BinaryOp, BoolOperator, ClassDecl, ClassMemberKind, ClassVar, Expr,
     ExprContext, ExprKind, FstringPart, FunKind, FunctionDef, InjectedBody, InjectedProgram,
-    LambdaBody, LambdaLit, Literal, Method, ParamList, Program, Stmt, StmtKind, SwitchCase,
-    TryStmt, Tstring, UnaryOp,
+    LambdaBody, LambdaLit, Literal, Method, ParamDefault, ParamList, Program, Stmt, StmtKind,
+    SwitchCase, TryStmt, Tstring, UnaryOp,
 };
 use super::variables::{VariableOps, VariableResolution};
 use crate::{
@@ -735,30 +735,81 @@ impl Codegen<'_, '_> {
 
     /// Declare a function's parameters and defaults in the current frame.
     ///
-    /// Defaults are evaluated once, in the enclosing scope at definition
-    /// time; their values are left on the stack for the following
-    /// `OP_CLOSURE` to capture into the closure.
+    /// Eager defaults are evaluated once, in the enclosing scope at
+    /// definition time; their values are left on the stack for the following
+    /// `OP_CLOSURE` to capture into the closure. Lazy defaults leave a
+    /// placeholder there and are evaluated by
+    /// [`Self::gen_parameter_prologue`] when the function body starts.
     fn gen_parameters(&mut self, parameters: &ParamList) {
         let ParamList { params, rest, .. } = parameters;
         self.current_function_mut().arity = params.len();
         self.current_function_mut().required_params = params
             .iter()
-            .filter(|param| param.default.is_none())
+            .filter(|param| param.default.is_required())
             .count();
 
         for param in params {
             // Parameters are declared locals: a duplicate parameter name is
             // a scope error, reported at the parameter's name token.
             self.declare_variable(&param.name, Mutability::Mutable, param.location);
-            if let Some(default) = &param.default {
-                self.in_enclosing(|codegen| codegen.gen_expr(default));
+            match &param.default {
+                ParamDefault::Required => {
+                    self.define_variable(None, Mutability::Mutable, OpcodeLocation::default());
+                }
+                ParamDefault::Eager { expr } => {
+                    self.in_enclosing(|codegen| codegen.gen_expr(expr));
+                    self.define_variable(None, Mutability::Mutable, OpcodeLocation::default());
+                }
+                ParamDefault::Lazy { .. } => {
+                    // `OP_CLOSURE` captures one value per optional parameter.
+                    // A lazy default has no definition-time value, so leave a
+                    // placeholder; the call prologue overwrites it if the
+                    // argument is omitted.
+                    self.in_enclosing(|codegen| {
+                        codegen.emit_byte(OpCode::Nil, OpcodeLocation::new(param.location));
+                    });
+                    // Leave the local uninitialized: the prologue marks it
+                    // initialized after evaluating its expression. This also
+                    // makes self/forward lazy references compile errors.
+                }
             }
-            self.define_variable(None, Mutability::Mutable, OpcodeLocation::default());
         }
         if let Some(rest) = rest {
             self.current_function_mut().is_variadic = true;
             self.declare_variable(&rest.name, Mutability::Mutable, rest.location);
             self.define_variable(None, Mutability::Mutable, OpcodeLocation::default());
+        }
+    }
+
+    /// Emit the call-time checks and expressions for lazy defaults.
+    ///
+    /// The frame records how many arguments the caller supplied. Omitted
+    /// slots were filled with a placeholder by `execute_call`, so the
+    /// prologue evaluates the expression and overwrites the slot. Supplied
+    /// slots jump over both operations.
+    fn gen_parameter_prologue(&mut self, parameters: &ParamList) {
+        for (index, param) in parameters.params.iter().enumerate() {
+            let ParamDefault::Lazy { expr } = &param.default else {
+                continue;
+            };
+
+            let location = OpcodeLocation::new(param.location);
+            let (Ok(parameter_index), Ok(slot)) = (u8::try_from(index), u8::try_from(index + 1))
+            else {
+                self.error_at(
+                    param.location,
+                    &param.name,
+                    "Can't have more than 255 parameters.",
+                );
+                return;
+            };
+            self.emit_bytes(OpCode::ArgSupplied, parameter_index, location);
+            let skip = self.emit_jump(OpCode::PopJumpIfTrue, location);
+            self.gen_expr(expr);
+            self.emit_bytes(OpCode::SetLocal, slot, location);
+            self.emit_byte(OpCode::Pop, location);
+            self.patch_jump(skip, param.location, &param.name);
+            self.mark_local_initialized_at(usize::from(slot));
         }
     }
 
@@ -782,6 +833,9 @@ impl Codegen<'_, '_> {
             if kind == FunKind::Generator {
                 codegen.emit_byte(OpCode::ReturnGenerator, fn_location);
             }
+            // For generators this runs on the first resume; for ordinary
+            // functions it runs immediately before the body.
+            codegen.gen_parameter_prologue(&def.parameters);
             codegen.gen_declarations(&def.body);
             codegen.end(ReturnMode::Normal, fn_location);
         });
@@ -807,6 +861,7 @@ impl Codegen<'_, '_> {
         let frame = self.nested(LAMBDA_NAME, FunKind::Lambda, |codegen| {
             codegen.begin_scope();
             codegen.gen_parameters(&lambda.parameters);
+            codegen.gen_parameter_prologue(&lambda.parameters);
 
             match &lambda.body {
                 LambdaBody::Block(stmts) => {

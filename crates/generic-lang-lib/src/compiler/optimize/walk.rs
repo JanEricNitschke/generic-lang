@@ -220,12 +220,12 @@ fn walk_function<V: Visitor + ?Sized>(visitor: &mut V, function: &mut FunctionDe
 
 fn walk_params<V: Visitor + ?Sized>(visitor: &mut V, params: &mut ParamList) {
     for param in &mut params.params {
-        if let Some(default) = &mut param.default {
+        if let Some(default) = param.default.expr_mut() {
             visitor.visit_expr(default);
         }
     }
     if let Some(rest) = &mut params.rest
-        && let Some(default) = &mut rest.default
+        && let Some(default) = rest.default.expr_mut()
     {
         visitor.visit_expr(default);
     }

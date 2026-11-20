@@ -66,10 +66,16 @@ print(fun_decl.kind.name); # expect: add
 print(fun_decl.kind.kind); # expect: fun
 print(isinstance(fun_decl.kind.fn_lit, ast.FunctionDef)); # expect: true
 print(fun_decl.kind.fn_lit.parameters.params[0].name); # expect: a
-print(fun_decl.kind.fn_lit.parameters.params[1].default_value.kind); # expect: 2
+print(isinstance(fun_decl.kind.fn_lit.parameters.params[1].default_value, ast.ParamDefaultEager)); # expect: true
+print(fun_decl.kind.fn_lit.parameters.params[1].default_value.expr.kind); # expect: 2
 print(isinstance(fun_decl.kind.fn_lit.body[0], ast.Stmt)); # expect: true
 print(isinstance(fun_decl.kind.fn_lit.body[0].kind, ast.Return)); # expect: true
 print(isinstance(fun_decl.kind.fn_lit.body[0].kind.value.kind, ast.Binary)); # expect: true
+
+var lazy_decl = first("fun add(a, b => a + 1) { return a + b; }");
+print(isinstance(lazy_decl.kind.fn_lit.parameters.params[0].default_value, ast.ParamDefaultRequired)); # expect: true
+print(isinstance(lazy_decl.kind.fn_lit.parameters.params[1].default_value, ast.ParamDefaultLazy)); # expect: true
+print(isinstance(lazy_decl.kind.fn_lit.parameters.params[1].default_value.expr.kind, ast.Binary)); # expect: true
 
 var gen_decl = first("gen g() { yield 1; }");
 print(isinstance(gen_decl.kind, ast.FunctionDecl)); # expect: true
