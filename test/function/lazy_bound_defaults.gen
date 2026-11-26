@@ -104,3 +104,8 @@ try {
     print(e.message()); # expect: boom
 }
 print(lazy_maybe(5)); # expect: 5
+
+fun assigned_default(a=1, b=>(a = 2)) {
+    return (a, b);
+}
+print(assigned_default()); # expect: (2, 2)

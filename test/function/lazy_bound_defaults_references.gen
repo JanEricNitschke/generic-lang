@@ -101,3 +101,11 @@ fun body_shadow(value=>body_name) {
     return value;
 }
 print(body_shadow()); # expect: global
+
+fun lazy_closure(value=>10) {
+    fun read() {
+        return value;
+    }
+    return read;
+}
+print(lazy_closure()()); # expect: 10
